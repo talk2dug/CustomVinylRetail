@@ -1,0 +1,36 @@
+{
+  "designName": "Cake",
+  "category": "BANDS",
+  "size": 12,
+  "color": "#000000",
+  "background": "#f8fafc",
+  "quantity": 1,
+  "notes": "",
+  "customer": {
+    "name": "Jack Swayze",
+    "email": "jswayze@jmxi.io",
+    "phone": "2027408240",
+    "address": "230 Dix Creek Chapel Rd\nAsheville, NC 28806"
+  },
+  "id": "cake-2025-10-11T19-44-33-531Z",
+  "designId": "cake",
+  "savedAt": "2025-10-11T19:44:33.772Z",
+  "file": "cake-2025-10-11T19-44-33-531Z.png",
+  "textLayers": [],
+  "paid": false,
+  "sourceCopies": [
+    {
+      "format": "ai",
+      "file": "cake-2025-10-11T19-44-33-531Z-ai.ai",
+      "originalPath": "BANDS/AI/Cake.ai",
+      "size": 150616
+    },
+    {
+      "format": "eps",
+      "file": "cake-2025-10-11T19-44-33-531Z-eps.eps",
+      "originalPath": "BANDS/EPS/Cake.eps",
+      "size": 1184342
+    }
+  ],
+  "bytesWritten": 1890
+}

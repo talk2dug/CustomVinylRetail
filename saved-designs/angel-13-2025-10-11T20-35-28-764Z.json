@@ -1,0 +1,36 @@
+{
+  "designId": "angel-13",
+  "designName": "Angel (13)",
+  "category": "ANGELS",
+  "size": 12,
+  "color": "#000000",
+  "background": "#f8fafc",
+  "quantity": 1,
+  "notes": "",
+  "id": "angel-13-2025-10-11T20-35-28-764Z",
+  "savedAt": "2025-10-11T20:35:28.943Z",
+  "file": "angel-13-2025-10-11T20-35-28-764Z.png",
+  "textLayers": [],
+  "sourceCopies": [
+    {
+      "format": "ai",
+      "file": "angel-13-2025-10-11T20-35-28-764Z-ai.ai",
+      "originalPath": "ANGELS/ANGELS AI/angel (13).ai",
+      "size": 217285
+    },
+    {
+      "format": "eps",
+      "file": "angel-13-2025-10-11T20-35-28-764Z-eps.eps",
+      "originalPath": "ANGELS/ANGLES EPS/angel (13).eps",
+      "size": 265830
+    }
+  ],
+  "customer": {
+    "name": "Jack Swayze",
+    "email": "jswayze@jmxi.io",
+    "phone": "2027408240",
+    "address": "230 Dix Creek Chapel Rd"
+  },
+  "paid": false,
+  "bytesWritten": 3889
+}

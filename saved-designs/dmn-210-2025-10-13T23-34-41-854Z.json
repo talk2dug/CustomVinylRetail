@@ -1,0 +1,51 @@
+{
+  "designId": "dmn-210",
+  "designName": "Dmn (210)",
+  "category": "DEMONS",
+  "size": 4,
+  "color": "#ef4444",
+  "background": "#f8fafc",
+  "quantity": 1,
+  "notes": "",
+  "pricing": {
+    "productType": "sticker",
+    "descriptor": "4\" sticker · 1 color",
+    "colors": 1,
+    "sizeInches": 4,
+    "unitPriceCents": 375,
+    "subtotalCents": 375,
+    "shippingCents": 300,
+    "totalCents": 675,
+    "quantity": 1,
+    "currency": "USD"
+  },
+  "id": "dmn-210-2025-10-13T23-34-41-854Z",
+  "orderNumber": 1001,
+  "savedAt": "2025-10-13T23:34:42.250Z",
+  "file": "dmn-210-2025-10-13T23-34-41-854Z.png",
+  "textLayers": [],
+  "sourceCopies": [
+    {
+      "format": "ai",
+      "file": "dmn-210-2025-10-13T23-34-41-854Z-ai.ai",
+      "originalPath": "DEMONS/DEMONS AI/dmn (210).ai",
+      "size": 278110
+    },
+    {
+      "format": "eps",
+      "file": "dmn-210-2025-10-13T23-34-41-854Z-eps.eps",
+      "originalPath": "DEMONS/DEMONS EPS/dmn (210).eps",
+      "size": 391170
+    }
+  ],
+  "customer": {
+    "name": "Jack Swayze",
+    "email": "swayzej@me.com",
+    "phone": "2027408240",
+    "address": "230 Dix Creek Chapel Rd\nAsheville, NC 28806",
+    "emailVerified": false
+  },
+  "paid": false,
+  "paymentStatus": "UNPAID",
+  "bytesWritten": 8747
+}

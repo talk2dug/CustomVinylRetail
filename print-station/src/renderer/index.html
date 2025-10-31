@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vinyl Print Station</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>Vinyl Print Station</h1>
+        <p class="app-subtitle">Monitor production orders, upload artwork, manage catalog.</p>
+      </div>
+      <div class="status" id="connectionStatus">Not connected</div>
+    </header>
+
+    <nav class="tab-bar">
+      <button class="tab-button active" data-view="queueView">Queue</button>
+      <button class="tab-button" data-view="quotesView">Race Quotes</button>
+      <button class="tab-button" data-view="catalogView">Catalog</button>
+      <button class="tab-button" data-view="inventoryView">Inventory</button>
+      <button class="tab-button" data-view="uploadView">Upload Artwork</button>
+      <button class="tab-button" data-view="settingsView">Settings</button>
+    </nav>
+
+    <main class="app-main">
+      <section id="queueView" class="view active">
+        <div class="view-toolbar">
+          <div>
+            <button id="refreshQueueButton" class="primary">Refresh</button>
+            <label class="inline">
+              Poll every
+              <input id="pollIntervalInput" type="number" min="5" step="5" /> seconds
+            </label>
+          </div>
+          <div>
+            <input
+              type="search"
+              id="queueSearchInput"
+              placeholder="Search orders (order #, design, customer)…"
+            />
+          </div>
+        </div>
+
+        <div class="queue-layout">
+          <div class="queue-table-wrapper">
+            <table class="queue-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Design</th>
+                  <th>Qty</th>
+                  <th>Customer</th>
+                  <th>Saved</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="queueTableBody">
+                <tr>
+                  <td colspan="6" class="placeholder">No orders found.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <aside class="queue-detail" id="queueDetailPanel">
+            <p class="placeholder">Select an order to view details.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section id="quotesView" class="view">
+        <div class="view-toolbar">
+          <div>
+            <button id="refreshQuotesButton" class="primary">Refresh quotes</button>
+          </div>
+          <div>
+            <input
+              type="search"
+              id="quoteSearchInput"
+              placeholder="Search quotes (business, contact, status)…"
+            />
+          </div>
+        </div>
+
+        <div class="quotes-layout">
+          <div class="quotes-table-wrapper">
+            <table class="queue-table quotes-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Business</th>
+                  <th>Package</th>
+                  <th>Contact</th>
+                  <th>Status</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody id="quotesTableBody">
+                <tr>
+                  <td colspan="6" class="placeholder">No race quotes found.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <aside class="quote-detail" id="quoteDetailPanel">
+            <p class="placeholder">Select a race quote to review details.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section id="catalogView" class="view">
+        <div class="view-toolbar">
+          <div class="catalog-toolbar-group">
+            <label>
+              Category
+              <select id="catalogCategorySelect"></select>
+            </label>
+            <input
+              type="search"
+              id="catalogSearchInput"
+              placeholder="Search designs by name…"
+            />
+          </div>
+          <div class="catalog-toolbar-actions">
+            <span id="catalogStatus" class="catalog-status muted">Loading catalog…</span>
+            <button id="reloadCatalogButton" class="secondary">Reload Catalog</button>
+          </div>
+        </div>
+        <div id="catalogGrid" class="catalog-grid"></div>
+      </section>
+
+      <section id="inventoryView" class="view">
+        <div class="view-toolbar inventory-toolbar">
+          <div class="inventory-toolbar-group">
+            <label class="inline">
+              Material
+              <select id="inventoryMaterialSelect">
+                <option value="regular-vinyl" selected>Regular decal vinyl</option>
+                <option value="heat-transfer">Heat transfer vinyl</option>
+                <option value="apparel">Apparel</option>
+                <option value="all">All inventory</option>
+              </select>
+            </label>
+            <button id="inventoryRefreshButton" class="secondary">Refresh</button>
+          </div>
+          <div id="inventoryStatus" class="inventory-status muted">Loading inventory…</div>
+        </div>
+
+        <div class="inventory-layout">
+          <div id="inventoryList" class="inventory-card">
+            <p class="placeholder">Loading inventory…</p>
+          </div>
+          <div class="inventory-forms">
+            <form id="inventoryAddForm" class="inventory-card">
+              <h3>Add inventory item</h3>
+              <div class="inventory-form-grid">
+                <label>
+                  <span>Name</span>
+                  <input id="inventoryAddName" type="text" placeholder="Color or item name" required />
+                </label>
+                <label>
+                  <span>Color hex</span>
+                  <input id="inventoryAddColor" type="text" placeholder="#FFFFFF" />
+                </label>
+                <label>
+                  <span>Material</span>
+                  <select id="inventoryAddMaterial" required>
+                    <option value="regular-vinyl">Regular decal vinyl</option>
+                    <option value="heat-transfer">Heat transfer vinyl</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Quantity</span>
+                  <input id="inventoryAddQuantity" type="number" step="1" value="0" />
+                </label>
+                <label>
+                  <span>Unit</span>
+                  <input id="inventoryAddUnit" type="text" value="ft" />
+                </label>
+                <label>
+                  <span>Cost per unit</span>
+                  <input id="inventoryAddCost" type="text" placeholder="e.g. 4.25" />
+                </label>
+                <label class="full">
+                  <span>Reference URL</span>
+                  <input id="inventoryAddUrl" type="url" placeholder="https://supplier.example/item" />
+                </label>
+                <label class="full">
+                  <span>Notes</span>
+                  <textarea id="inventoryAddNotes" rows="2" placeholder="Optional notes"></textarea>
+                </label>
+              </div>
+              <div class="inventory-form-actions">
+                <button type="submit" class="primary">Save item</button>
+              </div>
+            </form>
+
+            <form id="inventoryApparelForm" class="inventory-card">
+              <h3>Add apparel stock</h3>
+              <div class="inventory-form-grid">
+                <label class="full">
+                  <span>Type</span>
+                  <select id="inventoryApparelTypeSelect"></select>
+                </label>
+                <label class="full hidden" id="inventoryApparelTypeOtherRow">
+                  <span>New type</span>
+                  <input id="inventoryApparelTypeOtherInput" type="text" maxlength="40" placeholder="Enter apparel type" />
+                </label>
+                <label>
+                  <span>Number of items</span>
+                  <input id="inventoryApparelQuantity" type="number" min="1" step="1" value="1" />
+                </label>
+                <label>
+                  <span>Size</span>
+                  <select id="inventoryApparelSizeSelect"></select>
+                </label>
+                <label>
+                  <span>Color</span>
+                  <input id="inventoryApparelColorInput" type="text" maxlength="40" placeholder="e.g. Black" />
+                </label>
+                <label>
+                  <span>Cost per unit</span>
+                  <input id="inventoryApparelCostInput" type="text" inputmode="decimal" placeholder="e.g. 12.50" />
+                </label>
+              </div>
+              <div class="inventory-form-actions">
+                <button type="submit" class="primary">Save apparel item</button>
+              </div>
+              <p class="hint">Types you add will stay in the list for next time.</p>
+            </form>
+
+            <form id="inventoryAdjustForm" class="inventory-card">
+              <h3>Adjust stock</h3>
+              <div class="inventory-form-grid">
+                <label class="full">
+                  <span>Item</span>
+                  <select id="inventoryAdjustItemSelect" required>
+                    <option value="">Loading…</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Change amount</span>
+                  <input
+                    id="inventoryAdjustAmount"
+                    type="number"
+                    step="1"
+                    placeholder="-5 to remove, 5 to add"
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Reason</span>
+                  <input
+                    id="inventoryAdjustReason"
+                    type="text"
+                    placeholder="e.g. used for job, damaged roll"
+                  />
+                </label>
+                <label class="full">
+                  <span>Notes</span>
+                  <textarea
+                    id="inventoryAdjustNotes"
+                    rows="2"
+                    placeholder="Optional details"
+                  ></textarea>
+                </label>
+              </div>
+              <div class="inventory-form-actions">
+                <button type="submit" class="secondary">Apply adjustment</button>
+              </div>
+            </form>
+
+            <form id="inventoryEditForm" class="inventory-card">
+              <h3>Edit item details</h3>
+              <div class="inventory-form-grid">
+                <label class="full">
+                  <span>Item</span>
+                  <select id="inventoryEditItemSelect" required>
+                    <option value="">Loading…</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Name</span>
+                  <input id="inventoryEditName" type="text" placeholder="Item name" />
+                </label>
+                <label>
+                  <span>Material</span>
+                  <select id="inventoryEditMaterial">
+                    <option value="">(no change)</option>
+                    <option value="regular-vinyl">Regular decal vinyl</option>
+                    <option value="heat-transfer">Heat transfer vinyl</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Color hex</span>
+                  <input id="inventoryEditColor" type="text" placeholder="#FFFFFF" />
+                </label>
+                <label>
+                  <span>Unit</span>
+                  <input id="inventoryEditUnit" type="text" placeholder="ft" />
+                </label>
+                <label>
+                  <span>Cost per unit</span>
+                  <input id="inventoryEditCost" type="text" placeholder="e.g. 4.25" />
+                </label>
+                <label class="full">
+                  <span>Reference URL</span>
+                  <input id="inventoryEditUrl" type="url" placeholder="https://supplier.example/item" />
+                </label>
+                <label class="full">
+                  <span>Notes</span>
+                  <textarea id="inventoryEditNotes" rows="2" placeholder="Notes (optional)"></textarea>
+                </label>
+              </div>
+              <div class="inventory-form-actions">
+                <button type="submit" class="secondary">Update item</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section id="uploadView" class="view">
+        <form id="uploadForm" class="card">
+          <h2>Upload Artwork</h2>
+          <p class="hint">
+            Use this form to add new sticker designs to the shared catalog. The catalog will
+            regenerate automatically after each upload.
+          </p>
+
+          <div class="form-row">
+            <label>Category mode</label>
+            <div class="inline-options">
+              <label>
+                <input type="radio" name="categoryMode" value="existing" checked />
+                Existing
+              </label>
+              <label>
+                <input type="radio" name="categoryMode" value="new" />
+                New
+              </label>
+            </div>
+          </div>
+
+          <div class="form-row" id="existingCategoryRow">
+            <label for="existingCategorySelect">Existing category</label>
+            <select id="existingCategorySelect"></select>
+          </div>
+
+          <div class="form-row hidden" id="newCategoryRow">
+            <label for="newCategoryInput">New category name</label>
+            <input id="newCategoryInput" type="text" placeholder="e.g. DRAG RACING" />
+          </div>
+
+          <div class="form-row">
+            <label for="displayNameInput">Display name</label>
+            <input id="displayNameInput" type="text" placeholder="Design display name" />
+          </div>
+
+          <div class="form-row">
+            <label class="inline" for="uploadApparelToggle">
+              <input type="checkbox" id="uploadApparelToggle" />
+              Apparel design
+            </label>
+            <p class="hint">Tag the upload as apparel so clothing catalogs and the storefront pick it up.</p>
+          </div>
+
+          <div class="form-row disabled" id="uploadApparelTypeRow">
+            <label for="uploadApparelType">Apparel style</label>
+            <select id="uploadApparelType" disabled>
+              <option value="tshirt" selected>T-shirt</option>
+              <option value="hoodie">Hoodie</option>
+              <option value="hat">Hat</option>
+              <option value="beanie">Beanie</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label>Preview image</label>
+            <div class="file-picker">
+              <button id="choosePreviewButton" type="button" class="secondary">Choose file</button>
+              <span id="previewFileLabel" class="file-label">No file selected</span>
+            </div>
+            <p class="hint">PNG, JPG, GIF, or WEBP up to 50&nbsp;MB.</p>
+          </div>
+
+          <div class="form-row">
+            <label>Source files (optional)</label>
+            <div class="file-picker">
+              <button id="chooseSourcesButton" type="button" class="secondary">Choose files</button>
+              <span id="sourceFilesLabel" class="file-label">No files selected</span>
+            </div>
+            <p class="hint">Upload AI, EPS, PDF, or SVG files to include cut-ready artwork.</p>
+          </div>
+
+          <div class="form-row">
+            <button type="submit" class="primary">Upload Artwork</button>
+            <button type="button" class="secondary" id="resetUploadButton">Reset</button>
+          </div>
+
+          <div id="uploadStatus" class="status-bar muted">Waiting for input.</div>
+        </form>
+      </section>
+
+      <section id="settingsView" class="view">
+        <form id="settingsForm" class="card">
+          <h2>Connection &amp; Preferences</h2>
+
+          <div class="form-row">
+            <label for="serverUrlInput">Save server URL</label>
+            <input
+              id="serverUrlInput"
+              type="url"
+              placeholder="http://localhost:4000"
+              required
+            />
+            <p class="hint">
+              This is the URL for <code>npm run save-server</code> (typically port 4000).
+            </p>
+          </div>
+
+          <div class="form-row">
+            <label for="assetUrlInput">Asset base URL (optional)</label>
+            <input id="assetUrlInput" type="url" placeholder="http://localhost:4000" />
+            <p class="hint">
+              Override if catalog images are served from a different origin. Leave blank to use the
+              save server URL.
+            </p>
+          </div>
+
+          <div class="form-row">
+            <label for="apiKeyInput">Internal API key</label>
+            <input id="apiKeyInput" type="text" placeholder="PRINT_STATION_API_KEY" />
+            <p class="hint">
+              Required if <code>PRINT_STATION_API_KEY</code> or <code>INTERNAL_API_KEY</code> is set
+              on the server.
+            </p>
+          </div>
+
+          <div class="form-row">
+            <label for="employeeNameInput">Operator name</label>
+            <input id="employeeNameInput" type="text" placeholder="Operator" />
+          </div>
+
+          <div class="form-row">
+            <label class="inline">
+              <input type="checkbox" id="autoOpenPreviewCheckbox" />
+              Automatically open preview when selecting a job
+            </label>
+          </div>
+
+          <div class="form-row actions">
+            <button type="submit" class="primary">Save Settings</button>
+            <button type="button" class="secondary" id="testConnectionButton">Test Connection</button>
+          </div>
+
+          <div id="settingsStatus" class="status-bar muted">Not saved yet.</div>
+        </form>
+      </section>
+    </main>
+
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+    <script type="module" src="./index.js"></script>
+  </body>
+</html>

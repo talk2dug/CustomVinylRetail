@@ -1,0 +1,29 @@
+{
+  "sourceUrl": "https://www.alldayshirts.com/port-authority-c939-knit-cuff-beanie",
+  "minWidth": 600,
+  "minHeight": 600,
+  "selected": [
+    "https://assets-cdn.logoup.com/ADSReviewImages/review_20250506144540_3959.jpeg",
+    "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/C939_1403293_front.jpg"
+  ],
+  "allCandidates": [
+    {
+      "url": "https://assets-cdn.logoup.com/ADSReviewImages/review_20250506144540_3959.jpeg",
+      "width": 4032,
+      "height": 3024,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/C939_1403293_front.jpg",
+      "width": 869,
+      "height": 892,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    }
+  ]
+}

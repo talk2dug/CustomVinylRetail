@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sticker Orders Dashboard</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Montserrat:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="./admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Sticker Orders Dashboard</h1>
+      <p>Review saved customer mockups, update payment status, and download production files.</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="refreshButton" class="secondary">Refresh</button>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <section class="status-bar" id="statusBar" aria-live="polite"></section>
+    <section class="card artwork-card">
+      <h2>Upload new artwork</h2>
+      <p class="muted-text">Choose a category, upload a preview image, and optional vector files. The catalog regenerates automatically.</p>
+      <form id="artUploadForm" class="art-form">
+        <fieldset class="category-fieldset">
+          <legend>Category</legend>
+          <div class="category-option">
+            <label class="radio-option">
+              <input type="radio" name="artCategoryMode" id="artCategoryModeExisting" value="existing" checked>
+              <span>Use existing folder</span>
+            </label>
+            <select id="artCategorySelect">
+              <option value="" disabled selected>Select a category…</option>
+            </select>
+          </div>
+          <div class="category-option">
+            <label class="radio-option">
+              <input type="radio" name="artCategoryMode" id="artCategoryModeNew" value="new">
+              <span>Create new folder</span>
+            </label>
+            <input type="text" id="artNewCategoryInput" placeholder="Example: Retro Flames" disabled>
+          </div>
+          <p class="field-hint muted-text">New folders are created alongside the existing category folders in the project root.</p>
+        </fieldset>
+        <label>
+          <span>Display name</span>
+          <input type="text" id="artDisplayName" placeholder="Add a descriptive name" required>
+        </label>
+        <label>
+          <span>Preview image</span>
+          <input type="file" id="artPreviewInput" accept="image/*" required>
+        </label>
+        <label>
+          <span>Vector/source files (optional)</span>
+          <input type="file" id="artSourcesInput" accept=".ai,.eps,.pdf,.svg" multiple>
+        </label>
+        <div class="art-actions">
+          <button type="submit" class="primary">Upload artwork</button>
+          <span id="artUploadStatus" class="status-message"></span>
+        </div>
+      </form>
+    </section>
+    <section class="card specials-card" id="specialsCard">
+      <h2>This Week's Special</h2>
+      <p class="muted-text">Showcase up to four standout designs on the landing page. Pick from the catalog, customize the headline, and add an optional tagline.</p>
+      <form id="specialsForm" class="specials-form">
+        <div class="specials-fields">
+          <label>
+            <span>Category</span>
+            <select id="specialsCategorySelect">
+              <option value="" disabled selected>Loading categories…</option>
+            </select>
+          </label>
+          <label>
+            <span>Design</span>
+            <select id="specialsDesignSelect" disabled>
+              <option value="" disabled selected>Select a category first</option>
+            </select>
+          </label>
+        </div>
+        <div class="specials-fields">
+          <label>
+            <span>Display title</span>
+            <input type="text" id="specialsTitleInput" placeholder="Inferno Skull">
+          </label>
+          <label>
+            <span>Tagline (optional)</span>
+            <input type="text" id="specialsTaglineInput" placeholder="Limited run vinyl available now">
+          </label>
+        </div>
+        <div class="specials-actions">
+          <button type="submit" class="primary">Add to specials</button>
+          <span id="specialsStatus" class="status-message"></span>
+        </div>
+      </form>
+      <div id="specialsList" class="specials-list empty">
+        No specials selected yet. Choose up to four designs to feature.
+      </div>
+    </section>
+    <section class="card race-admin-card" id="raceQuotesCard">
+      <h2>Race package quotes</h2>
+      <p class="muted-text">Review quote requests, add pricing, and generate payment links once the customer is ready to approve.</p>
+      <div id="raceQuotesList" class="race-admin-list">
+        <div class="empty-state">Loading race quotes…</div>
+      </div>
+    </section>
+    <section id="ordersContainer" class="orders"></section>
+  </main>
+
+  <template id="orderCardTemplate">
+    <article class="order-card">
+      <header class="order-card__header">
+        <div>
+          <h2 class="order-card__title"></h2>
+          <p class="order-card__meta"></p>
+        </div>
+        <div class="order-card__actions">
+          <label class="paid-toggle">
+            <input type="checkbox">
+            <span>Paid</span>
+          </label>
+        </div>
+      </header>
+      <div class="order-card__content">
+        <div class="order-card__preview">
+          <img alt="Sticker preview" loading="lazy">
+          <a class="download-button" target="_blank" rel="noopener noreferrer">Download preview</a>
+        </div>
+        <div class="order-card__details">
+          <dl class="detail-list"></dl>
+          <div class="text-layers"></div>
+          <div class="source-files"></div>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script type="module" src="./admin.js"></script>
+</body>
+</html>

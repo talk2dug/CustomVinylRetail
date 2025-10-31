@@ -1,0 +1,78 @@
+{
+  "sourceUrl": "https://www.alldayshirts.com/otto-cap-39-165-5-panel-high-crown-mesh-back-trucker-hat",
+  "minWidth": 600,
+  "minHeight": 600,
+  "selected": [
+    "https://assets-cdn.logoup.com/ADSReviewImages/review_20250309155943_6004.jpeg",
+    "https://assets-cdn.logoup.com/ADSReviewImages/review_20250309155955_4020.jpeg",
+    "https://assets-cdn.logoup.com/ADSReviewImages/review_20250309160007_9580.jpeg",
+    "https://assets-cdn.logoup.com/ADSReviewImages/review_20250609005453_2362.jpg",
+    "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/39-165_BLACK-front.jpg",
+    "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/39-165_BLACK-pod-1984.jpg"
+  ],
+  "allCandidates": [
+    {
+      "url": "https://assets-cdn.logoup.com/ADSReviewImages/review_20250309155943_6004.jpeg",
+      "width": 4032,
+      "height": 3024,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/ADSReviewImages/review_20250309155955_4020.jpeg",
+      "width": 4032,
+      "height": 3024,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/ADSReviewImages/review_20250309160007_9580.jpeg",
+      "width": 4032,
+      "height": 3024,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/ADSReviewImages/review_20250609005453_2362.jpg",
+      "width": 4032,
+      "height": 3024,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/39-165_BLACK-front.jpg",
+      "width": 869,
+      "height": 892,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/39-165_BLACK-pod-1984.jpg",
+      "width": 869,
+      "height": 892,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/12487_default_1110.jpg",
+      "width": 869,
+      "height": 892,
+      "type": "jpg",
+      "source": "meta",
+      "mime": "image/jpeg",
+      "ok": true
+    }
+  ]
+}

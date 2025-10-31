@@ -1,0 +1,49 @@
+{
+  "sourceUrl": "https://www.alldayshirts.com/40-oz-intrepid-tumblers.html",
+  "minWidth": 600,
+  "minHeight": 600,
+  "selected": [
+    "https://assets-cdn.logoup.com/ADSReviewImages/review_20250523170431_3540.jpeg",
+    "https://assets-cdn.logoup.com/ADSReviewImages/review_20241211205224_3917.jpg",
+    "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/40Tumbler_BLACK-front.png",
+    "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/12486_default_4367.jpg"
+  ],
+  "allCandidates": [
+    {
+      "url": "https://assets-cdn.logoup.com/ADSReviewImages/review_20250523170431_3540.jpeg",
+      "width": 4284,
+      "height": 5712,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/ADSReviewImages/review_20241211205224_3917.jpg",
+      "width": 904,
+      "height": 1205,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/40Tumbler_BLACK-front.png",
+      "width": 869,
+      "height": 892,
+      "type": "png",
+      "source": "img",
+      "mime": "image/png",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/12486_default_4367.jpg",
+      "width": 869,
+      "height": 892,
+      "type": "jpg",
+      "source": "meta",
+      "mime": "image/jpeg",
+      "ok": true
+    }
+  ]
+}

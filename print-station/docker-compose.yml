@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  print-station:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: print-station-dev
+    working_dir: /app
+    environment:
+      # Forward host display if available (XQuartz on macOS).
+      - DISPLAY=${DISPLAY:-}
+      - ELECTRON_ENABLE_LOGGING=1
+      - SERVER_BASE_URL=https://store.swayzecustomvinyl.com
+      - INTERNAL_API_KEY=laZHEthV92qDq0adO07UnqoH3O4baZmV
+    volumes:
+      - .:/app
+      - print_station_node_modules:/app/node_modules
+      - print_station_store:/root/.config/print-station-settings
+    command: ["npm", "run", "dev"]
+
+volumes:
+  print_station_node_modules:
+  print_station_store:

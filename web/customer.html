@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Sticker Orders</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="./customer.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>My Sticker Orders</h1>
+    <p>Sign in with the email you used at the booth to review progress and re-order your designs.</p>
+  </header>
+
+  <main class="customer-portal">
+    <section id="accountBar" class="account-bar hidden">
+      <div>
+        Signed in as <strong id="accountName"></strong>
+        <span class="muted">(<span id="accountEmail"></span>)</span>
+      </div>
+      <button id="logoutButton" class="secondary">Sign out</button>
+    </section>
+
+    <section id="authCard" class="card">
+
+      <form id="loginForm" class="login-form">
+        <h2>Welcome back</h2>
+        <label>
+          <span>Email address</span>
+          <input id="loginEmail" type="email" required placeholder="name@example.com">
+        </label>
+        <label>
+          <span>Password</span>
+          <input id="loginPassword" type="password" required placeholder="Your password">
+        </label>
+        <button type="submit" class="primary">Sign in</button>
+        <button type="button" id="forgotPasswordLink" class="link-button">Forgot password?</button>
+        <button type="button" id="showRegister" class="secondary">Create account</button>
+      </form>
+
+      <form id="registerForm" class="login-form hidden" hidden>
+        <h2>Create your account</h2>
+        <label>
+          <span>Full name</span>
+          <input id="registerName" type="text" required placeholder="Your name">
+        </label>
+        <label>
+          <span>Email address</span>
+          <input id="registerEmail" type="email" required placeholder="name@example.com">
+        </label>
+        <label>
+          <span>Password</span>
+          <input id="registerPassword" type="password" required placeholder="Create a password">
+        </label>
+        <label>
+          <span>Confirm password</span>
+          <input id="registerConfirm" type="password" required placeholder="Repeat password">
+        </label>
+        <label>
+          <span>Cell phone (optional)</span>
+          <input id="registerPhone" type="tel" placeholder="555-123-4567">
+        </label>
+        <label>
+          <span>Mailing address (optional)</span>
+          <textarea id="registerAddress" rows="3" placeholder="Street, City, State, ZIP"></textarea>
+        </label>
+        <label class="sms-opt-in">
+          <input id="registerSmsOptIn" type="checkbox">
+          <span>
+            I agree to receive order updates and occasional offers by text message.
+            Message/data rates may apply. Reply STOP to cancel, HELP for help. See our
+            <a href="./terms.html#privacy" target="_blank" rel="noopener">privacy policy</a>.
+          </span>
+        </label>
+        <button type="submit" class="primary">Create account</button>
+        <button type="button" id="registerBackToLogin" class="link-button">Back to sign in</button>
+      </form>
+
+      <p class="hint">Once you sign in, you can review every sticker request tied to your account and reorder in one click.</p>
+
+      <form id="resetRequestForm" class="login-form hidden" hidden>
+        <h2>Reset your password</h2>
+        <label>
+          <span>Email address</span>
+          <input id="resetRequestEmail" type="email" required placeholder="name@example.com">
+        </label>
+        <button type="submit" class="primary">Send reset link</button>
+        <button type="button" id="backToLogin" class="link-button">Back to sign in</button>
+      </form>
+
+      <form id="resetPasswordForm" class="login-form hidden" hidden>
+        <h2>Choose a new password</h2>
+        <label>
+          <span>New password</span>
+          <input id="resetNewPassword" type="password" required placeholder="New password">
+        </label>
+        <label>
+          <span>Confirm new password</span>
+          <input id="resetConfirmPassword" type="password" required placeholder="Repeat password">
+        </label>
+        <input id="resetTokenInput" type="hidden">
+        <button type="submit" class="primary">Update password</button>
+        <button type="button" class="link-button" id="resetCancelButton">Cancel</button>
+      </form>
+    </section>
+
+    <section id="verifyBanner" class="verify-banner hidden">
+      <p>Your email is not confirmed yet. Check your inbox or request another confirmation email.</p>
+      <button id="resendVerification" class="button ghost">Resend confirmation email</button>
+    </section>
+
+    <section id="statusBar" class="status" aria-live="polite"></section>
+
+    <section id="ordersContainer" class="orders-grid"></section>
+
+    <section id="racePackagesCard" class="card race-packages hidden">
+      <div class="race-packages__hero">
+        <img src="./images/race-kit-hero.jpg" alt="Race car with vinyl number kit" class="race-packages__image">
+        <div class="race-packages__intro">
+          <h2>Race car decal packages</h2>
+          <p>Create a cohesive look for your track car with number panels, sponsor decals, and accent graphics. Request a quote and we&rsquo;ll build a custom kit around your schedule.</p>
+        </div>
+      </div>
+
+      <div class="race-promo-banner">
+        <strong>End of the Season Deals:</strong> Every vinyl package now includes four free crew tees (1 Crew Chief + 3 Crew) matched to your livery.
+      </div>
+
+      <section class="race-packages__options">
+        <header>
+          <h3>Package options</h3>
+          <p>Choose the option that fits your program. All packages include color proofs and layout adjustments before production.</p>
+        </header>
+        <div class="race-package-grid">
+          <article class="race-package" data-package="basic">
+            <h4>Basic Number Kit</h4>
+            <ul>
+              <li>2× door numbers</li>
+              <li>1× roof number</li>
+              <li>2× driver name tags</li>
+              <li>1× small sponsor decal</li>
+            </ul>
+            <p class="race-package__meta">4–6 decals &bull; $75–$125</p>
+          </article>
+          <article class="race-package" data-package="sponsor">
+            <h4>Sponsor Kit</h4>
+            <ul>
+              <li>Everything in Basic kit</li>
+              <li>8–10 sponsor decals</li>
+            </ul>
+            <p class="race-package__meta">10–15 decals &bull; $150–$250</p>
+          </article>
+          <article class="race-package" data-package="pro">
+            <h4>Pro Package</h4>
+            <ul>
+              <li>Numbers, names, sponsors</li>
+              <li>Accent graphics and layout tweaks</li>
+            </ul>
+            <p class="race-package__meta">20–30 decals &bull; $300–$450</p>
+          </article>
+          <article class="race-package" data-package="elite">
+            <h4>Elite Custom Kit</h4>
+            <ul>
+              <li>Full custom layout</li>
+              <li>Multi-color or specialty vinyl</li>
+              <li>All sponsor branding</li>
+            </ul>
+            <p class="race-package__meta">30+ decals &bull; $500–$750+</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="race-packages__addons">
+        <h3>Add-ons</h3>
+        <ul>
+          <li><strong>Metallic or reflective vinyl</strong> &mdash; +$25&ndash;$75</li>
+          <li><strong>Layered multi-color cuts</strong> &mdash; +$50&ndash;$100</li>
+          <li><strong>Custom design / layout</strong> &mdash; +$50&ndash;$100</li>
+          <li><strong>Number / lettering outline</strong> &mdash; +$15&ndash;$40</li>
+        </ul>
+      </section>
+
+      <section class="race-packages__notes">
+        <h3>Notes</h3>
+        <ul>
+          <li>Prices vary based on car size, decal count, and color count.</li>
+          <li>Custom artwork may require a design fee if vector files aren&rsquo;t supplied.</li>
+          <li>Typical turnaround: 3&ndash;5 business days after proof approval.</li>
+        </ul>
+      </section>
+
+      <form id="raceQuoteForm" class="race-quote-form">
+        <h3>Request a quote</h3>
+        <div class="race-quote-grid">
+          <label>
+            <span>Business</span>
+            <input id="raceQuoteBusiness" type="text" required placeholder="Team or shop name">
+          </label>
+          <label>
+            <span>Customer / driver</span>
+            <input id="raceQuoteCustomer" type="text" required placeholder="Driver name">
+          </label>
+          <label>
+            <span>Driver country</span>
+            <select id="raceQuoteDriverCountry">
+              <option value="">Choose country…</option>
+            </select>
+          </label>
+          <label>
+            <span>Racing body</span>
+            <select id="raceQuoteRacingBody" required>
+              <option value="">Choose sanctioning body…</option>
+              <option value="ARA">ARA — American Rally Association</option>
+              <option value="SCCA">SCCA — Sports Car Club of America</option>
+              <option value="NASA">NASA — National Auto Sport Association</option>
+            </select>
+          </label>
+          <div class="race-body-note" id="raceQuoteBodyNote">
+            Select your series to see reminder notes.
+          </div>
+          <label>
+            <span>Car number</span>
+            <input id="raceQuoteCarNumber" type="text" placeholder="e.g. 27">
+          </label>
+          <label>
+            <span>Co-driver name (optional)</span>
+            <input id="raceQuoteCoDriver" type="text" placeholder="Co-driver">
+          </label>
+          <label>
+            <span>Co-driver country (optional)</span>
+            <select id="raceQuoteCoDriverCountry">
+              <option value="">Choose country…</option>
+            </select>
+          </label>
+          <label>
+            <span>Date needed</span>
+            <input id="raceQuoteDate" type="date">
+          </label>
+          <label class="full-width">
+            <span>Vehicle (make / model / class)</span>
+            <input id="raceQuoteVehicle" type="text" placeholder="e.g. Subaru WRX &mdash; Time Attack">
+          </label>
+          <label class="full-width">
+            <span>Primary colors</span>
+            <input id="raceQuoteColors" type="text" placeholder="List the vinyl colors you want">
+          </label>
+        </div>
+
+        <fieldset class="race-package-options">
+          <legend>Select a package</legend>
+          <label>
+            <input type="radio" name="racePackage" value="basic" required checked>
+            <span>Basic Number Kit</span>
+          </label>
+          <label>
+            <input type="radio" name="racePackage" value="sponsor">
+            <span>Sponsor Kit</span>
+          </label>
+          <label>
+            <input type="radio" name="racePackage" value="pro">
+            <span>Pro Package</span>
+          </label>
+          <label>
+            <input type="radio" name="racePackage" value="elite">
+            <span>Elite Custom Kit</span>
+          </label>
+        </fieldset>
+
+        <fieldset class="race-apparel-options">
+          <legend>Optional team apparel bundles</legend>
+          <label>
+            <input type="radio" name="raceApparelBundle" value="none" checked>
+            <span>No apparel bundle</span>
+          </label>
+          <label>
+            <input type="radio" name="raceApparelBundle" value="apparel-shirts-5">
+            <span>Team Apparel Bundle · 5 T-shirts · 25% off when paired with a decal package</span>
+          </label>
+          <label>
+            <input type="radio" name="raceApparelBundle" value="apparel-shirts-hats">
+            <span>Crew Combo · 5 T-shirts + 5 hats · 30% off when paired with a decal package</span>
+          </label>
+          <label>
+            <input type="radio" name="raceApparelBundle" value="apparel-full-crew">
+            <span>Full Crew Bundle · 5 T-shirts + 5 hats + 5 hoodies · 35% off when paired with a decal package</span>
+          </label>
+        </fieldset>
+
+        <fieldset class="race-addons">
+          <legend>Add-ons</legend>
+          <label><input type="checkbox" value="metallic"> Metallic or reflective vinyl</label>
+          <label><input type="checkbox" value="multicolor"> Layered multi-color cuts</label>
+          <label><input type="checkbox" value="design"> Custom design / layout</label>
+          <label><input type="checkbox" value="outline"> Number / lettering outline</label>
+        </fieldset>
+
+        <label class="race-notes">
+          <span>Project notes</span>
+          <textarea id="raceQuoteNotes" rows="4" placeholder="Tell us about sponsor placements, numbering rules, or deadlines."></textarea>
+        </label>
+
+        <section class="race-quote-sponsors">
+          <header>
+            <h4>Sponsor decals</h4>
+            <p class="hint">Add each sponsor so we can size decals correctly for your series and apparel.</p>
+          </header>
+          <div id="raceQuoteSponsorsList" class="sponsor-list"></div>
+          <button type="button" class="secondary" id="raceQuoteAddSponsor">Add sponsor</button>
+        </section>
+
+        <button type="submit" class="primary">Request my quote</button>
+      </form>
+    </section>
+
+    <section id="raceQuotesCard" class="card race-quotes hidden">
+      <h2>My race quotes</h2>
+      <div id="raceQuotesList" class="race-quotes__list">No race quotes yet.</div>
+    </section>
+
+    <section id="shortcuts" class="shortcut-grid hidden">
+      <article class="shortcut-card">
+        <h3>Create a new sticker</h3>
+        <p>Start fresh in the catalog, pick your vinyl color, and add custom text right away.</p>
+        <a class="button primary" href="./catalog.html">Launch designer</a>
+      </article>
+      <article class="shortcut-card">
+        <h3>Upload existing artwork</h3>
+        <p>Have production-ready art? Upload it so we can prep it for cutting or engraving.</p>
+        <button id="uploadButton" type="button" class="button ghost">Upload artwork</button>
+        <input id="uploadInput" type="file" accept=".ai,.pdf,.eps,.svg,.png,.jpg" hidden>
+      </article>
+    </section>
+  </main>
+
+  <template id="customerOrderTemplate">
+    <article class="order-card">
+      <header>
+        <h3></h3>
+        <span class="status-pill"></span>
+      </header>
+      <div class="order-body">
+        <img alt="Sticker preview" loading="lazy">
+        <dl class="meta"></dl>
+        <div class="text-layers"></div>
+        <div class="source-files"></div>
+      </div>
+      <footer class="order-footer">
+        <a class="download-link" target="_blank" rel="noopener noreferrer">Download preview</a>
+        <button type="button" class="secondary reorder-button">Re-order</button>
+      </footer>
+    </article>
+  </template>
+
+  <script type="module" src="./customer.js"></script>
+</body>
+</html>

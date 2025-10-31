@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 420" role="img" aria-labelledby="title desc">
+  <title id="title">Swayze Rally Team crew chief tee mockup</title>
+  <desc id="desc">Front and back view of a black crew tee that reads Swayze Rally Team, with the back featuring large branding, stripes, a rally car illustration, and Crew Chief lettering.</desc>
+  <defs>
+    <linearGradient id="shirtHighlight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f2937"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="#f8fafc"/>
+  <g transform="translate(70 40)">
+    <path d="M30 36L0 74v268h210V74l-30-38h-55L107 0H93L83 36Z" fill="url(#shirtHighlight)"/>
+    <text x="82" y="110" fill="#e2e8f0" font-size="42" font-family="Montserrat, 'Barlow', sans-serif" font-weight="700" text-anchor="middle">SWAYZE</text>
+    <text x="82" y="150" fill="#e2e8f0" font-size="28" font-family="Montserrat, 'Barlow', sans-serif" font-weight="600" text-anchor="middle">RALLY TEAM</text>
+    <text x="82" y="185" fill="#e2e8f0" font-size="18" font-family="Montserrat, 'Barlow', sans-serif" text-anchor="middle">FRONT</text>
+  </g>
+  <g transform="translate(420 20)">
+    <path d="M40 52L10 92v300h250V92l-30-40h-70L176 0h-20l-10 52Z" fill="url(#shirtHighlight)"/>
+    <text x="135" y="125" fill="#ef4444" font-size="48" font-family="Montserrat, 'Barlow', sans-serif" font-weight="800" text-anchor="middle" letter-spacing="2">CREW CHIEF</text>
+    <text x="135" y="185" fill="#e2e8f0" font-size="64" font-family="Montserrat, 'Barlow', sans-serif" font-weight="800" text-anchor="middle" letter-spacing="4">SWAYZE</text>
+    <text x="135" y="235" fill="#e2e8f0" font-size="44" font-family="Montserrat, 'Barlow', sans-serif" font-weight="700" text-anchor="middle" letter-spacing="3">RALLY TEAM</text>
+    <g fill="#e2e8f0" transform="translate(60 250)">
+      <polygon points="0 0 100 0 110 -18 10 -18" opacity=".85"/>
+      <polygon points="15 24 115 24 125 6 25 6" opacity=".6"/>
+      <polygon points="30 48 130 48 140 30 40 30" opacity=".4"/>
+    </g>
+    <g transform="translate(40 270)">
+      <path d="M0 75c10-45 45-60 80-60h90c32 0 57 12 70 45l10 30H0Z" fill="#e2e8f0"/>
+      <path d="M30 75c0-18 14-32 32-32s32 14 32 32" fill="#111827"/>
+      <path d="M150 75c0-18 14-32 32-32s32 14 32 32" fill="#111827"/>
+      <circle cx="62" cy="75" r="14" fill="#e2e8f0"/>
+      <circle cx="182" cy="75" r="14" fill="#e2e8f0"/>
+      <rect x="70" y="12" width="90" height="22" rx="8" fill="#111827"/>
+      <rect x="92" y="-2" width="64" height="14" rx="6" fill="#e2e8f0"/>
+    </g>
+    <text x="135" y="360" fill="#e2e8f0" font-size="20" font-family="Montserrat, 'Barlow', sans-serif" text-anchor="middle">BACK</text>
+  </g>
+</svg>

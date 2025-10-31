@@ -1,0 +1,29 @@
+{
+  "sourceUrl": "https://www.alldayshirts.com/port-authority-cp91-premium-beanie-cap",
+  "minWidth": 600,
+  "minHeight": 600,
+  "selected": [
+    "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/51-BE_BLACK-front.jpg",
+    "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/4632_default_8525.jpg"
+  ],
+  "allCandidates": [
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/51-BE_BLACK-front.jpg",
+      "width": 869,
+      "height": 892,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/4632_default_8525.jpg",
+      "width": 869,
+      "height": 892,
+      "type": "jpg",
+      "source": "meta",
+      "mime": "image/jpeg",
+      "ok": true
+    }
+  ]
+}

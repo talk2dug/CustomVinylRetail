@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swayze's Custom Vinyl</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Lobster&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600&family=Pacifico&family=Playfair+Display:wght@400;700&family=Raleway:wght@400;600;700&family=Roboto+Slab:wght@400;600;700&display=swap">
+</head>
+<body>
+  <div class="app">
+    <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="sidebar">
+      Browse &amp; filters
+    </button>
+    <div id="sidebarOverlay" class="sidebar-overlay" hidden></div>
+    <aside id="sidebar" class="sidebar" aria-label="Browse controls">
+      <button id="sidebarClose" class="sidebar-close" type="button">
+        Close
+      </button>
+      <header class="brand">
+        <h1>Swayze's Custom Vinyl</h1>
+        <p class="tagline">Browse designs, preview colors, build your order.</p>
+        <a class="login-button" href="./customer.html">Customer login</a>
+      </header>
+
+      <section class="control">
+        <label class="control-label" for="categorySelect">Category</label>
+        <select id="categorySelect" class="control-input"></select>
+      </section>
+
+      <section class="control">
+        <label class="control-label" for="searchInput">Search designs</label>
+        <input id="searchInput" class="control-input" type="search" placeholder="Search within category">
+      </section>
+
+      <section class="control info-card">
+        <h2>How to order</h2>
+        <ol>
+          <li>Pick a design & adjust the preview.</li>
+          <li>Add selections to your order list.</li>
+          <li>Send the order summary email.</li>
+        </ol>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <section class="catalog">
+        <header class="section-header">
+          <h2 id="catalogTitle">Designs</h2>
+          <div id="resultsCount" class="results-count"></div>
+        </header>
+        <div id="designGrid" class="design-grid" role="list"></div>
+        <button id="loadMoreButton" class="load-more-button" type="button" hidden>Load more designs</button>
+      </section>
+
+      <section class="preview-panel">
+        <header class="section-header">
+          <h2>Preview & Order</h2>
+        </header>
+
+        <div class="preview-meta">
+          <div><strong>Category:</strong> <span id="selectedCategoryLabel">None</span></div>
+          <div><strong>Design:</strong> <span id="selectedDesignLabel">Select a design</span></div>
+        </div>
+
+        <div id="previewStage" class="preview-stage">
+          <div class="preview-placeholder" id="previewPlaceholder">
+            <p>Select a design to start previewing.</p>
+          </div>
+          <canvas id="previewCanvas" aria-label="Sticker preview" role="img"></canvas>
+        </div>
+        <p class="preview-hint hint">Preview shows an approximate single-color cut made from the chosen vinyl color. Click the preview to download the original catalog image (PNG or JPG).</p>
+        <div class="designer-launch">
+          <button id="openDesignerButton" class="primary" type="button">Open sticker designer</button>
+          <p class="hint">Launch the full canvas to build a custom decal with our fonts and art library.</p>
+        </div>
+
+        <section class="control-group">
+          <label class="control-label" for="sizeSlider">Sticker width (inches)</label>
+          <input id="sizeSlider" type="range" min="2" max="36" value="4" step="0.5">
+          <div class="inline-info">
+            <span id="sizeValue">4"</span>
+            <span class="hint">Canvas preview scales on screen at approximately 20 pixels per inch.</span>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <span class="control-label">Vinyl color</span>
+          <div id="colorSwatches" class="color-swatches"></div>
+          <div class="inline-info">
+            <label for="colorPaletteSelect">Palette</label>
+            <select id="colorPaletteSelect" class="control-input"></select>
+          </div>
+          <div class="inline-info">
+            <label for="customColorInput">Custom</label>
+            <input id="customColorInput" type="color" value="#ffffff">
+          </div>
+          <p id="colorPaletteHint" class="hint"></p>
+        </section>
+
+        <section class="control-group">
+          <span class="control-label">Background color</span>
+          <div class="background-controls">
+            <div class="inline-info">
+              <label for="backgroundColorInput">Custom</label>
+              <input id="backgroundColorInput" type="color" value="#f8fafc">
+            </div>
+            <select id="backgroundPresetSelect" class="control-input">
+              <option value="custom">Custom color</option>
+              <option value="#f8fafc" selected>Light gray (default)</option>
+              <option value="#ffffff">Bright white</option>
+              <option value="#1f2933">Charcoal</option>
+              <option value="#374151">Graphite</option>
+              <option value="#111827">Gloss black</option>
+              <option value="#8b5cf6">Deep purple</option>
+              <option value="#2563eb">Ocean blue</option>
+              <option value="#16a34a">Forest green</option>
+              <option value="#d97706">Copper</option>
+              <option value="#facc15">Taxi yellow</option>
+              <option value="#f97316">Sunset orange</option>
+              <option value="#ef4444">Fire red</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="inventory-panel" id="inventorySection">
+          <div class="inventory-panel__header">
+            <span class="control-label">Inventory</span>
+            <button id="inventoryRefreshButton" type="button" class="secondary small">Refresh</button>
+          </div>
+          <div class="inventory-panel__controls">
+            <label class="control-label" for="inventoryMaterialSelect">Material</label>
+            <select id="inventoryMaterialSelect" class="control-input">
+              <option value="regular-vinyl" selected>Regular decal vinyl</option>
+              <option value="heat-transfer">Heat transfer vinyl</option>
+              <option value="all">All inventory</option>
+            </select>
+          </div>
+          <div id="inventoryList" class="inventory-list">
+            <p class="hint">Loading inventory…</p>
+          </div>
+          <details class="inventory-details">
+            <summary>Add inventory item</summary>
+            <form id="inventoryAddForm" class="inventory-form">
+              <div class="inventory-form-grid">
+                <label>
+                  <span class="control-label">Name</span>
+                  <input id="inventoryAddName" type="text" required placeholder="Color or product name">
+                </label>
+                <label>
+                  <span class="control-label">Color hex</span>
+                  <input id="inventoryAddColor" type="text" placeholder="#FFFFFF">
+                </label>
+                <label>
+                  <span class="control-label">Material</span>
+                  <select id="inventoryAddMaterial" required>
+                    <option value="regular-vinyl">Regular decal vinyl</option>
+                    <option value="heat-transfer">Heat transfer vinyl</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="control-label">Quantity</span>
+                  <input id="inventoryAddQuantity" type="number" min="0" step="1" value="0">
+                </label>
+                <label>
+                  <span class="control-label">Unit</span>
+                  <input id="inventoryAddUnit" type="text" value="ft">
+                </label>
+                <label>
+                  <span class="control-label">Cost (per unit)</span>
+                  <input id="inventoryAddCost" type="text" placeholder="e.g. 4.25">
+                </label>
+                <label>
+                  <span class="control-label">Item URL</span>
+                  <input id="inventoryAddUrl" type="url" placeholder="https://">
+                </label>
+                <label class="inventory-form-notes">
+                  <span class="control-label">Notes</span>
+                  <textarea id="inventoryAddNotes" rows="2" placeholder="Notes (optional)"></textarea>
+                </label>
+              </div>
+              <div class="inventory-form-actions">
+                <button type="submit" class="secondary small">Save item</button>
+              </div>
+            </form>
+          </details>
+          <details class="inventory-details">
+            <summary>Adjust stock</summary>
+            <form id="inventoryAdjustForm" class="inventory-form">
+              <div class="inventory-form-grid inventory-adjust-grid">
+                <label>
+                  <span class="control-label">Item</span>
+                  <select id="inventoryAdjustItemSelect" required></select>
+                </label>
+                <label>
+                  <span class="control-label">Change amount</span>
+                  <input id="inventoryAdjustAmountInput" type="number" step="1" required placeholder="-5 to remove, 5 to add">
+                </label>
+                <label class="inventory-form-notes">
+                  <span class="control-label">Notes</span>
+                  <textarea id="inventoryAdjustNotesInput" rows="2" placeholder="Reason for adjustment (optional)"></textarea>
+                </label>
+              </div>
+              <div class="inventory-form-actions">
+                <button type="submit" class="secondary small">Apply adjustment</button>
+              </div>
+            </form>
+          </details>
+        </section>
+
+        <section class="control-group text-overlays">
+          <div class="text-header">
+            <div>
+              <span class="control-label">Text overlays</span>
+              <p class="hint">Add custom lettering and drag it into place.</p>
+            </div>
+            <button id="addTextButton" type="button" class="secondary small">Add text</button>
+          </div>
+          <div id="textLayersList" class="text-layer-list">No text yet. Add your first line.</div>
+        </section>
+
+        <section class="control-group">
+          <span class="control-label">Source formats</span>
+          <div id="sourceLinks" class="source-links">Select a design to view available formats.</div>
+        </section>
+
+        <form id="orderForm" class="order-form">
+          <h3>Customer details</h3>
+          <div class="form-row">
+            <label class="control-label" for="customerNameInput">Full name</label>
+            <input id="customerNameInput" type="text" placeholder="Customer name" required>
+          </div>
+          <div class="form-row">
+            <label class="control-label" for="customerEmailInput">Email</label>
+            <input id="customerEmailInput" type="email" placeholder="name@example.com" required>
+          </div>
+          <div class="form-row">
+            <label class="control-label" for="customerPhoneInput">Phone</label>
+            <input id="customerPhoneInput" type="tel" placeholder="(555) 123-4567">
+          </div>
+          <div class="form-row">
+            <label class="control-label" for="customerAddressInput">Mailing address</label>
+            <textarea id="customerAddressInput" rows="3" placeholder="Street, City, State, ZIP"></textarea>
+          </div>
+          <div class="form-row">
+            <label class="control-label" for="productTypeSelect">Product type</label>
+            <select id="productTypeSelect" class="control-input">
+              <option value="sticker">Vinyl sticker</option>
+              <option value="laser">8&quot; Laser-engraved wood plaque</option>
+              <option value="tshirt">Custom vinyl T-shirt</option>
+              <option value="hoodie">Custom vinyl hoodie</option>
+              <option value="hat">Custom vinyl hat</option>
+            </select>
+          </div>
+          <div class="form-row" id="stickerSizeRow">
+            <label class="control-label" for="stickerSizeSelect">Sticker size</label>
+            <select id="stickerSizeSelect" class="control-input">
+              <option value="3">3&quot; × 3&quot;</option>
+              <option value="4" selected>4&quot; × 4&quot;</option>
+              <option value="6">6&quot; × 6&quot;</option>
+            </select>
+          </div>
+          <div class="form-row" id="stickerColorRow">
+            <label class="control-label" for="stickerColorSelect">Vinyl color count</label>
+            <select id="stickerColorSelect" class="control-input">
+              <option value="1">One color</option>
+              <option value="2">Two colors</option>
+              <option value="3">Three colors</option>
+              <option value="4">Four colors</option>
+            </select>
+          </div>
+          <div class="price-summary" id="priceSummary">
+            <div><span>Unit price</span><strong id="unitPriceDisplay">$3.75</strong></div>
+            <div><span>Subtotal</span><strong id="subtotalDisplay">$3.75</strong></div>
+            <div><span>Shipping</span><strong id="shippingDisplay">$3.00</strong></div>
+            <div><span>Total</span><strong id="totalDisplay">$6.75</strong></div>
+          </div>
+          <p class="pricing-footnote">Pricing shown for 3&quot;, 4&quot;, and 6&quot; vinyl decals. Other sizes and color counts are available — add notes with your request.</p>
+          <div class="form-row">
+            <label class="control-label" for="quantityInput">Quantity</label>
+            <input id="quantityInput" type="number" min="1" value="1">
+          </div>
+          <fieldset class="apparel-fieldset" id="apparelFieldset">
+            <legend>Apparel add-ons</legend>
+            <p class="hint" id="apparelStockNote">Busy season heads-up: some apparel styles are limited in our on-hand stock. If we need to restock blanks we may add a couple extra days to your turnaround.</p>
+            <div class="apparel-controls">
+              <label>
+                <span class="control-label">Product</span>
+                <select id="apparelProductSelect" class="control-input" disabled>
+                  <option value="">Loading apparel catalog...</option>
+                </select>
+              </label>
+              <label>
+                <span class="control-label">Color</span>
+                <select id="apparelColorSelect" class="control-input" disabled>
+                  <option value="">Select a product first</option>
+                </select>
+              </label>
+              <label>
+                <span class="control-label">Size</span>
+                <select id="apparelSizeSelect" class="control-input" disabled>
+                  <option value="">Select a color first</option>
+                </select>
+              </label>
+              <label>
+                <span class="control-label">Quantity</span>
+                <input id="apparelQuantityInput" class="control-input" type="number" min="1" value="1" disabled>
+              </label>
+              <div class="apparel-add">
+                <button id="apparelAddButton" type="button" class="secondary" disabled>Add apparel item</button>
+              </div>
+            </div>
+            <div class="apparel-preview" id="apparelPreview">
+              <img id="apparelPreviewImage" alt="Selected apparel preview" hidden loading="lazy">
+              <p id="apparelPreviewPlaceholder" class="hint">Choose a product, color, and size to preview the blank garment.</p>
+            </div>
+            <div class="apparel-selected" id="apparelSelectedList">
+              <p class="hint">No apparel add-ons yet.</p>
+            </div>
+          </fieldset>
+          <fieldset class="inventory-usage-fieldset" id="inventoryUsageFieldset">
+            <legend>Inventory usage</legend>
+            <p class="hint">Track vinyl pulled from inventory so everyone knows what is still on the shelf.</p>
+            <div class="inventory-usage-controls">
+              <label>
+                <span class="control-label">Item</span>
+                <select id="inventoryUsageItemSelect" class="control-input"></select>
+              </label>
+              <label>
+                <span class="control-label">Amount</span>
+                <input id="inventoryUsageQuantityInput" class="control-input" type="number" min="1" value="1">
+              </label>
+              <div class="inventory-usage-actions">
+                <button id="inventoryUsageAddButton" type="button" class="secondary small">Add usage</button>
+              </div>
+            </div>
+            <div class="inventory-usage-list" id="inventoryUsageList">
+              <p class="hint">No inventory usage tracked yet.</p>
+            </div>
+          </fieldset>
+          <div class="form-row">
+            <label class="control-label" for="notesInput">Notes</label>
+            <textarea id="notesInput" rows="3" placeholder="Add special instructions or alternate sizes."></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="primary">Add to order</button>
+          </div>
+        </form>
+
+        <section class="order-summary">
+          <header class="section-header">
+            <h3>Order summary</h3>
+          </header>
+          <div id="orderList" class="order-list">No items yet. Add designs to build your order.</div>
+          <div class="form-actions">
+            <button id="checkoutButton" type="button" class="secondary">Checkout</button>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <template id="designCardTemplate">
+    <button class="design-card" type="button">
+      <div class="thumb-wrapper">
+        <img alt="" loading="lazy" draggable="false">
+      </div>
+      <span class="label"></span>
+    </button>
+  </template>
+
+  <div id="designerModal" class="designer-modal" hidden>
+    <div class="designer-modal__backdrop" data-close="designer"></div>
+    <div
+      class="designer-modal__dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="designerModalTitle"
+    >
+      <header class="designer-modal__header">
+        <div>
+          <h2 id="designerModalTitle">Sticker designer</h2>
+          <p class="designer-modal__subtitle">Choose a canvas size, drop in library art, and export the result directly into your order.</p>
+        </div>
+        <button
+          id="designerCloseButton"
+          class="icon-button"
+          type="button"
+          aria-label="Close designer"
+        >
+          &times;
+        </button>
+      </header>
+      <div class="designer-modal__body">
+        <aside class="designer-modal__sidebar">
+          <div class="designer-panel">
+            <label class="control-label" for="designerSizeSelect">Canvas size</label>
+            <select id="designerSizeSelect" class="control-input"></select>
+            <button id="designerResetButton" type="button" class="secondary small">Reset canvas</button>
+          </div>
+          <div class="designer-panel">
+            <label class="control-label" for="designerCategorySelect">Design library</label>
+            <select id="designerCategorySelect" class="control-input"></select>
+            <div id="designerLibraryGrid" class="designer-library-grid">
+              <p class="designer-empty">Loading library…</p>
+            </div>
+          </div>
+        </aside>
+        <div class="designer-modal__stage">
+          <iframe
+            id="designerFrame"
+            title="Sticker designer workspace"
+            src="./minipaint/index.html"
+            loading="lazy"
+          ></iframe>
+        </div>
+      </div>
+      <footer class="designer-modal__footer">
+        <button id="designerSaveButton" type="button" class="primary">Use this design</button>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="./script.js"></script>
+</body>
+</html>

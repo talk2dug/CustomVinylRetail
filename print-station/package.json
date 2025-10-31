@@ -1,0 +1,49 @@
+{
+  "name": "print-station",
+  "version": "0.1.0",
+  "description": "Desktop print station for managing vinyl sticker production orders.",
+  "main": "src/main.js",
+  "private": true,
+  "author": "Swayze Custom Vinyl",
+  "license": "MIT",
+  "scripts": {
+    "start": "electronmon .",
+    "dev": "electronmon .",
+    "app": "electron .",
+    "build:win": "electron-builder --win",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "electron-store": "^9.0.0",
+    "form-data": "^4.0.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "electron": "^28.3.0",
+    "electron-builder": "^24.9.1",
+    "electronmon": "^2.0.3"
+  },
+  "build": {
+    "appId": "com.swayze.printstation",
+    "productName": "Vinyl Print Station",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": false
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}

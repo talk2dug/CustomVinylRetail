@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Custom Sticker Kiosk</title>
+    <link rel="stylesheet" href="./kiosk.css" />
+  </head>
+  <body>
+    <header class="kiosk-header">
+      <div class="brand">
+        <h1>Design Your Sticker</h1>
+        <p>Pick your size, add graphics and text, then send it to production.</p>
+      </div>
+      <div class="status" id="kioskStatus">Loading catalog…</div>
+    </header>
+
+    <div class="kiosk-layout">
+      <aside class="sidebar">
+        <section class="panel">
+          <h2>Sticker Setup</h2>
+          <div class="form-row">
+            <label for="widthInput">
+              Width (inches)
+              <input id="widthInput" type="number" min="2" max="36" step="0.5" value="8" />
+            </label>
+            <label for="heightInput">
+              Height (inches)
+              <input id="heightInput" type="number" min="2" max="36" step="0.5" value="4" />
+            </label>
+          </div>
+          <div class="form-row">
+            <label for="quantityInput">
+              Quantity
+              <input id="quantityInput" type="number" min="1" value="1" />
+            </label>
+            <label for="vinylColorInput">
+              Vinyl Color
+              <input id="vinylColorInput" type="color" value="#ffffff" />
+            </label>
+          </div>
+          <div class="form-row">
+            <label for="backgroundColorInput">
+              Background Color
+              <input id="backgroundColorInput" type="color" value="#f8fafc" />
+            </label>
+            <label class="checkbox">
+              <input id="transparentBackgroundToggle" type="checkbox" />
+              Transparent background
+            </label>
+          </div>
+          <div class="form-row" id="backgroundShapeRow">
+            <label for="backgroundShapeSelect">
+              Background Shape
+              <select id="backgroundShapeSelect">
+                <option value="rectangle">Rectangle</option>
+                <option value="rounded">Rounded rectangle</option>
+                <option value="ellipse">Ellipse</option>
+              </select>
+            </label>
+            <label id="backgroundRadiusLabel">
+              Corner radius (inches)
+              <input id="backgroundRadiusInput" type="number" min="0" step="0.25" value="0.5" />
+            </label>
+          </div>
+          <div class="pricing-summary">
+            <span class="label">Estimated total</span>
+            <span id="pricingTotal" class="value">$0.00</span>
+            <span id="pricingDetails" class="hint"></span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Layers</h2>
+            <div class="layer-actions">
+              <button id="addTextLayerButton" class="ghost">Add Text</button>
+              <button id="clearDesignButton" class="ghost danger">Clear All</button>
+            </div>
+          </div>
+          <div id="layerList" class="layer-list empty">No layers yet. Add text or graphics.</div>
+        </section>
+
+        <section class="panel">
+          <h2>Catalog Graphics</h2>
+          <div class="form-row">
+            <label>
+              Category
+              <select id="catalogCategorySelect"></select>
+            </label>
+          </div>
+          <div class="form-row">
+            <input
+              id="catalogSearchInput"
+              type="search"
+              placeholder="Search graphics…"
+              autocomplete="off"
+            />
+          </div>
+          <div id="catalogList" class="catalog-list empty">
+            Load the catalog to add graphics.
+          </div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <div class="canvas-panel">
+          <div class="canvas-wrapper" id="canvasWrapper">
+            <canvas id="designCanvas" width="1920" height="1080"></canvas>
+          </div>
+          <div class="workspace-actions">
+            <button id="finishButton" class="primary">Finish &amp; Order</button>
+          </div>
+        </div>
+
+        <section class="panel inspector" id="layerInspector">
+          <h2>Layer Settings</h2>
+          <p class="placeholder">Select a layer to edit controls.</p>
+        </section>
+      </main>
+    </div>
+
+    <div id="orderDialog" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <button id="closeOrderDialog" class="close-button" aria-label="Close">&times;</button>
+        <h2>Send to Production</h2>
+        <p class="hint">
+          Enter your contact details so we can reach you when the sticker is ready. Payment will be
+          collected by the booth attendant.
+        </p>
+        <form id="orderForm">
+          <label>
+            Full name
+            <input name="name" type="text" required />
+          </label>
+          <label>
+            Mobile number
+            <input name="phone" type="tel" required />
+          </label>
+          <label>
+            Email address
+            <input name="email" type="email" required />
+          </label>
+          <label>
+            Notes for the team (optional)
+            <textarea name="notes" rows="3" placeholder="Anything we should know?"></textarea>
+          </label>
+          <div class="modal-actions">
+            <button type="button" id="cancelOrderButton" class="ghost">Cancel</button>
+            <button type="submit" class="primary">Submit Order</button>
+          </div>
+        </form>
+        <div id="orderStatus" class="status-bar muted">Awaiting submission.</div>
+      </div>
+    </div>
+
+    <template id="layerTemplate">
+      <article class="layer-card">
+        <div class="layer-card-header">
+          <span class="layer-title"></span>
+          <div class="layer-buttons">
+            <button class="ghost" data-action="duplicate">Duplicate</button>
+            <button class="ghost danger" data-action="delete">Remove</button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <template id="catalogItemTemplate">
+      <button class="catalog-item">
+        <img alt="" loading="lazy" />
+        <span class="name"></span>
+      </button>
+    </template>
+
+    <script src="./kiosk.js" type="module"></script>
+  </body>
+</html>

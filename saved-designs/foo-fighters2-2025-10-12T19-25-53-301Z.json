@@ -1,0 +1,50 @@
+{
+  "designId": "foo-fighters2",
+  "designName": "Foo Fighters2",
+  "category": "BANDS",
+  "size": 12,
+  "color": "#000000",
+  "background": "#f8fafc",
+  "quantity": 1,
+  "notes": "",
+  "pricing": {
+    "productType": "sticker",
+    "descriptor": "Sticker · 1 color",
+    "colors": 1,
+    "unitPriceCents": 500,
+    "subtotalCents": 500,
+    "shippingCents": 300,
+    "totalCents": 800,
+    "quantity": 1,
+    "currency": "USD"
+  },
+  "id": "foo-fighters2-2025-10-12T19-25-53-301Z",
+  "orderNumber": 1000,
+  "savedAt": "2025-10-12T19:25:53.589Z",
+  "file": "foo-fighters2-2025-10-12T19-25-53-301Z.png",
+  "textLayers": [],
+  "sourceCopies": [
+    {
+      "format": "ai",
+      "file": "foo-fighters2-2025-10-12T19-25-53-301Z-ai.ai",
+      "originalPath": "BANDS/AI/Foo_Fighters2.ai",
+      "size": 63326
+    },
+    {
+      "format": "eps",
+      "file": "foo-fighters2-2025-10-12T19-25-53-301Z-eps.eps",
+      "originalPath": "BANDS/EPS/Foo_Fighters2.eps",
+      "size": 1075318
+    }
+  ],
+  "customer": {
+    "name": "Jack Swayze",
+    "email": "jswayze@jmxi.io",
+    "phone": "2027408240",
+    "address": "230 Dix Creek Chapel Rd",
+    "emailVerified": false
+  },
+  "paid": false,
+  "paymentStatus": "UNPAID",
+  "bytesWritten": 23125
+}

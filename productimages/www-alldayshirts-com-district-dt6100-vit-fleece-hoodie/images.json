@@ -1,0 +1,29 @@
+{
+  "sourceUrl": "https://www.alldayshirts.com/district-dt6100-vit-fleece-hoodie",
+  "minWidth": 600,
+  "minHeight": 600,
+  "selected": [
+    "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/DT6100_black_flat_front_2410.jpg",
+    "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/DT6100_gardenia_flat_front_2410.jpg"
+  ],
+  "allCandidates": [
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/DT6100_black_flat_front_2410.jpg",
+      "width": 869,
+      "height": 892,
+      "type": "jpg",
+      "source": "img",
+      "mime": "image/jpeg",
+      "ok": true
+    },
+    {
+      "url": "https://assets-cdn.logoup.com/Alldayshirts_ProductImages/DT6100_gardenia_flat_front_2410.jpg",
+      "width": 869,
+      "height": 892,
+      "type": "jpg",
+      "source": "meta",
+      "mime": "image/jpeg",
+      "ok": true
+    }
+  ]
+}

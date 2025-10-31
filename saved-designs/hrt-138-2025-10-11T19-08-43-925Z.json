@@ -1,0 +1,25 @@
+{
+  "designName": "Hrt (138)",
+  "category": "HEARTS",
+  "size": 12,
+  "color": "#000000",
+  "background": "#f8fafc",
+  "quantity": 1,
+  "notes": "",
+  "designId": "hrt-138",
+  "savedAt": "2025-10-11T19:08:43.927Z",
+  "file": "hrt-138-2025-10-11T19-08-43-925Z.png",
+  "textLayers": [
+    {
+      "id": "text-1760209650422",
+      "content": "mom",
+      "fontFamily": "\"Lobster\", cursive",
+      "fontSize": 35,
+      "color": "#100f0f",
+      "x": 49.96490478515625,
+      "y": 44.01885542224016,
+      "rotation": 0,
+      "curve": 0
+    }
+  ]
+}
