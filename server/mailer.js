@@ -3,15 +3,17 @@ const nodemailer = require('nodemailer');
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.dreamhost.com';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 
-const ORDER_EMAIL_USER =
-  process.env.ORDERS_SMTP_USER || 'orders@swayzecustomvinyl.com';
-const ORDER_EMAIL_PASS =
-  process.env.ORDERS_SMTP_PASS || '***REDACTED***';
+const ORDER_EMAIL_USER = process.env.ORDERS_SMTP_USER || 'orders@swayzecustomvinyl.com';
+const ORDER_EMAIL_PASS = process.env.ORDERS_SMTP_PASS || '';
 
-const ACCOUNTS_EMAIL_USER =
-  process.env.ACCOUNTS_SMTP_USER || 'accounts@swayzecustomvinyl.com';
-const ACCOUNTS_EMAIL_PASS =
-  process.env.ACCOUNTS_SMTP_PASS || '***REDACTED***';
+const ACCOUNTS_EMAIL_USER = process.env.ACCOUNTS_SMTP_USER || 'accounts@swayzecustomvinyl.com';
+const ACCOUNTS_EMAIL_PASS = process.env.ACCOUNTS_SMTP_PASS || '';
+
+// IMPORTANT: Email passwords MUST be set via environment variables
+// Do NOT hardcode credentials in source code
+if (!ORDER_EMAIL_PASS || !ACCOUNTS_EMAIL_PASS) {
+  console.warn('[Mailer] WARNING: ORDERS_SMTP_PASS and/or ACCOUNTS_SMTP_PASS not set in environment');
+}
 
 function buildTransport(user, pass) {
   const useSecure = SMTP_PORT === 465;
