@@ -32,7 +32,15 @@ const shopify = require('./integrations/shopify');
 const ads = require('./integrations/ads');
 const { classifyMarketingProfile } = require('./utils/classifier');
 const metalPrints = require('./metal-prints-server');
+const { handleLeonardoRoute } = require('./leonardo-server');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
+const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
+const { describeCatalogDesign } = require('../scripts/claude-describe');
+const stickerSheets = require('./sticker-sheet-generator');
+const taskTracker = require('./task-tracker');
+// Shared utilities
+const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
+const { sendJson, handleOptions } = require('./utils/http');
 
 function parseMarketingTags(rawTags) {
   try {
@@ -105,7 +113,7 @@ const PRICING_FILE = path.join(DATA_DIR, 'pricing.json');
 const PRICING_FALLBACK = path.join(__dirname, 'data', 'pricing.json');
 const EXPORT_STATE_DIR = path.join(DATA_DIR, 'export-jobs');
 const SHOPIFY_TEST_CARTS_FILE = path.join(DATA_DIR, 'shopify-cart-webhooks.json');
-const MAX_BODY_SIZE = 25 * 1024 * 1024; // 25 MB
+const MAX_BODY_SIZE = 100 * 1024 * 1024; // 100 MB (campaigns with many items can be large)
 const CUSTOMER_PORTAL_URL =
   process.env.CUSTOMER_PORTAL_URL || 'http://208.113.130.237:8000/web/customer.html';
 const EMAIL_LOG_ENABLED = process.env.DISABLE_EMAIL_LOG === '1' ? false : true;
@@ -141,6 +149,67 @@ const readFileSafe = (filePath) => {
     return null;
   }
 };
+
+/**
+ * Add black background to images that are predominantly white/light
+ * Only applies to images with transparency where the content is mostly white
+ * @param {string} imagePath - Path to the image file
+ * @returns {Promise<{path: string, needsCleanup: boolean}>} - Path to processed image
+ */
+async function addBlackBackgroundIfNeeded(imagePath) {
+  if (!sharp) {
+    console.warn('[addBlackBackground] Sharp not available, returning original');
+    return { path: imagePath, needsCleanup: false };
+  }
+
+  try {
+    const metadata = await sharp(imagePath).metadata();
+
+    // Check if image has alpha channel (transparency)
+    const hasAlpha = metadata.hasAlpha;
+
+    if (!hasAlpha) {
+      // No transparency, return original
+      return { path: imagePath, needsCleanup: false };
+    }
+
+    // Check if image is predominantly white/light by analyzing the dominant color
+    const { dominant } = await sharp(imagePath).stats();
+    const avgBrightness = (dominant.r + dominant.g + dominant.b) / 3;
+
+    // Only add black background if image is predominantly light/white (brightness > 200)
+    if (avgBrightness <= 200) {
+      console.log(`[addBlackBackground] Image is not predominantly white (brightness: ${avgBrightness.toFixed(0)}), keeping original: ${path.basename(imagePath)}`);
+      return { path: imagePath, needsCleanup: false };
+    }
+
+    console.log(`[addBlackBackground] Image is predominantly white (brightness: ${avgBrightness.toFixed(0)}), adding black background: ${path.basename(imagePath)}`);
+
+    // Create a black background and composite the image on top
+    const { width, height } = metadata;
+    const processedBuffer = await sharp({
+      create: {
+        width: width,
+        height: height,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 1 }
+      }
+    })
+    .composite([{ input: imagePath }])
+    .png()
+    .toBuffer();
+
+    // Save to a temporary file
+    const tempPath = path.join(os.tmpdir(), `bg-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+    fs.writeFileSync(tempPath, processedBuffer);
+
+    console.log(`[addBlackBackground] Created temp file with black background: ${tempPath}`);
+    return { path: tempPath, needsCleanup: true };
+  } catch (error) {
+    console.error(`[addBlackBackground] Error processing image: ${error.message}`);
+    return { path: imagePath, needsCleanup: false };
+  }
+}
 
 function getAdminSmsRecipients() {
   return sms.parseRecipientList(process.env.SMS_ADMIN_RECIPIENTS || '');
@@ -280,29 +349,7 @@ function normalizeSponsorEntries(entries) {
     .slice(0, 10);
 }
 
-function sanitizeUrl(value) {
-  if (!value) return null;
-  const trimmed = String(value).trim();
-  if (!trimmed) return null;
-  if (/^\/productimages\//.test(trimmed)) {
-    return trimmed;
-  }
-  if (!/^https?:\/\//i.test(trimmed)) return null;
-  try {
-    return new URL(trimmed).toString();
-  } catch (error) {
-    return null;
-  }
-}
-
-function escapeHtml(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// sanitizeUrl and escapeHtml are now imported from ./utils/string
 
 function getShopifyStorefrontBase() {
   const raw = (process.env.SHOPIFY_STOREFRONT_URL || process.env.SHOPIFY_SHOP || '').trim();
@@ -860,7 +907,24 @@ function readCampaign(slug) {
 function writeCampaignFile(slug, payload) {
   const safeSlug = sanitizeCampaignSlug(slug);
   const file = path.join(ensureCampaignsDir(), `${safeSlug}.json`);
+
+  // Debug logging for every campaign write
+  console.log(`[writeCampaignFile] Writing campaign: ${safeSlug}`);
+  if (payload && payload.items && Array.isArray(payload.items)) {
+    console.log(`[writeCampaignFile] Campaign has ${payload.items.length} items`);
+    if (payload.items.length > 0) {
+      console.log(`[writeCampaignFile] First item mockupImage: ${payload.items[0].mockupImage || 'NONE'}`);
+      console.log(`[writeCampaignFile] First item shopifyProductId: ${payload.items[0].shopifyProductId || 'NONE'}`);
+    }
+  }
+
+  // Capture stack trace to see where the write came from
+  const stack = new Error().stack;
+  const callerLine = stack.split('\n')[2]; // Skip Error and writeCampaignFile lines
+  console.log(`[writeCampaignFile] Called from: ${callerLine ? callerLine.trim() : 'unknown'}`);
+
   fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf8');
+  console.log(`[writeCampaignFile] ✓ Write completed`);
   return file;
 }
 
@@ -1054,10 +1118,11 @@ function getRegularVinylColors() {
     const items = db.listInventoryItems({ material: 'regular-vinyl' }) || [];
     const set = new Set();
     for (const row of items) {
-      const color = String(row.colorName || row.color || '').trim();
+      // Use name field (e.g., "Arctic Gray") instead of colorName/color (hex codes)
+      const color = String(row.name || row.colorName || '').trim();
       if (color) set.add(color);
     }
-    return Array.from(set);
+    return Array.from(set).sort();
   } catch (_) {
     return [];
   }
@@ -1387,27 +1452,7 @@ async function getSquareLocationId() {
   return cachedSquareLocationId;
 }
 
-function sendJson(res, statusCode, payload) {
-  const body = JSON.stringify(payload);
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
-    'Content-Length': Buffer.byteLength(body)
-  });
-  res.end(body);
-}
-
-function handleOptions(res) {
-  res.writeHead(204, {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
-    'Access-Control-Max-Age': '86400'
-  });
-  res.end();
-}
+// sendJson and handleOptions are now imported from ./utils/http
 
 function decodeImage(dataUrl) {
   const match = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '');
@@ -1417,13 +1462,7 @@ function decodeImage(dataUrl) {
   return Buffer.from(match[1], 'base64');
 }
 
-function slugify(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64) || 'design';
-}
+// slugify is now imported from ./utils/string
 
 function buildUniqueFilenames(baseSlug) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -1972,6 +2011,153 @@ function shouldServeLibraryAsset(pathSegments) {
   }
 }
 
+/**
+ * Serve library asset with black background (for transparent images)
+ */
+async function serveLibraryAssetWithBlackBg(req, res, assetPath) {
+  if (!assetPath) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
+    return;
+  }
+
+  const pathParts = assetPath.split('/').filter(Boolean);
+  if (!pathParts.length || pathParts.some((part) => part === '..')) {
+    sendJson(res, 400, { error: 'Invalid asset path.' });
+    return;
+  }
+
+  const safePath = path.resolve(LIBRARY_ROOT, assetPath);
+  const relative = path.relative(LIBRARY_ROOT, safePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    sendJson(res, 400, { error: 'Invalid asset path.' });
+    return;
+  }
+
+  let stat = null;
+  try {
+    stat = fs.statSync(safePath);
+  } catch (error) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
+    return;
+  }
+
+  if (!stat.isFile()) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
+    return;
+  }
+
+  if (!sharp) {
+    // If sharp is not available, serve original
+    serveLibraryAsset(req, res, assetPath);
+    return;
+  }
+
+  try {
+    const metadata = await sharp(safePath).metadata();
+    const hasAlpha = metadata.hasAlpha;
+
+    // Parse query params for resizing
+    const parsed = url.parse(req.url || '', true);
+    const query = parsed.query || {};
+    const requestedWidth = Number(query.w || query.width || query.maxWidth || 0);
+    const maxWidth = Number.isFinite(requestedWidth) && requestedWidth > 0 ? Math.min(requestedWidth, 2400) : null;
+    const qualityParam = Number(query.q || query.quality || 0);
+    const quality = Number.isFinite(qualityParam) && qualityParam > 0 ? Math.min(Math.max(qualityParam, 40), 95) : 85;
+
+    let transformer;
+    let needsBlackBg = hasAlpha;
+
+    // Check if image is predominantly white (even without transparency)
+    if (!needsBlackBg) {
+      try {
+        const stats = await sharp(safePath)
+          .resize({ width: 200, withoutEnlargement: true }) // Sample smaller version for speed
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+
+        const { data, info } = stats;
+        const pixelCount = info.width * info.height;
+        const channels = info.channels;
+        let whitePixelCount = 0;
+
+        // Count pixels that are predominantly white (R, G, B > 240)
+        for (let i = 0; i < data.length; i += channels) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          if (r > 240 && g > 240 && b > 240) {
+            whitePixelCount++;
+          }
+        }
+
+        const whitePercentage = (whitePixelCount / pixelCount) * 100;
+        // If more than 70% of pixels are white, add black background
+        if (whitePercentage > 70) {
+          needsBlackBg = true;
+          console.log(`[Black BG] Image is ${whitePercentage.toFixed(1)}% white, adding black background`);
+        }
+      } catch (err) {
+        console.error('[Black BG] Error checking white percentage:', err);
+        // Continue without white detection if it fails
+      }
+    }
+
+    if (needsBlackBg) {
+      // Image has transparency or is predominantly white - composite onto black background
+      const { width, height } = metadata;
+      const targetWidth = maxWidth || width;
+      const targetHeight = maxWidth ? Math.round(height * (maxWidth / width)) : height;
+
+      transformer = sharp({
+        create: {
+          width: targetWidth,
+          height: targetHeight,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 1 }
+        }
+      });
+
+      // Resize original if needed, then composite
+      const resizedInput = maxWidth
+        ? await sharp(safePath).resize({ width: maxWidth, withoutEnlargement: true }).toBuffer()
+        : safePath;
+
+      transformer = transformer.composite([{ input: resizedInput }]).png({ quality });
+    } else {
+      // No transparency and not predominantly white - just serve with optional resize
+      transformer = sharp(safePath);
+      if (maxWidth) {
+        transformer = transformer.resize({ width: maxWidth, withoutEnlargement: true });
+      }
+      transformer = transformer.png({ quality });
+    }
+
+    const headers = {
+      'Access-Control-Allow-Origin': '*',
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400'
+    };
+
+    res.writeHead(200, headers);
+    transformer.pipe(res);
+
+    transformer.on('error', (error) => {
+      console.error('[serveLibraryAssetWithBlackBg] Transform error:', error);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+      }
+      res.end('Image processing failed.');
+    });
+  } catch (error) {
+    console.error('[serveLibraryAssetWithBlackBg] Error:', error);
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('Image processing failed.');
+  }
+}
+
 function serveLibraryAsset(req, res, assetPath) {
   if (!assetPath) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -2137,6 +2323,24 @@ function collectRequestBody(req, callback) {
 
   req.on('end', () => callback(null, body));
   req.on('error', (error) => callback(error));
+}
+
+// Promise-based JSON body parser
+function getReqBodyJson(req) {
+  return new Promise((resolve, reject) => {
+    collectRequestBody(req, (err, body) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      try {
+        const json = body ? JSON.parse(body) : {};
+        resolve(json);
+      } catch (e) {
+        reject(new Error('Invalid JSON body'));
+      }
+    });
+  });
 }
 
 function parseMultipartForm(req, options = {}) {
@@ -2528,8 +2732,15 @@ function resolveCustomerProfile(token) {
   }
 }
 
-function serveCatalogResponse(req, res) {
-  const catalogPath = path.join(WEB_DIR, 'catalog.json');
+/**
+ * Serve a catalog JSON file
+ * @param {Object} req - HTTP request
+ * @param {Object} res - HTTP response
+ * @param {string} catalogType - 'apparel' or 'decal-icons'
+ */
+function serveCatalogResponse(req, res, catalogType = 'apparel') {
+  const catalogFile = catalogType === 'decal-icons' ? 'catalog-decal-icons.json' : 'catalog.json';
+  const catalogPath = path.join(WEB_DIR, catalogFile);
   fs.stat(catalogPath, (error, stats) => {
     if (error || !stats?.isFile?.()) {
       sendJson(res, 404, { error: 'Catalog not found.' });
@@ -3113,13 +3324,2819 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // ===========================================
+  // Print Station Auto-Updates
+  // ===========================================
+  // Serves update files for electron-updater
+  // Files should be placed in: server/updates/print-station/
+  // Required files after build: latest.yml, Vinyl Print Station Setup X.X.X.exe
+  if (parsedUrl.pathname.startsWith('/updates/print-station/')) {
+    const fileName = parsedUrl.pathname.replace('/updates/print-station/', '');
+    const updateDir = path.resolve(__dirname, 'updates', 'print-station');
+    const filePath = path.join(updateDir, fileName);
+
+    // Security: prevent path traversal
+    if (!filePath.startsWith(updateDir)) {
+      sendJson(res, 403, { error: 'Invalid path' });
+      return;
+    }
+
+    // Create updates directory if it doesn't exist
+    if (!fs.existsSync(updateDir)) {
+      fs.mkdirSync(updateDir, { recursive: true });
+    }
+
+    if (!fs.existsSync(filePath)) {
+      sendJson(res, 404, { error: 'Update file not found', file: fileName });
+      return;
+    }
+
+    // Determine content type
+    const ext = path.extname(fileName).toLowerCase();
+    const contentTypes = {
+      '.yml': 'text/yaml',
+      '.yaml': 'text/yaml',
+      '.exe': 'application/octet-stream',
+      '.dmg': 'application/octet-stream',
+      '.zip': 'application/zip',
+      '.blockmap': 'application/octet-stream',
+      '.json': 'application/json'
+    };
+    const contentType = contentTypes[ext] || 'application/octet-stream';
+
+    try {
+      const stat = fs.statSync(filePath);
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': stat.size,
+        'Cache-Control': 'no-cache'
+      });
+      fs.createReadStream(filePath).pipe(res);
+    } catch (err) {
+      console.error('[Updates] Error serving file:', err);
+      sendJson(res, 500, { error: 'Error serving file' });
+    }
+    return;
+  }
+
+  // ===========================================
+  // Etsy OAuth 2.0 Flow
+  // ===========================================
+
+  // GET /oauth/etsy - Start OAuth flow (redirects to Etsy)
+  if (req.method === 'GET' && parsedUrl.pathname === '/oauth/etsy') {
+    try {
+      const etsy = require('./integrations/etsy');
+      if (!etsy.isConfigured()) {
+        sendJson(res, 500, { error: 'Etsy API not configured. Set ETSY_API_KEY and ETSY_API_SECRET in .env' });
+        return;
+      }
+      const { url, state } = etsy.startOAuthFlow();
+      console.log('[Etsy OAuth] Redirecting to Etsy for authorization...');
+      res.writeHead(302, { Location: url });
+      res.end();
+    } catch (err) {
+      console.error('[Etsy OAuth] Start error:', err);
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // GET /oauth/etsy/callback - Handle OAuth callback from Etsy
+  if (req.method === 'GET' && parsedUrl.pathname === '/oauth/etsy/callback') {
+    const query = parsedUrl.query || {};
+    const code = query.code;
+    const state = query.state;
+    const error = query.error;
+
+    if (error) {
+      console.error('[Etsy OAuth] Error from Etsy:', error, query.error_description);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`
+        <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #dc2626;">Etsy Authorization Failed</h1>
+          <p><strong>Error:</strong> ${query.error}</p>
+          <p>${query.error_description || ''}</p>
+          <p><a href="/oauth/etsy">Try again</a></p>
+        </body></html>
+      `);
+      return;
+    }
+
+    if (!code || !state) {
+      sendJson(res, 400, { error: 'Missing code or state parameter' });
+      return;
+    }
+
+    (async () => {
+      try {
+        const etsy = require('./integrations/etsy');
+        const tokens = await etsy.completeOAuthFlow(code, state);
+
+        // Get shop info
+        let shopInfo = null;
+        try {
+          const shops = await etsy.getMyShops();
+          if (shops.results && shops.results.length > 0) {
+            shopInfo = shops.results[0];
+          }
+        } catch (e) {
+          console.log('[Etsy OAuth] Could not fetch shop info:', e.message);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">Etsy Connected Successfully!</h1>
+            <p>Your Etsy account has been authorized.</p>
+            ${shopInfo ? `
+              <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                <p><strong>Shop Name:</strong> ${shopInfo.shop_name || 'N/A'}</p>
+                <p><strong>Shop ID:</strong> ${shopInfo.shop_id}</p>
+                <p style="color: #6b7280; font-size: 14px; margin-top: 12px;">
+                  Add this to your .env file:<br>
+                  <code style="background: #1f2937; color: #10b981; padding: 4px 8px; border-radius: 4px;">ETSY_SHOP_ID=${shopInfo.shop_id}</code>
+                </p>
+              </div>
+            ` : ''}
+            <p>Token expires in: ${Math.round(tokens.expires_in / 3600)} hours</p>
+            <p><a href="/api/etsy/status">View Etsy integration status</a></p>
+          </body></html>
+        `);
+      } catch (err) {
+        console.error('[Etsy OAuth] Callback error:', err);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dc2626;">Etsy Authorization Failed</h1>
+            <p><strong>Error:</strong> ${err.message}</p>
+            <p><a href="/oauth/etsy">Try again</a></p>
+          </body></html>
+        `);
+      }
+    })();
+    return;
+  }
+
+  // GET /api/etsy/status - Check Etsy connection status
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/etsy/status') {
+    (async () => {
+      try {
+        const etsy = require('./integrations/etsy');
+        const configured = etsy.isConfigured();
+        const hasTokens = etsy.hasValidTokens();
+        const tokens = etsy.loadTokens();
+
+        const status = {
+          configured,
+          authenticated: hasTokens,
+          shopId: process.env.ETSY_SHOP_ID || null,
+          tokenExpiresAt: tokens?.expires_at ? new Date(tokens.expires_at).toISOString() : null,
+          authUrl: configured && !hasTokens ? '/oauth/etsy' : null
+        };
+
+        if (hasTokens && process.env.ETSY_SHOP_ID) {
+          try {
+            const shop = await etsy.getShop();
+            status.shop = {
+              name: shop.shop_name,
+              url: shop.url,
+              listingCount: shop.listing_active_count
+            };
+          } catch (e) {
+            status.shopError = e.message;
+          }
+        }
+
+        sendJson(res, 200, status);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/etsy/listings - Get shop listings
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/etsy/listings') {
+    (async () => {
+      try {
+        const etsy = require('./integrations/etsy');
+        if (!etsy.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/etsy to connect.' });
+          return;
+        }
+        const query = parsedUrl.query || {};
+        const listings = await etsy.getListings(null, {
+          limit: query.limit || 25,
+          offset: query.offset || 0,
+          state: query.state || 'active'
+        });
+        sendJson(res, 200, listings);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/etsy/sync-product - Sync a Shopify product to Etsy
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/etsy/sync-product') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const etsy = require('./integrations/etsy');
+        if (!etsy.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/etsy to connect.' });
+          return;
+        }
+
+        const payload = JSON.parse(body || '{}');
+        const { shopifyProductId, publish = false, priceMultiplier = 1.15 } = payload;
+
+        if (!shopifyProductId) {
+          sendJson(res, 400, { error: 'shopifyProductId required' });
+          return;
+        }
+
+        // Fetch from Shopify
+        const shopifyProduct = await shopify.getProduct(shopifyProductId);
+        if (!shopifyProduct) {
+          sendJson(res, 404, { error: 'Shopify product not found' });
+          return;
+        }
+
+        // Get or create shipping profile
+        let shippingProfileId = null;
+        try {
+          const profiles = await etsy.getShippingProfiles();
+          if (profiles.results && profiles.results.length > 0) {
+            shippingProfileId = profiles.results[0].shipping_profile_id;
+          } else {
+            const newProfile = await etsy.createShippingProfile(null, {
+              title: 'Standard Vinyl Shipping',
+              primaryCost: 4.99,
+              secondaryCost: 1.00,
+              minProcessingDays: 1,
+              maxProcessingDays: 3
+            });
+            shippingProfileId = newProfile.shipping_profile_id;
+          }
+        } catch (e) {
+          console.error('[Etsy] Shipping profile error:', e.message);
+        }
+
+        // Sync to Etsy
+        const listing = await etsy.syncProductToEtsy(shopifyProduct, {
+          publish,
+          priceMultiplier,
+          shippingProfileId,
+          taxonomyId: 6648 // Bumper Stickers & Decals
+        });
+
+        sendJson(res, 200, {
+          success: true,
+          etsyListingId: listing.listing_id,
+          shopifyProductId,
+          published: publish
+        });
+      } catch (err) {
+        console.error('[Etsy] Sync error:', err);
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    });
+    return;
+  }
+
+  // POST /api/etsy/calculate-price - Calculate Etsy price with fees
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/etsy/calculate-price') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const etsy = require('./integrations/etsy');
+        const { basePrice, includeOffsiteAds = false } = JSON.parse(body || '{}');
+
+        if (!basePrice || isNaN(basePrice)) {
+          sendJson(res, 400, { error: 'basePrice required' });
+          return;
+        }
+
+        const etsyPrice = etsy.calculateEtsyPrice(parseFloat(basePrice), includeOffsiteAds);
+        const fees = etsy.ETSY_FEES;
+
+        sendJson(res, 200, {
+          basePrice: parseFloat(basePrice),
+          etsyPrice,
+          markup: ((etsyPrice / basePrice - 1) * 100).toFixed(1) + '%',
+          fees: {
+            listing: fees.listingFee,
+            transaction: (fees.transactionFee * 100) + '%',
+            payment: (fees.paymentProcessing * 100) + '% + $' + fees.paymentFixed,
+            regulatory: (fees.regulatoryFee * 100) + '%',
+            offsiteAds: includeOffsiteAds ? '15%' : 'not included'
+          }
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // ===========================================
+  // eBay OAuth 2.0 Flow
+  // ===========================================
+
+  // GET /oauth/ebay - Start OAuth flow (redirects to eBay)
+  if (req.method === 'GET' && parsedUrl.pathname === '/oauth/ebay') {
+    try {
+      const ebay = require('./integrations/ebay');
+      if (!ebay.isConfigured()) {
+        sendJson(res, 500, { error: 'eBay API not configured. Set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in .env' });
+        return;
+      }
+      const { url, state } = ebay.startOAuthFlow();
+      console.log('[eBay OAuth] Redirecting to eBay for authorization...');
+      res.writeHead(302, { Location: url });
+      res.end();
+    } catch (err) {
+      console.error('[eBay OAuth] Start error:', err);
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // GET /oauth/ebay/callback - Handle OAuth callback from eBay
+  if (req.method === 'GET' && parsedUrl.pathname === '/oauth/ebay/callback') {
+    const query = parsedUrl.query || {};
+    const code = query.code;
+    const state = query.state;
+    const error = query.error;
+
+    if (error) {
+      console.error('[eBay OAuth] Error from eBay:', error, query.error_description);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`
+        <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #dc2626;">eBay Authorization Failed</h1>
+          <p><strong>Error:</strong> ${query.error}</p>
+          <p>${query.error_description || ''}</p>
+          <p><a href="/oauth/ebay">Try again</a></p>
+        </body></html>
+      `);
+      return;
+    }
+
+    if (!code || !state) {
+      sendJson(res, 400, { error: 'Missing code or state parameter' });
+      return;
+    }
+
+    (async () => {
+      try {
+        const ebay = require('./integrations/ebay');
+        const tokens = await ebay.completeOAuthFlow(code, state);
+
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">eBay Connected Successfully!</h1>
+            <p>Your eBay seller account has been authorized.</p>
+            <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Token Type:</strong> ${tokens.token_type}</p>
+              <p><strong>Expires In:</strong> ${Math.round(tokens.expires_in / 3600)} hours</p>
+            </div>
+            <p><a href="/api/ebay/status">View eBay integration status</a></p>
+          </body></html>
+        `);
+      } catch (err) {
+        console.error('[eBay OAuth] Callback error:', err);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dc2626;">eBay Authorization Failed</h1>
+            <p><strong>Error:</strong> ${err.message}</p>
+            <p><a href="/oauth/ebay">Try again</a></p>
+          </body></html>
+        `);
+      }
+    })();
+    return;
+  }
+
+  // GET /oauth/ebay/declined - Handle user declining eBay authorization
+  if (req.method === 'GET' && parsedUrl.pathname === '/oauth/ebay/declined') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`
+      <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #f59e0b;">eBay Authorization Cancelled</h1>
+        <p>You chose not to authorize the eBay connection.</p>
+        <p>You can try again at any time to connect your eBay seller account.</p>
+        <p style="margin-top: 20px;">
+          <a href="/oauth/ebay" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">Try Again</a>
+        </p>
+      </body></html>
+    `);
+    return;
+  }
+
+  // GET /api/ebay/status - Check eBay connection status
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/ebay/status') {
+    (async () => {
+      try {
+        const ebay = require('./integrations/ebay');
+        const configured = ebay.isConfigured();
+        const hasTokens = ebay.hasValidTokens();
+        const tokens = ebay.loadTokens();
+
+        const status = {
+          configured,
+          authenticated: hasTokens,
+          environment: process.env.EBAY_ENVIRONMENT || 'sandbox',
+          tokenExpiresAt: tokens?.expires_at ? new Date(tokens.expires_at).toISOString() : null,
+          authUrl: configured && !hasTokens ? '/oauth/ebay' : null
+        };
+
+        if (hasTokens) {
+          try {
+            const inventory = await ebay.getInventoryItems({ limit: 1 });
+            status.inventoryCount = inventory.total || 0;
+          } catch (e) {
+            status.inventoryError = e.message;
+          }
+        }
+
+        sendJson(res, 200, status);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/ebay/inventory - Get inventory items
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/ebay/inventory') {
+    (async () => {
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+        const query = parsedUrl.query || {};
+        const inventory = await ebay.getInventoryItems({
+          limit: query.limit || 25,
+          offset: query.offset || 0
+        });
+        sendJson(res, 200, inventory);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/ebay/policies - Get all seller policies
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/ebay/policies') {
+    (async () => {
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const [fulfillment, payment, returns] = await Promise.all([
+          ebay.getFulfillmentPolicies().catch(e => ({ error: e.message })),
+          ebay.getPaymentPolicies().catch(e => ({ error: e.message })),
+          ebay.getReturnPolicies().catch(e => ({ error: e.message }))
+        ]);
+
+        sendJson(res, 200, { fulfillment, payment, returns });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/ebay/create-policies - Create default business policies
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/ebay/create-policies') {
+    (async () => {
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const results = {};
+
+        // Create fulfillment policy
+        try {
+          results.fulfillment = await ebay.createFulfillmentPolicy({
+            name: 'Standard Vinyl Shipping',
+            handlingDays: 1,
+            shippingCost: 4.99,
+            additionalCost: 1.00,
+            freeShipping: false
+          });
+        } catch (e) {
+          results.fulfillment = { error: e.message };
+        }
+
+        // Create return policy
+        try {
+          results.returns = await ebay.createReturnPolicy({
+            name: '30 Day Returns',
+            returnsAccepted: true,
+            returnDays: 30,
+            sellerPaysReturn: false
+          });
+        } catch (e) {
+          results.returns = { error: e.message };
+        }
+
+        sendJson(res, 200, results);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/ebay/sync-product - Sync a Shopify product to eBay
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/ebay/sync-product') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const payload = JSON.parse(body || '{}');
+        const { shopifyProductId, publish = false, priceMultiplier = 1.13, storeLevel = 'basic' } = payload;
+
+        if (!shopifyProductId) {
+          sendJson(res, 400, { error: 'shopifyProductId required' });
+          return;
+        }
+
+        // Fetch from Shopify
+        const shopifyProduct = await shopify.getProduct(shopifyProductId);
+        if (!shopifyProduct) {
+          sendJson(res, 404, { error: 'Shopify product not found' });
+          return;
+        }
+
+        // Sync to eBay
+        const result = await ebay.syncProductToEbay(shopifyProduct, {
+          publish,
+          priceMultiplier,
+          storeLevel,
+          categoryId: '180098' // Stickers & Decals
+        });
+
+        sendJson(res, 200, {
+          success: true,
+          ...result,
+          shopifyProductId
+        });
+      } catch (err) {
+        console.error('[eBay] Sync error:', err);
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    });
+    return;
+  }
+
+  // POST /api/ebay/bulk-sync - Sync all Shopify products to eBay
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/ebay/bulk-sync') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const payload = JSON.parse(body || '{}');
+        const {
+          publish = false,
+          priceMultiplier = 1.15,
+          categoryId = '360', // Art Prints category (simpler requirements)
+          limit = 50,
+          skipExisting = true
+        } = payload;
+
+        // Get all Shopify products
+        console.log('[eBay] Fetching Shopify products...');
+        const shopifyProducts = await shopify.listAllProducts({ limit });
+        console.log(`[eBay] Found ${shopifyProducts.length} Shopify products`);
+
+        // Get existing eBay inventory to skip duplicates
+        let existingSkus = new Set();
+        if (skipExisting) {
+          try {
+            const inventory = await ebay.getInventoryItems({ limit: 200 });
+            if (inventory.inventoryItems) {
+              inventory.inventoryItems.forEach(item => existingSkus.add(item.sku));
+            }
+            console.log(`[eBay] Found ${existingSkus.size} existing eBay items`);
+          } catch (e) {
+            console.log('[eBay] Could not fetch existing inventory:', e.message);
+          }
+        }
+
+        // Get merchant location
+        let locationKey = null;
+        try {
+          const locations = await ebay.getMerchantLocations();
+          locationKey = locations.locations?.[0]?.merchantLocationKey || 'default';
+        } catch (e) {
+          console.log('[eBay] No merchant location, will create default');
+        }
+
+        // Get policies
+        const [fulfillment, returns] = await Promise.all([
+          ebay.getFulfillmentPolicies(),
+          ebay.getReturnPolicies()
+        ]);
+        const fulfillmentPolicyId = fulfillment.fulfillmentPolicies?.[0]?.fulfillmentPolicyId;
+        const returnPolicyId = returns.returnPolicies?.[0]?.returnPolicyId;
+
+        if (!fulfillmentPolicyId || !returnPolicyId) {
+          sendJson(res, 400, { error: 'Business policies not configured' });
+          return;
+        }
+
+        const results = { synced: [], skipped: [], errors: [] };
+
+        for (const product of shopifyProducts) {
+          // Generate unique SKU - match logic in ebay.shopifyToEbayItem
+          const variantSku = product.variants?.[0]?.sku;
+          const sku = variantSku && variantSku.length > 3
+            ? `${variantSku}-${product.id}`
+            : `SHOP-${product.id}`;
+
+          // Skip if already exists
+          if (skipExisting && existingSkus.has(sku)) {
+            results.skipped.push({ sku, title: product.title, reason: 'already exists' });
+            continue;
+          }
+
+          try {
+            // Convert to eBay format
+            const ebayItem = ebay.shopifyToEbayItem(product, { priceMultiplier, categoryId });
+
+            // Create inventory item
+            await ebay.createOrUpdateInventoryItem(sku, ebayItem);
+            console.log(`[eBay] Created inventory: ${sku}`);
+
+            // Create offer if we have policies
+            if (publish) {
+              const offer = await ebay.createOffer(sku, {
+                description: ebayItem.description,
+                price: ebayItem.price,
+                quantity: 999,
+                categoryId,
+                fulfillmentPolicyId,
+                returnPolicyId,
+                locationKey
+              });
+
+              // Publish
+              const published = await ebay.publishOffer(offer.offerId);
+              results.synced.push({
+                sku,
+                title: product.title,
+                offerId: offer.offerId,
+                listingId: published.listingId,
+                status: 'published'
+              });
+            } else {
+              results.synced.push({ sku, title: product.title, status: 'inventory_only' });
+            }
+
+            // Rate limit - wait 500ms between products
+            await new Promise(r => setTimeout(r, 500));
+
+          } catch (err) {
+            console.error(`[eBay] Error syncing ${sku}:`, err.message);
+            results.errors.push({ sku, title: product.title, error: err.message });
+          }
+        }
+
+        sendJson(res, 200, {
+          success: true,
+          summary: {
+            total: shopifyProducts.length,
+            synced: results.synced.length,
+            skipped: results.skipped.length,
+            errors: results.errors.length
+          },
+          results
+        });
+
+      } catch (err) {
+        console.error('[eBay] Bulk sync error:', err);
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    });
+    return;
+  }
+
+  // POST /api/ebay/create-location - Create a merchant location for shipping
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/ebay/create-location') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const payload = JSON.parse(body || '{}');
+        const locationKey = payload.locationKey || 'default';
+
+        const result = await ebay.createMerchantLocation(locationKey, {
+          name: payload.name || 'Primary Location',
+          addressLine1: payload.addressLine1 || '',
+          city: payload.city || 'Asheville',
+          state: payload.state || 'NC',
+          postalCode: payload.postalCode || '28801',
+          country: payload.country || 'US'
+        });
+
+        sendJson(res, 200, { success: true, locationKey, result });
+      } catch (err) {
+        console.error('[eBay] Create location error:', err);
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    });
+    return;
+  }
+
+  // GET /api/ebay/locations - Get merchant locations
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/ebay/locations') {
+    try {
+      const ebay = require('./integrations/ebay');
+      if (!ebay.hasValidTokens()) {
+        sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+        return;
+      }
+
+      const locations = await ebay.getMerchantLocations();
+      sendJson(res, 200, locations);
+    } catch (err) {
+      console.error('[eBay] Get locations error:', err);
+      sendJson(res, 500, { error: err.message, detail: err.detail });
+    }
+    return;
+  }
+
+  // GET /api/ebay/offers - Get offers for a SKU
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/ebay/offers') {
+    (async () => {
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const queryParams = parsedUrl.query || {};
+        const sku = queryParams.sku;
+        if (!sku) {
+          sendJson(res, 400, { error: 'sku query parameter required' });
+          return;
+        }
+
+        const offers = await ebay.getOffers(sku);
+        sendJson(res, 200, offers);
+      } catch (err) {
+        console.error('[eBay] Get offers error:', err);
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/ebay/publish-offer - Publish an existing offer by ID
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/ebay/publish-offer') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const payload = JSON.parse(body || '{}');
+        const { offerId } = payload;
+
+        if (!offerId) {
+          sendJson(res, 400, { error: 'offerId required' });
+          return;
+        }
+
+        const published = await ebay.publishOffer(offerId);
+        sendJson(res, 200, {
+          success: true,
+          offerId,
+          listingId: published.listingId,
+          status: 'published'
+        });
+      } catch (err) {
+        console.error('[eBay] Publish offer error:', err);
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    });
+    return;
+  }
+
+  // PUT /api/ebay/offer - Update an existing offer
+  if (req.method === 'PUT' && parsedUrl.pathname === '/api/ebay/offer') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const payload = JSON.parse(body || '{}');
+        const { offerId, ...updates } = payload;
+
+        if (!offerId) {
+          sendJson(res, 400, { error: 'offerId required' });
+          return;
+        }
+
+        const result = await ebay.updateOffer(offerId, updates);
+        sendJson(res, 200, { success: true, offerId, result });
+      } catch (err) {
+        console.error('[eBay] Update offer error:', err);
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    });
+    return;
+  }
+
+  // POST /api/ebay/publish - Create offer and publish a listing from inventory
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/ebay/publish') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const payload = JSON.parse(body || '{}');
+        const { sku, price, categoryId = '159889' } = payload;
+
+        if (!sku) {
+          sendJson(res, 400, { error: 'sku required' });
+          return;
+        }
+
+        // Get policies and locations
+        const [fulfillment, returns, locations] = await Promise.all([
+          ebay.getFulfillmentPolicies(),
+          ebay.getReturnPolicies(),
+          ebay.getMerchantLocations()
+        ]);
+
+        const fulfillmentPolicyId = fulfillment.fulfillmentPolicies?.[0]?.fulfillmentPolicyId;
+        const returnPolicyId = returns.returnPolicies?.[0]?.returnPolicyId;
+
+        if (!fulfillmentPolicyId || !returnPolicyId) {
+          sendJson(res, 400, { error: 'Business policies not configured. Create policies first.' });
+          return;
+        }
+
+        // Check for merchant location - required for publishing
+        let locationKey = locations.locations?.[0]?.merchantLocationKey;
+        if (!locationKey) {
+          // Auto-create a default location
+          console.log('[eBay] No merchant location found, creating default...');
+          await ebay.createMerchantLocation('default', {
+            name: 'Primary Location',
+            city: 'Asheville',
+            state: 'NC',
+            postalCode: '28801',
+            country: 'US'
+          });
+          locationKey = 'default';
+        }
+
+        // Get inventory item to get details
+        const inventoryItem = await ebay.getInventoryItem(sku);
+        const listingPrice = price || '19.99';
+
+        // Create offer with location
+        const offer = await ebay.createOffer(sku, {
+          description: inventoryItem.product?.description || 'Premium vinyl decal',
+          price: listingPrice,
+          quantity: 999,
+          categoryId: categoryId,
+          fulfillmentPolicyId,
+          returnPolicyId,
+          paymentPolicyId: null, // eBay Managed Payments doesn't need this
+          locationKey: locationKey
+        });
+
+        console.log('[eBay] Created offer:', offer.offerId);
+
+        // Publish offer
+        const published = await ebay.publishOffer(offer.offerId);
+
+        sendJson(res, 200, {
+          success: true,
+          sku,
+          offerId: offer.offerId,
+          listingId: published.listingId,
+          status: 'published'
+        });
+      } catch (err) {
+        console.error('[eBay] Publish error:', err);
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    });
+    return;
+  }
+
+  // POST /api/ebay/calculate-price - Calculate eBay price with fees
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/ebay/calculate-price') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const ebay = require('./integrations/ebay');
+        const { basePrice, storeLevel = 'basic' } = JSON.parse(body || '{}');
+
+        if (!basePrice || isNaN(basePrice)) {
+          sendJson(res, 400, { error: 'basePrice required' });
+          return;
+        }
+
+        const ebayPrice = ebay.calculateEbayPrice(parseFloat(basePrice), storeLevel);
+        const store = ebay.EBAY_STORE_COSTS[storeLevel] || ebay.EBAY_STORE_COSTS.basic;
+
+        sendJson(res, 200, {
+          basePrice: parseFloat(basePrice),
+          ebayPrice,
+          markup: ((ebayPrice / basePrice - 1) * 100).toFixed(1) + '%',
+          storeLevel,
+          fees: {
+            finalValueFee: (store.fvf * 100) + '%',
+            monthlySubscription: '$' + store.monthly,
+            freeListings: store.freeListings
+          }
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // GET /api/ebay/categories - Search eBay categories
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/ebay/categories') {
+    (async () => {
+      try {
+        const ebay = require('./integrations/ebay');
+        if (!ebay.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/ebay to connect.' });
+          return;
+        }
+
+        const query = parsedUrl.query || {};
+        if (query.q) {
+          const results = await ebay.searchCategories(query.q);
+          sendJson(res, 200, results);
+        } else {
+          const tree = await ebay.getCategoryTree();
+          sendJson(res, 200, tree);
+        }
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // ===========================================
+  // eBay Marketplace Account Deletion Notifications
+  // Required by eBay Developer Program for compliance
+  // ===========================================
+
+  // eBay Verification Token (32-80 characters) - Required for endpoint validation
+  const EBAY_VERIFICATION_TOKEN = process.env.EBAY_VERIFICATION_TOKEN || '896f3717ffc04d349ba8282973515cfc161cb2de5104b51a932b0a5146b8e68a';
+
+  // GET /api/ebay/marketplace-account-deletion - eBay verification challenge
+  // eBay sends a GET request with challenge_code to verify the endpoint
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/ebay/marketplace-account-deletion') {
+    const query = parsedUrl.query || {};
+    const challengeCode = query.challenge_code;
+
+    if (!challengeCode) {
+      sendJson(res, 400, { error: 'Missing challenge_code parameter' });
+      return;
+    }
+
+    // Create the challenge response hash as per eBay documentation
+    // hash = SHA256(challengeCode + verificationToken + endpoint)
+    const crypto = require('crypto');
+    const endpoint = 'https://blueridgecustomco.com/api/ebay/marketplace-account-deletion';
+    const hash = crypto
+      .createHash('sha256')
+      .update(challengeCode + EBAY_VERIFICATION_TOKEN + endpoint)
+      .digest('hex');
+
+    console.log('[eBay] Marketplace account deletion endpoint verification received');
+
+    // Return the challengeResponse as required by eBay
+    sendJson(res, 200, { challengeResponse: hash });
+    return;
+  }
+
+  // POST /api/ebay/marketplace-account-deletion - Handle account deletion notifications
+  // eBay sends a POST request when a user requests account deletion
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/ebay/marketplace-account-deletion') {
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+
+      try {
+        const notification = JSON.parse(body || '{}');
+
+        console.log('[eBay] Marketplace account deletion notification received:', JSON.stringify(notification, null, 2));
+
+        // Log the deletion request for compliance
+        const fs = require('fs');
+        const path = require('path');
+        const logDir = path.join(__dirname, '..', 'data');
+        const logFile = path.join(logDir, 'ebay-account-deletions.json');
+
+        // Ensure data directory exists
+        if (!fs.existsSync(logDir)) {
+          fs.mkdirSync(logDir, { recursive: true });
+        }
+
+        // Load existing log or create new
+        let deletionLog = [];
+        if (fs.existsSync(logFile)) {
+          try {
+            deletionLog = JSON.parse(fs.readFileSync(logFile, 'utf8'));
+          } catch (e) {
+            deletionLog = [];
+          }
+        }
+
+        // Add this notification
+        deletionLog.push({
+          timestamp: new Date().toISOString(),
+          notification: notification,
+          processed: true
+        });
+
+        // Save log
+        fs.writeFileSync(logFile, JSON.stringify(deletionLog, null, 2));
+
+        // If we have stored tokens for this user, we should clean them up
+        // The notification contains userId which we can match against stored tokens
+        if (notification.userId) {
+          const tokenFile = path.join(logDir, 'ebay-tokens.json');
+          if (fs.existsSync(tokenFile)) {
+            try {
+              const tokens = JSON.parse(fs.readFileSync(tokenFile, 'utf8'));
+              // If this is our connected user, remove their tokens
+              if (tokens.user_id === notification.userId) {
+                fs.unlinkSync(tokenFile);
+                console.log('[eBay] Removed tokens for deleted user:', notification.userId);
+              }
+            } catch (e) {
+              console.error('[eBay] Error checking/removing tokens:', e.message);
+            }
+          }
+        }
+
+        // Return 200 OK to acknowledge receipt
+        sendJson(res, 200, {
+          status: 'received',
+          message: 'Account deletion notification processed successfully'
+        });
+
+      } catch (err) {
+        console.error('[eBay] Error processing account deletion notification:', err.message);
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // ===========================================
+  // TikTok Shop Integration API
+  // ===========================================
+
+  // GET /oauth/tiktok - Start OAuth flow (redirects to TikTok)
+  if (req.method === 'GET' && parsedUrl.pathname === '/oauth/tiktok') {
+    try {
+      const tiktok = require('./integrations/tiktok-shop');
+      if (!tiktok.isConfigured()) {
+        sendJson(res, 500, { error: 'TikTok Shop not configured. Set TIKTOK_APP_KEY and TIKTOK_APP_SECRET in .env' });
+        return;
+      }
+      const state = tiktok.generateState();
+      const authUrl = tiktok.getAuthUrl(state);
+      res.writeHead(302, { Location: authUrl });
+      res.end();
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // GET /oauth/tiktok/callback or /api/tiktok/auth-callback - Handle OAuth callback from TikTok
+  if (req.method === 'GET' && (parsedUrl.pathname === '/oauth/tiktok/callback' || parsedUrl.pathname === '/api/tiktok/auth-callback')) {
+    const query = parsedUrl.query || {};
+    const code = query.code;
+    const state = query.state;
+    const error = query.error;
+
+    if (error) {
+      res.writeHead(400, { 'Content-Type': 'text/html' });
+      res.end(`
+        <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #dc2626;">TikTok Authorization Failed</h1>
+          <p><strong>Error:</strong> ${error}</p>
+          <p><a href="/oauth/tiktok">Try again</a></p>
+        </body></html>
+      `);
+      return;
+    }
+
+    if (!code) {
+      res.writeHead(400, { 'Content-Type': 'text/html' });
+      res.end(`
+        <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #dc2626;">TikTok Authorization Failed</h1>
+          <p>Missing authorization code. Please try again.</p>
+          <p><a href="/oauth/tiktok">Try again</a></p>
+        </body></html>
+      `);
+      return;
+    }
+
+    (async () => {
+      try {
+        const tiktok = require('./integrations/tiktok-shop');
+        const tokens = await tiktok.exchangeCodeForToken(code);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">TikTok Shop Connected!</h1>
+            <p>Successfully connected to TikTok Shop.</p>
+            <p><strong>Seller:</strong> ${tokens.seller_name || 'Connected'}</p>
+            <p><strong>Region:</strong> ${tokens.seller_base_region || 'US'}</p>
+            <p style="margin-top: 20px;">You can now sync products to your TikTok Shop.</p>
+            <p><a href="/api/tiktok/status" style="background: #000; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">Check Status</a></p>
+          </body></html>
+        `);
+      } catch (err) {
+        console.error('[TikTok] OAuth error:', err.message);
+        res.writeHead(500, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dc2626;">TikTok Authorization Failed</h1>
+            <p><strong>Error:</strong> ${err.message}</p>
+            <p><a href="/oauth/tiktok">Try again</a></p>
+          </body></html>
+        `);
+      }
+    })();
+    return;
+  }
+
+  // ==================== TIKTOK CONTENT POSTING API ====================
+
+  // GET /oauth/tiktok-content - Start OAuth flow for content posting
+  if (req.method === 'GET' && parsedUrl.pathname === '/oauth/tiktok-content') {
+    try {
+      const tiktokContent = require('./integrations/tiktok-content');
+      const authUrl = tiktokContent.getAuthUrl('content_auth');
+      res.writeHead(302, { Location: authUrl });
+      res.end();
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // GET /api/tiktok-content/auth-callback - OAuth callback for content API
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok-content/auth-callback') {
+    const query = parsedUrl.query || {};
+    const code = query.code;
+    const error = query.error;
+
+    if (error) {
+      res.writeHead(400, { 'Content-Type': 'text/html' });
+      res.end(`
+        <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #dc2626;">TikTok Authorization Failed</h1>
+          <p><strong>Error:</strong> ${error}</p>
+          <p><a href="/oauth/tiktok-content">Try again</a></p>
+        </body></html>
+      `);
+      return;
+    }
+
+    if (!code) {
+      res.writeHead(400, { 'Content-Type': 'text/html' });
+      res.end(`
+        <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #dc2626;">TikTok Authorization Failed</h1>
+          <p>Missing authorization code.</p>
+          <p><a href="/oauth/tiktok-content">Try again</a></p>
+        </body></html>
+      `);
+      return;
+    }
+
+    (async () => {
+      try {
+        const tiktokContent = require('./integrations/tiktok-content');
+        const tokens = await tiktokContent.exchangeCodeForToken(code);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">TikTok Content API Connected!</h1>
+            <p>Successfully connected to TikTok for video posting.</p>
+            <p><strong>Open ID:</strong> ${tokens.open_id}</p>
+            <p><strong>Scopes:</strong> ${tokens.scope}</p>
+            <p style="margin-top: 20px;">You can now post videos to your TikTok account.</p>
+            <p><a href="/api/tiktok-content/status" style="background: #000; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">Check Status</a></p>
+          </body></html>
+        `);
+      } catch (err) {
+        console.error('[TikTok Content] OAuth error:', err.message);
+        res.writeHead(500, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dc2626;">TikTok Authorization Failed</h1>
+            <p><strong>Error:</strong> ${err.message}</p>
+            <p><a href="/oauth/tiktok-content">Try again</a></p>
+          </body></html>
+        `);
+      }
+    })();
+    return;
+  }
+
+  // GET /api/tiktok-content/status - Check content API connection status
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok-content/status') {
+    try {
+      const tiktokContent = require('./integrations/tiktok-content');
+      const status = tiktokContent.getConnectionStatus();
+      sendJson(res, 200, status);
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // POST /api/tiktok-content/disconnect - Remove TikTok tokens (disconnect)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/tiktok-content/disconnect') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const DATA_DIR = path.resolve(__dirname, '..', 'data');
+      const TOKEN_FILE = path.join(DATA_DIR, 'tiktok-content-tokens.json');
+      if (fs.existsSync(TOKEN_FILE)) {
+        fs.unlinkSync(TOKEN_FILE);
+        console.log('[TikTok Content] Tokens deleted - disconnected');
+      }
+      sendJson(res, 200, { success: true, message: 'Disconnected from TikTok' });
+    } catch (err) {
+      console.error('[TikTok Content] Disconnect error:', err.message);
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // GET /api/tiktok-content/user - Get authenticated user info
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok-content/user') {
+    (async () => {
+      try {
+        const tiktokContent = require('./integrations/tiktok-content');
+        const user = await tiktokContent.getUserInfo();
+        sendJson(res, 200, user);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/tiktok-content/upload-temp-video - Upload video file to get a public URL
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/tiktok-content/upload-temp-video') {
+    if (!requireInternalKey(req, res)) return;
+
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.includes('multipart/form-data')) {
+      sendJson(res, 400, { error: 'Content-Type must be multipart/form-data' });
+      return;
+    }
+
+    // Parse multipart form data
+    const busboy = require('busboy');
+    const fs = require('fs');
+    const path = require('path');
+    const crypto = require('crypto');
+
+    const bb = busboy({ headers: req.headers, limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB limit
+    let savedFilePath = null;
+    let fileError = null;
+
+    bb.on('file', (name, file, info) => {
+      const { filename, mimeType } = info;
+      if (!mimeType.startsWith('video/')) {
+        fileError = 'File must be a video';
+        file.resume();
+        return;
+      }
+
+      // Generate unique filename
+      const ext = path.extname(filename) || '.mp4';
+      const uniqueName = `tiktok-temp-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+      const tempDir = path.resolve(__dirname, '..', 'data', 'tiktok-temp');
+
+      // Ensure temp directory exists
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      savedFilePath = path.join(tempDir, uniqueName);
+      const writeStream = fs.createWriteStream(savedFilePath);
+
+      file.pipe(writeStream);
+
+      writeStream.on('error', (err) => {
+        fileError = err.message;
+      });
+    });
+
+    bb.on('finish', () => {
+      if (fileError) {
+        sendJson(res, 400, { error: fileError });
+        return;
+      }
+
+      if (!savedFilePath) {
+        sendJson(res, 400, { error: 'No video file received' });
+        return;
+      }
+
+      // Return a public URL for the uploaded video
+      const filename = path.basename(savedFilePath);
+      const publicUrl = `https://blueridgecustomco.com/api/tiktok-content/temp-video/${filename}`;
+
+      console.log('[TikTok] Temp video saved:', savedFilePath);
+      console.log('[TikTok] Public URL:', publicUrl);
+
+      // Schedule cleanup after 1 hour
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(savedFilePath)) {
+            fs.unlinkSync(savedFilePath);
+            console.log('[TikTok] Cleaned up temp video:', savedFilePath);
+          }
+        } catch (e) {
+          console.error('[TikTok] Failed to clean up temp video:', e.message);
+        }
+      }, 60 * 60 * 1000); // 1 hour
+
+      sendJson(res, 200, { success: true, videoUrl: publicUrl, filename });
+    });
+
+    bb.on('error', (err) => {
+      console.error('[TikTok] Upload error:', err.message);
+      sendJson(res, 500, { error: err.message });
+    });
+
+    req.pipe(bb);
+    return;
+  }
+
+  // GET /api/tiktok-content/temp-video/:filename - Serve temp video files
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/tiktok-content/temp-video/')) {
+    const filename = parsedUrl.pathname.replace('/api/tiktok-content/temp-video/', '');
+    if (!filename || filename.includes('..') || filename.includes('/')) {
+      sendJson(res, 400, { error: 'Invalid filename' });
+      return;
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const tempDir = path.resolve(__dirname, '..', 'data', 'tiktok-temp');
+    const filePath = path.join(tempDir, filename);
+
+    if (!fs.existsSync(filePath)) {
+      sendJson(res, 404, { error: 'Video not found' });
+      return;
+    }
+
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, {
+      'Content-Type': 'video/mp4',
+      'Content-Length': stat.size,
+      'Accept-Ranges': 'bytes'
+    });
+
+    const readStream = fs.createReadStream(filePath);
+    readStream.pipe(res);
+    return;
+  }
+
+  // POST /api/tiktok-content/upload-video - Upload and publish a video
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/tiktok-content/upload-video') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const { videoPath, videoUrl, title, privacyLevel } = JSON.parse(body);
+        const tiktokContent = require('./integrations/tiktok-content');
+
+        let result;
+        if (videoUrl) {
+          // Upload from URL
+          result = await tiktokContent.uploadVideoFromUrl(videoUrl, title, privacyLevel || 'PUBLIC_TO_EVERYONE');
+        } else if (videoPath) {
+          // Upload from local file
+          result = await tiktokContent.uploadVideo(videoPath, title, privacyLevel || 'PUBLIC_TO_EVERYONE');
+        } else {
+          sendJson(res, 400, { error: 'Either videoPath or videoUrl is required' });
+          return;
+        }
+
+        sendJson(res, 200, { success: true, result });
+      } catch (err) {
+        console.error('[TikTok Content] Upload error:', err.message);
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // GET /api/tiktok-content/publish-status - Check video publish status
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok-content/publish-status') {
+    const publishId = parsedUrl.query?.publish_id;
+    if (!publishId) {
+      sendJson(res, 400, { error: 'publish_id query parameter required' });
+      return;
+    }
+
+    (async () => {
+      try {
+        const tiktokContent = require('./integrations/tiktok-content');
+        const status = await tiktokContent.getPublishStatus(publishId);
+        sendJson(res, 200, status);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // ==================== TIKTOK SHOP API ====================
+
+  // GET /api/tiktok/status - Check TikTok connection status
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok/status') {
+    (async () => {
+      try {
+        const tiktok = require('./integrations/tiktok-shop');
+        const configured = tiktok.isConfigured();
+        const tokens = tiktok.loadTokens();
+        const hasTokens = Boolean(tokens?.access_token);
+
+        const statusInfo = {
+          platform: 'tiktok',
+          configured,
+          connected: hasTokens,
+          authUrl: configured && !hasTokens ? '/oauth/tiktok' : null
+        };
+
+        if (hasTokens) {
+          statusInfo.seller_name = tokens.seller_name;
+          statusInfo.seller_region = tokens.seller_base_region;
+          statusInfo.updated_at = tokens.updated_at;
+
+          // Try to get shops
+          try {
+            const shops = await tiktok.getAuthorizedShops();
+            statusInfo.shops = shops.shops || [];
+          } catch (e) {
+            statusInfo.shopsError = e.message;
+          }
+        }
+
+        sendJson(res, 200, statusInfo);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/tiktok/shops - Get authorized shops
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok/shops') {
+    (async () => {
+      try {
+        const tiktok = require('./integrations/tiktok-shop');
+        const tokens = tiktok.loadTokens();
+        if (!tokens?.access_token) {
+          sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/tiktok to connect.' });
+          return;
+        }
+
+        const shops = await tiktok.getAuthorizedShops();
+        sendJson(res, 200, shops);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/tiktok/categories - Get product categories
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok/categories') {
+    (async () => {
+      try {
+        const tiktok = require('./integrations/tiktok-shop');
+        const query = parsedUrl.query || {};
+        const shopCipher = query.shop_cipher;
+
+        if (!shopCipher) {
+          sendJson(res, 400, { error: 'shop_cipher parameter required' });
+          return;
+        }
+
+        const categories = await tiktok.getCategories(shopCipher);
+        sendJson(res, 200, categories);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/tiktok/categories/search - Search categories
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/tiktok/categories/search') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      (async () => {
+        try {
+          const tiktok = require('./integrations/tiktok-shop');
+          const { shop_cipher, keyword } = JSON.parse(body || '{}');
+
+          if (!shop_cipher || !keyword) {
+            sendJson(res, 400, { error: 'shop_cipher and keyword required' });
+            return;
+          }
+
+          const results = await tiktok.searchCategories(shop_cipher, keyword);
+          sendJson(res, 200, results);
+        } catch (err) {
+          sendJson(res, 500, { error: err.message });
+        }
+      })();
+    });
+    return;
+  }
+
+  // GET /api/tiktok/products - Get products
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok/products') {
+    (async () => {
+      try {
+        const tiktok = require('./integrations/tiktok-shop');
+        const query = parsedUrl.query || {};
+        const shopCipher = query.shop_cipher;
+
+        if (!shopCipher) {
+          sendJson(res, 400, { error: 'shop_cipher parameter required' });
+          return;
+        }
+
+        const products = await tiktok.searchProducts(shopCipher, {});
+        sendJson(res, 200, products);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/tiktok/sync-product - Sync Shopify product to TikTok
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/tiktok/sync-product') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      (async () => {
+        try {
+          const tiktok = require('./integrations/tiktok-shop');
+          const tokens = tiktok.loadTokens();
+          if (!tokens?.access_token) {
+            sendJson(res, 401, { error: 'Not authenticated. Visit /oauth/tiktok to connect.' });
+            return;
+          }
+
+          const payload = JSON.parse(body || '{}');
+          const { shop_cipher, shopify_product_id, category_id, price_multiplier = 1.1 } = payload;
+
+          if (!shop_cipher || !shopify_product_id || !category_id) {
+            sendJson(res, 400, { error: 'shop_cipher, shopify_product_id, and category_id required' });
+            return;
+          }
+
+          // Load Shopify product from database
+          const product = db.getShopifyProduct(shopify_product_id);
+          if (!product) {
+            sendJson(res, 404, { error: `Shopify product ${shopify_product_id} not found in database` });
+            return;
+          }
+
+          const result = await tiktok.syncProductToTikTok(shop_cipher, product, category_id, {
+            priceMultiplier: price_multiplier
+          });
+
+          sendJson(res, 200, result);
+        } catch (err) {
+          sendJson(res, 500, { error: err.message });
+        }
+      })();
+    });
+    return;
+  }
+
+  // POST /api/tiktok/calculate-price - Calculate price with TikTok fees
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/tiktok/calculate-price') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const tiktok = require('./integrations/tiktok-shop');
+        const { base_price } = JSON.parse(body || '{}');
+
+        if (!base_price || isNaN(base_price)) {
+          sendJson(res, 400, { error: 'base_price required' });
+          return;
+        }
+
+        const tiktokPrice = tiktok.calculateTikTokPrice(parseFloat(base_price));
+
+        sendJson(res, 200, {
+          base_price: parseFloat(base_price),
+          tiktok_price: tiktokPrice,
+          fees: tiktok.TIKTOK_FEES
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // GET /api/tiktok/orders - Get orders
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok/orders') {
+    (async () => {
+      try {
+        const tiktok = require('./integrations/tiktok-shop');
+        const query = parsedUrl.query || {};
+        const shopCipher = query.shop_cipher;
+
+        if (!shopCipher) {
+          sendJson(res, 400, { error: 'shop_cipher parameter required' });
+          return;
+        }
+
+        const orders = await tiktok.getOrders(shopCipher, {});
+        sendJson(res, 200, orders);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // ===========================================
+  // Lumaprints Fulfillment API
+  // ===========================================
+
+  // GET /api/lumaprints/status - Check Lumaprints connection status
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/lumaprints/status') {
+    (async () => {
+      try {
+        const lumaprints = require('./integrations/lumaprints');
+        const status = await lumaprints.getConnectionStatus();
+        sendJson(res, 200, status);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/lumaprints/orders - Get orders from Lumaprints
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/lumaprints/orders') {
+    (async () => {
+      try {
+        const lumaprints = require('./integrations/lumaprints');
+        const query = parsedUrl.query || {};
+        const orders = await lumaprints.getOrders({
+          status: query.status,
+          startDate: query.startDate,
+          endDate: query.endDate,
+          page: query.page,
+          limit: query.limit || 50
+        });
+        sendJson(res, 200, { success: true, orders });
+      } catch (err) {
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/lumaprints/order/:id - Get single order
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/lumaprints/order/')) {
+    (async () => {
+      try {
+        const lumaprints = require('./integrations/lumaprints');
+        const orderId = parsedUrl.pathname.split('/').pop();
+        const order = await lumaprints.getOrder(orderId);
+        sendJson(res, 200, { success: true, order });
+      } catch (err) {
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/lumaprints/shipment/:orderId - Get shipment info
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/lumaprints/shipment/')) {
+    (async () => {
+      try {
+        const lumaprints = require('./integrations/lumaprints');
+        const orderId = parsedUrl.pathname.split('/').pop();
+        const shipment = await lumaprints.getShipment(orderId);
+        sendJson(res, 200, { success: true, shipment });
+      } catch (err) {
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/lumaprints/submit-order - Submit a new order
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/lumaprints/submit-order') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const lumaprints = require('./integrations/lumaprints');
+        const data = JSON.parse(body);
+
+        // Validate required fields
+        if (!data.orderId) {
+          sendJson(res, 400, { success: false, error: 'orderId is required' });
+          return;
+        }
+        if (!data.recipient) {
+          sendJson(res, 400, { success: false, error: 'recipient is required' });
+          return;
+        }
+        if (!data.prints || !data.prints.length) {
+          sendJson(res, 400, { success: false, error: 'prints array is required' });
+          return;
+        }
+
+        const result = await lumaprints.submitMetalPrintOrder({
+          orderId: data.orderId,
+          recipient: data.recipient,
+          prints: data.prints,
+          shippingMethod: data.shippingMethod || 'default',
+          productionTime: data.productionTime || 'regular',
+          specialInstructions: data.specialInstructions || ''
+        });
+
+        sendJson(res, 201, { success: true, result });
+      } catch (err) {
+        console.error('[Lumaprints] Submit order error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // POST /api/lumaprints/cost-estimate - Get cost estimate for an order
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/lumaprints/cost-estimate') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const lumaprints = require('./integrations/lumaprints');
+        const data = JSON.parse(body);
+        const cost = await lumaprints.getOrderCost(data);
+        sendJson(res, 200, { success: true, cost });
+      } catch (err) {
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // POST /api/lumaprints/verify-image - Verify image dimensions
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/lumaprints/verify-image') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const lumaprints = require('./integrations/lumaprints');
+        const { imageUrl, width, height } = JSON.parse(body);
+
+        if (!imageUrl || !width || !height) {
+          sendJson(res, 400, { success: false, error: 'imageUrl, width, and height are required' });
+          return;
+        }
+
+        const result = await lumaprints.verifyImageSize(imageUrl, width, height);
+        sendJson(res, 200, { success: true, result });
+      } catch (err) {
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // GET /api/lumaprints/sizes - Get available metal print sizes
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/lumaprints/sizes') {
+    try {
+      const lumaprints = require('./integrations/lumaprints');
+      sendJson(res, 200, {
+        success: true,
+        sizes: lumaprints.METAL_SIZES,
+        options: {
+          surface: lumaprints.METAL_OPTIONS.surface,
+          hanging: lumaprints.METAL_OPTIONS.hanging
+        },
+        shippingMethods: lumaprints.SHIPPING_METHODS,
+        productionTimes: lumaprints.PRODUCTION_TIMES
+      });
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // ===========================================
+  // Fulfillment Helper Functions
+  // ===========================================
+
+  /**
+   * Generate tracking URL based on carrier name
+   */
+  function getTrackingUrl(carrier, trackingNumber) {
+    if (!trackingNumber) return '';
+
+    const carrierLower = (carrier || '').toLowerCase();
+
+    // Common carrier tracking URLs
+    const trackingUrls = {
+      'ups': `https://www.ups.com/track?tracknum=${trackingNumber}`,
+      'fedex': `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`,
+      'usps': `https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`,
+      'dhl': `https://www.dhl.com/en/express/tracking.html?AWB=${trackingNumber}`,
+      'ontrac': `https://www.ontrac.com/tracking/?number=${trackingNumber}`,
+      'lasership': `https://www.lasership.com/track/${trackingNumber}`,
+      'amazon': `https://track.amazon.com/tracking/${trackingNumber}`,
+      'spee-dee': `https://packages.speedeedelivery.com/track.php?track=${trackingNumber}`,
+      'gls': `https://www.gls-us.com/track-and-trace?TrackingNumber=${trackingNumber}`
+    };
+
+    // Check for partial matches
+    for (const [key, url] of Object.entries(trackingUrls)) {
+      if (carrierLower.includes(key)) {
+        return url;
+      }
+    }
+
+    // Default: return empty string if carrier not recognized
+    return '';
+  }
+
+  /**
+   * Update fulfillment on the originating sales channel
+   */
+  async function updateSalesChannelFulfillment(order, lineItemId, trackingInfo) {
+    const channel = (order.sales_channel || 'shopify').toLowerCase();
+
+    console.log(`[Fulfillment] Updating ${channel} for order ${order.channel_order_id || order.shopify_order_id}`);
+
+    switch (channel) {
+      case 'shopify': {
+        const shopify = require('./integrations/shopify');
+        if (!shopify.isConfigured()) {
+          console.log('[Fulfillment] Shopify not configured, skipping fulfillment update');
+          return { success: false, reason: 'Shopify not configured' };
+        }
+
+        const orderId = order.channel_order_id || order.shopify_order_id;
+        if (!orderId) {
+          console.log('[Fulfillment] No Shopify order ID found');
+          return { success: false, reason: 'No order ID' };
+        }
+
+        try {
+          const result = await shopify.createFulfillment({
+            orderId: orderId,
+            lineItems: [{ id: lineItemId, quantity: 1 }],
+            tracking: {
+              tracking_number: trackingInfo.trackingNumber,
+              tracking_company: trackingInfo.carrier,
+              tracking_url: trackingInfo.trackingUrl
+            },
+            notifyCustomer: true
+          });
+
+          console.log(`[Fulfillment] Shopify fulfillment created:`, result);
+          return { success: true, result };
+        } catch (err) {
+          console.error(`[Fulfillment] Shopify error:`, err.message);
+          return { success: false, error: err.message };
+        }
+      }
+
+      case 'ebay': {
+        // eBay Fulfillment API - requires shipping tracking update
+        // API: POST /sell/fulfillment/v1/order/{orderId}/shipping_fulfillment
+        console.log('[Fulfillment] eBay fulfillment update not yet implemented');
+        // TODO: Implement eBay shipping fulfillment
+        // const ebay = require('./integrations/ebay');
+        // await ebay.createShippingFulfillment(orderId, lineItemId, trackingInfo);
+        return { success: false, reason: 'eBay fulfillment not yet implemented' };
+      }
+
+      case 'tiktok': {
+        // TikTok Shop Fulfillment API
+        // API: POST /api/fulfillment/shipping_info/update
+        console.log('[Fulfillment] TikTok fulfillment update not yet implemented');
+        // TODO: Implement TikTok shipping fulfillment
+        // const tiktok = require('./integrations/tiktok-shop');
+        // await tiktok.updateShipment(orderId, trackingInfo);
+        return { success: false, reason: 'TikTok fulfillment not yet implemented' };
+      }
+
+      case 'facebook':
+      case 'meta': {
+        // Facebook/Meta Commerce Fulfillment API
+        console.log('[Fulfillment] Facebook fulfillment update not yet implemented');
+        // TODO: Implement Facebook shipping fulfillment
+        return { success: false, reason: 'Facebook fulfillment not yet implemented' };
+      }
+
+      case 'amazon': {
+        // Amazon SP-API Fulfillment
+        console.log('[Fulfillment] Amazon fulfillment update not yet implemented');
+        // TODO: Implement Amazon shipping fulfillment
+        return { success: false, reason: 'Amazon fulfillment not yet implemented' };
+      }
+
+      case 'etsy': {
+        // Etsy Fulfillment API
+        console.log('[Fulfillment] Etsy fulfillment update not yet implemented');
+        // TODO: Implement Etsy shipping fulfillment
+        return { success: false, reason: 'Etsy fulfillment not yet implemented' };
+      }
+
+      default:
+        console.log(`[Fulfillment] Unknown sales channel: ${channel}`);
+        return { success: false, reason: `Unknown channel: ${channel}` };
+    }
+  }
+
+  // POST /api/lumaprints/webhook/subscribe - Subscribe to shipping webhook
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/lumaprints/webhook/subscribe') {
+    (async () => {
+      try {
+        const lumaprints = require('./integrations/lumaprints');
+        const webhookUrl = `${process.env.ASSET_BASE_URL || 'https://blueridgecustomco.com'}/api/lumaprints/webhook`;
+        const result = await lumaprints.subscribeWebhook(webhookUrl);
+        sendJson(res, 200, { success: true, result, webhookUrl });
+      } catch (err) {
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/lumaprints/webhooks - Get current webhook subscriptions
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/lumaprints/webhooks') {
+    (async () => {
+      try {
+        const lumaprints = require('./integrations/lumaprints');
+        const webhooks = await lumaprints.getWebhooks();
+        sendJson(res, 200, { success: true, webhooks });
+      } catch (err) {
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/lumaprints/webhook - Receive webhook from Lumaprints (shipping notifications)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/lumaprints/webhook') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        console.log('[Lumaprints Webhook] Received:', body);
+        const data = JSON.parse(body);
+
+        // Lumaprints shipping webhook payload:
+        // { orderNumber, shipments: [{ carrier, shippingMethod, trackingNumber, shipmentDate, items: [...] }] }
+
+        if (data.orderNumber && data.shipments && data.shipments.length > 0) {
+          const db = require('./db');
+          const dbClient = db.getDb();
+
+          // Find our order by the external ID we sent (format: orderNumber-lineItemId)
+          const externalId = data.orderNumber;
+          const shipment = data.shipments[0]; // Get first shipment
+
+          // Try to find the metal print order
+          // The externalId we sent was "orderNumber-lineItemId"
+          const parts = externalId.split('-');
+          if (parts.length >= 2) {
+            const orderNumber = parts[0];
+            const lineItemId = parts.slice(1).join('-');
+
+            // Get the order first to know which channel to update
+            const order = dbClient.prepare(`
+              SELECT id, sales_channel, channel_order_id, shopify_order_id, customer_email
+              FROM metal_print_orders
+              WHERE order_number = ? AND line_item_id = ?
+            `).get(orderNumber, lineItemId);
+
+            if (!order) {
+              console.log(`[Lumaprints Webhook] Order not found: ${orderNumber}-${lineItemId}`);
+            } else {
+              // Update the order with tracking info
+              const result = dbClient.prepare(`
+                UPDATE metal_print_orders
+                SET status = 'shipped',
+                    lumaprints_status = 'shipped',
+                    shipped_at = datetime('now'),
+                    tracking_carrier = ?,
+                    tracking_number = ?
+                WHERE id = ?
+              `).run(shipment.carrier || '', shipment.trackingNumber || '', order.id);
+
+              console.log(`[Lumaprints Webhook] Updated order ${orderNumber}-${lineItemId} to shipped`);
+              console.log(`[Lumaprints Webhook] Tracking: ${shipment.carrier} ${shipment.trackingNumber}`);
+              console.log(`[Lumaprints Webhook] Sales Channel: ${order.sales_channel}`);
+
+              // Update fulfillment on the sales channel
+              const trackingInfo = {
+                carrier: shipment.carrier || '',
+                trackingNumber: shipment.trackingNumber || '',
+                trackingUrl: getTrackingUrl(shipment.carrier, shipment.trackingNumber)
+              };
+
+              try {
+                await updateSalesChannelFulfillment(order, lineItemId, trackingInfo);
+              } catch (fulfillErr) {
+                console.error(`[Lumaprints Webhook] Failed to update ${order.sales_channel} fulfillment:`, fulfillErr.message);
+              }
+
+              // TODO: Send shipping notification email to customer
+            }
+          }
+        }
+
+        // Always respond 200 to acknowledge receipt
+        sendJson(res, 200, { success: true, message: 'Webhook received' });
+      } catch (err) {
+        console.error('[Lumaprints Webhook] Error:', err);
+        // Still respond 200 to prevent retries for parse errors
+        sendJson(res, 200, { success: true, message: 'Webhook received with errors' });
+      }
+    });
+    return;
+  }
+
+  // ===========================================
+  // Unified Marketplace Sync API
+  // ===========================================
+
+  // GET /api/marketplace/status - Get all platform connection statuses
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/marketplace/status') {
+    try {
+      const sync = require('./integrations/marketplace-sync');
+      const status = sync.getPlatformStatus();
+      sendJson(res, 200, status);
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // POST /api/marketplace/calculate-prices - Calculate prices for all platforms
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/marketplace/calculate-prices') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const sync = require('./integrations/marketplace-sync');
+        const { basePrice, includeOffsiteAds = false, storeLevel = 'basic' } = JSON.parse(body || '{}');
+
+        if (!basePrice || isNaN(basePrice)) {
+          sendJson(res, 400, { error: 'basePrice required' });
+          return;
+        }
+
+        const prices = sync.calculateAllPrices(parseFloat(basePrice), { includeOffsiteAds, storeLevel });
+
+        sendJson(res, 200, {
+          basePrice: parseFloat(basePrice),
+          prices,
+          config: sync.PLATFORM_CONFIG
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // POST /api/marketplace/sync-product - Sync a product to multiple platforms
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/marketplace/sync-product') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const sync = require('./integrations/marketplace-sync');
+        const payload = JSON.parse(body || '{}');
+        const {
+          shopifyProductId,
+          platforms = ['etsy', 'ebay'],
+          publish = false,
+          force = false
+        } = payload;
+
+        if (!shopifyProductId) {
+          sendJson(res, 400, { error: 'shopifyProductId required' });
+          return;
+        }
+
+        const result = await sync.syncProduct(shopifyProductId, platforms, { publish, force });
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('[Marketplace Sync] Error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // POST /api/marketplace/sync-collection - Sync all products in a Shopify collection
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/marketplace/sync-collection') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const sync = require('./integrations/marketplace-sync');
+        const payload = JSON.parse(body || '{}');
+        const {
+          collectionId,
+          platforms = ['etsy', 'ebay'],
+          publish = false,
+          force = false,
+          delayMs = 1000
+        } = payload;
+
+        if (!collectionId) {
+          sendJson(res, 400, { error: 'collectionId required' });
+          return;
+        }
+
+        const result = await sync.syncCollection(collectionId, platforms, { publish, force, delayMs });
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('[Marketplace Sync] Collection error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // GET /api/marketplace/product-status/:id - Get sync status for a product
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/marketplace/product-status/')) {
+    try {
+      const sync = require('./integrations/marketplace-sync');
+      const productId = parsedUrl.pathname.split('/').pop();
+      const status = sync.getProductSyncStatus(productId);
+
+      if (status) {
+        sendJson(res, 200, status);
+      } else {
+        sendJson(res, 404, { error: 'Product not synced to any marketplace' });
+      }
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // GET /api/marketplace/synced-products - Get all synced products
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/marketplace/synced-products') {
+    try {
+      const sync = require('./integrations/marketplace-sync');
+      const products = sync.getAllSyncedProducts();
+      sendJson(res, 200, products);
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // GET /api/marketplace/sync-log - Get recent sync activity log
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/marketplace/sync-log') {
+    try {
+      const sync = require('./integrations/marketplace-sync');
+      const query = parsedUrl.query || {};
+      const limit = parseInt(query.limit) || 50;
+      const log = sync.getSyncLog(limit);
+      sendJson(res, 200, log);
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // POST /api/marketplace/price-table - Generate price comparison table for products
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/marketplace/price-table') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const sync = require('./integrations/marketplace-sync');
+        const payload = JSON.parse(body || '{}');
+        const { productIds, collectionId, includeOffsiteAds = false, storeLevel = 'basic' } = payload;
+
+        let products = [];
+
+        if (collectionId) {
+          products = await shopify.getCollectionProducts(collectionId);
+        } else if (productIds && productIds.length) {
+          for (const id of productIds) {
+            const product = await shopify.getProduct(id);
+            if (product) products.push(product);
+          }
+        } else {
+          sendJson(res, 400, { error: 'productIds or collectionId required' });
+          return;
+        }
+
+        const table = sync.generatePriceTable(products, { includeOffsiteAds, storeLevel });
+        sendJson(res, 200, { count: table.length, products: table });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // ===========================================
+  // Amazon SP-API Integration
+  // ===========================================
+
+  // GET /oauth/amazon - Start OAuth flow (redirects to Amazon Seller Central)
+  if (req.method === 'GET' && parsedUrl.pathname === '/oauth/amazon') {
+    try {
+      const amazon = require('./integrations/amazon');
+      if (!amazon.isConfigured()) {
+        sendJson(res, 500, { error: 'Amazon SP-API not configured. Set AMAZON_LWA_CLIENT_ID, AMAZON_LWA_CLIENT_SECRET, and AWS credentials in .env' });
+        return;
+      }
+      const { url, state } = amazon.startOAuthFlow();
+      console.log('[Amazon OAuth] Redirecting to Amazon Seller Central for authorization...');
+      res.writeHead(302, { Location: url });
+      res.end();
+    } catch (err) {
+      console.error('[Amazon OAuth] Start error:', err);
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // GET /oauth/amazon/callback - Handle OAuth callback from Amazon
+  if (req.method === 'GET' && parsedUrl.pathname === '/oauth/amazon/callback') {
+    const query = parsedUrl.query || {};
+    const spapi_oauth_code = query.spapi_oauth_code;
+    const state = query.state;
+    const error = query.error;
+
+    if (error) {
+      console.error('[Amazon OAuth] Error from Amazon:', error, query.error_description);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`
+        <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #dc2626;">Amazon Authorization Failed</h1>
+          <p><strong>Error:</strong> ${query.error}</p>
+          <p>${query.error_description || ''}</p>
+          <p><a href="/oauth/amazon">Try again</a></p>
+        </body></html>
+      `);
+      return;
+    }
+
+    if (!spapi_oauth_code || !state) {
+      sendJson(res, 400, { error: 'Missing spapi_oauth_code or state parameter' });
+      return;
+    }
+
+    (async () => {
+      try {
+        const amazon = require('./integrations/amazon');
+        const tokens = await amazon.completeOAuthFlow(spapi_oauth_code, state);
+
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #16a34a;">Amazon Connected Successfully!</h1>
+            <p>Your Amazon Seller account has been authorized.</p>
+            <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Important:</strong> Add this refresh token to your .env file:</p>
+              <code style="background: #1f2937; color: #10b981; padding: 8px; border-radius: 4px; display: block; word-break: break-all; margin-top: 8px;">
+                AMAZON_REFRESH_TOKEN=${tokens.refresh_token}
+              </code>
+            </div>
+            <p><a href="/api/amazon/status">View Amazon integration status</a></p>
+          </body></html>
+        `);
+      } catch (err) {
+        console.error('[Amazon OAuth] Callback error:', err);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <html><body style="font-family: system-ui; padding: 40px; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #dc2626;">Amazon Authorization Failed</h1>
+            <p><strong>Error:</strong> ${err.message}</p>
+            <p><a href="/oauth/amazon">Try again</a></p>
+          </body></html>
+        `);
+      }
+    })();
+    return;
+  }
+
+  // GET /api/amazon/status - Check Amazon connection status
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/amazon/status') {
+    (async () => {
+      try {
+        const amazon = require('./integrations/amazon');
+        const configured = amazon.isConfigured();
+        const hasTokens = amazon.hasValidTokens();
+        const tokens = amazon.loadTokens();
+
+        const status = {
+          configured,
+          authenticated: hasTokens,
+          sellerId: process.env.AMAZON_SELLER_ID || null,
+          marketplaceId: process.env.AMAZON_MARKETPLACE_ID || 'ATVPDKIKX0DER',
+          tokenExpiresAt: tokens?.expires_at ? new Date(tokens.expires_at).toISOString() : null,
+          authUrl: configured && !hasTokens ? '/oauth/amazon' : null
+        };
+
+        if (hasTokens) {
+          try {
+            const participations = await amazon.getMarketplaceParticipations();
+            status.marketplaces = participations.payload || [];
+          } catch (e) {
+            status.marketplaceError = e.message;
+          }
+        }
+
+        sendJson(res, 200, status);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/amazon/listing/:sku - Get a listing by SKU
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/amazon/listing/')) {
+    (async () => {
+      try {
+        const amazon = require('./integrations/amazon');
+        if (!amazon.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Complete Amazon OAuth flow first.' });
+          return;
+        }
+
+        const sku = decodeURIComponent(parsedUrl.pathname.split('/').pop());
+        const listing = await amazon.getListingsItem(sku);
+        sendJson(res, 200, listing);
+      } catch (err) {
+        sendJson(res, err.status || 500, { error: err.message, detail: err.detail });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/amazon/sync-product - Sync a Shopify product to Amazon
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/amazon/sync-product') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const amazon = require('./integrations/amazon');
+        if (!amazon.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Complete Amazon OAuth flow first.' });
+          return;
+        }
+
+        const payload = JSON.parse(body || '{}');
+        const { shopifyProductId, priceMultiplier = 1.18, category = 'automotive' } = payload;
+
+        if (!shopifyProductId) {
+          sendJson(res, 400, { error: 'shopifyProductId required' });
+          return;
+        }
+
+        // Fetch from Shopify
+        const shopifyProduct = await shopify.getProduct(shopifyProductId);
+        if (!shopifyProduct) {
+          sendJson(res, 404, { error: 'Shopify product not found' });
+          return;
+        }
+
+        // Sync to Amazon
+        const result = await amazon.syncProductToAmazon(shopifyProduct, {
+          priceMultiplier,
+          category
+        });
+
+        sendJson(res, 200, {
+          success: true,
+          ...result,
+          shopifyProductId
+        });
+      } catch (err) {
+        console.error('[Amazon] Sync error:', err);
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    });
+    return;
+  }
+
+  // POST /api/amazon/calculate-price - Calculate Amazon price with fees
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/amazon/calculate-price') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const amazon = require('./integrations/amazon');
+        const { basePrice, category = 'default' } = JSON.parse(body || '{}');
+
+        if (!basePrice || isNaN(basePrice)) {
+          sendJson(res, 400, { error: 'basePrice required' });
+          return;
+        }
+
+        const amazonPrice = amazon.calculateAmazonPrice(parseFloat(basePrice), category);
+        const referralFee = amazon.AMAZON_FEES.referralFees[category] || amazon.AMAZON_FEES.referralFees.default;
+
+        sendJson(res, 200, {
+          basePrice: parseFloat(basePrice),
+          amazonPrice,
+          markup: ((amazonPrice / basePrice - 1) * 100).toFixed(1) + '%',
+          category,
+          fees: {
+            referralFee: (referralFee * 100) + '%',
+            monthlySubscription: '$' + amazon.AMAZON_FEES.monthlySubscription
+          }
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // GET /api/amazon/search-catalog - Search Amazon catalog
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/amazon/search-catalog') {
+    (async () => {
+      try {
+        const amazon = require('./integrations/amazon');
+        if (!amazon.hasValidTokens()) {
+          sendJson(res, 401, { error: 'Not authenticated. Complete Amazon OAuth flow first.' });
+          return;
+        }
+
+        const query = parsedUrl.query || {};
+        if (!query.keywords) {
+          sendJson(res, 400, { error: 'keywords query parameter required' });
+          return;
+        }
+
+        const results = await amazon.searchCatalogItems(query.keywords);
+        sendJson(res, 200, results);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message, detail: err.detail });
+      }
+    })();
+    return;
+  }
+
+  // Server stats endpoint for dashboard
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/server/stats') {
+    try {
+      const os = require('os');
+      const { execSync } = require('child_process');
+
+      // CPU usage - get load average
+      const loadAvg = os.loadavg();
+      const cpuCount = os.cpus().length;
+      const cpuUsagePercent = Math.min(100, Math.round((loadAvg[0] / cpuCount) * 100));
+
+      // Memory
+      const totalMem = os.totalmem();
+      const freeMem = os.freemem();
+      const usedMem = totalMem - freeMem;
+      const memUsagePercent = Math.round((usedMem / totalMem) * 100);
+
+      // Disk space - get all mounted drives (Linux df command)
+      let diskTotal = 0, diskUsed = 0, diskFree = 0, diskUsagePercent = 0;
+      let drives = [];
+      try {
+        // Get all mounted drives excluding tmpfs, devtmpfs, etc.
+        const dfOutput = execSync("df -B1 --output=target,size,used,avail,pcent -x tmpfs -x devtmpfs 2>/dev/null | tail -n +2", { encoding: 'utf8' });
+        const lines = dfOutput.trim().split('\n').filter(Boolean);
+
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 5) {
+            const mountPoint = parts[0];
+            const total = parseInt(parts[1]) || 0;
+            const used = parseInt(parts[2]) || 0;
+            const free = parseInt(parts[3]) || 0;
+            const usePct = parseInt(parts[4]) || 0;
+
+            // Skip boot/efi partition
+            if (mountPoint === '/boot/efi') continue;
+
+            drives.push({
+              mountPoint,
+              name: mountPoint === '/' ? 'Root' : mountPoint.replace('/mnt/', ''),
+              totalBytes: total,
+              usedBytes: used,
+              freeBytes: free,
+              usagePercent: usePct,
+              totalGB: (total / 1073741824).toFixed(1),
+              usedGB: (used / 1073741824).toFixed(1)
+            });
+
+            // Set root as the primary disk for backwards compatibility
+            if (mountPoint === '/') {
+              diskTotal = total;
+              diskUsed = used;
+              diskFree = free;
+              diskUsagePercent = usePct;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Server Stats] Disk check failed:', e.message);
+      }
+
+      // Uptime
+      const uptimeSeconds = os.uptime();
+      const days = Math.floor(uptimeSeconds / 86400);
+      const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+      const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+      const uptimeStr = days > 0 ? `${days}d ${hours}h ${minutes}m` : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
+      sendJson(res, 200, {
+        success: true,
+        cpu: {
+          usagePercent: cpuUsagePercent,
+          loadAvg: loadAvg[0].toFixed(2),
+          cores: cpuCount
+        },
+        memory: {
+          totalBytes: totalMem,
+          usedBytes: usedMem,
+          freeBytes: freeMem,
+          usagePercent: memUsagePercent,
+          totalGB: (totalMem / 1073741824).toFixed(1),
+          usedGB: (usedMem / 1073741824).toFixed(1)
+        },
+        disk: {
+          totalBytes: diskTotal,
+          usedBytes: diskUsed,
+          freeBytes: diskFree,
+          usagePercent: diskUsagePercent,
+          totalGB: (diskTotal / 1073741824).toFixed(1),
+          usedGB: (diskUsed / 1073741824).toFixed(1)
+        },
+        drives: drives,
+        uptime: uptimeStr,
+        uptimeSeconds,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return;
+  }
+
+  // Dashboard stats endpoint - aggregates catalog, orders, sales, inventory data
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/dashboard/stats') {
+    try {
+      const period = parsedUrl.searchParams?.get('period') || 'week';
+
+      // Calculate date range based on period
+      const now = new Date();
+      let startDate;
+      switch (period) {
+        case 'today':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'week':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'month':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'year':
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+        default:
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      }
+      const startDateStr = startDate.toISOString();
+
+      // Catalog stats - use catalog.json file, not database
+      let catalogStats = { totalDesigns: 0, categories: 0, localItems: 0, campaigns: 0, topCategories: [] };
+      try {
+        const catalog = loadCatalogSnapshot();
+        const categories = Array.isArray(catalog?.categories) ? catalog.categories : [];
+        catalogStats.categories = categories.length;
+
+        // Count total designs across all categories
+        let totalDesigns = 0;
+        const categoryCounts = {};
+        for (const cat of categories) {
+          const designCount = Array.isArray(cat.designs) ? cat.designs.length : 0;
+          totalDesigns += designCount;
+          if (cat.name) {
+            categoryCounts[cat.name] = designCount;
+          }
+        }
+        catalogStats.totalDesigns = totalDesigns;
+
+        // Top categories by design count
+        catalogStats.topCategories = Object.entries(categoryCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([name, count]) => ({ name, count }));
+      } catch (e) { console.error('[Dashboard] Catalog stats error:', e.message); }
+
+      // Local items count (inventory items)
+      try {
+        const localItems = db.listInventoryItems ? db.listInventoryItems() : [];
+        catalogStats.localItems = localItems.length;
+      } catch (e) {}
+
+      // Campaigns count - use local listCampaigns() function (reads from files)
+      try {
+        const campaigns = listCampaigns();
+        catalogStats.campaigns = campaigns.filter(c => c.status === 'active' || !c.status).length;
+      } catch (e) {}
+
+      // Orders stats - use db.fetchOrders()
+      let ordersStats = { pending: 0, processing: 0, completed: 0, total: 0, recentOrders: [] };
+      try {
+        const orders = db.fetchOrders ? db.fetchOrders() : [];
+        ordersStats.pending = orders.filter(o => o.status === 'pending' || o.status === 'new').length;
+        ordersStats.processing = orders.filter(o => o.status === 'processing' || o.status === 'in_progress').length;
+        ordersStats.completed = orders.filter(o => {
+          if (o.status !== 'completed' && o.status !== 'shipped') return false;
+          const completedDate = o.completedAt || o.updatedAt;
+          if (!completedDate) return false;
+          return new Date(completedDate) >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        }).length;
+        ordersStats.total = orders.filter(o => o.status !== 'completed' && o.status !== 'shipped' && o.status !== 'cancelled').length;
+        ordersStats.recentOrders = orders.slice(0, 5).map(o => ({
+          id: o.orderNumber || o.id,
+          design: o.title || 'Unknown',
+          status: o.status,
+          date: o.createdAt
+        }));
+      } catch (e) { console.error('[Dashboard] Orders stats error:', e.message); }
+
+      // Sales stats
+      let salesStats = { revenue: 0, orderCount: 0, avgOrder: 0, itemsSold: 0, topProducts: [] };
+      try {
+        // Use fetchOrders from db module
+        const allOrders = db.fetchOrders ? db.fetchOrders() : [];
+        const periodOrders = allOrders.filter(o => {
+          const orderDate = new Date(o.createdAt || o.date);
+          return orderDate >= startDate && (o.status === 'completed' || o.status === 'shipped' || o.status === 'paid');
+        });
+        salesStats.orderCount = periodOrders.length;
+        salesStats.revenue = periodOrders.reduce((sum, o) => sum + (o.totalCents || o.total || 0), 0) / 100;
+        salesStats.avgOrder = salesStats.orderCount > 0 ? salesStats.revenue / salesStats.orderCount : 0;
+        salesStats.itemsSold = periodOrders.reduce((sum, o) => sum + (o.quantity || o.itemCount || 1), 0);
+
+        // Top products
+        const productSales = {};
+        periodOrders.forEach(o => {
+          const name = o.productName || o.designTitle || 'Unknown';
+          productSales[name] = (productSales[name] || 0) + (o.quantity || 1);
+        });
+        salesStats.topProducts = Object.entries(productSales)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([name, sold]) => ({ name, sold }));
+      } catch (e) { console.error('[Dashboard] Sales stats error:', e.message); }
+
+      // Inventory stats
+      let inventoryStats = { totalItems: 0, lowStock: 0, outOfStock: 0, totalValue: 0, alerts: [] };
+      try {
+        const inventory = db.listInventoryItems ? db.listInventoryItems() : [];
+        inventoryStats.totalItems = inventory.length;
+        inventoryStats.lowStock = inventory.filter(i => i.quantity > 0 && i.quantity <= (i.lowStockThreshold || 5)).length;
+        inventoryStats.outOfStock = inventory.filter(i => i.quantity <= 0).length;
+        inventoryStats.totalValue = inventory.reduce((sum, i) => sum + ((i.quantity || 0) * (i.costCents || 0)), 0) / 100;
+
+        // Stock alerts
+        inventoryStats.alerts = inventory
+          .filter(i => i.quantity <= (i.lowStockThreshold || 5))
+          .slice(0, 5)
+          .map(i => ({
+            name: i.name || i.title || 'Unknown',
+            quantity: i.quantity,
+            status: i.quantity <= 0 ? 'out' : 'low'
+          }));
+      } catch (e) { console.error('[Dashboard] Inventory stats error:', e.message); }
+
+      sendJson(res, 200, {
+        success: true,
+        catalog: catalogStats,
+        orders: ordersStats,
+        sales: salesStats,
+        inventory: inventoryStats,
+        period,
+        generatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return;
+  }
+
+  // Dashboard - Social/Marketing stats (Facebook/Meta integration)
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/dashboard/social-stats') {
+    try {
+      const period = parsedUrl.searchParams?.get('period') || '7d';
+      const socialStats = await ads.getDashboardSocialStats(period);
+      sendJson(res, 200, {
+        success: true,
+        ...socialStats,
+        period,
+        generatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error('[Dashboard] Social stats error:', e.message);
+      sendJson(res, 500, { error: e.message });
+    }
+    return;
+  }
+
   if (req.method === 'GET' && segments[0] === 'productimages') {
     serveProductImage(req, res, segments);
     return;
   }
 
   if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname === '/api/catalog') {
-    serveCatalogResponse(req, res);
+    serveCatalogResponse(req, res, 'apparel');
+    return;
+  }
+
+  if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname === '/api/catalog/decal-icons') {
+    serveCatalogResponse(req, res, 'decal-icons');
     return;
   }
 
@@ -3425,6 +6442,149 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Metal Print Sublimation Filter API
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/metal-print/apply-filter') {
+    handleApplyMetalPrintFilter(req, res).catch(err => {
+      console.error('[Metal Print Filter Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Metal Print Campaign Export to Shopify (async - returns immediately with job ID)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/metal-print/export-campaign') {
+    if (!requireInternalKey(req, res)) return;
+    handleMetalPrintCampaignExport(req, res).catch(err => {
+      console.error('[Metal Print Campaign Export Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Metal Print Export Status endpoint
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/metal-print/export-status/')) {
+    const slug = parsedUrl.pathname.replace('/api/metal-print/export-status/', '');
+    handleMetalPrintExportStatus(req, res, slug).catch(err => {
+      console.error('[Metal Print Export Status Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // ============================================================================
+  // STICKER SHEET GENERATOR API
+  // ============================================================================
+
+  // List sticker categories
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sticker-sheets/categories') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetCategories(req, res).catch(err => {
+      console.error('[Sticker Sheet Categories Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // List stickers in a category
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sticker-sheets/catalog') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetCatalog(req, res, parsedUrl).catch(err => {
+      console.error('[Sticker Sheet Catalog Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Generate sticker sheets from manual selection
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/generate') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetGenerate(req, res).catch(err => {
+      console.error('[Sticker Sheet Generate Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Generate sticker sheets from Shopify order
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/from-order') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetFromOrder(req, res).catch(err => {
+      console.error('[Sticker Sheet From Order Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Get grid layout info (for UI preview)
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sticker-sheets/grid-info') {
+    if (!requireInternalKey(req, res)) return;
+    const sizeInches = parseFloat(parsedUrl.searchParams?.get('size') || parsedUrl.query?.size) || 3;
+    const grid = stickerSheets.calculateGridLayout(sizeInches);
+    sendJson(res, 200, {
+      success: true,
+      grid: {
+        cols: grid.cols,
+        rows: grid.rows,
+        capacity: grid.capacity,
+        stickerSizeInches: grid.stickerSizeInches,
+        sheetWidthInches: stickerSheets.SHEET_CONFIG.widthInches,
+        sheetHeightInches: stickerSheets.SHEET_CONFIG.heightInches
+      }
+    });
+    return;
+  }
+
+  // List generated sticker sheet batches
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sticker-sheets/list') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetsList(req, res).catch(err => {
+      console.error('[Sticker Sheets List Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // ===== TASK TRACKER API =====
+  // Get all active and recent tasks for dashboard display
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/tasks/status') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const summary = taskTracker.getTasksSummary();
+      sendJson(res, 200, { success: true, ...summary });
+    } catch (err) {
+      console.error('[Task Status Error]', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Get specific task by ID
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/tasks/')) {
+    if (!requireInternalKey(req, res)) return;
+    const taskId = parsedUrl.pathname.replace('/api/tasks/', '');
+    try {
+      const task = taskTracker.getTask(taskId);
+      if (task) {
+        sendJson(res, 200, { success: true, task });
+      } else {
+        sendJson(res, 404, { success: false, error: 'Task not found' });
+      }
+    } catch (err) {
+      console.error('[Task Get Error]', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Leonardo AI Image Generator API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/leonardo')) {
+    handleLeonardoRoute(parsedUrl.pathname, req, res).catch(err => {
+      console.error('[Leonardo API Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
   // Simple POD admin view: list open POD orders (not yet fully shipped)
   if (req.method === 'GET' && parsedUrl.pathname === '/orders/open') {
     try {
@@ -3577,6 +6737,101 @@ const requestHandler = async (req, res) => {
   if (req.method === 'GET' && parsedUrl.pathname === '/api/public/config') {
     const smsMsgsPerMonth = Number(process.env.SMS_MSGS_PER_MONTH || process.env.SMS_MESSAGES_PER_MONTH || 4) || 4;
     sendJson(res, 200, { success: true, smsMsgsPerMonth });
+    return;
+  }
+
+  // ============================================================================
+  // Car Templates API (Public - for race decal designer)
+  // ============================================================================
+
+  // GET /api/car-templates - List all car templates
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/car-templates') {
+    try {
+      const make = parsedUrl.query?.make || null;
+      const templates = db.listCarTemplates({ make: make || undefined, verified: true });
+      sendJson(res, 200, { success: true, templates });
+    } catch (error) {
+      console.error('Unable to list car templates:', error);
+      sendJson(res, 500, { error: 'Unable to load car templates.' });
+    }
+    return;
+  }
+
+  // GET /api/car-templates/makes - List distinct makes
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/car-templates/makes') {
+    try {
+      const makes = db.getDistinctCarMakes();
+      sendJson(res, 200, { success: true, makes });
+    } catch (error) {
+      console.error('Unable to list car makes:', error);
+      sendJson(res, 500, { error: 'Unable to load car makes.' });
+    }
+    return;
+  }
+
+  // GET /api/car-templates/models/:make - List models for a make
+  if (
+    req.method === 'GET' &&
+    segments[0] === 'api' &&
+    segments[1] === 'car-templates' &&
+    segments[2] === 'models' &&
+    segments[3]
+  ) {
+    try {
+      const make = decodeURIComponent(segments[3]);
+      const models = db.getCarModelsByMake(make);
+      sendJson(res, 200, { success: true, models });
+    } catch (error) {
+      console.error('Unable to list car models:', error);
+      sendJson(res, 500, { error: 'Unable to load car models.' });
+    }
+    return;
+  }
+
+  // GET /api/car-templates/find?make=X&model=Y&year=Z - Find matching template
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/car-templates/find') {
+    try {
+      const make = parsedUrl.query?.make || null;
+      const model = parsedUrl.query?.model || null;
+      const year = parseInt(parsedUrl.query?.year || '0', 10);
+      if (!make || !model || !year) {
+        sendJson(res, 400, { error: 'make, model, and year are required.' });
+        return;
+      }
+      const template = db.findCarTemplate(make, model, year);
+      if (!template) {
+        sendJson(res, 404, { error: 'No template found for this vehicle.', notFound: true });
+        return;
+      }
+      sendJson(res, 200, { success: true, template });
+    } catch (error) {
+      console.error('Unable to find car template:', error);
+      sendJson(res, 500, { error: 'Unable to find car template.' });
+    }
+    return;
+  }
+
+  // GET /api/car-templates/:id - Get specific template by ID
+  if (
+    req.method === 'GET' &&
+    segments[0] === 'api' &&
+    segments[1] === 'car-templates' &&
+    segments[2] &&
+    segments[2] !== 'makes' &&
+    segments[2] !== 'models' &&
+    segments[2] !== 'find'
+  ) {
+    try {
+      const template = db.getCarTemplateById(segments[2]);
+      if (!template) {
+        sendJson(res, 404, { error: 'Template not found.' });
+        return;
+      }
+      sendJson(res, 200, { success: true, template });
+    } catch (error) {
+      console.error('Unable to load car template:', error);
+      sendJson(res, 500, { error: 'Unable to load car template.' });
+    }
     return;
   }
 
@@ -3750,7 +7005,26 @@ const requestHandler = async (req, res) => {
           const current = readCampaign(slug);
           if (!current) { sendJson(res, 404, { error: 'Campaign not found.' }); return; }
           const payload = body ? JSON.parse(body || '{}') : {};
+
+          // Debug logging for OLD handler
+          console.log(`[OLD Campaign Update] Slug: ${slug}`);
+          if (payload.items && Array.isArray(payload.items) && payload.items.length > 0) {
+            console.log(`[OLD Campaign Update] Payload has ${payload.items.length} items`);
+            console.log(`[OLD Campaign Update] First item mockupImage: ${payload.items[0].mockupImage || 'NONE'}`);
+            console.log(`[OLD Campaign Update] First item shopifyProductId: ${payload.items[0].shopifyProductId || 'NONE'}`);
+          } else {
+            console.log(`[OLD Campaign Update] Payload items: ${JSON.stringify(payload.items).substring(0, 100)}`);
+          }
+          if (current.items && current.items.length > 0) {
+            console.log(`[OLD Campaign Update] Current first item mockupImage: ${current.items[0].mockupImage || 'NONE'}`);
+          }
+
           const updated = { ...current, ...payload, updatedAt: new Date().toISOString(), slug: current.slug };
+
+          if (updated.items && updated.items.length > 0) {
+            console.log(`[OLD Campaign Update] Updated first item mockupImage: ${updated.items[0].mockupImage || 'NONE'}`);
+          }
+
           writeCampaignFile(slug, updated);
           sendJson(res, 200, { success: true, campaign: updated });
         } catch (e) {
@@ -4177,6 +7451,25 @@ const requestHandler = async (req, res) => {
     function resolveAbsoluteFromCatalogPath(imagePath) {
       if (!imagePath) return null;
       try {
+        // Handle full URLs (https://blueridgecustomco.com/web/library/...)
+        if (imagePath.startsWith('https://') || imagePath.startsWith('http://')) {
+          try {
+            const urlObj = new URL(imagePath);
+            const pathname = urlObj.pathname;
+            // Check if it's a library path
+            if (pathname.includes('/web/library/')) {
+              const rel = decodeURIComponent(pathname.replace(/^.*\/web\/library\//, ''));
+              return path.join(LIBRARY_ROOT, rel);
+            }
+            // Otherwise treat as web path
+            if (pathname.startsWith('/web/')) {
+              const rel = decodeURIComponent(pathname.replace(/^\/web\//, ''));
+              return path.join(WEB_DIR, rel);
+            }
+          } catch {
+            return null;
+          }
+        }
         if (imagePath.startsWith('/api/library/')) {
           const rel = decodeURIComponent(imagePath.replace(/^\/api\/library\//, ''));
           return path.join(LIBRARY_ROOT, rel);
@@ -4334,9 +7627,17 @@ const requestHandler = async (req, res) => {
           const dir = path.dirname(abs);
           const base = path.basename(abs, path.extname(abs));
           const related = listSiblingFilesForBase(dir, base);
-          related.forEach((p) => deleteIfExists(p));
+
+          // Also delete source files if they exist (sources folder is sibling to previews)
+          const sourcesDir = path.join(path.dirname(dir), 'sources');
+          const sourceFiles = listSiblingFilesForBase(sourcesDir, base);
+
+          // Delete all related files (previews + sources)
+          const allFiles = [...related, ...sourceFiles];
+          allFiles.forEach((p) => deleteIfExists(p));
           await regenerateCatalog();
-          sendJson(res, 200, { success: true, deleted: related.length });
+          console.log(`[Catalog Delete] Deleted ${allFiles.length} files for design ${id}:`, allFiles.map(f => path.basename(f)));
+          sendJson(res, 200, { success: true, deleted: allFiles.length });
         } catch (err) {
           if (err?.expose) {
             sendJson(res, err.statusCode || 400, { error: err.message });
@@ -4719,6 +8020,192 @@ const requestHandler = async (req, res) => {
     }
   }
 
+  // ============================================================================
+  // MOCKUP BACKGROUNDS API - for print-station decal mockups
+  // ============================================================================
+  if (segments[0] === 'api' && segments[1] === 'mockup-backgrounds') {
+    // GET /api/mockup-backgrounds - List all backgrounds
+    // GET /api/mockup-backgrounds/:id - Get single background
+    if (req.method === 'GET') {
+      if (segments[2]) {
+        const bgId = sanitizeCopy(segments[2], 80);
+        const bg = db.getMockupBackgroundById(bgId);
+        if (!bg) {
+          sendJson(res, 404, { error: 'Background not found.' });
+          return;
+        }
+        sendJson(res, 200, { success: true, background: bg });
+        return;
+      }
+      try {
+        const category = parsedUrl.query?.category
+          ? sanitizeCopy(parsedUrl.query.category, 40)
+          : null;
+        const activeOnly = parsedUrl.query?.activeOnly !== 'false';
+        const backgrounds = db.listMockupBackgrounds({ category, activeOnly });
+        const categories = db.listMockupBackgroundCategories();
+        sendJson(res, 200, { success: true, backgrounds, categories });
+      } catch (error) {
+        console.error('Unable to list mockup backgrounds:', error);
+        sendJson(res, 500, { error: 'Unable to list backgrounds.' });
+      }
+      return;
+    }
+
+    // POST /api/mockup-backgrounds - Create new background
+    if (req.method === 'POST' && segments.length === 2) {
+      collectRequestBody(req, (error, body) => {
+        if (error) {
+          sendJson(res, 413, { error: error.message });
+          return;
+        }
+        try {
+          const payload = body ? JSON.parse(body || '{}') : {};
+          if (!payload.name || !payload.filePath) {
+            sendJson(res, 400, { error: 'name and filePath are required.' });
+            return;
+          }
+          const bg = db.createMockupBackground({
+            name: sanitizeCopy(payload.name, 100),
+            category: payload.category ? sanitizeCopy(payload.category, 50) : 'general',
+            description: payload.description ? sanitizeCopy(payload.description, 500) : null,
+            filePath: payload.filePath,
+            thumbnailPath: payload.thumbnailPath || null,
+            width: payload.width ? Number(payload.width) : null,
+            height: payload.height ? Number(payload.height) : null,
+            fileSize: payload.fileSize ? Number(payload.fileSize) : null,
+            tags: payload.tags ? sanitizeCopy(payload.tags, 200) : null,
+            defaultWidthPct: payload.defaultWidthPct ? Number(payload.defaultWidthPct) : 40,
+            defaultXOffset: payload.defaultXOffset ? Number(payload.defaultXOffset) : 0,
+            defaultYOffset: payload.defaultYOffset ? Number(payload.defaultYOffset) : 0,
+            active: payload.active !== false,
+            sortOrder: payload.sortOrder ? Number(payload.sortOrder) : 0
+          });
+          sendJson(res, 201, { success: true, background: bg });
+        } catch (err) {
+          console.error('Unable to create mockup background:', err);
+          sendJson(res, 500, { error: err.message || 'Unable to create background.' });
+        }
+      });
+      return;
+    }
+
+    // PATCH /api/mockup-backgrounds/:id - Update background
+    if (req.method === 'PATCH' && segments[2]) {
+      const bgId = sanitizeCopy(segments[2], 80);
+      const existing = db.getMockupBackgroundById(bgId);
+      if (!existing) {
+        sendJson(res, 404, { error: 'Background not found.' });
+        return;
+      }
+      collectRequestBody(req, (error, body) => {
+        if (error) {
+          sendJson(res, 413, { error: error.message });
+          return;
+        }
+        try {
+          const payload = body ? JSON.parse(body || '{}') : {};
+          const updates = {};
+          if (payload.name !== undefined) updates.name = sanitizeCopy(payload.name, 100);
+          if (payload.category !== undefined) updates.category = sanitizeCopy(payload.category, 50);
+          if (payload.description !== undefined) updates.description = payload.description ? sanitizeCopy(payload.description, 500) : null;
+          if (payload.filePath !== undefined) updates.filePath = payload.filePath;
+          if (payload.thumbnailPath !== undefined) updates.thumbnailPath = payload.thumbnailPath;
+          if (payload.width !== undefined) updates.width = Number(payload.width);
+          if (payload.height !== undefined) updates.height = Number(payload.height);
+          if (payload.fileSize !== undefined) updates.fileSize = Number(payload.fileSize);
+          if (payload.tags !== undefined) updates.tags = payload.tags ? sanitizeCopy(payload.tags, 200) : null;
+          if (payload.defaultWidthPct !== undefined) updates.defaultWidthPct = Number(payload.defaultWidthPct);
+          if (payload.defaultXOffset !== undefined) updates.defaultXOffset = Number(payload.defaultXOffset);
+          if (payload.defaultYOffset !== undefined) updates.defaultYOffset = Number(payload.defaultYOffset);
+          if (payload.active !== undefined) updates.active = !!payload.active;
+          if (payload.sortOrder !== undefined) updates.sortOrder = Number(payload.sortOrder);
+
+          if (!Object.keys(updates).length) {
+            sendJson(res, 400, { error: 'No update fields provided.' });
+            return;
+          }
+          const bg = db.updateMockupBackground(bgId, updates);
+          sendJson(res, 200, { success: true, background: bg });
+        } catch (err) {
+          console.error('Unable to update mockup background:', err);
+          sendJson(res, 500, { error: err.message || 'Unable to update background.' });
+        }
+      });
+      return;
+    }
+
+    // DELETE /api/mockup-backgrounds/:id - Delete background
+    if (req.method === 'DELETE' && segments[2]) {
+      const bgId = sanitizeCopy(segments[2], 80);
+      const existing = db.getMockupBackgroundById(bgId);
+      if (!existing) {
+        sendJson(res, 404, { error: 'Background not found.' });
+        return;
+      }
+      try {
+        db.deleteMockupBackground(bgId);
+        sendJson(res, 200, { success: true });
+      } catch (err) {
+        console.error('Unable to delete mockup background:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to delete background.' });
+      }
+      return;
+    }
+  }
+
+  // ============================================================================
+  // DATABASE BACKUP API
+  // ============================================================================
+  if (segments[0] === 'api' && segments[1] === 'backups') {
+    // List backups
+    if (req.method === 'GET' && segments.length === 2) {
+      try {
+        const backups = db.listBackups();
+        sendJson(res, 200, { success: true, backups });
+      } catch (error) {
+        console.error('Unable to list backups:', error);
+        sendJson(res, 500, { error: 'Unable to list backups.' });
+      }
+      return;
+    }
+
+    // Create manual backup
+    if (req.method === 'POST' && segments.length === 2) {
+      try {
+        const backupPath = db.createBackup('manual');
+        sendJson(res, 201, { success: true, path: backupPath });
+      } catch (error) {
+        console.error('Unable to create backup:', error);
+        sendJson(res, 500, { error: 'Unable to create backup.' });
+      }
+      return;
+    }
+
+    // Restore from backup
+    if (req.method === 'POST' && segments[2] === 'restore') {
+      collectRequestBody(req, (error, body) => {
+        if (error) {
+          sendJson(res, 413, { error: error.message });
+          return;
+        }
+        try {
+          const payload = body ? JSON.parse(body || '{}') : {};
+          if (!payload.backupPath) {
+            sendJson(res, 400, { error: 'backupPath is required.' });
+            return;
+          }
+          db.restoreFromBackup(payload.backupPath);
+          sendJson(res, 200, { success: true, message: 'Database restored. Server restart required.' });
+        } catch (err) {
+          console.error('Unable to restore backup:', err);
+          sendJson(res, 500, { error: err.message || 'Unable to restore backup.' });
+        }
+      });
+      return;
+    }
+  }
+
   if (req.method === 'GET' && parsedUrl.pathname === '/api/customer/profile') {
     const authHeader = req.headers.authorization || '';
     const token = authHeader.startsWith('Bearer ')
@@ -4949,6 +8436,250 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // =====================================================
+  // Shopify Product Sync - Fix all existing products
+  // =====================================================
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/shopify/sync-all-products') {
+    if (!requireInternalKey(req, res)) return;
+
+    // Use SSE to stream progress
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
+    });
+
+    const sendSSE = (event, data) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    (async () => {
+      try {
+        sendSSE('status', { message: 'Starting Shopify product sync...' });
+
+        if (!shopify.isConfigured()) {
+          sendSSE('error', { message: 'Shopify not configured' });
+          res.end();
+          return;
+        }
+
+        // Get default inventory value from body or use 999
+        let defaultInventory = 999;
+        try {
+          const bodyRaw = await new Promise((resolve, reject) => {
+            let data = '';
+            req.on('data', chunk => data += chunk);
+            req.on('end', () => resolve(data));
+            req.on('error', reject);
+          });
+          if (bodyRaw) {
+            const parsed = JSON.parse(bodyRaw);
+            if (parsed.defaultInventory) defaultInventory = Number(parsed.defaultInventory) || 999;
+          }
+        } catch (_) {}
+
+        // Get the first location for inventory
+        let locationId = null;
+        try {
+          const locations = await shopify.listLocations();
+          if (locations.length > 0) {
+            locationId = locations[0].id;
+            sendSSE('status', { message: `Using location: ${locations[0].name} (ID: ${locationId})` });
+          }
+        } catch (e) {
+          sendSSE('warning', { message: 'Could not get locations for inventory sync' });
+        }
+
+        // Patterns to clean from titles (AI residue)
+        const aiPatterns = [
+          /\s*[-–—]\s*(Vinyl\s+)?Decal\s*$/i,
+          /\s*[-–—]\s*Premium\s+Quality\s*$/i,
+          /\s*[-–—]\s*High\s+Quality\s*$/i,
+          /\s*[-–—]\s*Die[\s-]?Cut\s*$/i,
+          /\s*[-–—]\s*Sticker\s*$/i,
+          /\s*\|\s*.*$/,  // Everything after a pipe
+          /\s*–\s*Custom\s+Made\s*$/i,
+          /\s*-\s*Made\s+in\s+USA\s*$/i,
+          /^\s*NEW!\s*/i,
+          /^\s*HOT!\s*/i,
+          /^\s*SALE!\s*/i,
+          /\s+vinyl\s+decal\s+sticker\s*$/i,
+          /\s+car\s+window\s+decal\s*$/i,
+          /\s+bumper\s+sticker\s*$/i
+        ];
+
+        const cleanTitle = (title) => {
+          let cleaned = title || '';
+          for (const pattern of aiPatterns) {
+            cleaned = cleaned.replace(pattern, '');
+          }
+          // Trim and clean up extra spaces
+          cleaned = cleaned.replace(/\s+/g, ' ').trim();
+          return cleaned;
+        };
+
+        // Template suffix mapping based on product type or tags
+        const getTemplateSuffix = (product) => {
+          const tags = (product.tags || '').toLowerCase();
+          const productType = (product.product_type || '').toLowerCase();
+          const title = (product.title || '').toLowerCase();
+
+          if (tags.includes('custom-art') || tags.includes('custom art') ||
+              productType.includes('custom art') || productType.includes('wall art')) {
+            return 'custom-art';
+          }
+          if (tags.includes('tiled-art') || tags.includes('tiled art') ||
+              productType.includes('tiled art') || title.includes('tiled')) {
+            return 'tiled-art';
+          }
+          // Sticker packs use a simple sticker template (no color/size options)
+          if (productType === 'sticker-pack' || tags.includes('sticker-pack')) {
+            return 'sticker';
+          }
+          // Decal/sticker products use the decal template with vinyl color selector
+          if (productType === 'sticker' || productType === 'decal' ||
+              tags.includes('decal') || tags.includes('sticker') ||
+              tags.includes('vinyl')) {
+            return 'decal';
+          }
+          // Default: no suffix (uses default product template)
+          return '';
+        };
+
+        // Fetch all products using pagination
+        let allProducts = [];
+        let lastId = null;
+        let page = 0;
+
+        sendSSE('status', { message: 'Fetching all products from Shopify...' });
+
+        do {
+          page++;
+          const result = await shopify.listProducts({ limit: 250, since_id: lastId });
+          if (result.products && result.products.length > 0) {
+            allProducts = allProducts.concat(result.products);
+            lastId = result.lastId;
+            sendSSE('progress', { message: `Fetched ${allProducts.length} products (page ${page})...` });
+          } else {
+            lastId = null;
+          }
+        } while (lastId);
+
+        sendSSE('status', { message: `Found ${allProducts.length} products to sync` });
+
+        // Process each product
+        let processed = 0;
+        let updated = 0;
+        let errors = 0;
+
+        for (const product of allProducts) {
+          processed++;
+          const productLog = { id: product.id, title: product.title };
+
+          try {
+            const updates = {};
+            const actions = [];
+
+            // 1. Clean title
+            const cleanedTitle = cleanTitle(product.title);
+            if (cleanedTitle !== product.title) {
+              updates.title = cleanedTitle;
+              actions.push(`Title cleaned: "${product.title}" → "${cleanedTitle}"`);
+            }
+
+            // 2. Set vendor
+            if (product.vendor !== 'Blue Ridge Custom Co') {
+              updates.vendor = 'Blue Ridge Custom Co';
+              actions.push(`Vendor: "${product.vendor}" → "Blue Ridge Custom Co"`);
+            }
+
+            // 3. Set template suffix
+            const templateSuffix = getTemplateSuffix(product);
+            if ((product.template_suffix || '') !== templateSuffix) {
+              updates.template_suffix = templateSuffix;
+              if (templateSuffix) {
+                actions.push(`Template: "${product.template_suffix || 'default'}" → "${templateSuffix}"`);
+              }
+            }
+
+            // 4. Apply updates if any
+            if (Object.keys(updates).length > 0) {
+              await shopify.updateProduct(product.id, updates);
+              updated++;
+            }
+
+            // 5. Publish to all channels
+            try {
+              await shopify.publishEverywhere(product.id);
+              actions.push('Published to all channels');
+            } catch (pubErr) {
+              actions.push(`Publish warning: ${pubErr.message}`);
+            }
+
+            // 6. Fix inventory for all variants
+            if (locationId && product.variants && product.variants.length > 0) {
+              for (const variant of product.variants) {
+                if (variant.inventory_item_id) {
+                  try {
+                    // Ensure inventory tracking is enabled
+                    if (variant.inventory_management !== 'shopify') {
+                      await shopify.updateVariantInventoryManagement(variant.id, 'shopify');
+                    }
+                    // Set inventory level
+                    await shopify.setInventoryLevel(variant.inventory_item_id, locationId, defaultInventory);
+                  } catch (invErr) {
+                    // Try to connect first, then set
+                    try {
+                      await shopify.connectInventoryItemToLocation(variant.inventory_item_id, locationId);
+                      await shopify.setInventoryLevel(variant.inventory_item_id, locationId, defaultInventory);
+                    } catch (_) {}
+                  }
+                }
+              }
+              actions.push(`Inventory set to ${defaultInventory} for ${product.variants.length} variant(s)`);
+            }
+
+            sendSSE('product', {
+              index: processed,
+              total: allProducts.length,
+              id: product.id,
+              title: cleanedTitle || product.title,
+              actions: actions.length > 0 ? actions : ['No changes needed']
+            });
+
+          } catch (err) {
+            errors++;
+            sendSSE('product-error', {
+              index: processed,
+              total: allProducts.length,
+              id: product.id,
+              title: product.title,
+              error: err.message
+            });
+          }
+
+          // Small delay to avoid rate limiting
+          await new Promise(r => setTimeout(r, 100));
+        }
+
+        sendSSE('complete', {
+          total: allProducts.length,
+          updated,
+          errors,
+          message: `Sync complete! ${updated} products updated, ${errors} errors`
+        });
+
+      } catch (err) {
+        sendSSE('error', { message: err.message || 'Sync failed' });
+      }
+
+      res.end();
+    })();
+
+    return;
+  }
+
   // AI Metadata Generation for Catalog (Server-Sent Events)
   if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/catalog/generate-metadata') {
     if (!requireInternalKey(req, res)) return;
@@ -5014,6 +8745,177 @@ const requestHandler = async (req, res) => {
           res.write(`data: ${JSON.stringify({ type: 'error', error: err.message || 'Generation failed' })}\n\n`);
           res.end();
         }
+      }
+    });
+    return;
+  }
+
+  // OCR Text Extraction for Catalog Items (Server-Sent Events)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/catalog/ocr-extract') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(body || '{}');
+        const categorySlug = payload.categorySlug;
+        const minConfidence = payload.minConfidence || 30;
+
+        if (!categorySlug) {
+          sendJson(res, 400, { error: 'categorySlug is required.' });
+          return;
+        }
+
+        // Verify category exists
+        const categoryDir = findCategoryDirectory(categorySlug);
+        if (!categoryDir) {
+          sendJson(res, 404, { error: `Category not found: ${categorySlug}` });
+          return;
+        }
+
+        // Set up Server-Sent Events
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Access-Control-Allow-Origin': '*'
+        });
+
+        const sendEvent = (data) => {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        };
+
+        sendEvent({ type: 'start', categorySlug, categoryDir });
+
+        await runCategoryOcr(categorySlug, {
+          minConfidence,
+          onProgress: (progress) => {
+            sendEvent({ type: 'progress', ...progress });
+          },
+          onComplete: async (summary) => {
+            // Optionally update catalog.json with OCR results
+            try {
+              const catalogJsonPath = path.join(WEB_DIR, 'catalog.json');
+              const updated = await updateCatalogWithOcr(categorySlug, summary.results, catalogJsonPath);
+              console.log(`[OCR] Updated catalog.json with ${updated} OCR entries for ${categorySlug}`);
+              summary.catalogUpdated = updated;
+            } catch (updateError) {
+              console.error('[OCR] Failed to update catalog.json:', updateError);
+              summary.catalogUpdateError = updateError.message;
+            }
+            sendEvent({ type: 'complete', ...summary });
+            res.end();
+          },
+          onError: (error) => {
+            sendEvent({ type: 'error', error: error.message || 'OCR extraction failed' });
+            res.end();
+          }
+        });
+      } catch (err) {
+        console.error('[OCR] Extraction error:', err);
+        if (!res.headersSent) {
+          sendJson(res, 500, { error: err.message || 'Failed to run OCR extraction.' });
+        } else {
+          res.write(`data: ${JSON.stringify({ type: 'error', error: err.message || 'OCR extraction failed' })}\n\n`);
+          res.end();
+        }
+      }
+    });
+    return;
+  }
+
+  // Get available categories for OCR
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/admin/catalog/categories') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const entries = fs.readdirSync(LIBRARY_ROOT, { withFileTypes: true });
+      const categories = entries
+        .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+        .map(e => ({
+          name: e.name,
+          slug: e.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      sendJson(res, 200, { categories });
+    } catch (err) {
+      console.error('[OCR] Error listing categories:', err);
+      sendJson(res, 500, { error: err.message || 'Failed to list categories.' });
+    }
+    return;
+  }
+
+  // Get items in a category for local OCR processing
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/admin/catalog/ocr-items') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const query = parsedUrl.query || {};
+      const categorySlug = query.categorySlug;
+      if (!categorySlug) {
+        sendJson(res, 400, { error: 'categorySlug is required' });
+        return;
+      }
+
+      const items = getOcrCategoryItems(categorySlug);
+      sendJson(res, 200, { items });
+    } catch (err) {
+      console.error('[OCR] Error getting category items:', err);
+      sendJson(res, 500, { error: err.message || 'Failed to get category items.' });
+    }
+    return;
+  }
+
+  // Save OCR results from local processing
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/catalog/ocr-results') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(body || '{}');
+        const { categorySlug, results } = payload;
+
+        if (!categorySlug || !results) {
+          sendJson(res, 400, { error: 'categorySlug and results are required' });
+          return;
+        }
+
+        // Save results to a JSON file in the data directory
+        const ocrDataDir = path.join(DATA_DIR, 'ocr-results');
+        fs.mkdirSync(ocrDataDir, { recursive: true });
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `${categorySlug}-${timestamp}.json`;
+        const filepath = path.join(ocrDataDir, filename);
+
+        const successResults = results.filter(r => r.status === 'success');
+        fs.writeFileSync(filepath, JSON.stringify({
+          categorySlug,
+          timestamp: new Date().toISOString(),
+          totalProcessed: results.length,
+          successCount: successResults.length,
+          results: successResults
+        }, null, 2));
+
+        console.log(`[OCR] Saved ${successResults.length} OCR results for ${categorySlug} to ${filename}`);
+
+        // Also try to update catalog.json if it exists
+        try {
+          await updateCatalogWithOcr(categorySlug, results, path.join(WEB_DIR, 'catalog.json'));
+        } catch (catalogErr) {
+          console.warn('[OCR] Could not update catalog.json:', catalogErr.message);
+        }
+
+        sendJson(res, 200, { success: true, saved: successResults.length, file: filename });
+      } catch (err) {
+        console.error('[OCR] Error saving results:', err);
+        sendJson(res, 500, { error: err.message || 'Failed to save OCR results.' });
       }
     });
     return;
@@ -6510,6 +10412,12 @@ const requestHandler = async (req, res) => {
         return;
       }
       const body = await getReqBodyJson(req);
+      // Debug: Log mockup data being saved
+      if (body.items && Array.isArray(body.items) && body.items.length > 0) {
+        console.log(`[Campaign Update] Saving ${body.items.length} items for campaign ${slug}`);
+        console.log(`[Campaign Update] First item mockupImage: ${body.items[0].mockupImage || 'NONE'}`);
+        console.log(`[Campaign Update] First item shopifyProductId: ${body.items[0].shopifyProductId || 'NONE'}`);
+      }
       const campaign = {
         ...existing,
         title: body.title !== undefined ? body.title : existing.title,
@@ -6552,6 +10460,554 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Campaign mockup save endpoint
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/campaigns/save-mockup') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { campaignId, mockupBase64, filename } = body;
+
+      if (!campaignId) {
+        sendJson(res, 400, { error: 'campaignId is required.' });
+        return;
+      }
+      if (!mockupBase64) {
+        sendJson(res, 400, { error: 'mockupBase64 is required.' });
+        return;
+      }
+
+      // Find the campaign file by ID (campaignId could be the slug)
+      const slug = sanitizeCampaignSlug(campaignId);
+      const campaign = readCampaign(slug);
+      if (!campaign) {
+        sendJson(res, 404, { error: 'Campaign not found.' });
+        return;
+      }
+
+      // Create campaign mockups directory if needed
+      const mockupsDir = path.join(CAMPAIGNS_DIR, 'mockups');
+      if (!fs.existsSync(mockupsDir)) {
+        fs.mkdirSync(mockupsDir, { recursive: true });
+      }
+
+      // Save the mockup image
+      const mockupFilename = filename || `campaign-mockup-${slug}-${Date.now()}.jpg`;
+      const mockupPath = path.join(mockupsDir, mockupFilename);
+      const imageBuffer = Buffer.from(mockupBase64, 'base64');
+      fs.writeFileSync(mockupPath, imageBuffer);
+
+      // Update campaign with mockup path
+      const relativeMockupPath = `/uploads/campaigns/mockups/${mockupFilename}`;
+      campaign.mockupImage = relativeMockupPath;
+      campaign.updatedAt = new Date().toISOString();
+      writeCampaignFile(slug, campaign);
+
+      // Get image dimensions if sharp is available
+      let width = null, height = null;
+      if (sharp) {
+        try {
+          const meta = await sharp(mockupPath).metadata();
+          width = meta.width;
+          height = meta.height;
+        } catch (_) {}
+      }
+
+      // Create a mockup record in the database for campaign mockups too
+      const mockupId = db.createCustomArtMockup({
+        title: `${campaign.name || slug} Campaign Mockup`,
+        filename: mockupFilename,
+        filePath: mockupPath,
+        url: relativeMockupPath,
+        productId: null,
+        artworkId: null,
+        roomId: null,
+        campaignSlug: slug,
+        materialId: null,
+        mockupType: 'campaign',
+        width,
+        height,
+        fileSize: imageBuffer.length,
+        tags: null,
+        notes: null
+      });
+
+      console.log(`[Campaign Mockup] Saved mockup ${mockupId} for campaign ${slug}: ${relativeMockupPath}`);
+      sendJson(res, 200, { success: true, mockupId, mockupPath: relativeMockupPath });
+    } catch (e) {
+      console.error('[Campaign Mockup] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to save campaign mockup.' });
+    }
+    return;
+  }
+
+  // ============================================================================
+  // FACEBOOK POST SCHEDULING & MOCKUP TEMPLATE ENDPOINTS
+  // ============================================================================
+
+  // Create/Update Mockup Template
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/facebook/mockup-templates') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { campaignSlug, name, mockupImagePath, artworkPosition, blendMode, outputFormat, outputQuality } = body;
+
+      if (!campaignSlug || !mockupImagePath || !artworkPosition) {
+        sendJson(res, 400, { error: 'campaignSlug, mockupImagePath, and artworkPosition are required.' });
+        return;
+      }
+
+      const template = db.createMockupTemplate({
+        campaignSlug,
+        name: name || 'Default Template',
+        mockupImagePath,
+        artworkPosition,
+        blendMode,
+        outputFormat,
+        outputQuality
+      });
+
+      sendJson(res, 201, { success: true, template });
+    } catch (e) {
+      console.error('[Mockup Template] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to create mockup template.' });
+    }
+    return;
+  }
+
+  // List ALL mockup templates
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/facebook/mockup-templates') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const templates = db.listAllMockupTemplates();
+      sendJson(res, 200, { success: true, templates });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to fetch templates.' });
+    }
+    return;
+  }
+
+  // Get mockup templates for a specific campaign
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/facebook/mockup-templates/')) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const campaignSlug = parsedUrl.pathname.split('/').pop();
+      const templates = db.getMockupTemplatesByCampaign(campaignSlug);
+      sendJson(res, 200, { success: true, templates });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to fetch templates.' });
+    }
+    return;
+  }
+
+  // Update mockup template
+  if (req.method === 'PUT' && parsedUrl.pathname.startsWith('/api/facebook/mockup-templates/')) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const templateId = parsedUrl.pathname.split('/').pop();
+      const body = await getReqBodyJson(req);
+      const template = db.updateMockupTemplate(templateId, body);
+      sendJson(res, 200, { success: true, template });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update template.' });
+    }
+    return;
+  }
+
+  // Delete mockup template
+  if (req.method === 'DELETE' && parsedUrl.pathname.startsWith('/api/facebook/mockup-templates/')) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const templateId = parsedUrl.pathname.split('/').pop();
+      db.deleteMockupTemplate(templateId);
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to delete template.' });
+    }
+    return;
+  }
+
+  // Schedule Facebook posts for a campaign
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/facebook/schedule-campaign') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { campaignSlug, templateId, postText, postHashtags, collectionUrl, startDate, intervalHours, excludeProductUids } = body;
+
+      if (!campaignSlug) {
+        sendJson(res, 400, { error: 'campaignSlug is required.' });
+        return;
+      }
+
+      // Load campaign
+      const campaign = readCampaign(campaignSlug);
+      if (!campaign) {
+        sendJson(res, 404, { error: 'Campaign not found.' });
+        return;
+      }
+
+      // Import scheduler
+      const { schedulePostsForCampaign } = require('./lib/facebook-post-scheduler');
+
+      const result = schedulePostsForCampaign(campaign, db, {
+        templateId,
+        postText,
+        postHashtags,
+        collectionUrl,
+        startDate,
+        intervalHours: intervalHours || 24,
+        excludeProductUids: excludeProductUids || []
+      });
+
+      sendJson(res, 200, { success: true, ...result });
+    } catch (e) {
+      console.error('[FB Schedule Campaign] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to schedule campaign posts.' });
+    }
+    return;
+  }
+
+  // List scheduled posts
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/facebook/scheduled-posts') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const { campaignSlug, status, fromDate, toDate, limit, offset } = parsedUrl.query || {};
+      const posts = db.listScheduledPosts({
+        campaignSlug,
+        status,
+        fromDate,
+        toDate,
+        limit: Number(limit) || 100,
+        offset: Number(offset) || 0
+      });
+      sendJson(res, 200, { posts, count: posts.length });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to fetch scheduled posts.' });
+    }
+    return;
+  }
+
+  // Create a single scheduled post
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/facebook/scheduled-posts') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const post = db.createScheduledPost(body);
+      sendJson(res, 201, { success: true, post });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to create scheduled post.' });
+    }
+    return;
+  }
+
+  // Update a scheduled post
+  if (req.method === 'PUT' && parsedUrl.pathname.startsWith('/api/facebook/scheduled-posts/')) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const postId = parsedUrl.pathname.split('/').pop();
+      const body = await getReqBodyJson(req);
+      const post = db.updateScheduledPost(postId, body);
+      sendJson(res, 200, { success: true, post });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update scheduled post.' });
+    }
+    return;
+  }
+
+  // Delete a scheduled post
+  if (req.method === 'DELETE' && parsedUrl.pathname.startsWith('/api/facebook/scheduled-posts/')) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const postId = parsedUrl.pathname.split('/').pop();
+      db.deleteScheduledPost(postId);
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to delete scheduled post.' });
+    }
+    return;
+  }
+
+  // Post a single scheduled post immediately
+  if (req.method === 'POST' && parsedUrl.pathname.match(/^\/api\/facebook\/scheduled-posts\/[^/]+\/post$/)) {
+    console.log('[FB Post Now] Received request:', parsedUrl.pathname);
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const pathParts = parsedUrl.pathname.split('/');
+      const postId = pathParts[pathParts.length - 2]; // Get ID before /post
+      console.log('[FB Post Now] Post ID:', postId);
+
+      const post = db.getScheduledPostById(postId);
+      console.log('[FB Post Now] Found post:', post ? 'yes' : 'no', post ? JSON.stringify(post).substring(0, 200) : '');
+      if (!post) {
+        sendJson(res, 404, { error: 'Scheduled post not found.' });
+        return;
+      }
+
+      const { processScheduledPost } = require('./lib/facebook-post-scheduler');
+      console.log('[FB Post Now] Processing post...');
+      const result = await processScheduledPost(post, db);
+      console.log('[FB Post Now] Result:', JSON.stringify(result).substring(0, 500));
+
+      if (result.success) {
+        sendJson(res, 200, { success: true, facebookPostId: result.facebookPostId });
+      } else {
+        sendJson(res, 500, { success: false, error: result.error });
+      }
+    } catch (e) {
+      console.error('[FB Post Now] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to post now.' });
+    }
+    return;
+  }
+
+  // Retry a failed scheduled post
+  if (req.method === 'POST' && parsedUrl.pathname.match(/^\/api\/facebook\/scheduled-posts\/[^/]+\/retry$/)) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const pathParts = parsedUrl.pathname.split('/');
+      const postId = pathParts[pathParts.length - 2]; // Get ID before /retry
+
+      const post = db.getScheduledPostById(postId);
+      if (!post) {
+        sendJson(res, 404, { error: 'Scheduled post not found.' });
+        return;
+      }
+
+      // Reset status to pending so it can be processed
+      db.updateScheduledPost(postId, { status: 'pending', error: null });
+
+      const { processScheduledPost } = require('./lib/facebook-post-scheduler');
+      const result = await processScheduledPost(post, db);
+
+      if (result.success) {
+        sendJson(res, 200, { success: true, facebookPostId: result.facebookPostId });
+      } else {
+        sendJson(res, 500, { success: false, error: result.error });
+      }
+    } catch (e) {
+      console.error('[FB Retry Post] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to retry post.' });
+    }
+    return;
+  }
+
+  // Process pending posts now (manual trigger)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/facebook/process-pending') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const { processPendingPosts } = require('./lib/facebook-post-scheduler');
+      const results = await processPendingPosts(db);
+      sendJson(res, 200, { success: true, ...results });
+    } catch (e) {
+      console.error('[FB Process Pending] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to process pending posts.' });
+    }
+    return;
+  }
+
+  // Preview mockup generation (without posting)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/facebook/preview-mockup') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { templateId, artworkPath } = body;
+
+      if (!templateId || !artworkPath) {
+        sendJson(res, 400, { error: 'templateId and artworkPath are required.' });
+        return;
+      }
+
+      const template = db.getMockupTemplateById(templateId);
+      if (!template) {
+        sendJson(res, 404, { error: 'Template not found.' });
+        return;
+      }
+
+      const { previewTemplate } = require('./lib/mockup-compositor');
+      const preview = await previewTemplate(
+        {
+          mockupImagePath: template.mockupImagePath,
+          artworkPosition: template.artworkPosition,
+          blendMode: template.blendMode,
+          outputFormat: template.outputFormat,
+          outputQuality: template.outputQuality
+        },
+        artworkPath
+      );
+
+      sendJson(res, 200, { success: true, preview: preview.dataUrl });
+    } catch (e) {
+      console.error('[Mockup Preview] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to generate preview.' });
+    }
+    return;
+  }
+
+  // Get insights for a single Facebook post
+  if (req.method === 'GET' && parsedUrl.pathname.match(/^\/api\/facebook\/posts\/[^/]+\/insights$/)) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const pathParts = parsedUrl.pathname.split('/');
+      const facebookPostId = pathParts[4]; // /api/facebook/posts/{id}/insights
+
+      const { getPostInsights } = require('./lib/facebook-post-scheduler');
+      const insights = await getPostInsights(facebookPostId);
+      sendJson(res, 200, { success: true, insights });
+    } catch (e) {
+      console.error('[FB Insights] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to fetch insights.' });
+    }
+    return;
+  }
+
+  // Get insights for published scheduled posts (with pagination)
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/facebook/scheduled-posts/insights') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      // Parse pagination params
+      const limit = parseInt(parsedUrl.query?.limit) || 20;
+      const offset = parseInt(parsedUrl.query?.offset) || 0;
+
+      // Get all published posts with Facebook IDs
+      const posts = db.listScheduledPosts({ status: 'published' });
+      const postsWithFbIds = posts.filter(p => p.facebookPostId);
+      const totalCount = postsWithFbIds.length;
+
+      if (totalCount === 0) {
+        sendJson(res, 200, { success: true, insights: [], totalCount: 0, limit, offset, message: 'No published posts with Facebook IDs found.' });
+        return;
+      }
+
+      // Apply pagination - slice posts for this page
+      const paginatedPosts = postsWithFbIds.slice(offset, offset + limit);
+
+      const { getPostInsights } = require('./lib/facebook-post-scheduler');
+
+      // Fetch insights for each post in this page
+      const insightsResults = [];
+      for (const post of paginatedPosts) {
+        try {
+          const insights = await getPostInsights(post.facebookPostId);
+          insightsResults.push({
+            scheduledPostId: post.id,
+            productName: post.productName,
+            campaignSlug: post.campaignSlug,
+            publishedAt: post.publishedAt,
+            ...insights
+          });
+        } catch (err) {
+          insightsResults.push({
+            scheduledPostId: post.id,
+            productName: post.productName,
+            campaignSlug: post.campaignSlug,
+            facebookPostId: post.facebookPostId,
+            error: err.message
+          });
+        }
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      sendJson(res, 200, { success: true, insights: insightsResults, totalCount, limit, offset });
+    } catch (e) {
+      console.error('[FB Insights Bulk] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to fetch insights.' });
+    }
+    return;
+  }
+
+  // Get insights summary (aggregated stats)
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/facebook/insights/summary') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const { campaignSlug, days } = parsedUrl.query || {};
+      const daysAgo = parseInt(days) || 30;
+      const cutoffDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+
+      // Get published posts
+      const allPosts = db.listScheduledPosts({ status: 'published' });
+      let posts = allPosts.filter(p => p.facebookPostId && p.publishedAt >= cutoffDate);
+
+      if (campaignSlug) {
+        posts = posts.filter(p => p.campaignSlug === campaignSlug);
+      }
+
+      if (posts.length === 0) {
+        sendJson(res, 200, {
+          success: true,
+          summary: {
+            totalPosts: 0,
+            totalLikes: 0,
+            totalComments: 0,
+            totalShares: 0,
+            totalReach: 0,
+            totalImpressions: 0,
+            avgEngagementRate: '0.00',
+            topPosts: []
+          }
+        });
+        return;
+      }
+
+      const { getPostInsights } = require('./lib/facebook-post-scheduler');
+
+      // Fetch insights for each
+      const allInsights = [];
+      for (const post of posts) {
+        try {
+          const insights = await getPostInsights(post.facebookPostId);
+          allInsights.push({
+            ...insights,
+            scheduledPostId: post.id,
+            productName: post.productName,
+            campaignSlug: post.campaignSlug
+          });
+        } catch (err) {
+          console.log(`[FB Insights] Failed to fetch for ${post.facebookPostId}: ${err.message}`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // Calculate summary
+      const summary = {
+        totalPosts: allInsights.length,
+        totalLikes: allInsights.reduce((sum, i) => sum + (i.likes || 0), 0),
+        totalComments: allInsights.reduce((sum, i) => sum + (i.comments || 0), 0),
+        totalShares: allInsights.reduce((sum, i) => sum + (i.shares || 0), 0),
+        totalReach: allInsights.reduce((sum, i) => sum + (i.reach || 0), 0),
+        totalImpressions: allInsights.reduce((sum, i) => sum + (i.impressions || 0), 0),
+        avgEngagementRate: '0.00',
+        topPosts: []
+      };
+
+      // Calculate average engagement rate
+      if (summary.totalReach > 0) {
+        const totalEngagement = summary.totalLikes + summary.totalComments + summary.totalShares;
+        summary.avgEngagementRate = (totalEngagement / summary.totalReach * 100).toFixed(2);
+      }
+
+      // Get top 5 posts by engagement
+      summary.topPosts = allInsights
+        .sort((a, b) => (b.likes + b.comments + b.shares) - (a.likes + a.comments + a.shares))
+        .slice(0, 5)
+        .map(i => ({
+          productName: i.productName,
+          campaignSlug: i.campaignSlug,
+          likes: i.likes,
+          comments: i.comments,
+          shares: i.shares,
+          reach: i.reach,
+          engagementRate: i.engagementRate,
+          permalinkUrl: i.permalinkUrl
+        }));
+
+      sendJson(res, 200, { success: true, summary, period: `${daysAgo} days` });
+    } catch (e) {
+      console.error('[FB Insights Summary] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to generate insights summary.' });
+    }
+    return;
+  }
+
   // Internal: Export campaign to Shopify (requires INTERNAL_API_KEY)
   if (
     req.method === 'POST' &&
@@ -6578,6 +11034,7 @@ const requestHandler = async (req, res) => {
           )
         : null;
       const force = parsedUrl.query?.force === '1' || parsedUrl.query?.force === 'true';
+      const skipMockups = parsedUrl.query?.skipMockups === '1' || parsedUrl.query?.skipMockups === 'true';
       const campaign = readCampaign(slug);
       if (!campaign) { sendJson(res, 404, { error: 'Campaign not found.' }); return; }
 
@@ -6595,7 +11052,8 @@ const requestHandler = async (req, res) => {
       fs.writeFileSync(statePath, JSON.stringify({ jobId, slug, total, processed: 0, ok: 0, fail: 0, startedAt: new Date().toISOString(), done: false, only: onlySet ? Array.from(onlySet) : null }, null, 2));
 
       const delay = (ms) => new Promise((r) => setTimeout(r, ms));
-      const rateLimitMs = Number(process.env.SHOPIFY_EXPORT_RATE_LIMIT_MS || process.env.SHOPIFY_REQUEST_DELAY_MS || 250);
+      // Delay between items to avoid rate limit issues
+      const rateLimitMs = Number(process.env.SHOPIFY_EXPORT_RATE_LIMIT_MS || process.env.SHOPIFY_REQUEST_DELAY_MS || 600);
 
       setImmediate(async () => {
         const assetRoot = process.env.ASSET_BASE_URL || process.env.STORE_BASE_URL || '';
@@ -6669,12 +11127,24 @@ const requestHandler = async (req, res) => {
           // Encode spaces in shared mockup image URL for Shopify compatibility
           const sharedMockupImageEncoded = sharedMockupImage ? sharedMockupImage.replace(/ /g, '%20') : null;
           const sharedMockupName = selectedMockupItem ? selectedMockupItem.name || '' : '';
-          if (
-            collectionId &&
-            mockupStrategy.mode === 'campaign' &&
-            sharedMockupImage
-          ) {
+
+          // Update collection description and image (always, not just for campaign mockup mode)
+          if (collectionId) {
             try {
+              // Determine which mockup image to use for the collection
+              let collectionMockupUrl = null;
+              if (mockupStrategy.mode === 'campaign' && sharedMockupImage) {
+                // Use shared mockup if in campaign mode
+                collectionMockupUrl = sharedMockupImageEncoded;
+              } else {
+                // Use first item's mockup if available (per-item mode)
+                const firstItemWithMockup = items.find((it) => it.mockupImage);
+                if (firstItemWithMockup) {
+                  const url = buildPublicAssetUrl(firstItemWithMockup.mockupImage, assetRoot);
+                  collectionMockupUrl = url ? url.replace(/ /g, '%20') : null;
+                }
+              }
+
               // Build rich HTML description for collection landing page
               const collectionDescriptionParts = [];
 
@@ -6719,10 +11189,12 @@ const requestHandler = async (req, res) => {
 
               // Upload mockup image to Shopify by setting it as the collection's image
               // Shopify will automatically upload it to their CDN
-              await shopify.updateCustomCollection(collectionId, {
-                image: { src: sharedMockupImageEncoded },
-                body_html
-              });
+              const updatePayload = { body_html };
+              if (collectionMockupUrl) {
+                updatePayload.image = { src: collectionMockupUrl };
+                console.log(`[Collection] Adding mockup image to collection`);
+              }
+              await shopify.updateCustomCollection(collectionId, updatePayload);
 
               // Store mockup metadata in collection metafields for reference
               await shopify.upsertCollectionMetafield(collectionId, {
@@ -6845,6 +11317,15 @@ const requestHandler = async (req, res) => {
               }
               if (campaign.subtitle || campaign.tagline) descParts.push(campaign.subtitle || campaign.tagline);
               descParts.push('Part of our campaign.');
+              // For sticker pack products, add bundle deal note
+              const isStickerPackCampaign = campaign.productType === 'sticker-pack' || /^sticker-?pack$/i.test(String(it.productType || ''));
+              if (isStickerPackCampaign) {
+                descParts.push('<p><strong>🎉 Bundle Deal:</strong> Get 20 stickers for just $10! Simply add 20 to your cart.</p>');
+              }
+              // For decal products (not sticker packs), add color selection note
+              else if (campaign.productType === 'decal' || /^(sticker|decal)$/i.test(String(it.productType || ''))) {
+                descParts.push('<p><strong>Color:</strong> Please specify your desired vinyl color in the order notes at checkout. Available colors include a wide variety of vinyl options.</p>');
+              }
               // Prefer Shopify landing page URL; fallback to Shopify collection URL; else legacy share URL
               let campaignUrl = null;
               try {
@@ -6883,42 +11364,96 @@ const requestHandler = async (req, res) => {
                 if (effectiveApparel.colorName || effectiveApparel.color) extraTagsArr.push(`color:${String(effectiveApparel.colorName || effectiveApparel.color).trim()}`);
               }
               const tagsFull = [tags].concat(extraTagsArr).filter(Boolean).join(', ');
-              // Build array of images: decal first (main), then mockup (secondary)
+              // Build array of images
+              // For DECAL campaigns: decal first (main), mockup second
+              // For APPAREL campaigns: mockup first (main), decal second (for AI recognition)
               const imageUrls = [];
-              if (it.image) {
-                const url = buildPublicAssetUrl(it.image, assetRoot);
-                // Encode spaces for Shopify compatibility
-                if (url) imageUrls.push(url.replace(/ /g, '%20'));
-              }
-              // Add composed mockup if it exists and is valid
-              let mockupAdded = false;
+              const isDecalCampaign = campaign.productType === 'decal';
+              console.log(`[Image Order] Campaign productType: ${campaign.productType || 'not set'}, isDecalCampaign: ${isDecalCampaign}`);
+
+              // Build mockup URL
+              let mockupUrl = null;
               if (it.mockupImage) {
                 console.log(`[Mockup URL] Item "${it.name}": mockupImage = ${it.mockupImage}`);
                 console.log(`[Mockup URL] assetRoot = ${assetRoot}`);
                 const url = buildPublicAssetUrl(it.mockupImage, assetRoot);
                 console.log(`[Mockup URL] Built URL = ${url}`);
-                // Only use mockup if URL is valid
                 if (url) {
-                  imageUrls.push(url.replace(/ /g, '%20'));
-                  mockupAdded = true;
-                  console.log(`[Mockup URL] ✓ Added mockup to imageUrls`);
-                } else {
-                  console.log(`[Mockup URL] ✗ URL invalid, not added`);
+                  mockupUrl = url.replace(/ /g, '%20');
                 }
               } else {
                 console.log(`[Mockup URL] Item "${it.name}": No mockupImage field`);
               }
-              // If no valid composed mockup but apparel is selected, use apparel base image as mockup
-              if (!mockupAdded && effectiveApparel && effectiveApparel.imageUrl) {
+
+              // Build catalog/decal image URL
+              let catalogUrl = null;
+              console.log(`[Catalog Image] Item "${it.name}": it.image = ${it.image || 'NONE'}`);
+              if (it.image) {
+                let url = buildPublicAssetUrl(it.image, assetRoot);
+                console.log(`[Catalog Image] Built URL = ${url}`);
+                // Use black background endpoint for catalog images to ensure white/transparent designs are visible
+                // Handle both /api/library/ and /web/library/ paths
+                if (url && (url.includes('/api/library/') || url.includes('/web/library/'))) {
+                  url = url.replace('/api/library/', '/api/library-black-bg/');
+                  url = url.replace('/web/library/', '/api/library-black-bg/');
+                  console.log(`[Catalog Image] Using black-bg endpoint for catalog image: ${path.basename(it.image)}`);
+                  console.log(`[Catalog Image] Black-bg URL = ${url}`);
+                }
+                if (url) {
+                  catalogUrl = url.replace(/ /g, '%20');
+                }
+              } else {
+                console.log(`[Catalog Image] No catalog image found for item`);
+              }
+
+              // Add images in correct order based on campaign type
+              // If skipMockups is enabled for decal campaigns, only include catalog image
+              if (isDecalCampaign && skipMockups) {
+                // DECAL campaign with skip mockups: only catalog/decal image
+                if (catalogUrl) {
+                  imageUrls.push(catalogUrl);
+                  console.log(`[Image Order] ✓ Added decal image ONLY (skip mockups enabled)`);
+                }
+              } else if (isDecalCampaign) {
+                // DECAL campaign: decal image first (main), mockup second
+                if (catalogUrl) {
+                  imageUrls.push(catalogUrl);
+                  console.log(`[Image Order] ✓ Added decal image FIRST (MAIN IMAGE)`);
+                }
+                if (mockupUrl) {
+                  imageUrls.push(mockupUrl);
+                  console.log(`[Image Order] ✓ Added mockup SECOND (SECONDARY IMAGE)`);
+                }
+              } else {
+                // APPAREL/other campaign: mockup first (main), decal second
+                if (mockupUrl) {
+                  imageUrls.push(mockupUrl);
+                  console.log(`[Image Order] ✓ Added mockup FIRST (MAIN IMAGE)`);
+                }
+                if (catalogUrl) {
+                  imageUrls.push(catalogUrl);
+                  console.log(`[Image Order] ✓ Added catalog image SECOND (SECONDARY IMAGE)`);
+                }
+              }
+
+              // If no images yet and apparel is selected, use apparel base image
+              if (imageUrls.length === 0 && effectiveApparel && effectiveApparel.imageUrl) {
                 const apparelUrl = effectiveApparel.imageUrl.replace(/ /g, '%20');
                 imageUrls.push(apparelUrl);
+                console.log(`[Image Order] ✓ Added apparel base image as fallback`);
               }
               const imageUrl = imageUrls[0] || null; // Keep for backward compatibility
               const priceCentsRaw = Number(it.priceCents);
               // Variants
-              const productType = hasApparel
-                ? normalizeApparelProductType(it.productType || 'tshirt')
-                : (/^(sticker)$/i.test(String(it.productType || '')) ? 'sticker' : normalizeApparelProductType(it.productType || 'tshirt'));
+              // Check if this is a decal campaign OR item is explicitly a sticker/decal
+              // Also check for sticker-pack (single-size, no-color bundle product)
+              const isStickerPack = campaign.productType === 'sticker-pack' || /^sticker-?pack$/i.test(String(it.productType || ''));
+              const isDecalProduct = !isStickerPack && (isDecalCampaign || /^(sticker|decal)$/i.test(String(it.productType || '')));
+              const productType = isStickerPack
+                ? 'sticker-pack'
+                : (hasApparel && !isDecalProduct
+                  ? normalizeApparelProductType(it.productType || 'tshirt')
+                  : (isDecalProduct ? 'sticker' : normalizeApparelProductType(it.productType || 'tshirt')));
               let options = undefined; let finalVariants = [];
               const weight = 1; const weight_unit = 'lb'; const requires_shipping = true;
               if (/^(tshirt|hoodie|apparel)$/i.test(productType)) {
@@ -7096,40 +11631,56 @@ const requestHandler = async (req, res) => {
                     });
                   });
                 }
+              } else if (productType === 'sticker-pack') {
+                // Sticker Pack: Single size, no color options, bundle pricing ($10 for 20 = $0.50 each)
+                // No variants needed - just a simple product with quantity pricing
+                const stickerPackPrice = '0.50'; // $0.50 per sticker (20 for $10)
+                options = undefined; // No options, default variant only
+                finalVariants = [{
+                  price: stickerPackPrice,
+                  weight: 0.1, // Light weight for single sticker
+                  weight_unit: 'lb',
+                  _costCents: 10, // Estimated 10 cents cost per sticker
+                  _stock: Number.isFinite(Number(it.stock)) ? Number(it.stock) : defaultStock
+                }];
+                console.log(`[Variants] Sticker Pack: Single variant at $${stickerPackPrice} each (20 for $10 bundle)`);
               } else {
                 if (productType === 'sticker') {
                   const sizeList = Array.isArray(it.sizes) && it.sizes.length
                     ? it.sizes.map((s) => String(s).trim()).filter(Boolean)
                     : DECAL_SIZES.slice();
+                  // Get available colors for the product description/metafield
                   const inventoryColors = getRegularVinylColors();
-                  let colors = Array.isArray(it.colors) && it.colors.length
+                  let availableColors = Array.isArray(it.colors) && it.colors.length
                     ? it.colors.map((c) => String(c).trim()).filter(Boolean)
                     : inventoryColors;
-                  if (!colors.length && inventoryColors.length) {
-                    colors = inventoryColors.slice();
+                  if (!availableColors.length && inventoryColors.length) {
+                    availableColors = inventoryColors.slice();
                   }
-                  if (!colors.length) {
-                    colors = ['White'];
+                  if (!availableColors.length) {
+                    availableColors = ['White'];
                   }
-                  options = [{ name: 'Size' }, { name: 'Color' }];
+                  // Option 1: Only Size as variant, Color as line item property
+                  // This keeps us well under Shopify's 100 variant limit (only 7 variants for 7 sizes)
+                  // Color will be selected by customer via product customization
+                  options = [{ name: 'Size' }];
                   finalVariants = [];
                   sizeList.forEach((size) => {
                     const price = priceForStickerSize(size);
                     const cost = null;
-                    colors.forEach((color) => {
-                      finalVariants.push({
-                        option1: size,
-                        option2: color,
-                        price,
-                        weight,
-                        weight_unit,
-                        _costCents: cost,
-                        _size: size,
-                        _color: color,
-                        _stock: Number.isFinite(Number(it.stock)) ? Number(it.stock) : defaultStock
-                      });
+                    finalVariants.push({
+                      option1: size,
+                      price,
+                      weight,
+                      weight_unit,
+                      _costCents: cost,
+                      _size: size,
+                      _stock: Number.isFinite(Number(it.stock)) ? Number(it.stock) : defaultStock
                     });
                   });
+                  // Store available colors for metafield creation later
+                  it._availableColors = availableColors;
+                  console.log(`[Variants] Sticker product: ${sizeList.length} size variants, ${availableColors.length} colors available via customization`);
                 } else {
                   const { priceCents, costCents } = getVariantPricing(pricing, productType, null);
                   function roundUpToQuarter(c) { const n = Math.max(0, Math.round(Number(c)||0)); const r = n % 25; return r === 0 ? n : n + (25 - r); }
@@ -7219,9 +11770,33 @@ const requestHandler = async (req, res) => {
 
               const apiVer = String(process.env.SHOPIFY_API_VERSION || '');
               const allowLegacyFields = apiVer === '2024-10' || apiVer.startsWith('2024-');
+
+              // Check if we should apply compare_at_price for strikethrough pricing
+              const si = campaign.salesInitiative;
+              const hasPercentDiscount = si && si.type === 'percentOff' && Number(si.percentOff) > 0;
+              const hasFixedDiscount = si && si.type === 'fixedOff' && Number(si.fixedAmount) > 0;
+              const discountPercent = hasPercentDiscount ? Number(si.percentOff) : 0;
+              const discountFixed = hasFixedDiscount ? Number(si.fixedAmount) : 0;
+
               const variantsForApi = (finalVariants || []).map((v) => {
                 const out = {};
-                if (v.price != null) out.price = v.price;
+                const originalPrice = parseFloat(v.price || 0);
+
+                // Apply strikethrough pricing based on promo type
+                if (hasPercentDiscount && originalPrice > 0) {
+                  // Percentage discount: reduce price, show original as compare_at
+                  const discountedPrice = originalPrice * (1 - discountPercent / 100);
+                  out.price = discountedPrice.toFixed(2);
+                  out.compare_at_price = originalPrice.toFixed(2);
+                } else if (hasFixedDiscount && originalPrice > discountFixed) {
+                  // Fixed amount off: reduce price, show original as compare_at
+                  const discountedPrice = originalPrice - discountFixed;
+                  out.price = Math.max(0.01, discountedPrice).toFixed(2);
+                  out.compare_at_price = originalPrice.toFixed(2);
+                } else {
+                  if (v.price != null) out.price = v.price;
+                }
+
                 if (v.option1) out.option1 = v.option1;
                 if (v.option2) out.option2 = v.option2;
                 if (v.option3) out.option3 = v.option3;
@@ -7234,12 +11809,16 @@ const requestHandler = async (req, res) => {
                 }
                 return out;
               });
-              // Idempotency: reuse existing product if mapping exists or tag already present
-              let productId = force ? null : (Number(it.shopifyProductId) || null);
+              // Smart idempotency: reuse existing product if shopifyProductId is set
+              // Even with force=true, we should UPDATE existing products instead of creating duplicates
+              let productId = Number(it.shopifyProductId) || null;
               console.log(`[Product ID] Item "${it.name}": shopifyProductId = ${it.shopifyProductId || 'NONE'}, productId = ${productId || 'NONE'}, force = ${force}`);
               let created = null;
               let existingVariants = [];
-              if (!productId && !force) {
+
+              // Always try to find existing product by tag to avoid duplicates
+              // (force flag controls update behavior, not duplicate detection)
+              if (!productId) {
                 console.log(`[Product ID] No existing productId, checking for existing product by tag...`);
                 try {
                   let found = null;
@@ -7248,14 +11827,26 @@ const requestHandler = async (req, res) => {
                   if (found && found.id) { productId = Number(found.id); existingVariants = found.variants || []; }
                 } catch (_) {}
               }
+
+              // Log what action we'll take
+              if (productId) {
+                console.log(`[Product ID] Will UPDATE existing product ${productId}`);
+              } else {
+                console.log(`[Product ID] Will CREATE new product`);
+              }
               if (!productId) {
+                // Determine template suffix based on product type
+                // sticker-pack uses its own simple template, decals use the decal template with color selector
+                const templateSuffix = isStickerPack ? 'sticker' : ((productType === 'sticker' || isDecalProduct) ? 'decal' : '');
+
                 // Build product payload based on API version
                 let productPayload = { title, options, variants: variantsForApi };
+                if (templateSuffix) productPayload.template_suffix = templateSuffix;
                 if (allowLegacyFields) {
                   productPayload = {
                     title,
                     body_html,
-                    vendor: 'Swayze Custom Vinyl',
+                    vendor: 'Blue Ridge Custom Co',
                     product_type: productType,
                     tags: tagsFull,
                     status: 'active',
@@ -7263,21 +11854,33 @@ const requestHandler = async (req, res) => {
                     variants: variantsForApi,
                     images: imageUrls.length ? imageUrls.map(url => ({ src: url })) : undefined
                   };
+                  if (templateSuffix) productPayload.template_suffix = templateSuffix;
                 }
                 try {
+                  console.log(`[Product Create] Attempting REST create for "${title}" with ${variantsForApi.length} variants`);
                   created = await shopify.createProduct(productPayload);
+                  console.log(`[Product Create] ✓ REST create succeeded, ID: ${created?.id}`);
                   if (!allowLegacyFields) {
-                    // After successful create on newer API, update remaining fields
-                    try { await shopify.updateProduct(created.id, { body_html, vendor: 'Swayze Custom Vinyl', product_type: productType, tags: tagsFull }); } catch (_) {}
+                    // After successful create on newer API, update remaining fields including status and template
+                    const updateFields = { body_html, vendor: 'Blue Ridge Custom Co', product_type: productType, tags: tagsFull, status: 'active' };
+                    if (templateSuffix) updateFields.template_suffix = templateSuffix;
+                    try { await shopify.updateProduct(created.id, updateFields); } catch (_) {}
                   }
                 } catch (eCreate) {
+                  console.error(`[Product Create] REST create failed: ${eCreate?.message}`);
                   // Fallback 1: ultra-minimal REST create (title + variants)
                   try {
+                    console.log(`[Product Create] Trying minimal REST create...`);
                     const minimal = { title, variants: variantsForApi.length ? variantsForApi : [{ price: (Number(priceCentsRaw)||0)/100 }] };
                     created = await shopify.createProduct(minimal);
-                    try { await shopify.updateProduct(created.id, { body_html, vendor: 'Swayze Custom Vinyl', product_type: productType, tags: tagsFull }); } catch (_) {}
+                    console.log(`[Product Create] ✓ Minimal REST create succeeded, ID: ${created?.id}`);
+                    const updateFields = { body_html, vendor: 'Blue Ridge Custom Co', product_type: productType, tags: tagsFull, status: 'active' };
+                    if (templateSuffix) updateFields.template_suffix = templateSuffix;
+                    try { await shopify.updateProduct(created.id, updateFields); } catch (_) {}
                   } catch (eRest) {
+                    console.error(`[Product Create] Minimal REST failed: ${eRest?.message}`);
                     // Fallback 2: GraphQL productCreate
+                    console.log(`[Product Create] Trying GraphQL create...`);
                     const gqlInput = {
                       title,
                       options: (options || []).map((o) => o && o.name ? o.name : '').filter(Boolean),
@@ -7287,8 +11890,11 @@ const requestHandler = async (req, res) => {
                     const gid = createdGql?.id || '';
                     const numericId = gid && gid.includes('/') ? Number(gid.split('/').pop()) : null;
                     created = { id: numericId || gid };
-                    // Update remaining fields via REST
-                    try { await shopify.updateProduct(created.id, { body_html, vendor: 'Swayze Custom Vinyl', product_type: productType, tags: tagsFull }); } catch (_) {}
+                    console.log(`[Product Create] ✓ GraphQL create succeeded, ID: ${created?.id}`);
+                    // Update remaining fields via REST including status and template
+                    const updateFields = { body_html, vendor: 'Blue Ridge Custom Co', product_type: productType, tags: tagsFull, status: 'active' };
+                    if (templateSuffix) updateFields.template_suffix = templateSuffix;
+                    try { await shopify.updateProduct(created.id, updateFields); } catch (_) {}
                   }
                 }
                 // If images specified, attach them after product creation to avoid strict validation on create
@@ -7310,10 +11916,32 @@ const requestHandler = async (req, res) => {
                 }
                 productId = created?.id;
                 if (productId && collectionId) { try { await shopify.addProductToCollection(productId, collectionId); } catch (_) {} }
-                try { await shopify.publishEverywhere(productId); } catch (_) {}
+                // Also add sticker-pack products to the main Stickers collection
+                if (productId && isStickerPack) {
+                  try {
+                    const stickersCollection = await shopify.findCustomCollectionByTitle('Stickers');
+                    if (stickersCollection && stickersCollection.id) {
+                      await shopify.addProductToCollection(productId, stickersCollection.id);
+                      console.log(`[Collection] Added sticker-pack product ${productId} to Stickers collection`);
+                    }
+                  } catch (stickerColErr) {
+                    console.log(`[Collection] Could not add to Stickers collection: ${stickerColErr.message}`);
+                  }
+                }
+                // Publish to all sales channels
+                try {
+                  const pubResult = await shopify.publishEverywhere(productId);
+                  if (!pubResult.ok) {
+                    console.warn(`[Publish] Product ${productId} publish issue: ${pubResult.error || pubResult.details}`);
+                  }
+                } catch (pubErr) {
+                  console.error(`[Publish] Product ${productId} publish error: ${pubErr?.message}`);
+                }
               }
               // If product existed, update core fields to reflect new item
               if (productId && !created) {
+                console.log(`[Product Update] Updating existing product ${productId} for item "${it.name}"`);
+                console.log(`[Product Update] Has ${imageUrls.length} images to update`);
                 try {
                   const updatePayload = {
                     title,
@@ -7324,8 +11952,25 @@ const requestHandler = async (req, res) => {
                     variants: variantsForApi
                   };
                   if (imageUrls.length) updatePayload.images = imageUrls.map(url => ({ src: url }));
+                  console.log(`[Product Update] Calling shopify.updateProduct with ${Object.keys(updatePayload).length} fields`);
                   await shopify.updateProduct(productId, updatePayload);
-                } catch (_) {}
+                  console.log(`[Product Update] ✓ Successfully updated product ${productId}`);
+                  // Re-publish to all sales channels after update
+                  try {
+                    const pubResult = await shopify.publishEverywhere(productId);
+                    if (!pubResult.ok) {
+                      console.warn(`[Publish] Product ${productId} publish issue: ${pubResult.error || pubResult.details}`);
+                    }
+                  } catch (pubErr) {
+                    console.error(`[Publish] Product ${productId} publish error: ${pubErr?.message}`);
+                  }
+                } catch (err) {
+                  console.error(`[Product Update] ✗ Failed to update product ${productId}: ${err.message}`);
+                }
+              } else if (productId && created) {
+                console.log(`[Product Update] Skipping update - product was just created (ID: ${productId})`);
+              } else {
+                console.log(`[Product Update] Skipping update - no productId set`);
               }
               // Write dynamic mockup metafields (base/overlay/params) best-effort
               // SKIP per-item mockup metafields if campaign-wide mockup mode is active
@@ -7359,13 +12004,19 @@ const requestHandler = async (req, res) => {
                     }
                   } catch (_) {}
                   const autoDescMetafield = (it.autoDescription || it.description || it.name || '').trim();
+                  // For sticker products, include available colors metafield
+                  const availableColorsValue = Array.isArray(it._availableColors) && it._availableColors.length
+                    ? it._availableColors.join(', ')
+                    : null;
                   const entries = [
                     baseUrl ? { namespace: 'mockup', key: 'base_url', type: 'url', value: String(baseUrl) } : null,
                     overlayUrl ? { namespace: 'mockup', key: 'overlay_url', type: 'url', value: String(overlayUrl) } : null,
                     { namespace: 'mockup', key: 'width_pct', type: 'number_integer', value: String(widthPct) },
                     { namespace: 'mockup', key: 'y_offset_pct', type: 'number_integer', value: String(yOffsetPct) },
                     bgColor ? { namespace: 'mockup', key: 'bg_color', type: 'single_line_text_field', value: String(bgColor) } : null,
-                    { namespace: 'mockup', key: 'bg_auto', type: 'number_integer', value: '1' }
+                    { namespace: 'mockup', key: 'bg_auto', type: 'number_integer', value: '1' },
+                    // Available colors for sticker/decal products (used for customization dropdown)
+                    availableColorsValue ? { namespace: 'custom', key: 'available_colors', type: 'single_line_text_field', value: availableColorsValue } : null
                   ].concat(
                     autoDescMetafield
                       ? [{ namespace: 'marketing', key: 'auto_description', type: 'single_line_text_field', value: autoDescMetafield }]
@@ -7382,12 +12033,31 @@ const requestHandler = async (req, res) => {
               } catch (_) {}
               // Inventory + cost per variant (default 10); also update variant prices if existing
               try {
-                // Get variant list
+                // Get variant list - always refresh from Shopify to ensure we have correct inventory_item_ids
                 let variantsList = [];
                 if (created?.variants) {
                   variantsList = created.variants.map((v) => ({ id: v.id, option1: v.option1, option2: v.option2, inventoryItemId: v.inventory_item_id }));
+                } else if (productId) {
+                  // Re-fetch product to get current variants with valid inventory_item_ids
+                  try {
+                    const refreshed = await shopify.findProductByTag(`campaign_item_uid:${uid}`);
+                    if (refreshed?.variants?.length) {
+                      variantsList = refreshed.variants;
+                      console.log(`[Inventory] Refreshed ${variantsList.length} variants for product ${productId}`);
+                    } else if (existingVariants.length) {
+                      variantsList = existingVariants;
+                    }
+                  } catch (eRefresh) {
+                    console.warn(`[Inventory] Could not refresh variants: ${eRefresh?.message}`);
+                    if (existingVariants.length) variantsList = existingVariants;
+                  }
                 } else if (existingVariants.length) {
                   variantsList = existingVariants; // from GraphQL
+                }
+
+                // Log warning if no variants found
+                if (!variantsList.length) {
+                  console.warn(`[Inventory] No variants found for product ${productId} - inventory will not be set!`);
                 }
                 // Update price/inventory/cost
                 for (const v of variantsList) {
@@ -7413,27 +12083,44 @@ const requestHandler = async (req, res) => {
                   if (invId && locationId) {
                     // Ensure tracking is enabled and variant is set to use Shopify inventory management
                     try { await shopify.updateInventoryItemTracked(invId, true); } catch (eTrk) {
+                      console.warn(`[Inventory] Failed to enable tracking for ${invId}: ${eTrk?.message}`);
                       try { const cur = JSON.parse(fs.readFileSync(statePath, 'utf8')); const errors = Array.isArray(cur.errors) ? cur.errors : []; errors.push({ index: i, step: 'track', inventoryItemId: invId, error: eTrk?.message || String(eTrk) }); fs.writeFileSync(statePath, JSON.stringify({ ...cur, errors: errors.slice(-20) }, null, 2)); } catch (_) {}
                     }
                     try { if (v.id) await shopify.updateVariantInventoryManagement(v.id, 'shopify'); } catch (_) {}
                     // Ensure connection to location, then set available; fallback to adjust
                     try { await shopify.connectInventoryItemToLocation(invId, locationId); } catch (eConn) {
+                      console.warn(`[Inventory] Failed to connect ${invId} to location ${locationId}: ${eConn?.message}`);
                       try { const cur = JSON.parse(fs.readFileSync(statePath, 'utf8')); const errors = Array.isArray(cur.errors) ? cur.errors : []; errors.push({ index: i, step: 'connect', inventoryItemId: invId, error: eConn?.message || String(eConn) }); fs.writeFileSync(statePath, JSON.stringify({ ...cur, errors: errors.slice(-20) }, null, 2)); } catch (_) {}
                     }
                     const desired = plan && Number.isFinite(Number(plan._stock)) ? Number(plan._stock) : defaultStock;
-                    try { await shopify.setInventoryLevel(invId, locationId, desired); }
+                    console.log(`[Inventory] Setting variant ${v.id} (invId: ${invId}) to ${desired} units at location ${locationId}`);
+                    try {
+                      await shopify.setInventoryLevel(invId, locationId, desired);
+                      console.log(`[Inventory] ✓ Successfully set inventory for variant ${v.id} to ${desired}`);
+                    }
                     catch (eSet) {
-                      try { await shopify.adjustInventoryLevel(invId, locationId, desired); }
+                      console.warn(`[Inventory] setInventoryLevel failed for ${invId}: ${eSet?.message}, trying adjust...`);
+                      try {
+                        await shopify.adjustInventoryLevel(invId, locationId, desired);
+                        console.log(`[Inventory] ✓ Successfully adjusted inventory for variant ${v.id} to ${desired}`);
+                      }
                       catch (eAdj) {
+                        console.error(`[Inventory] ✗ Both set and adjust failed for ${invId}: ${eAdj?.message}`);
                         try { const cur = JSON.parse(fs.readFileSync(statePath, 'utf8')); const errors = Array.isArray(cur.errors) ? cur.errors : []; errors.push({ index: i, step: 'inventory', inventoryItemId: invId, error: eSet?.message || eAdj?.message || 'inventory failed', available: desired }); fs.writeFileSync(statePath, JSON.stringify({ ...cur, errors: errors.slice(-20) }, null, 2)); } catch (_) {}
                       }
                     }
                     if (plan && Number.isFinite(plan._costCents)) {
                       try { await shopify.updateInventoryItemCost(invId, plan._costCents); } catch (eCost) { try { const cur = JSON.parse(fs.readFileSync(statePath, 'utf8')); const errors = Array.isArray(cur.errors) ? cur.errors : []; errors.push({ index: i, step: 'cost', inventoryItemId: invId, error: eCost?.message || String(eCost) }); fs.writeFileSync(statePath, JSON.stringify({ ...cur, errors: errors.slice(-20) }, null, 2)); } catch (_) {} }
                     }
+                  } else if (!invId) {
+                    console.warn(`[Inventory] Variant ${v.id} (${v.option1}/${v.option2}) has no inventory_item_id - skipping`);
+                  } else if (!locationId) {
+                    console.warn(`[Inventory] No locationId available - cannot set inventory`);
                   }
                 }
-              } catch (_) {}
+              } catch (eInv) {
+                console.error(`[Inventory] Error in inventory block: ${eInv?.message}`);
+              }
               // Inventory + cost per variant (default 10)
               try {
                 const shopifyVariants = Array.isArray(created?.variants) ? created.variants : [];
@@ -7528,11 +12215,142 @@ const requestHandler = async (req, res) => {
             } catch (_) {
               fs.writeFileSync(statePath, JSON.stringify({ jobId, slug, total, processed, ok, fail, collectionId, collectionHandle, collectionUrl, updatedAt: new Date().toISOString(), done: false }, null, 2));
             }
-            // Throttle to avoid timeouts/rate limits
+            // Additional delay between items for safety
             await delay(600);
           }
           // Save updated campaign + collection link and preserve any accumulated errors in the final state
           try { writeCampaignFile(slug, { ...campaign, shopifyCollection: { id: collectionId, handle: collectionHandle, url: collectionUrl }, updatedAt: new Date().toISOString() }); } catch (_) {}
+
+          // Create Shopify discount code if salesInitiative is configured
+          let discountResult = null;
+          const si = campaign.salesInitiative;
+          if (si && si.type !== 'none' && si.applyToShopify !== false && collectionId) {
+            try {
+              console.log(`[Discount] Creating Shopify discount for campaign "${slug}", type: ${si.type}`);
+              const code = si.promoCode || `${String(campaign.title || slug).toUpperCase().replace(/[^A-Z0-9]+/g, '')}-${si.type.toUpperCase()}`.slice(0, 20);
+              const startsAt = si.startDate ? new Date(si.startDate).toISOString() : new Date().toISOString();
+              const endsAt = si.endDate ? new Date(si.endDate).toISOString() : null;
+
+              switch (si.type) {
+                case 'percentOff':
+                  discountResult = await shopify.createPercentageDiscount({
+                    title: `${campaign.title || slug} - ${si.percentOff}% Off`,
+                    code,
+                    collectionId,
+                    percentOff: si.percentOff || 15,
+                    minQuantity: si.percentMinQty || 0,
+                    startsAt,
+                    endsAt
+                  });
+                  break;
+                case 'fixedOff':
+                  discountResult = await shopify.createFixedDiscount({
+                    title: `${campaign.title || slug} - $${si.fixedAmount} Off`,
+                    code,
+                    collectionId,
+                    amountOff: si.fixedAmount || 5,
+                    minOrderAmount: si.fixedMinOrder || 0,
+                    startsAt,
+                    endsAt
+                  });
+                  break;
+                case 'buyXGetY': {
+                  // For Buy X Get Y with specific sizes, look up variant IDs from collection products
+                  let buyVariantIds = [];
+                  let freeVariantIds = [];
+
+                  if ((si.buySize || si.freeSize) && collectionId) {
+                    try {
+                      console.log(`[Discount] Looking up variant IDs for sizes: buy="${si.buySize || 'any'}", free="${si.freeSize || 'same'}"`);
+                      const products = await shopify.getCollectionProducts(collectionId);
+
+                      for (const product of products) {
+                        if (Array.isArray(product.variants)) {
+                          for (const variant of product.variants) {
+                            // Check option1/option2/option3 for size match
+                            const options = [variant.option1, variant.option2, variant.option3].filter(Boolean);
+                            const optionsLower = options.map(o => String(o).toLowerCase());
+
+                            // Match buy size
+                            if (si.buySize) {
+                              const buySizeLower = String(si.buySize).toLowerCase();
+                              if (optionsLower.some(o => o === buySizeLower || o.includes(buySizeLower))) {
+                                buyVariantIds.push(variant.id);
+                              }
+                            }
+
+                            // Match free size (or same as buy if not specified)
+                            const freeSizeToMatch = si.freeSize || si.buySize;
+                            if (freeSizeToMatch) {
+                              const freeSizeLower = String(freeSizeToMatch).toLowerCase();
+                              if (optionsLower.some(o => o === freeSizeLower || o.includes(freeSizeLower))) {
+                                freeVariantIds.push(variant.id);
+                              }
+                            }
+                          }
+                        }
+                      }
+
+                      console.log(`[Discount] Found ${buyVariantIds.length} buy variants, ${freeVariantIds.length} free variants`);
+                    } catch (lookupErr) {
+                      console.error(`[Discount] Failed to look up variants: ${lookupErr.message}`);
+                    }
+                  }
+
+                  discountResult = await shopify.createBuyXGetYDiscount({
+                    title: si.buySize && si.freeSize
+                      ? `${campaign.title || slug} - Buy ${si.buyQuantity} ${si.buySize}, Get ${si.freeQuantity} ${si.freeSize} Free`
+                      : `${campaign.title || slug} - Buy ${si.buyQuantity} Get ${si.freeQuantity} Free`,
+                    code,
+                    collectionId,
+                    buyQuantity: si.buyQuantity || 2,
+                    buyVariantIds: buyVariantIds.length ? buyVariantIds : [],
+                    freeQuantity: si.freeQuantity || 2,
+                    freeVariantIds: freeVariantIds.length ? freeVariantIds : [],
+                    startsAt,
+                    endsAt,
+                    oncePerCustomer: true
+                  });
+                  break;
+                }
+                case 'freeShipping':
+                  discountResult = await shopify.createFreeShippingDiscount({
+                    title: `${campaign.title || slug} - Free Shipping`,
+                    code,
+                    minOrderAmount: si.freeShipThreshold || 50,
+                    startsAt,
+                    endsAt
+                  });
+                  break;
+                default:
+                  console.log(`[Discount] Promo type "${si.type}" not yet supported for automatic Shopify discount`);
+              }
+
+              if (discountResult?.priceRule?.id) {
+                console.log(`[Discount] Created price rule ID: ${discountResult.priceRule.id}`);
+                if (discountResult.discountCode?.code) {
+                  console.log(`[Discount] Created discount code: ${discountResult.discountCode.code}`);
+                }
+                // Update campaign with discount info
+                try {
+                  const updatedCampaign = readCampaign(slug);
+                  if (updatedCampaign) {
+                    updatedCampaign.salesInitiative = {
+                      ...updatedCampaign.salesInitiative,
+                      shopifyPriceRuleId: discountResult.priceRule.id,
+                      shopifyDiscountId: discountResult.discountCode?.id || null,
+                      shopifyDiscountCode: discountResult.discountCode?.code || null
+                    };
+                    writeCampaignFile(slug, updatedCampaign);
+                  }
+                } catch (_) {}
+              }
+            } catch (discountErr) {
+              console.error(`[Discount] Failed to create discount: ${discountErr.message}`);
+              // Don't fail the export, just log it
+            }
+          }
+
           try {
             const cur = JSON.parse(fs.readFileSync(statePath, 'utf8'));
             fs.writeFileSync(
@@ -7548,6 +12366,8 @@ const requestHandler = async (req, res) => {
                 collectionId,
                 collectionHandle,
                 collectionUrl,
+                discountCode: discountResult?.discountCode?.code || null,
+                priceRuleId: discountResult?.priceRule?.id || null,
                 done: true,
                 finishedAt: new Date().toISOString()
               }, null, 2)
@@ -7656,6 +12476,345 @@ const requestHandler = async (req, res) => {
       sendJson(res, 200, { success: true, items });
     } catch (e) {
       sendJson(res, 500, { error: e?.message || 'Unable to list collections.' });
+    }
+    return;
+  }
+
+  // Internal: Promo/discount stats (requires INTERNAL_API_KEY)
+  // GET /api/internal/marketing/shopify/promo-stats/:discountId
+  if (
+    req.method === 'GET' &&
+    segments[0] === 'api' &&
+    segments[1] === 'internal' &&
+    segments[2] === 'marketing' &&
+    segments[3] === 'shopify' &&
+    segments[4] === 'promo-stats' &&
+    segments[5]
+  ) {
+    if (!requireInternalKey(req, res)) return;
+    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+    try {
+      const discountId = segments[5];
+      // For now, return placeholder stats - Shopify's discount stats API is limited
+      // In the future, we could query orders with this discount code
+      // or use the price_rule analytics if available
+      const stats = {
+        discountId,
+        orders: 0,
+        revenue: 0,
+        discountsGiven: 0,
+        message: 'Stats tracking not yet implemented. Use Shopify admin for detailed analytics.'
+      };
+      sendJson(res, 200, { success: true, stats });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to fetch promo stats.' });
+    }
+    return;
+  }
+
+  // ============================================================
+  // SHOPIFY MANAGER ENDPOINTS
+  // ============================================================
+
+  // GET /api/internal/shopify-manager/products
+  // List all products, optionally filtered by collection
+  if (
+    req.method === 'GET' &&
+    segments[0] === 'api' &&
+    segments[1] === 'internal' &&
+    segments[2] === 'shopify-manager' &&
+    segments[3] === 'products'
+  ) {
+    if (!requireInternalKey(req, res)) return;
+    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+    try {
+      const collectionId = parsedUrl.query?.collection_id || null;
+      const limit = Math.min(Number(parsedUrl.query?.limit || 250), 250);
+      const products = await shopify.listAllProducts({ limit, collection_id: collectionId });
+      sendJson(res, 200, { success: true, products });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list products.' });
+    }
+    return;
+  }
+
+  // GET /api/internal/shopify-manager/products/:id
+  // Get single product with full details
+  if (
+    req.method === 'GET' &&
+    segments[0] === 'api' &&
+    segments[1] === 'internal' &&
+    segments[2] === 'shopify-manager' &&
+    segments[3] === 'products' &&
+    segments[4]
+  ) {
+    if (!requireInternalKey(req, res)) return;
+    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+    try {
+      const productId = segments[4];
+      const product = await shopify.getProductFull(productId);
+      if (!product) {
+        sendJson(res, 404, { error: 'Product not found.' });
+        return;
+      }
+      sendJson(res, 200, { success: true, product });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to get product.' });
+    }
+    return;
+  }
+
+  // PUT /api/internal/shopify-manager/products/:id
+  // Update product
+  if (
+    req.method === 'PUT' &&
+    segments[0] === 'api' &&
+    segments[1] === 'internal' &&
+    segments[2] === 'shopify-manager' &&
+    segments[3] === 'products' &&
+    segments[4]
+  ) {
+    if (!requireInternalKey(req, res)) return;
+    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+    try {
+      const productId = segments[4];
+      const body = await collectBody(req);
+      const updates = JSON.parse(body);
+      const result = await shopify.updateProductFull(productId, updates);
+      sendJson(res, 200, { success: true, product: result?.product });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update product.' });
+    }
+    return;
+  }
+
+  // PUT /api/internal/shopify-manager/variants/:id
+  // Update single variant (price, compare_at_price, sku, etc.)
+  if (
+    req.method === 'PUT' &&
+    segments[0] === 'api' &&
+    segments[1] === 'internal' &&
+    segments[2] === 'shopify-manager' &&
+    segments[3] === 'variants' &&
+    segments[4]
+  ) {
+    if (!requireInternalKey(req, res)) return;
+    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+    try {
+      const variantId = segments[4];
+      const body = await collectBody(req);
+      const updates = JSON.parse(body);
+      const result = await shopify.updateVariant(variantId, updates);
+      sendJson(res, 200, { success: true, variant: result?.variant });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update variant.' });
+    }
+    return;
+  }
+
+  // POST /api/internal/shopify-manager/bulk-update
+  // Bulk update multiple products
+  if (
+    req.method === 'POST' &&
+    segments[0] === 'api' &&
+    segments[1] === 'internal' &&
+    segments[2] === 'shopify-manager' &&
+    segments[3] === 'bulk-update'
+  ) {
+    if (!requireInternalKey(req, res)) return;
+    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+    try {
+      const body = await collectBody(req);
+      const { productIds, operation, value, value2 } = JSON.parse(body);
+
+      if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+        sendJson(res, 400, { error: 'productIds array is required.' });
+        return;
+      }
+
+      const results = { success: 0, failed: 0, errors: [] };
+
+      for (const productId of productIds) {
+        try {
+          // Get current product
+          const product = await shopify.getProductFull(productId);
+          if (!product) {
+            results.failed++;
+            results.errors.push({ productId, error: 'Product not found' });
+            continue;
+          }
+
+          let updates = {};
+
+          switch (operation) {
+            case 'price_percent_off': {
+              // Set compare_at_price to current price, then reduce price by %
+              const pct = parseFloat(value) / 100;
+              for (const v of product.variants || []) {
+                const originalPrice = parseFloat(v.price);
+                const newPrice = (originalPrice * (1 - pct)).toFixed(2);
+                await shopify.updateVariant(v.id, {
+                  price: newPrice,
+                  compare_at_price: v.price
+                });
+              }
+              break;
+            }
+            case 'price_increase_percent': {
+              const pct = parseFloat(value) / 100;
+              for (const v of product.variants || []) {
+                const newPrice = (parseFloat(v.price) * (1 + pct)).toFixed(2);
+                await shopify.updateVariant(v.id, { price: newPrice });
+              }
+              break;
+            }
+            case 'price_decrease_percent': {
+              const pct = parseFloat(value) / 100;
+              for (const v of product.variants || []) {
+                const newPrice = (parseFloat(v.price) * (1 - pct)).toFixed(2);
+                await shopify.updateVariant(v.id, { price: newPrice });
+              }
+              break;
+            }
+            case 'price_set_fixed': {
+              const newPrice = parseFloat(value).toFixed(2);
+              for (const v of product.variants || []) {
+                await shopify.updateVariant(v.id, { price: newPrice });
+              }
+              break;
+            }
+            case 'inventory_set': {
+              const qty = parseInt(value, 10);
+              // Get first location
+              const locations = await shopify.listLocations();
+              const locationId = locations?.[0]?.id;
+              if (locationId) {
+                for (const v of product.variants || []) {
+                  if (v.inventory_item_id) {
+                    await shopify.setInventoryLevel(v.inventory_item_id, locationId, qty);
+                  }
+                }
+              }
+              break;
+            }
+            case 'inventory_adjust': {
+              const delta = parseInt(value, 10);
+              const locations = await shopify.listLocations();
+              const locationId = locations?.[0]?.id;
+              if (locationId) {
+                for (const v of product.variants || []) {
+                  if (v.inventory_item_id) {
+                    await shopify.adjustInventoryLevel(v.inventory_item_id, locationId, delta);
+                  }
+                }
+              }
+              break;
+            }
+            case 'tags_add': {
+              const currentTags = (product.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+              const newTags = value.split(',').map(t => t.trim()).filter(Boolean);
+              const allTags = [...new Set([...currentTags, ...newTags])];
+              updates.tags = allTags.join(', ');
+              break;
+            }
+            case 'tags_remove': {
+              const currentTags = (product.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+              const removeTags = value.split(',').map(t => t.trim().toLowerCase());
+              const filteredTags = currentTags.filter(t => !removeTags.includes(t.toLowerCase()));
+              updates.tags = filteredTags.join(', ');
+              break;
+            }
+            case 'type_set':
+              updates.product_type = value;
+              break;
+            case 'vendor_set':
+              updates.vendor = value;
+              break;
+            case 'status_active':
+              updates.status = 'active';
+              break;
+            case 'status_draft':
+              updates.status = 'draft';
+              break;
+            case 'status_archived':
+              updates.status = 'archived';
+              break;
+            case 'description_append':
+              updates.body_html = (product.body_html || '') + value;
+              break;
+            case 'description_prepend':
+              updates.body_html = value + (product.body_html || '');
+              break;
+            case 'description_replace':
+              updates.body_html = (product.body_html || '').replace(new RegExp(value, 'gi'), value2 || '');
+              break;
+            default:
+              results.failed++;
+              results.errors.push({ productId, error: `Unknown operation: ${operation}` });
+              continue;
+          }
+
+          if (Object.keys(updates).length > 0) {
+            await shopify.updateProductFull(productId, updates);
+          }
+
+          results.success++;
+          // Rate limit delay
+          await new Promise(r => setTimeout(r, 300));
+
+        } catch (err) {
+          results.failed++;
+          results.errors.push({ productId, error: err.message });
+        }
+      }
+
+      sendJson(res, 200, { success: true, results });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Bulk update failed.' });
+    }
+    return;
+  }
+
+  // GET /api/internal/shopify-manager/collections
+  // List all collections
+  if (
+    req.method === 'GET' &&
+    segments[0] === 'api' &&
+    segments[1] === 'internal' &&
+    segments[2] === 'shopify-manager' &&
+    segments[3] === 'collections' &&
+    !segments[4]
+  ) {
+    if (!requireInternalKey(req, res)) return;
+    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+    try {
+      const collections = await shopify.listCollections({ limit: 250 });
+      sendJson(res, 200, { success: true, collections });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list collections.' });
+    }
+    return;
+  }
+
+  // GET /api/internal/shopify-manager/collections/:id/products
+  // Get products for a specific collection
+  if (
+    req.method === 'GET' &&
+    segments[0] === 'api' &&
+    segments[1] === 'internal' &&
+    segments[2] === 'shopify-manager' &&
+    segments[3] === 'collections' &&
+    segments[4] &&
+    segments[5] === 'products'
+  ) {
+    if (!requireInternalKey(req, res)) return;
+    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+    try {
+      const collectionId = segments[4];
+      const products = await shopify.getCollectionProducts(collectionId, { limit: 250 });
+      sendJson(res, 200, { success: true, products });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to get collection products.' });
     }
     return;
   }
@@ -8718,6 +13877,201 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // ============================================================================
+  // Race Designs API (Customer - authenticated)
+  // ============================================================================
+
+  // POST /api/customer/race-designs - Create new design
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/customer/race-designs') {
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        const design = db.createRaceDesign({
+          customerId: auth.id,
+          carTemplateId: payload.carTemplateId || null,
+          driverInfo: payload.driverInfo || null
+        });
+        sendJson(res, 201, { success: true, design });
+      } catch (err) {
+        console.error('Unable to create race design:', err);
+        sendJson(res, 400, { error: err.message || 'Unable to create design.' });
+      }
+    });
+    return;
+  }
+
+  // GET /api/customer/race-designs - List user's designs
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/customer/race-designs') {
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    try {
+      const designs = db.listRaceDesignsByCustomer(auth.id);
+      sendJson(res, 200, { success: true, designs });
+    } catch (error) {
+      console.error('Unable to load customer race designs:', error);
+      sendJson(res, 500, { error: 'Unable to load designs.' });
+    }
+    return;
+  }
+
+  // GET /api/customer/race-designs/:id - Get specific design
+  if (
+    req.method === 'GET' &&
+    segments[0] === 'api' &&
+    segments[1] === 'customer' &&
+    segments[2] === 'race-designs' &&
+    segments[3]
+  ) {
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    try {
+      const design = db.getRaceDesignById(segments[3]);
+      if (!design || design.customerId !== auth.id) {
+        sendJson(res, 404, { error: 'Design not found.' });
+        return;
+      }
+      sendJson(res, 200, { success: true, design });
+    } catch (error) {
+      console.error('Unable to load race design:', error);
+      sendJson(res, 500, { error: 'Unable to load design.' });
+    }
+    return;
+  }
+
+  // PUT /api/customer/race-designs/:id - Update design
+  if (
+    req.method === 'PUT' &&
+    segments[0] === 'api' &&
+    segments[1] === 'customer' &&
+    segments[2] === 'race-designs' &&
+    segments[3]
+  ) {
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const design = db.getRaceDesignById(segments[3]);
+        if (!design || design.customerId !== auth.id) {
+          sendJson(res, 404, { error: 'Design not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const updates = {};
+        if (payload.carTemplateId !== undefined) updates.carTemplateId = payload.carTemplateId;
+        if (payload.driverInfo !== undefined) updates.driverInfo = payload.driverInfo;
+        if (payload.referencePhotos !== undefined) updates.referencePhotos = payload.referencePhotos;
+        if (payload.decals !== undefined) updates.decals = payload.decals;
+        if (payload.designPreview !== undefined) updates.designPreview = payload.designPreview;
+        if (payload.productionSpec !== undefined) updates.productionSpec = payload.productionSpec;
+        if (payload.status !== undefined) updates.status = payload.status;
+        const updated = db.updateRaceDesign(design.id, updates);
+        sendJson(res, 200, { success: true, design: updated });
+      } catch (err) {
+        console.error('Unable to update race design:', err);
+        sendJson(res, 400, { error: err.message || 'Unable to update design.' });
+      }
+    });
+    return;
+  }
+
+  // DELETE /api/customer/race-designs/:id - Delete design
+  if (
+    req.method === 'DELETE' &&
+    segments[0] === 'api' &&
+    segments[1] === 'customer' &&
+    segments[2] === 'race-designs' &&
+    segments[3]
+  ) {
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    try {
+      const design = db.getRaceDesignById(segments[3]);
+      if (!design || design.customerId !== auth.id) {
+        sendJson(res, 404, { error: 'Design not found.' });
+        return;
+      }
+      db.deleteRaceDesign(design.id);
+      sendJson(res, 200, { success: true });
+    } catch (error) {
+      console.error('Unable to delete race design:', error);
+      sendJson(res, 500, { error: 'Unable to delete design.' });
+    }
+    return;
+  }
+
+  // POST /api/customer/race-designs/:id/quote - Generate quote from design
+  if (
+    req.method === 'POST' &&
+    segments[0] === 'api' &&
+    segments[1] === 'customer' &&
+    segments[2] === 'race-designs' &&
+    segments[3] &&
+    segments[4] === 'quote'
+  ) {
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const design = db.getRaceDesignById(segments[3]);
+        if (!design || design.customerId !== auth.id) {
+          sendJson(res, 404, { error: 'Design not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const driverInfo = design.driverInfo || {};
+
+        // Build quote data from design
+        const quoteData = {
+          customerId: auth.id,
+          business: payload.business || driverInfo.teamName || '',
+          contactName: driverInfo.primaryDriver?.name || auth.name || '',
+          vehicle: payload.vehicle || '',
+          colors: payload.colors || '',
+          packageOption: payload.packageOption || 'custom',
+          addons: payload.addons || [],
+          notes: payload.notes || `Design ID: ${design.id}`,
+          racingBody: driverInfo.racingSeries || '',
+          carNumber: driverInfo.carNumber || '',
+          coDriver: driverInfo.coDriver?.name || '',
+          driverCountry: driverInfo.primaryDriver?.country || '',
+          coDriverCountry: driverInfo.coDriver?.country || '',
+          sponsors: payload.sponsors || []
+        };
+
+        const quote = db.createRaceQuote(quoteData);
+
+        // Link design to quote
+        db.updateRaceDesign(design.id, { quoteId: quote.id, status: 'quoted' });
+
+        // Also update quote with design reference
+        db.updateRaceQuote(quote.id, { designId: design.id, designPreview: design.designPreview });
+
+        const apiQuote = toApiRaceQuote(db.getRaceQuoteById(quote.id));
+        notifyAdminsOfRaceQuote(apiQuote);
+
+        sendJson(res, 201, { success: true, quote: apiQuote, design: db.getRaceDesignById(design.id) });
+      } catch (err) {
+        console.error('Unable to create quote from design:', err);
+        sendJson(res, 400, { error: err.message || 'Unable to create quote.' });
+      }
+    });
+    return;
+  }
+
   if (
     req.method === 'POST' &&
     segments[0] === 'api' &&
@@ -8971,6 +14325,13 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Serve library assets with black background (for transparent images)
+  if ((req.method === 'GET' || req.method === 'HEAD') && segments[0] === 'api' && segments[1] === 'library-black-bg' && segments.length > 2) {
+    const assetPath = decodeURIComponent(segments.slice(2).join('/'));
+    serveLibraryAssetWithBlackBg(req, res, assetPath);
+    return;
+  }
+
   if ((req.method === 'GET' || req.method === 'HEAD') && segments[0] === 'api' && segments[1] === 'library' && segments.length > 2) {
     const assetPath = decodeURIComponent(segments.slice(2).join('/'));
     serveLibraryAsset(req, res, assetPath);
@@ -9085,6 +14446,2007 @@ const requestHandler = async (req, res) => {
       serveLibraryAsset(req, res, assetPath);
       return;
     }
+  }
+
+  // ============================================================================
+  // CUSTOM ART API ENDPOINTS
+  // ============================================================================
+
+  // --- ROOMS ---
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/custom-art/rooms') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const activeOnly = parsedUrl.query?.activeOnly !== 'false';
+      const roomType = parsedUrl.query?.roomType || null;
+      const rooms = db.listCustomArtRooms({ activeOnly, roomType });
+      sendJson(res, 200, { success: true, rooms });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list rooms.' });
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'rooms' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const room = db.getCustomArtRoomById(segments[3]);
+      if (!room) {
+        sendJson(res, 404, { error: 'Room not found.' });
+        return;
+      }
+      sendJson(res, 200, { success: true, room });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to get room.' });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/rooms') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      if (!body || !body.title || !body.imagePath) {
+        sendJson(res, 400, { error: 'title and imagePath are required.' });
+        return;
+      }
+      const room = db.createCustomArtRoom({
+        title: body.title,
+        roomType: body.roomType || null,
+        description: body.description || null,
+        tags: body.tags || null,
+        imagePath: body.imagePath,
+        thumbnailPath: body.thumbnailPath || null,
+        active: body.active !== false // Default to active
+      });
+      sendJson(res, 200, { success: true, room });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to create room.' });
+    }
+    return;
+  }
+
+  if (req.method === 'PATCH' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'rooms' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const existing = db.getCustomArtRoomById(segments[3]);
+      if (!existing) {
+        sendJson(res, 404, { error: 'Room not found.' });
+        return;
+      }
+      const body = await getReqBodyJson(req);
+      const room = db.updateCustomArtRoom(segments[3], body);
+      sendJson(res, 200, { success: true, room });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update room.' });
+    }
+    return;
+  }
+
+  if (req.method === 'DELETE' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'rooms' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      db.deleteCustomArtRoom(segments[3]);
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to delete room.' });
+    }
+    return;
+  }
+
+  // AI Metadata generation for rooms
+  if (req.method === 'POST' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'rooms' && segments[3] === 'ai-metadata') {
+    console.log('[Room AI Metadata] Endpoint called');
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const imageBase64 = body?.imageBase64;
+      const mediaType = body?.mediaType || 'image/jpeg';
+
+      if (!imageBase64) {
+        sendJson(res, 400, { error: 'No image data provided. Please provide imageBase64 in request body.' });
+        return;
+      }
+
+      // Use Claude to analyze the room image
+      const anthropicKey = process.env.ANTHROPIC_API_KEY;
+      if (!anthropicKey) {
+        sendJson(res, 500, { error: 'AI service not configured (ANTHROPIC_API_KEY missing).' });
+        return;
+      }
+
+      const roomTypeOptions = ['living-room', 'bedroom', 'office', 'dining-room', 'hallway', 'bathroom', 'kitchen', 'other'];
+
+      const prompt = `Analyze this room image and provide metadata for a mockup generator. Return a JSON object with these fields:
+- title: A short, descriptive title for this room setting (e.g., "Modern Minimalist Living Room", "Cozy Bedroom with Natural Light")
+- description: A 2-3 sentence description of the room's style, lighting, and atmosphere
+- roomType: One of these values EXACTLY: ${roomTypeOptions.join(', ')}
+- tags: Comma-separated keywords describing the room's style, colors, and features (e.g., "modern, minimalist, white walls, natural light, wooden floor")
+
+Return ONLY valid JSON, no markdown or explanation.`;
+
+      const anthropicRes = await new Promise((resolve, reject) => {
+        const postData = JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+              { type: 'text', text: prompt }
+            ]
+          }]
+        });
+
+        const options = {
+          hostname: 'api.anthropic.com',
+          port: 443,
+          path: '/v1/messages',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Length': Buffer.byteLength(postData)
+          }
+        };
+
+        const req = https.request(options, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              resolve(JSON.parse(data));
+            } catch (e) {
+              reject(new Error('Failed to parse AI response'));
+            }
+          });
+        });
+        req.on('error', reject);
+        req.write(postData);
+        req.end();
+      });
+
+      // Extract text from Claude response
+      const responseText = anthropicRes?.content?.[0]?.text || '';
+      console.log('[Room AI Metadata] Claude response:', responseText);
+
+      // Parse the JSON from response
+      let metadata = {};
+      try {
+        // Try to extract JSON from response (handle potential markdown wrapping)
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          metadata = JSON.parse(jsonMatch[0]);
+        }
+      } catch (parseErr) {
+        console.error('[Room AI Metadata] JSON parse error:', parseErr);
+        sendJson(res, 500, { error: 'Failed to parse AI response as JSON.' });
+        return;
+      }
+
+      // Validate roomType is one of our options
+      if (metadata.roomType && !roomTypeOptions.includes(metadata.roomType)) {
+        metadata.roomType = 'other';
+      }
+
+      sendJson(res, 200, { success: true, metadata });
+    } catch (e) {
+      console.error('[Room AI Metadata] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to generate room AI metadata.' });
+    }
+    return;
+  }
+
+  // --- ARTWORK ---
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/custom-art/artwork') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const activeOnly = parsedUrl.query?.activeOnly !== 'false';
+      const status = parsedUrl.query?.status || null;
+      const category = parsedUrl.query?.category || null;
+      const search = parsedUrl.query?.search || null;
+      const limit = Number(parsedUrl.query?.limit) || 100;
+      const offset = Number(parsedUrl.query?.offset) || 0;
+      console.log('[Custom Art API] listArtwork query:', { activeOnly, status, category, search, limit, offset, rawActiveOnly: parsedUrl.query?.activeOnly });
+      const artwork = db.listCustomArtArtwork({ activeOnly, status, category, search, limit, offset });
+      console.log('[Custom Art API] listArtwork returned', artwork?.length || 0, 'items');
+      sendJson(res, 200, { success: true, artwork });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list artwork.' });
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/custom-art/artwork/categories') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const categories = db.listCustomArtArtworkCategories();
+      sendJson(res, 200, { success: true, categories });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list categories.' });
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'artwork' && segments[3] && segments[3] !== 'categories') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const artwork = db.getCustomArtArtworkById(segments[3]);
+      if (!artwork) {
+        sendJson(res, 404, { error: 'Artwork not found.' });
+        return;
+      }
+      sendJson(res, 200, { success: true, artwork });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to get artwork.' });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/artwork') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      if (!body || !body.title || !body.filePath) {
+        sendJson(res, 400, { error: 'title and filePath are required.' });
+        return;
+      }
+      const artwork = db.createCustomArtArtwork({
+        title: body.title,
+        description: body.description || null,
+        tags: body.tags || null,
+        category: body.category || null,
+        style: body.style || null,
+        dimensionsWidth: body.dimensionsWidth || body.dimensions?.width || null,
+        dimensionsHeight: body.dimensionsHeight || body.dimensions?.height || null,
+        dimensionsUnit: body.dimensionsUnit || body.dimensions?.unit || 'inches',
+        filePath: body.filePath,
+        optimizedPath: body.optimizedPath || null,
+        thumbnailPath: body.thumbnailPath || null,
+        status: body.status || 'draft'
+      });
+      sendJson(res, 200, { success: true, artwork });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to create artwork.' });
+    }
+    return;
+  }
+
+  if (req.method === 'PATCH' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'artwork' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const existing = db.getCustomArtArtworkById(segments[3]);
+      if (!existing) {
+        sendJson(res, 404, { error: 'Artwork not found.' });
+        return;
+      }
+      const body = await getReqBodyJson(req);
+      // Handle nested dimensions object
+      if (body.dimensions) {
+        if (body.dimensions.width !== undefined) body.dimensionsWidth = body.dimensions.width;
+        if (body.dimensions.height !== undefined) body.dimensionsHeight = body.dimensions.height;
+        if (body.dimensions.unit !== undefined) body.dimensionsUnit = body.dimensions.unit;
+      }
+      const artwork = db.updateCustomArtArtwork(segments[3], body);
+      sendJson(res, 200, { success: true, artwork });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update artwork.' });
+    }
+    return;
+  }
+
+  if (req.method === 'DELETE' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'artwork' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      db.deleteCustomArtArtwork(segments[3]);
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to delete artwork.' });
+    }
+    return;
+  }
+
+  // AI Metadata generation for artwork
+  if (req.method === 'POST' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'artwork' && segments[3] && segments[4] === 'ai-metadata') {
+    console.log('[AI Metadata] Endpoint called for artwork:', segments[3]);
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const artworkId = segments[3];
+      const body = await getReqBodyJson(req);
+      console.log('[AI Metadata] Looking up artwork:', artworkId, 'hasImageBase64:', !!body?.imageBase64);
+
+      const artwork = db.getCustomArtArtworkById(artworkId);
+      if (!artwork) {
+        sendJson(res, 404, { error: 'Artwork not found.' });
+        return;
+      }
+
+      // Check if we have base64 image from client or need to find file on server
+      let imagePath = null;
+      let imageBase64 = body?.imageBase64;
+      let mediaType = body?.mediaType || 'image/jpeg';
+
+      if (!imageBase64 && artwork.filePath) {
+        // Try to find file on server (for server-side uploaded images)
+        const webPath = path.resolve(__dirname, '..', 'web', artwork.filePath.replace(/^\//, ''));
+        if (fs.existsSync(webPath)) {
+          imagePath = webPath;
+        } else if (fs.existsSync(artwork.filePath)) {
+          imagePath = artwork.filePath;
+        }
+      }
+
+      if (!imageBase64 && !imagePath) {
+        console.log('[AI Metadata] ERROR: No image data provided and file not found on server');
+        sendJson(res, 400, { error: 'No image data provided. Please provide imageBase64 in request body.' });
+        return;
+      }
+
+      // Generate AI metadata (description + filename)
+      console.log('[AI Metadata] Calling describeCatalogDesign, hasBase64:', !!imageBase64, 'imagePath:', imagePath);
+      const aiResult = await describeCatalogDesign({
+        category: artwork.category || '',
+        fileName: artwork.title || 'artwork',
+        imagePath: imagePath,
+        imageBase64: imageBase64,
+        mediaType: mediaType
+      });
+      console.log('[AI Metadata] Generated result:', aiResult);
+
+      if (!aiResult || (!aiResult.description && !aiResult.filename)) {
+        sendJson(res, 500, { error: 'AI metadata generation failed or not configured.' });
+        return;
+      }
+
+      // Build update object with description and seoFilename
+      const updates = {};
+      if (aiResult.description) updates.description = aiResult.description;
+      if (aiResult.filename) updates.seoFilename = aiResult.filename;
+
+      // Update the artwork with the generated metadata
+      console.log('[AI Metadata] Saving to artwork:', artworkId, updates);
+      const updated = db.updateCustomArtArtwork(artworkId, updates);
+      console.log('[AI Metadata] Updated artwork - description:', updated?.description, 'seoFilename:', updated?.seoFilename);
+      sendJson(res, 200, { success: true, artwork: updated, generatedDescription: aiResult.description, generatedFilename: aiResult.filename });
+    } catch (e) {
+      console.error('AI metadata error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to generate AI metadata.' });
+    }
+    return;
+  }
+
+  // --- HUMAN MODELS ---
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/human-models') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const activeOnly = parsedUrl.query?.activeOnly !== 'false';
+      const status = parsedUrl.query?.status || null;
+      const category = parsedUrl.query?.category || null;
+      const gender = parsedUrl.query?.gender || null;
+      const search = parsedUrl.query?.search || null;
+      const limit = Number(parsedUrl.query?.limit) || 100;
+      const offset = Number(parsedUrl.query?.offset) || 0;
+      const models = db.listHumanModels({ activeOnly, status, category, gender, search, limit, offset });
+      sendJson(res, 200, { success: true, models });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list human models.' });
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/human-models/categories') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const categories = db.listHumanModelCategories();
+      sendJson(res, 200, { success: true, categories });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list categories.' });
+    }
+    return;
+  }
+
+  // GET single human model by ID (only if no sub-path like /recolor, /analyze, etc.)
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'human-models' && segments[2] && segments[2] !== 'categories' && !segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const modelId = segments[2];
+      const model = db.getHumanModelById(modelId);
+      if (!model) {
+        sendJson(res, 404, { error: 'Human model not found.' });
+        return;
+      }
+      sendJson(res, 200, { success: true, model });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to get human model.' });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/human-models') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      if (!body || !body.title || !body.filePath) {
+        sendJson(res, 400, { error: 'title and filePath are required.' });
+        return;
+      }
+      const model = db.createHumanModel({
+        title: body.title,
+        description: body.description || null,
+        tags: body.tags || null,
+        category: body.category || null,
+        gender: body.gender || null,
+        poseType: body.poseType || null,
+        seoFilename: body.seoFilename || null,
+        filePath: body.filePath,
+        optimizedPath: body.optimizedPath || null,
+        thumbnailPath: body.thumbnailPath || null,
+        status: body.status || 'draft'
+      });
+      sendJson(res, 201, { success: true, model });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to create human model.' });
+    }
+    return;
+  }
+
+  if (req.method === 'PUT' && segments[0] === 'api' && segments[1] === 'human-models' && segments[2]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const modelId = segments[2];
+      const body = await getReqBodyJson(req);
+      const model = db.updateHumanModel(modelId, body);
+      if (!model) {
+        sendJson(res, 404, { error: 'Human model not found.' });
+        return;
+      }
+      sendJson(res, 200, { success: true, model });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update human model.' });
+    }
+    return;
+  }
+
+  if (req.method === 'DELETE' && segments[0] === 'api' && segments[1] === 'human-models' && segments[2]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const modelId = segments[2];
+      db.deleteHumanModel(modelId);
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to delete human model.' });
+    }
+    return;
+  }
+
+  // Human Models file upload
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/human-models/upload') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const contentType = req.headers['content-type'] || '';
+      if (!contentType.includes('multipart/form-data')) {
+        sendJson(res, 400, { error: 'Expected multipart/form-data' });
+        return;
+      }
+
+      const { fields, files } = await parseMultipartForm(req, {
+        uploadDir: path.join(LIBRARY_ROOT, 'human-models'),
+        maxFileSize: 50 * 1024 * 1024,
+        filter: ({ mimetype }) => mimetype && mimetype.startsWith('image/')
+      });
+
+      const file = files.file?.[0] || files.file;
+      if (!file) {
+        sendJson(res, 400, { error: 'No file uploaded' });
+        return;
+      }
+
+      const ext = path.extname(file.originalFilename || '').toLowerCase() || '.png';
+      const uniqueId = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      const destFilename = `model_${uniqueId}${ext}`;
+      const thumbFilename = `model_${uniqueId}_thumb.jpg`;
+
+      const destDir = path.join(LIBRARY_ROOT, 'human-models');
+      await fs.promises.mkdir(destDir, { recursive: true });
+
+      const destPath = path.join(destDir, destFilename);
+      const thumbPath = path.join(destDir, thumbFilename);
+
+      // Move uploaded file to destination
+      await fs.promises.rename(file.filepath, destPath);
+
+      // Create thumbnail
+      let thumbnailPath = null;
+      if (sharp) {
+        try {
+          await sharp(destPath)
+            .resize(400, 400, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toFile(thumbPath);
+          thumbnailPath = `/library/human-models/${thumbFilename}`;
+        } catch (thumbErr) {
+          console.warn('[Human Models Upload] Thumbnail creation failed:', thumbErr.message);
+        }
+      }
+
+      sendJson(res, 200, {
+        success: true,
+        filePath: `/library/human-models/${destFilename}`,
+        thumbnailPath,
+        filename: file.originalFilename || destFilename
+      });
+    } catch (e) {
+      console.error('[Human Models Upload] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Upload failed' });
+    }
+    return;
+  }
+
+  // Mockup Backgrounds file upload (images only - ZIP extraction handled by client)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/mockup-backgrounds/upload') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const contentType = req.headers['content-type'] || '';
+      if (!contentType.includes('multipart/form-data')) {
+        sendJson(res, 400, { error: 'Expected multipart/form-data' });
+        return;
+      }
+
+      const { fields, files } = await parseMultipartForm(req, {
+        uploadDir: path.join(LIBRARY_ROOT, 'mockup-backgrounds'),
+        maxFileSize: 50 * 1024 * 1024,
+        filter: ({ mimetype }) => mimetype && mimetype.startsWith('image/')
+      });
+
+      const file = files.file?.[0] || files.file;
+      if (!file) {
+        sendJson(res, 400, { error: 'No file uploaded' });
+        return;
+      }
+
+      console.log('[Mockup Backgrounds Upload] File received:', {
+        filepath: file.filepath,
+        originalFilename: file.originalFilename,
+        mimetype: file.mimetype,
+        size: file.size
+      });
+
+      // Verify temp file exists
+      if (!fs.existsSync(file.filepath)) {
+        console.error('[Mockup Backgrounds Upload] Temp file does not exist:', file.filepath);
+        sendJson(res, 500, { error: 'Uploaded file not found on server' });
+        return;
+      }
+
+      const ext = path.extname(file.originalFilename || '').toLowerCase() || '.png';
+      const uniqueId = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      const destFilename = `bg_${uniqueId}${ext}`;
+      const thumbFilename = `bg_${uniqueId}_thumb.jpg`;
+
+      const destDir = path.join(LIBRARY_ROOT, 'mockup-backgrounds');
+      await fs.promises.mkdir(destDir, { recursive: true });
+
+      const destPath = path.join(destDir, destFilename);
+      const thumbPath = path.join(destDir, thumbFilename);
+
+      // Move uploaded file to destination (use copy+unlink for cross-filesystem support)
+      try {
+        await fs.promises.rename(file.filepath, destPath);
+      } catch (renameErr) {
+        // If rename fails (cross-device), fallback to copy + unlink
+        console.log('[Mockup Backgrounds Upload] Rename failed, using copy:', renameErr.code);
+        await fs.promises.copyFile(file.filepath, destPath);
+        await fs.promises.unlink(file.filepath).catch(() => {});
+      }
+
+      // Get image dimensions
+      let width = null, height = null, fileSize = null;
+      if (sharp) {
+        try {
+          const metadata = await sharp(destPath).metadata();
+          width = metadata.width;
+          height = metadata.height;
+          const stats = await fs.promises.stat(destPath);
+          fileSize = stats.size;
+        } catch (metaErr) {
+          console.warn('[Mockup Backgrounds Upload] Metadata read failed:', metaErr.message);
+        }
+      }
+
+      // Create thumbnail
+      let thumbnailPath = null;
+      if (sharp) {
+        try {
+          await sharp(destPath)
+            .resize(400, 400, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toFile(thumbPath);
+          thumbnailPath = `/library/mockup-backgrounds/${thumbFilename}`;
+        } catch (thumbErr) {
+          console.warn('[Mockup Backgrounds Upload] Thumbnail creation failed:', thumbErr.message);
+        }
+      }
+
+      sendJson(res, 200, {
+        success: true,
+        filePath: `/library/mockup-backgrounds/${destFilename}`,
+        thumbnailPath,
+        filename: file.originalFilename || destFilename,
+        width,
+        height,
+        fileSize
+      });
+    } catch (e) {
+      console.error('[Mockup Backgrounds Upload] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Upload failed' });
+    }
+    return;
+  }
+
+  // Human Models - AI Metadata Analysis
+  if (req.method === 'POST' && segments[0] === 'api' && segments[1] === 'human-models' && segments[3] === 'analyze') {
+    if (!requireInternalKey(req, res)) return;
+    const modelId = segments[2];
+    try {
+      const model = db.getHumanModelById(modelId);
+      if (!model) {
+        sendJson(res, 404, { error: 'Model not found.' });
+        return;
+      }
+
+      // Get the full image path (model uses camelCase from mapHumanModel)
+      const modelFilePath = model.filePath;
+      if (!modelFilePath) {
+        sendJson(res, 400, { error: 'Model has no file path.' });
+        return;
+      }
+      // Resolve the path - models are stored under /web/library/human-models/
+      let imagePath;
+      if (modelFilePath.startsWith('/')) {
+        imagePath = path.resolve(__dirname, '..', 'web', modelFilePath.replace(/^\//, ''));
+      } else {
+        imagePath = modelFilePath;
+      }
+      // Fallback: check if it exists as-is
+      if (!fs.existsSync(imagePath) && fs.existsSync(modelFilePath)) {
+        imagePath = modelFilePath;
+      }
+
+      console.log('[Human Model AI] Analyzing:', modelId, imagePath);
+
+      // Use the human-model-analyzer module
+      const { analyzeHumanModel } = require('./human-model-analyzer');
+      const metadata = await analyzeHumanModel(imagePath);
+
+      console.log('[Human Model AI] Result:', metadata);
+
+      // Generate category from metadata: Gender-Apparel-Direction
+      const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
+      const categoryParts = [
+        capitalize(metadata.gender),
+        capitalize(metadata.apparel_type?.replace(/-/g, ' ')),
+        capitalize(metadata.facing?.replace(/-/g, ' '))
+      ].filter(Boolean);
+      const category = categoryParts.length >= 2 ? categoryParts.join('-') : null;
+
+      console.log('[Human Model AI] Generated category:', category);
+
+      // Update the database with the analyzed metadata and generated category
+      db.updateHumanModel(modelId, {
+        gender: metadata.gender,
+        ethnicity: metadata.ethnicity,
+        apparel_type: metadata.apparel_type,
+        facing: metadata.facing,
+        pose_type: metadata.pose,
+        category: category
+      });
+
+      sendJson(res, 200, {
+        success: true,
+        modelId,
+        metadata: { ...metadata, category }
+      });
+    } catch (e) {
+      console.error('[Human Model AI] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Analysis failed' });
+    }
+    return;
+  }
+
+  // Human Models - Generate Clothing Mask
+  if (req.method === 'POST' && segments[0] === 'api' && segments[1] === 'human-models' && segments[3] === 'generate-mask') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const modelId = segments[2];
+      const body = await getReqBodyJson(req).catch(() => ({}));
+      const options = {
+        clothingLuminanceMin: body.luminanceMin || 170,
+        keepTempFiles: body.keepTempFiles || false,
+        blur: body.blur || 0.5
+      };
+
+      console.log('[Human Model Mask] Generating mask for:', modelId);
+
+      const { generateMaskForModel } = require('./scripts/clothing-mask-generator');
+      const result = await generateMaskForModel(db.db, modelId, options);
+
+      console.log('[Human Model Mask] Generated:', result.maskPath);
+
+      sendJson(res, 200, {
+        success: true,
+        modelId,
+        maskPath: result.maskPath
+      });
+    } catch (e) {
+      console.error('[Human Model Mask] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Mask generation failed' });
+    }
+    return;
+  }
+
+  // Human Models - Generate All Missing Masks
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/human-models/generate-all-masks') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req).catch(() => ({}));
+      const options = {
+        clothingLuminanceMin: body.luminanceMin || 170,
+        keepTempFiles: body.keepTempFiles || false,
+        blur: body.blur || 0.5
+      };
+
+      console.log('[Human Model Mask] Generating masks for all models without masks...');
+
+      const { generateMissingMasks } = require('./scripts/clothing-mask-generator');
+      const results = await generateMissingMasks(db.db, options);
+
+      const successful = results.filter(r => r.success).length;
+      console.log(`[Human Model Mask] Generated ${successful}/${results.length} masks`);
+
+      sendJson(res, 200, {
+        success: true,
+        generated: successful,
+        total: results.length,
+        results
+      });
+    } catch (e) {
+      console.error('[Human Model Mask] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Batch mask generation failed' });
+    }
+    return;
+  }
+
+  // Human Models - Check if recolored version exists in cache
+  // GET /api/human-models/:id/recolor-check?color=navy+blue&garmentType=t-shirt
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'human-models' && segments[3] === 'recolor-check') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const modelId = segments[2];
+      const urlParams = new URL(req.url, `http://${req.headers.host}`).searchParams;
+      const color = urlParams.get('color');
+      const garmentType = urlParams.get('garmentType') || 't-shirt';
+
+      if (!color) {
+        sendJson(res, 400, { error: 'color query param is required' });
+        return;
+      }
+
+      // Check if model exists
+      const model = db.getHumanModelById(modelId);
+      if (!model) {
+        sendJson(res, 404, { error: 'Model not found' });
+        return;
+      }
+
+      // Check cache
+      const cached = db.getRecoloredModel(modelId, color, garmentType);
+      const exists = !!(cached && cached.filePath && fs.existsSync(cached.filePath));
+
+      sendJson(res, 200, {
+        exists,
+        modelId,
+        color,
+        garmentType,
+        cached: exists ? {
+          webPath: cached.webPath,
+          cacheKey: cached.cacheKey
+        } : null
+      });
+    } catch (e) {
+      console.error('[Recolor Check] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Check failed' });
+    }
+    return;
+  }
+
+  // Human Models - Recolor Garment (AI-powered color change)
+  // POST /api/human-models/:id/recolor
+  // Body: { color: "forest green", garmentType: "t-shirt", force: false }
+  if (req.method === 'POST' && segments[0] === 'api' && segments[1] === 'human-models' && segments[3] === 'recolor') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const modelId = segments[2];
+      const body = await getReqBodyJson(req).catch(() => ({}));
+      const { color, garmentType = 't-shirt', force = false } = body;
+
+      if (!color) {
+        sendJson(res, 400, { error: 'color is required' });
+        return;
+      }
+
+      // Get the model to find its image path
+      const model = db.getHumanModelById(modelId);
+      if (!model) {
+        sendJson(res, 404, { error: 'Model not found' });
+        return;
+      }
+
+      console.log(`[Recolor] Request for model ${modelId}: ${color} ${garmentType}`);
+
+      // Check cache first (unless force regenerate)
+      if (!force) {
+        const cached = db.getRecoloredModel(modelId, color, garmentType);
+        if (cached && cached.filePath && fs.existsSync(cached.filePath)) {
+          console.log(`[Recolor] Returning cached: ${cached.webPath}`);
+          sendJson(res, 200, {
+            success: true,
+            cached: true,
+            imagePath: cached.filePath,
+            webPath: cached.webPath,
+            cacheKey: cached.cacheKey
+          });
+          return;
+        }
+      }
+
+      // Check if Replicate API token is configured
+      const replicateToken = process.env.REPLICATE_API_TOKEN;
+      if (!replicateToken) {
+        sendJson(res, 500, { error: 'REPLICATE_API_TOKEN not configured on server' });
+        return;
+      }
+
+      // Get the actual file path for the model image
+      const imagePath = model.filePath.startsWith('/library/')
+        ? path.join(LIBRARY_ROOT, model.filePath.replace('/library/', ''))
+        : model.filePath;
+
+      if (!fs.existsSync(imagePath)) {
+        sendJson(res, 404, { error: `Model image not found: ${imagePath}` });
+        return;
+      }
+
+      // Initialize and run the recolor service
+      const garmentRecolor = require('./garment-recolor');
+      garmentRecolor.init({ cacheDir: path.join(LIBRARY_ROOT, 'human-models', 'recolored') });
+
+      const result = await garmentRecolor.recolorGarment({
+        modelId,
+        imagePath,
+        color,
+        garmentType,
+        replicateApiToken: replicateToken,
+        forceRegenerate: force,
+        db: {
+          getRecoloredModel: (mId, c, g) => db.getRecoloredModel(mId, c, g),
+          saveRecoloredModel: (data) => db.saveRecoloredModel(data)
+        }
+      });
+
+      console.log(`[Recolor] Completed: ${result.webPath} (cached: ${result.cached})`);
+
+      sendJson(res, 200, {
+        success: true,
+        cached: result.cached,
+        imagePath: result.imagePath,
+        webPath: result.webPath,
+        cacheKey: result.cacheKey
+      });
+    } catch (e) {
+      console.error('[Recolor] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Recolor failed' });
+    }
+    return;
+  }
+
+  // Human Models - List Color Variants for a model
+  // GET /api/human-models/:id/color-variants
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'human-models' && segments[3] === 'color-variants') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const modelId = segments[2];
+      const variants = db.listRecoloredModelsByModel(modelId);
+      sendJson(res, 200, { success: true, variants });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Failed to list variants' });
+    }
+    return;
+  }
+
+  // --- MATERIALS ---
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/custom-art/materials') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const activeOnly = parsedUrl.query?.activeOnly !== 'false';
+      const materials = db.listCustomArtMaterials({ activeOnly });
+      sendJson(res, 200, { success: true, materials });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list materials.' });
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'materials' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const material = db.getCustomArtMaterialById(segments[3]);
+      if (!material) {
+        sendJson(res, 404, { error: 'Material not found.' });
+        return;
+      }
+      sendJson(res, 200, { success: true, material });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to get material.' });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/materials') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      if (!body || !body.name) {
+        sendJson(res, 400, { error: 'name is required.' });
+        return;
+      }
+      const material = db.createCustomArtMaterial({
+        name: body.name,
+        description: body.description || null,
+        filterType: body.filterType || 'none',
+        baseCostCents: body.baseCostCents || 0
+      });
+      sendJson(res, 200, { success: true, material });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to create material.' });
+    }
+    return;
+  }
+
+  if (req.method === 'PATCH' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'materials' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const existing = db.getCustomArtMaterialById(segments[3]);
+      if (!existing) {
+        sendJson(res, 404, { error: 'Material not found.' });
+        return;
+      }
+      const body = await getReqBodyJson(req);
+      const material = db.updateCustomArtMaterial(segments[3], body);
+      sendJson(res, 200, { success: true, material });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update material.' });
+    }
+    return;
+  }
+
+  if (req.method === 'DELETE' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'materials' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      db.deleteCustomArtMaterial(segments[3]);
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to delete material.' });
+    }
+    return;
+  }
+
+  // --- PRODUCTS ---
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/custom-art/products') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const activeOnly = parsedUrl.query?.activeOnly !== 'false';
+      const status = parsedUrl.query?.status || null;
+      const artworkId = parsedUrl.query?.artworkId || null;
+      const limit = Number(parsedUrl.query?.limit) || 100;
+      const offset = Number(parsedUrl.query?.offset) || 0;
+      const products = db.listCustomArtProducts({ activeOnly, status, artworkId, limit, offset });
+      sendJson(res, 200, { success: true, products });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list products.' });
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'products' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const product = db.getCustomArtProductById(segments[3]);
+      if (!product) {
+        sendJson(res, 404, { error: 'Product not found.' });
+        return;
+      }
+      sendJson(res, 200, { success: true, product });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to get product.' });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/products') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      if (!body || !body.title) {
+        sendJson(res, 400, { error: 'title is required.' });
+        return;
+      }
+      const product = db.createCustomArtProduct({
+        artworkId: body.artworkId || null,
+        title: body.title,
+        description: body.description || null,
+        hasVariants: body.hasVariants || false,
+        basePriceCents: body.basePriceCents || 0,
+        costCents: body.costCents || 0,
+        materialId: body.materialId || null,
+        singleSizeWidth: body.singleSizeWidth || body.singleSize?.width || null,
+        singleSizeHeight: body.singleSizeHeight || body.singleSize?.height || null,
+        sizeUnit: body.sizeUnit || body.singleSize?.unit || 'inches',
+        mockupPath: body.mockupPath || null,
+        mockupRoomId: body.mockupRoomId || null,
+        status: body.status || 'draft'
+      });
+
+      // If this is a tiled product, save the tiles to the database
+      if (body.tiledInfo?.tiles && Array.isArray(body.tiledInfo.tiles)) {
+        console.log('[CustomArt] Saving', body.tiledInfo.tiles.length, 'tiles for product:', product.id);
+        for (const tile of body.tiledInfo.tiles) {
+          try {
+            db.createCustomArtTile({
+              productId: product.id,
+              artworkId: body.artworkId || null,
+              row: tile.row,
+              col: tile.col,
+              filename: tile.filename,
+              filePath: tile.filePath || tile.url,
+              url: tile.url,
+              widthInches: tile.widthInches || body.tiledInfo.tileWidth,
+              heightInches: tile.heightInches || body.tiledInfo.tileHeight
+            });
+          } catch (tileErr) {
+            console.error('[CustomArt] Error saving tile:', tileErr);
+          }
+        }
+        console.log('[CustomArt] Tiles saved successfully');
+      }
+
+      sendJson(res, 200, { success: true, product });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to create product.' });
+    }
+    return;
+  }
+
+  if (req.method === 'PATCH' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'products' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const existing = db.getCustomArtProductById(segments[3]);
+      if (!existing) {
+        sendJson(res, 404, { error: 'Product not found.' });
+        return;
+      }
+      const body = await getReqBodyJson(req);
+      // Handle nested singleSize object
+      if (body.singleSize) {
+        if (body.singleSize.width !== undefined) body.singleSizeWidth = body.singleSize.width;
+        if (body.singleSize.height !== undefined) body.singleSizeHeight = body.singleSize.height;
+        if (body.singleSize.unit !== undefined) body.sizeUnit = body.singleSize.unit;
+      }
+      const product = db.updateCustomArtProduct(segments[3], body);
+      sendJson(res, 200, { success: true, product });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update product.' });
+    }
+    return;
+  }
+
+  if (req.method === 'DELETE' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'products' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      db.deleteCustomArtProduct(segments[3]);
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to delete product.' });
+    }
+    return;
+  }
+
+  // --- PRODUCT TILES (for split panel products) ---
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'products' && segments[3] && segments[4] === 'tiles') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const product = db.getCustomArtProductById(segments[3]);
+      if (!product) {
+        sendJson(res, 404, { error: 'Product not found.' });
+        return;
+      }
+      const tiles = db.listCustomArtTilesByProduct(segments[3]);
+      sendJson(res, 200, { success: true, tiles });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list tiles.' });
+    }
+    return;
+  }
+
+  // --- PRODUCT VARIANTS ---
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'products' && segments[3] && segments[4] === 'variants') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const product = db.getCustomArtProductById(segments[3]);
+      if (!product) {
+        sendJson(res, 404, { error: 'Product not found.' });
+        return;
+      }
+      const activeOnly = parsedUrl.query?.activeOnly !== 'false';
+      const variants = db.listCustomArtProductVariants(segments[3], { activeOnly });
+      sendJson(res, 200, { success: true, variants });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to list variants.' });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'products' && segments[3] && segments[4] === 'variants') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const product = db.getCustomArtProductById(segments[3]);
+      if (!product) {
+        sendJson(res, 404, { error: 'Product not found.' });
+        return;
+      }
+      const body = await getReqBodyJson(req);
+      if (!body || body.sizeWidth === undefined || body.sizeHeight === undefined) {
+        sendJson(res, 400, { error: 'sizeWidth and sizeHeight are required.' });
+        return;
+      }
+      const variant = db.createCustomArtProductVariant({
+        productId: segments[3],
+        materialId: body.materialId || null,
+        sizeWidth: body.sizeWidth || body.size?.width,
+        sizeHeight: body.sizeHeight || body.size?.height,
+        sizeUnit: body.sizeUnit || body.size?.unit || 'inches',
+        priceCents: body.priceCents || 0,
+        costCents: body.costCents || 0,
+        sku: body.sku || null
+      });
+      sendJson(res, 200, { success: true, variant });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to create variant.' });
+    }
+    return;
+  }
+
+  if (req.method === 'PATCH' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'variants' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const existing = db.getCustomArtProductVariantById(segments[3]);
+      if (!existing) {
+        sendJson(res, 404, { error: 'Variant not found.' });
+        return;
+      }
+      const body = await getReqBodyJson(req);
+      // Handle nested size object
+      if (body.size) {
+        if (body.size.width !== undefined) body.sizeWidth = body.size.width;
+        if (body.size.height !== undefined) body.sizeHeight = body.size.height;
+        if (body.size.unit !== undefined) body.sizeUnit = body.size.unit;
+      }
+      const variant = db.updateCustomArtProductVariant(segments[3], body);
+      sendJson(res, 200, { success: true, variant });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update variant.' });
+    }
+    return;
+  }
+
+  if (req.method === 'DELETE' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'variants' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      db.deleteCustomArtProductVariant(segments[3]);
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to delete variant.' });
+    }
+    return;
+  }
+
+  // --- CUSTOM ART MOCKUPS CRUD ---
+  // List all mockups from database
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/custom-art/mockups') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const query = parsedUrl.query || {};
+
+      // Get mockups from database
+      console.log('[Mockups] Listing with query:', query);
+      const mockups = db.listCustomArtMockups({
+        productId: query.productId,
+        artworkId: query.artworkId,
+        roomId: query.roomId,
+        campaignSlug: query.campaignSlug,
+        mockupType: query.mockupType,
+        activeOnly: query.activeOnly !== 'false'
+      });
+      console.log('[Mockups] Found', mockups.length, 'mockups');
+
+      sendJson(res, 200, mockups);
+    } catch (e) {
+      console.error('[Mockups] Error listing mockups:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to list mockups.' });
+    }
+    return;
+  }
+
+  // Get single mockup by ID
+  if (req.method === 'GET' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'mockups' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const mockup = db.getCustomArtMockupById(segments[3]);
+      if (!mockup) {
+        sendJson(res, 404, { error: 'Mockup not found.' });
+        return;
+      }
+      sendJson(res, 200, mockup);
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to get mockup.' });
+    }
+    return;
+  }
+
+  // Create mockup
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/mockups') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { title, filename, filePath, url, productId, artworkId, roomId, width, height, fileSize, tags, notes, imageData } = body;
+
+      // If imageData is provided, save the file first
+      let finalFilePath = filePath;
+      let finalUrl = url;
+      let finalFilename = filename;
+
+      if (imageData) {
+        const mockupsDir = path.join(__dirname, '..', 'web', 'images', 'custom-art', 'mockups');
+        fs.mkdirSync(mockupsDir, { recursive: true });
+
+        const ext = (filename || 'mockup.png').split('.').pop() || 'png';
+        const uniqueFilename = `mockup-${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${ext}`;
+        const absolutePath = path.join(mockupsDir, uniqueFilename);
+
+        const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
+        fs.writeFileSync(absolutePath, Buffer.from(base64Data, 'base64'));
+
+        finalFilePath = `images/custom-art/mockups/${uniqueFilename}`;
+        finalFilename = uniqueFilename;
+        finalUrl = `${process.env.STORE_BASE_URL || 'https://store.swayzecustomvinyl.com'}/${finalFilePath}`;
+
+        // Get image dimensions
+        try {
+          const sharp = require('sharp');
+          const metadata = await sharp(absolutePath).metadata();
+          body.width = metadata.width;
+          body.height = metadata.height;
+          body.fileSize = fs.statSync(absolutePath).size;
+        } catch (e) {
+          console.warn('[Mockups] Could not get image metadata:', e.message);
+        }
+      }
+
+      if (!finalFilename || !finalFilePath) {
+        sendJson(res, 400, { error: 'filename and filePath are required (or provide imageData).' });
+        return;
+      }
+
+      const mockupId = db.createCustomArtMockup({
+        title: title || finalFilename,
+        filename: finalFilename,
+        filePath: finalFilePath,
+        url: finalUrl,
+        productId,
+        artworkId,
+        roomId,
+        width: body.width,
+        height: body.height,
+        fileSize: body.fileSize,
+        tags,
+        notes
+      });
+
+      const mockup = db.getCustomArtMockupById(mockupId);
+      console.log('[Mockups] Created mockup:', mockupId);
+      sendJson(res, 200, mockup);
+    } catch (e) {
+      console.error('[Mockups] Error creating mockup:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to create mockup.' });
+    }
+    return;
+  }
+
+  // Update mockup
+  if (req.method === 'PUT' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'mockups' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      db.updateCustomArtMockup(segments[3], body);
+      const updated = db.getCustomArtMockupById(segments[3]);
+      sendJson(res, 200, updated);
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to update mockup.' });
+    }
+    return;
+  }
+
+  // Delete mockup (soft delete - sets active=0)
+  if (req.method === 'DELETE' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'mockups' && segments[3]) {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const query = parsedUrl.query || {};
+      const hardDelete = query.hard === 'true';
+
+      if (hardDelete) {
+        // Hard delete - remove from DB and optionally delete file
+        const mockup = db.getCustomArtMockupById(segments[3]);
+        if (mockup && mockup.filePath) {
+          const absolutePath = path.join(__dirname, '..', 'web', mockup.filePath);
+          if (fs.existsSync(absolutePath)) {
+            fs.unlinkSync(absolutePath);
+            console.log('[Mockups] Deleted file:', absolutePath);
+          }
+        }
+        db.deleteCustomArtMockup(segments[3], true);
+      } else {
+        // Soft delete
+        db.deleteCustomArtMockup(segments[3], false);
+      }
+      sendJson(res, 200, { success: true });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to delete mockup.' });
+    }
+    return;
+  }
+
+  // --- FILE UPLOAD FOR CUSTOM ART ---
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/upload') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      // Accept JSON body with base64 imageData
+      const body = await getReqBodyJson(req);
+      if (!body || !body.imageData || !body.filename) {
+        sendJson(res, 400, { error: 'imageData (base64) and filename are required.' });
+        return;
+      }
+      const uploadDir = path.join(LIBRARY_ROOT, 'uploads', 'custom-art');
+      fs.mkdirSync(uploadDir, { recursive: true });
+
+      const ext = path.extname(body.filename) || '.png';
+      const safeFilename = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}${ext}`;
+      const filePath = path.join(uploadDir, safeFilename);
+
+      // Decode base64
+      const base64Data = body.imageData.replace(/^data:image\/\w+;base64,/, '');
+      fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+
+      const relativePath = `library/uploads/custom-art/${safeFilename}`;
+      sendJson(res, 200, { success: true, filePath: relativePath, absolutePath: filePath });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to upload file.' });
+    }
+    return;
+  }
+
+  // --- SAVE MOCKUP FOR CUSTOM ART ---
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/mockup/save') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { productId, mockupBase64, filename, artworkId, roomId, campaignSlug, materialId, mockupType, title } = body;
+
+      if (!mockupBase64) {
+        sendJson(res, 400, { error: 'mockupBase64 is required.' });
+        return;
+      }
+
+      // Ensure custom-art-images directory exists
+      const customArtImagesDir = path.join(__dirname, '..', 'web', 'images', 'custom-art');
+      try { fs.mkdirSync(customArtImagesDir, { recursive: true }); } catch (_) {}
+
+      // Save the mockup image
+      const ext = (filename || 'mockup.jpg').split('.').pop() || 'jpg';
+      const mockupFilename = filename || `mockup-${productId || 'general'}-${Date.now()}.${ext}`;
+      const mockupPath = path.join(customArtImagesDir, mockupFilename);
+
+      const imageBuffer = Buffer.from(mockupBase64, 'base64');
+      fs.writeFileSync(mockupPath, imageBuffer);
+
+      // Build the public URL for the mockup
+      const publicUrl = `${process.env.STORE_BASE_URL || 'https://store.swayzecustomvinyl.com'}/images/custom-art/${mockupFilename}`;
+
+      // Get image dimensions if sharp is available
+      let width = null, height = null;
+      if (sharp) {
+        try {
+          const meta = await sharp(mockupPath).metadata();
+          width = meta.width;
+          height = meta.height;
+        } catch (_) {}
+      }
+
+      // Create a mockup record in the database
+      const mockupId = db.createCustomArtMockup({
+        title: title || (productId ? `Mockup for ${productId}` : 'General Mockup'),
+        filename: mockupFilename,
+        filePath: mockupPath,
+        url: publicUrl,
+        productId: productId || null,
+        artworkId: artworkId || null,
+        roomId: roomId || null,
+        campaignSlug: campaignSlug || null,
+        materialId: materialId || null,
+        mockupType: mockupType || (productId ? 'product' : 'general'),
+        width,
+        height,
+        fileSize: imageBuffer.length,
+        tags: null,
+        notes: null
+      });
+
+      // Update the product with the mockup path if productId is provided
+      if (productId) {
+        db.updateCustomArtProduct(productId, { mockupPath: publicUrl });
+      }
+
+      console.log('[CustomArt] Saved mockup:', mockupId, 'product:', productId || 'none', 'campaign:', campaignSlug || 'none', 'URL:', publicUrl);
+
+      sendJson(res, 200, { success: true, mockupId, mockupPath: publicUrl });
+    } catch (e) {
+      console.error('[CustomArt] Error saving mockup:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to save mockup.' });
+    }
+    return;
+  }
+
+  // --- SAVE TILED ARTWORK FOR CUSTOM ART (wall patterns) ---
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/tiled-artwork/save') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { productId, artworkBase64, filename, originalArtworkId } = body;
+
+      if (!productId || !artworkBase64 || !filename) {
+        sendJson(res, 400, { error: 'productId, artworkBase64, and filename are required.' });
+        return;
+      }
+
+      // Ensure tiled artwork directory exists (separate from main artwork)
+      const tiledArtworkDir = path.join(__dirname, '..', 'web', 'images', 'custom-art', 'tiled');
+      try { fs.mkdirSync(tiledArtworkDir, { recursive: true }); } catch (_) {}
+
+      // Save the tiled artwork image
+      const tiledPath = path.join(tiledArtworkDir, filename);
+      fs.writeFileSync(tiledPath, Buffer.from(artworkBase64, 'base64'));
+
+      // Build the public URL
+      const publicUrl = `${process.env.STORE_BASE_URL || 'https://store.swayzecustomvinyl.com'}/images/custom-art/tiled/${filename}`;
+
+      console.log('[CustomArt] Saved tiled artwork for product:', productId, 'File:', filename, 'URL:', publicUrl);
+
+      // Note: We don't add these to Shopify - they're for internal workflow only
+      // The tiled files are associated with the product but not exported
+
+      sendJson(res, 200, { success: true, tiledArtworkPath: publicUrl, filename });
+    } catch (e) {
+      console.error('[CustomArt] Error saving tiled artwork:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to save tiled artwork.' });
+    }
+    return;
+  }
+
+  // --- GENERATE TILES (SPLIT ARTWORK INTO PANELS) ---
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/tiles/generate') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { artworkId, cols, rows, tileWidth, tileHeight, gap, imageBase64, mediaType } = body;
+
+      if (!artworkId || !cols || !rows || !tileWidth || !tileHeight || !imageBase64) {
+        sendJson(res, 400, { error: 'artworkId, cols, rows, tileWidth, tileHeight, and imageBase64 are required.' });
+        return;
+      }
+
+      const sharp = require('sharp');
+      const { v4: uuidv4 } = require('uuid');
+
+      // Decode the base64 image
+      const imageBuffer = Buffer.from(imageBase64, 'base64');
+      const metadata = await sharp(imageBuffer).metadata();
+      const imgWidth = metadata.width;
+      const imgHeight = metadata.height;
+
+      // The entire image should be split evenly into cols × rows tiles
+      // Gaps are the physical space between tiles on the wall, NOT parts of the image to cut out
+      // Each tile gets an equal portion of the source image
+      const gapInches = gap || 0;
+
+      // Calculate the pixel dimensions for each tile
+      // The full image is divided into cols × rows equal sections
+      const tilePixelWidth = Math.floor(imgWidth / cols);
+      const tilePixelHeight = Math.floor(imgHeight / rows);
+
+      // Calculate total physical dimensions for display purposes
+      const totalWidthInches = (tileWidth * cols) + (gapInches * (cols - 1));
+      const totalHeightInches = (tileHeight * rows) + (gapInches * (rows - 1));
+
+      console.log('[Tiles] Image dimensions:', imgWidth, 'x', imgHeight);
+      console.log('[Tiles] Grid:', cols, 'cols x', rows, 'rows');
+      console.log('[Tiles] Each tile pixels:', tilePixelWidth, 'x', tilePixelHeight);
+
+      // Ensure tiles directory exists
+      const tilesDir = path.join(__dirname, '..', 'web', 'images', 'custom-art', 'tiles');
+      try { fs.mkdirSync(tilesDir, { recursive: true }); } catch (_) {}
+
+      const tiles = [];
+      const baseFilename = `${artworkId}-${uuidv4().slice(0, 8)}`;
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          // Calculate the starting position for this tile
+          // Each tile gets an equal portion of the image
+          const startX = col * tilePixelWidth;
+          const startY = row * tilePixelHeight;
+
+          // For the last column/row, extend to the edge to capture any remaining pixels
+          const isLastCol = col === cols - 1;
+          const isLastRow = row === rows - 1;
+          const cropWidth = isLastCol ? (imgWidth - startX) : tilePixelWidth;
+          const cropHeight = isLastRow ? (imgHeight - startY) : tilePixelHeight;
+
+          console.log(`[Tiles] Tile ${row + 1}-${col + 1}: start (${startX}, ${startY}), size ${cropWidth}x${cropHeight}`);
+
+          // Crop the tile from the source image
+          const tileBuffer = await sharp(imageBuffer)
+            .extract({ left: startX, top: startY, width: cropWidth, height: cropHeight })
+            .toBuffer();
+
+          // Save the tile with sequential naming (row-col)
+          const tileFilename = `${baseFilename}_tile_${row + 1}-${col + 1}.png`;
+          const tilePath = path.join(tilesDir, tileFilename);
+          await sharp(tileBuffer).png().toFile(tilePath);
+
+          const publicUrl = `${process.env.STORE_BASE_URL || 'https://store.swayzecustomvinyl.com'}/images/custom-art/tiles/${tileFilename}`;
+
+          tiles.push({
+            row: row + 1,
+            col: col + 1,
+            filename: tileFilename,
+            url: publicUrl,
+            filePath: tilePath,
+            widthInches: tileWidth,
+            heightInches: tileHeight
+          });
+        }
+      }
+
+      console.log('[CustomArt] Generated', tiles.length, 'tiles for artwork:', artworkId);
+
+      sendJson(res, 200, {
+        success: true,
+        artworkId,
+        cols,
+        rows,
+        tileWidth,
+        tileHeight,
+        gap: gapInches,
+        totalWidthInches,
+        totalHeightInches,
+        tiles
+      });
+    } catch (e) {
+      console.error('[CustomArt] Error generating tiles:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to generate tiles.' });
+    }
+    return;
+  }
+
+  // --- SPLIT ARTWORK INTO TILES (for mockup modal) ---
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/split-artwork') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { imageBase64, mediaType, cols, rows, name } = body;
+
+      if (!imageBase64 || !cols || !rows) {
+        sendJson(res, 400, { error: 'imageBase64, cols, and rows are required.' });
+        return;
+      }
+
+      const sharp = require('sharp');
+      const { v4: uuidv4 } = require('uuid');
+
+      // Decode the base64 image
+      const imageBuffer = Buffer.from(imageBase64, 'base64');
+      const metadata = await sharp(imageBuffer).metadata();
+      const imgWidth = metadata.width;
+      const imgHeight = metadata.height;
+
+      // Calculate the pixel dimensions for each tile
+      const tilePixelWidth = Math.floor(imgWidth / cols);
+      const tilePixelHeight = Math.floor(imgHeight / rows);
+
+      console.log('[Split Artwork] Image dimensions:', imgWidth, 'x', imgHeight);
+      console.log('[Split Artwork] Grid:', cols, 'cols x', rows, 'rows');
+      console.log('[Split Artwork] Each tile pixels:', tilePixelWidth, 'x', tilePixelHeight);
+
+      // Ensure tiles directory exists
+      const tilesDir = path.join(__dirname, '..', 'web', 'images', 'custom-art', 'tiles');
+      try { fs.mkdirSync(tilesDir, { recursive: true }); } catch (_) {}
+
+      const tiles = [];
+      const safeName = (name || 'artwork').replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-').substring(0, 50);
+      const baseFilename = `${safeName}-${uuidv4().slice(0, 8)}`;
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const startX = col * tilePixelWidth;
+          const startY = row * tilePixelHeight;
+
+          // For the last column/row, extend to the edge
+          const isLastCol = col === cols - 1;
+          const isLastRow = row === rows - 1;
+          const cropWidth = isLastCol ? (imgWidth - startX) : tilePixelWidth;
+          const cropHeight = isLastRow ? (imgHeight - startY) : tilePixelHeight;
+
+          // Crop the tile from the source image
+          const tileBuffer = await sharp(imageBuffer)
+            .extract({ left: startX, top: startY, width: cropWidth, height: cropHeight })
+            .toBuffer();
+
+          // Save the tile
+          const tileFilename = `${baseFilename}_tile_${row + 1}-${col + 1}.png`;
+          const tilePath = path.join(tilesDir, tileFilename);
+          await sharp(tileBuffer).png().toFile(tilePath);
+
+          const publicUrl = `/images/custom-art/tiles/${tileFilename}`;
+
+          tiles.push({
+            row: row + 1,
+            col: col + 1,
+            filename: tileFilename,
+            url: publicUrl,
+            filePath: tilePath
+          });
+        }
+      }
+
+      console.log('[Split Artwork] Generated', tiles.length, 'tiles');
+
+      sendJson(res, 200, {
+        success: true,
+        cols,
+        rows,
+        tiles
+      });
+    } catch (e) {
+      console.error('[Split Artwork] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Unable to split artwork.' });
+    }
+    return;
+  }
+
+  // --- SHOPIFY EXPORT FOR CUSTOM ART ---
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/shopify/export') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      // Support both old format (productIds) and new format (products with base64 images)
+      const products = body?.products || [];
+      const productIds = body?.productIds || products.map(p => p.id);
+
+      if (!Array.isArray(productIds) || !productIds.length) {
+        sendJson(res, 400, { error: 'productIds or products array is required.' });
+        return;
+      }
+
+      // Build a map of product ID to image data (artwork and mockup)
+      const imageDataMap = {};
+      for (const p of products) {
+        if (p.id) {
+          imageDataMap[p.id] = {
+            artwork: p.artworkBase64 ? { base64: p.artworkBase64, filename: p.artworkFilename } : null,
+            artworkUrl: p.artworkUrl || null,  // URL if artwork is already on server
+            mockup: p.mockupBase64 ? { base64: p.mockupBase64, filename: p.mockupFilename } : null,
+            mockupUrl: p.mockupUrl || null  // URL if mockup is already on server
+          };
+        }
+      }
+
+      const shopify = require('./integrations/shopify');
+      if (!shopify.isConfigured()) {
+        sendJson(res, 500, { error: 'Shopify is not configured.' });
+        return;
+      }
+
+      // Ensure custom-art-images directory exists
+      const customArtImagesDir = path.join(__dirname, '..', 'web', 'images', 'custom-art');
+      try { fs.mkdirSync(customArtImagesDir, { recursive: true }); } catch (_) {}
+
+      const results = [];
+      for (const productId of productIds) {
+        try {
+          const product = db.getCustomArtProductById(productId);
+          if (!product) {
+            results.push({ productId, success: false, error: 'Product not found.' });
+            continue;
+          }
+
+          let isUpdate = !!product.shopifyProductId;
+          let existingProductId = product.shopifyProductId || null;
+
+          // If no local shopifyProductId, check Shopify for existing product by tag
+          if (!existingProductId) {
+            try {
+              const searchTag = `custom-art-product-${productId}`;
+              const existingProduct = await shopify.findProductByTag(searchTag);
+              if (existingProduct && existingProduct.id) {
+                console.log(`[CustomArt Shopify] Found existing product by tag: ${existingProduct.id}`);
+                existingProductId = existingProduct.id;
+                isUpdate = true;
+                // Update local DB with the found Shopify ID
+                db.updateCustomArtProduct(productId, {
+                  shopifyProductId: String(existingProduct.id),
+                  shopifyHandle: existingProduct.handle || null
+                });
+              }
+            } catch (searchErr) {
+              console.log(`[CustomArt Shopify] Product search by tag failed: ${searchErr.message}`);
+            }
+          }
+
+          // Build Shopify product payload
+          // Artwork image is primary, mockup is secondary
+          const images = [];
+          const imageData = imageDataMap[productId] || {};
+
+          // Handle artwork image - could be base64 or URL
+          if (imageData.artwork?.base64) {
+            // Save the artwork image to the server and use public URL
+            const ext = (imageData.artwork.filename || 'image.jpg').split('.').pop() || 'jpg';
+            const imageFilename = `${productId}-artwork-${Date.now()}.${ext}`;
+            const imagePath = path.join(customArtImagesDir, imageFilename);
+            try {
+              fs.writeFileSync(imagePath, Buffer.from(imageData.artwork.base64, 'base64'));
+              const publicUrl = `${process.env.STORE_BASE_URL || 'https://store.swayzecustomvinyl.com'}/images/custom-art/${imageFilename}`;
+              console.log('[CustomArt Shopify] Saved artwork to:', imagePath, 'URL:', publicUrl);
+              images.push({ src: publicUrl, position: 1 });
+            } catch (e) {
+              console.error('[CustomArt Shopify] Failed to save artwork image:', e);
+            }
+          } else if (imageData.artworkUrl) {
+            // Artwork is already on server, use the URL directly
+            console.log('[CustomArt Shopify] Using artwork URL directly:', imageData.artworkUrl);
+            images.push({ src: imageData.artworkUrl, position: 1 });
+          }
+
+          // Handle mockup image - either from URL (already on server) or base64
+          console.log('[CustomArt Shopify] Checking mockup for product:', productId);
+          console.log('[CustomArt Shopify] imageData.mockupUrl:', imageData.mockupUrl);
+          console.log('[CustomArt Shopify] imageData.mockup?.base64 length:', imageData.mockup?.base64?.length || 'none');
+          console.log('[CustomArt Shopify] product.mockupPath from DB:', product.mockupPath);
+
+          if (imageData.mockupUrl) {
+            // Mockup is already on server, use the URL directly
+            console.log('[CustomArt Shopify] Using existing mockup URL:', imageData.mockupUrl);
+            images.push({ src: imageData.mockupUrl, position: 2 });
+          } else if (imageData.mockup?.base64) {
+            // Save the mockup image to the server and use public URL
+            const ext = (imageData.mockup.filename || 'image.jpg').split('.').pop() || 'jpg';
+            const imageFilename = `${productId}-mockup-${Date.now()}.${ext}`;
+            const imagePath = path.join(customArtImagesDir, imageFilename);
+            try {
+              fs.writeFileSync(imagePath, Buffer.from(imageData.mockup.base64, 'base64'));
+              const publicUrl = `${process.env.STORE_BASE_URL || 'https://store.swayzecustomvinyl.com'}/images/custom-art/${imageFilename}`;
+              console.log('[CustomArt Shopify] Saved mockup to:', imagePath, 'URL:', publicUrl);
+              images.push({ src: publicUrl, position: 2 });
+            } catch (e) {
+              console.error('[CustomArt Shopify] Failed to save mockup image:', e);
+            }
+          } else if (product.mockupPath) {
+            // Fallback: check if product has a mockupPath stored in DB
+            console.log('[CustomArt Shopify] Using product mockupPath from DB:', product.mockupPath);
+            images.push({ src: product.mockupPath, position: 2 });
+          } else {
+            console.log('[CustomArt Shopify] No mockup found for product:', productId);
+          }
+
+          // ALWAYS include artwork image if available and not already added
+          // This ensures the original artwork is uploaded to Shopify for printing purposes
+          const hasArtworkImage = images.some(img => img.position === 1);
+          if (!hasArtworkImage && product.artworkId) {
+            const artwork = db.getCustomArtArtworkById(product.artworkId);
+            console.log('[CustomArt Shopify] Looking up artwork for product:', productId, 'artworkId:', product.artworkId);
+            console.log('[CustomArt Shopify] Found artwork:', artwork?.id, 'filePath:', artwork?.filePath);
+            if (artwork?.filePath) {
+              // Convert relative path to full URL
+              const storeUrl = process.env.STORE_BASE_URL || 'https://store.swayzecustomvinyl.com';
+              let artworkUrl = artwork.filePath;
+              if (!artworkUrl.startsWith('http')) {
+                artworkUrl = `${storeUrl}/${artworkUrl.startsWith('/') ? artworkUrl.substring(1) : artworkUrl}`;
+              }
+              console.log('[CustomArt Shopify] Adding artwork image from DB:', artworkUrl);
+              images.unshift({ src: artworkUrl, position: 1 });
+              // Re-number mockup position if present
+              const mockupImg = images.find(img => img.position === 2 || img.src?.includes('mockup'));
+              if (mockupImg && images.indexOf(mockupImg) !== 0) {
+                mockupImg.position = 2;
+              }
+            }
+          }
+
+          // Build variants if product has variants, otherwise single variant
+          const variants = [];
+          if (product.hasVariants && product.variants?.length) {
+            for (const v of product.variants) {
+              variants.push({
+                title: `${v.sizeWidth}×${v.sizeHeight}${v.sizeUnit === 'inches' ? '"' : 'cm'}`,
+                price: (v.priceCents / 100).toFixed(2),
+                sku: v.sku || `CART-${product.id}-${v.id}`,
+                option1: `${v.sizeWidth}×${v.sizeHeight}${v.sizeUnit === 'inches' ? '"' : 'cm'}`,
+                inventory_management: null
+              });
+            }
+          } else {
+            variants.push({
+              price: (product.basePriceCents / 100).toFixed(2),
+              sku: `CART-${product.id}`,
+              inventory_management: null
+            });
+          }
+
+          // Build a cleaned title - prefer artwork title over product title
+          // Use artwork title as the primary source for Shopify product title
+          let cleanTitle = product.artwork?.title || product.title || '';
+          // Remove prefixes before "|" (e.g., "Lucid Origin Frozen|")
+          if (cleanTitle.includes('|')) {
+            cleanTitle = cleanTitle.split('|').pop().trim();
+          }
+          // Remove dimension suffixes like "2 c64683d6 325d 4bff a8b6 070a2ee17c1a - 4x2 Split Panel" or similar UUID + dimension patterns
+          cleanTitle = cleanTitle.replace(/\s+[a-f0-9]{8}[\s-]+[a-f0-9]{4}[\s-]+[a-f0-9]{4}[\s-]+[a-f0-9]{4}[\s-]+[a-f0-9]{12}.*$/i, '').trim();
+          cleanTitle = cleanTitle.replace(/\s*-\s*\d+x\d+\s*Split\s*Panel.*$/i, '').trim();
+
+          // Build description
+          let description = '';
+          const material = product.material?.name || '';
+          const sizeInfo = product.singleSize || {};
+          const hasVariants = product.hasVariants && product.variants?.length > 0;
+
+          if (hasVariants) {
+            // Multiple size variants
+            const sizes = product.variants.map(v => `${v.sizeWidth}×${v.sizeHeight}${v.sizeUnit === 'inches' ? '"' : 'cm'}`).join(', ');
+            description = `<p>Available in ${sizes}.</p>`;
+            if (material) {
+              description += `<p>Printed on premium ${material.toLowerCase()}.</p>`;
+            }
+          } else if (sizeInfo.width && sizeInfo.height) {
+            // Single size
+            const unit = sizeInfo.unit === 'inches' ? '"' : 'cm';
+            description = `<p>${sizeInfo.width}${unit} × ${sizeInfo.height}${unit} piece.</p>`;
+            if (material) {
+              description += `<p>Printed on premium ${material.toLowerCase()}.</p>`;
+            }
+          } else if (material) {
+            description = `<p>Printed on premium ${material.toLowerCase()}.</p>`;
+          }
+
+          // Add artwork name to description if available and different from title
+          const artworkTitle = product.artwork?.title || '';
+          if (artworkTitle && artworkTitle !== cleanTitle) {
+            // Clean the artwork title the same way
+            let cleanArtwork = artworkTitle;
+            if (cleanArtwork.includes('|')) cleanArtwork = cleanArtwork.split('|').pop().trim();
+            cleanArtwork = cleanArtwork.replace(/\s+[a-f0-9]{8}[\s-]+[a-f0-9]{4}[\s-]+[a-f0-9]{4}[\s-]+[a-f0-9]{4}[\s-]+[a-f0-9]{12}.*$/i, '').trim();
+            cleanArtwork = cleanArtwork.replace(/\s*-\s*\d+x\d+\s*Split\s*Panel.*$/i, '').trim();
+            if (cleanArtwork && cleanArtwork !== cleanTitle) {
+              description += `<p>Design: ${cleanArtwork}</p>`;
+            }
+          }
+
+          const shopifyPayload = {
+            title: cleanTitle || product.title,
+            body_html: description || product.description || '',
+            vendor: 'Blue Ridge Custom Co',
+            product_type: 'Wall Art',
+            tags: ['custom-art', material || 'art', `custom-art-product-${productId}`].filter(Boolean).join(', '),
+            status: 'active',
+            template_suffix: 'custom-art'
+          };
+
+          // Only include images if we have new ones
+          if (images.length > 0) {
+            shopifyPayload.images = images;
+          }
+
+          // Only include variants for new products (updating variants requires different API)
+          if (!isUpdate) {
+            shopifyPayload.variants = variants;
+            // Add size option if variants
+            if (product.hasVariants && product.variants?.length) {
+              shopifyPayload.options = [{ name: 'Size' }];
+            }
+          }
+
+          let resultProduct;
+          if (isUpdate) {
+            // Update existing Shopify product
+            console.log('[CustomArt Shopify] Updating product:', existingProductId, JSON.stringify(shopifyPayload, null, 2));
+            try {
+              resultProduct = await shopify.updateProduct(existingProductId, shopifyPayload);
+              console.log('[CustomArt Shopify] Update response:', JSON.stringify(resultProduct, null, 2));
+            } catch (updateErr) {
+              // If product not found in Shopify (deleted), clear the ID and create new
+              if (updateErr?.status === 404 || updateErr?.message?.includes('Not Found')) {
+                console.log('[CustomArt Shopify] Product not found in Shopify, clearing ID and creating new...');
+                db.updateCustomArtProduct(productId, { shopifyProductId: null, shopifyHandle: null });
+                // Add variants for new product creation
+                shopifyPayload.variants = variants;
+                if (product.hasVariants && product.variants?.length) {
+                  shopifyPayload.options = [{ name: 'Size' }];
+                }
+                resultProduct = await shopify.createProduct(shopifyPayload);
+                console.log('[CustomArt Shopify] Create response (after 404):', JSON.stringify(resultProduct, null, 2));
+              } else {
+                throw updateErr;
+              }
+            }
+          } else {
+            // Create new Shopify product
+            console.log('[CustomArt Shopify] Creating product:', JSON.stringify(shopifyPayload, null, 2));
+            resultProduct = await shopify.createProduct(shopifyPayload);
+            console.log('[CustomArt Shopify] Create response:', JSON.stringify(resultProduct, null, 2));
+          }
+
+          if (resultProduct?.id) {
+            // Update local product with Shopify ID (if new)
+            if (!isUpdate) {
+              db.updateCustomArtProduct(productId, {
+                shopifyProductId: String(resultProduct.id),
+                shopifyHandle: resultProduct.handle || null
+              });
+            }
+            // Always publish to all channels (Online Store, Point of Sale, Facebook, Instagram, TikTok)
+            await shopify.publishEverywhere(resultProduct.id).catch((e) => {
+              console.log('[CustomArt Shopify] publishEverywhere error (non-fatal):', e?.message || e);
+            });
+
+            results.push({
+              productId,
+              success: true,
+              shopifyProductId: String(resultProduct.id),
+              handle: resultProduct.handle,
+              updated: isUpdate
+            });
+          } else {
+            results.push({ productId, success: false, error: 'Shopify did not return a product ID.' });
+          }
+        } catch (e) {
+          console.error('[CustomArt Shopify] Error:', e);
+          const errorMsg = typeof e === 'object' ? (e.message || JSON.stringify(e)) : String(e);
+          results.push({ productId, success: false, error: errorMsg });
+        }
+      }
+
+      sendJson(res, 200, { success: true, results });
+    } catch (e) {
+      sendJson(res, 500, { error: e?.message || 'Unable to export to Shopify.' });
+    }
+    return;
   }
 
   res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -9254,6 +16616,10 @@ async function handleShopifyOrderWebhook(orderPayload, { topic } = {}) {
 
 const server = createServerInstance();
 
+// Set server timeout to 10 minutes for large campaign exports
+server.timeout = 600000; // 10 minutes
+server.keepAliveTimeout = 620000; // slightly longer than timeout
+
 // Initialize metal prints database
 try {
   metalPrints.initDatabase();
@@ -9273,6 +16639,1054 @@ if (require.main === module) {
 }
 
 module.exports = { createServer: createServerInstance };
+
+/**
+ * Apply sublimation metal print filter to an image
+ * This simulates the look of sublimation printing on metal:
+ * - Increased contrast (1.3x)
+ * - Increased saturation (1.4x)
+ * - Slight cyan/metallic tint
+ * - Enhanced brightness in highlights
+ */
+async function handleApplyMetalPrintFilter(req, res) {
+  try {
+    const body = await getJsonBody(req);
+    const { imagePath, imageBase64, outputPath } = body;
+
+    if (!imagePath && !imageBase64) {
+      return sendJson(res, 400, { success: false, error: 'imagePath or imageBase64 is required' });
+    }
+
+    let inputBuffer;
+
+    if (imageBase64) {
+      // Decode base64 image
+      inputBuffer = Buffer.from(imageBase64, 'base64');
+    } else {
+      // Read from file path
+      const safePath = path.resolve(LIBRARY_ROOT, imagePath.replace(/^library\//, ''));
+      if (!fs.existsSync(safePath)) {
+        return sendJson(res, 404, { success: false, error: 'Image file not found' });
+      }
+      inputBuffer = await fs.promises.readFile(safePath);
+    }
+
+    // Apply sublimation metal print filter using Sharp
+    // The filter simulates the look of sublimation on aluminum:
+    // 1. Boost contrast and saturation for vivid colors
+    // 2. Add slight cyan tint for metallic appearance
+    // 3. Increase brightness slightly to simulate metallic sheen
+
+    let processedBuffer = await sharp(inputBuffer)
+      // Increase saturation (1.4x) and brightness slightly (1.05x)
+      .modulate({
+        brightness: 1.05,
+        saturation: 1.4
+      })
+      // Apply linear contrast boost (effectively 1.3x contrast)
+      .linear(1.3, -(128 * 0.3))
+      // Add slight cyan tint for metallic look
+      .recomb([
+        [1.0, 0.0, 0.0],   // Red channel unchanged
+        [0.0, 1.05, 0.0],  // Green slightly boosted
+        [0.0, 0.0, 1.08]   // Blue slightly boosted (cyan tint)
+      ])
+      .png({ quality: 95 })
+      .toBuffer();
+
+    // Determine output path
+    let savedPath = null;
+    if (outputPath) {
+      const safeOutputPath = path.resolve(LIBRARY_ROOT, outputPath.replace(/^library\//, ''));
+      await fs.promises.mkdir(path.dirname(safeOutputPath), { recursive: true });
+      await fs.promises.writeFile(safeOutputPath, processedBuffer);
+      savedPath = outputPath;
+    }
+
+    // Return the processed image as base64
+    const resultBase64 = processedBuffer.toString('base64');
+
+    return sendJson(res, 200, {
+      success: true,
+      imageBase64: resultBase64,
+      savedPath: savedPath,
+      mimeType: 'image/png'
+    });
+
+  } catch (err) {
+    console.error('[Metal Print Filter] Error:', err);
+    return sendJson(res, 500, { success: false, error: err.message || 'Failed to apply filter' });
+  }
+}
+
+// ============================================================================
+// STICKER SHEET GENERATOR HANDLERS
+// ============================================================================
+
+// Use main library catalog for stickers (same as design catalog)
+const STICKER_CATALOG_ROOT = process.env.STICKER_CATALOG_PATH || LIBRARY_ROOT;
+const STICKER_OUTPUT_DIR = process.env.STICKER_OUTPUT_PATH || path.join(LIBRARY_ROOT, 'sticker-sheets');
+
+/**
+ * List generated sticker sheet batches (sorted newest first)
+ */
+async function handleStickerSheetsList(req, res) {
+  try {
+    // Ensure output directory exists
+    await fs.promises.mkdir(STICKER_OUTPUT_DIR, { recursive: true });
+
+    const entries = await fs.promises.readdir(STICKER_OUTPUT_DIR, { withFileTypes: true });
+    const batches = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+
+      const batchDir = path.join(STICKER_OUTPUT_DIR, entry.name);
+      const files = await fs.promises.readdir(batchDir);
+
+      // Get directory stats for creation time
+      const stats = await fs.promises.stat(batchDir);
+
+      // Find PNG and SVG files (support both old format -print.png and new format _PRINT.png)
+      const printFiles = files.filter(f => f.endsWith('-print.png') || f.endsWith('_PRINT.png'));
+      const cutFiles = files.filter(f => f.endsWith('-cut.svg') || f.endsWith('_CUT.svg'));
+      // Cricut files: PNG with registration marks (new), PDF (legacy), or SVG (old)
+      const cricutFiles = files.filter(f => f.endsWith('_CRICUT.png') || f.endsWith('_CRICUT.pdf') || f.endsWith('_CRICUT.svg'));
+
+      // Build file URLs
+      const sheets = printFiles.map((pf, idx) => {
+        // Extract sheet number from both formats: -01-print.png or _Sheet01_PRINT.png
+        const oldMatch = pf.match(/-(\d+)-print\.png$/);
+        const newMatch = pf.match(/_Sheet(\d+)_PRINT\.png$/);
+        const sheetNum = oldMatch?.[1] || newMatch?.[1] || String(idx + 1);
+
+        // Find matching cut file (both formats)
+        const cutFile = cutFiles.find(cf =>
+          cf.includes(`-${sheetNum}-cut.svg`) || cf.includes(`_Sheet${sheetNum}_CUT.svg`)
+        ) || cutFiles[idx];
+
+        // Find matching Cricut file (PNG preferred, fall back to PDF or SVG)
+        const cricutFile = cricutFiles.find(cf =>
+          cf.includes(`_Sheet${sheetNum}_CRICUT.png`) || cf.includes(`_Sheet${sheetNum}_CRICUT.pdf`) || cf.includes(`_Sheet${sheetNum}_CRICUT.svg`)
+        ) || cricutFiles[idx];
+
+        const relativePrint = path.relative(LIBRARY_ROOT, path.join(batchDir, pf)).replace(/\\/g, '/');
+        const relativeCut = cutFile ? path.relative(LIBRARY_ROOT, path.join(batchDir, cutFile)).replace(/\\/g, '/') : null;
+        const relativeCricut = cricutFile ? path.relative(LIBRARY_ROOT, path.join(batchDir, cricutFile)).replace(/\\/g, '/') : null;
+
+        return {
+          sheetNumber: parseInt(sheetNum, 10),
+          printUrl: `/api/library/${relativePrint.split('/').map(p => encodeURIComponent(p)).join('/')}`,
+          cutUrl: relativeCut ? `/api/library/${relativeCut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+          cricutUrl: relativeCricut ? `/api/library/${relativeCricut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+          printFile: pf,
+          printFilename: pf,
+          cutFile: cutFile || null,
+          cutFilename: cutFile || null,
+          cricutFile: cricutFile || null,
+          cricutFilename: cricutFile || null
+        };
+      });
+
+      batches.push({
+        name: entry.name,
+        createdAt: stats.birthtime || stats.mtime,
+        sheetCount: printFiles.length,
+        sheets
+      });
+    }
+
+    // Sort by creation date (newest first)
+    batches.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    sendJson(res, 200, { success: true, batches, count: batches.length });
+  } catch (err) {
+    console.error('[Sticker Sheets List Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * List available sticker categories
+ */
+async function handleStickerSheetCategories(req, res) {
+  try {
+    const categories = await stickerSheets.listStickerCategories(STICKER_CATALOG_ROOT);
+    sendJson(res, 200, { success: true, categories });
+  } catch (err) {
+    console.error('[Sticker Categories Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * List stickers in a category or all stickers
+ */
+async function handleStickerSheetCatalog(req, res, parsedUrl) {
+  try {
+    const category = parsedUrl.searchParams?.get('category') || parsedUrl.query?.category || null;
+    const stickers = await stickerSheets.scanStickerCatalog(STICKER_CATALOG_ROOT, category);
+
+    // Add thumbnail URL for each sticker
+    const stickersWithUrls = stickers.map(s => {
+      // Convert absolute path to API URL
+      const relativePath = path.relative(LIBRARY_ROOT, s.imagePath).replace(/\\/g, '/');
+      const encodedPath = relativePath.split('/').map(p => encodeURIComponent(p)).join('/');
+      return {
+        ...s,
+        thumbnailUrl: `/api/library/${encodedPath}`
+      };
+    });
+
+    sendJson(res, 200, { success: true, stickers: stickersWithUrls, count: stickersWithUrls.length });
+  } catch (err) {
+    console.error('[Sticker Catalog Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Generate sticker sheets from manual selection
+ * Body: { designs: [{imagePath, quantity, title}], stickerSizeInches, offsetMm, filenamePrefix }
+ */
+async function handleStickerSheetGenerate(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const {
+      designs = [],
+      stickerSizeInches = 3,
+      offsetMm = 3,
+      filenamePrefix = 'sticker-sheet'
+    } = body;
+
+    if (!designs || !Array.isArray(designs) || designs.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'designs array is required' });
+    }
+
+    // Ensure output directory exists
+    await fs.promises.mkdir(STICKER_OUTPUT_DIR, { recursive: true });
+
+    // Generate timestamp-based subfolder
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const outputDir = path.join(STICKER_OUTPUT_DIR, `${filenamePrefix}-${timestamp}`);
+
+    console.log(`[Sticker Sheets] Generating sheets for ${designs.length} designs to ${outputDir}`);
+
+    const result = await stickerSheets.generateStickerSheets(designs, {
+      stickerSizeInches,
+      offsetMm,
+      outputDir,
+      filenamePrefix
+    });
+
+    sendJson(res, 200, {
+      success: true,
+      ...result
+    });
+  } catch (err) {
+    console.error('[Sticker Sheet Generate Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Generate sticker sheets from a Shopify order
+ * Body: { orderId, stickerSizeInches, offsetMm }
+ */
+async function handleStickerSheetFromOrder(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const {
+      orderId,
+      stickerSizeInches = 3,
+      offsetMm = 3
+    } = body;
+
+    if (!orderId) {
+      return sendJson(res, 400, { success: false, error: 'orderId is required' });
+    }
+
+    // Fetch order from Shopify
+    console.log(`[Sticker Sheets] Fetching order ${orderId} from Shopify`);
+    const order = await shopify.getOrder(orderId);
+
+    if (!order || !order.line_items) {
+      return sendJson(res, 404, { success: false, error: 'Order not found or has no line items' });
+    }
+
+    // Extract sticker line items and match to catalog
+    const designs = [];
+    const notFound = [];
+
+    for (const lineItem of order.line_items) {
+      // Check if this is a sticker product (by SKU prefix or product type)
+      const sku = lineItem.sku || '';
+      const productType = lineItem.product_type || '';
+      const title = lineItem.title || lineItem.name || '';
+
+      // Only process sticker items
+      const isSticker = sku.toLowerCase().startsWith('sticker') ||
+                        productType.toLowerCase().includes('sticker') ||
+                        title.toLowerCase().includes('sticker');
+
+      if (!isSticker) continue;
+
+      // Try to find artwork for this item
+      // First try SKU-based lookup
+      let artworkPath = null;
+
+      if (sku) {
+        const skuArtwork = db.getArtworkForSku(sku);
+        if (skuArtwork) {
+          artworkPath = skuArtwork;
+        }
+      }
+
+      // If no SKU match, try to find by product_id
+      if (!artworkPath && lineItem.product_id) {
+        // Look up in custom_art_products table
+        try {
+          const product = db.getCustomArtProductByShopifyId(lineItem.product_id);
+          if (product && product.artwork_id) {
+            const artwork = db.getCustomArtArtwork(product.artwork_id);
+            if (artwork && artwork.file_path) {
+              artworkPath = artwork.file_path;
+            }
+          }
+        } catch (e) {
+          // Ignore lookup errors
+        }
+      }
+
+      // If still no match, try to scan catalog by title
+      if (!artworkPath) {
+        const stickers = await stickerSheets.scanStickerCatalog(STICKER_CATALOG_ROOT);
+        const match = stickers.find(s =>
+          s.title.toLowerCase().includes(title.toLowerCase()) ||
+          title.toLowerCase().includes(s.title.toLowerCase())
+        );
+        if (match) {
+          artworkPath = match.imagePath;
+        }
+      }
+
+      if (artworkPath) {
+        designs.push({
+          imagePath: artworkPath,
+          quantity: lineItem.quantity || 1,
+          title: title
+        });
+      } else {
+        notFound.push({
+          title,
+          sku,
+          productId: lineItem.product_id,
+          quantity: lineItem.quantity
+        });
+      }
+    }
+
+    if (designs.length === 0) {
+      return sendJson(res, 400, {
+        success: false,
+        error: 'No sticker designs found for this order',
+        notFound
+      });
+    }
+
+    // Generate sheets
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const outputDir = path.join(STICKER_OUTPUT_DIR, `order-${orderId}-${timestamp}`);
+    await fs.promises.mkdir(outputDir, { recursive: true });
+
+    console.log(`[Sticker Sheets] Generating sheets for order ${orderId} with ${designs.length} designs`);
+
+    const result = await stickerSheets.generateStickerSheets(designs, {
+      stickerSizeInches,
+      offsetMm,
+      outputDir,
+      filenamePrefix: `order-${orderId}`
+    });
+
+    sendJson(res, 200, {
+      success: true,
+      orderId,
+      orderNumber: order.order_number || order.name,
+      ...result,
+      notFound: notFound.length > 0 ? notFound : undefined
+    });
+  } catch (err) {
+    console.error('[Sticker Sheet From Order Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+// ============================================================================
+// METAL PRINT EXPORT HANDLERS
+// ============================================================================
+
+/**
+ * Export a metal print campaign to Shopify
+ * Creates products with 5x7, 8x10, 11x14 variants for each artwork
+ * Applies the sublimation filter to each artwork before uploading
+ */
+// Track active metal print export jobs
+const metalPrintExportJobs = new Map();
+
+async function handleMetalPrintCampaignExport(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { campaignName, collectionName, artworkData, mockupPath } = body;
+
+    if (!campaignName) {
+      return sendJson(res, 400, { success: false, error: 'campaignName is required' });
+    }
+    if (!artworkData || !Array.isArray(artworkData) || artworkData.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'artworkData array is required' });
+    }
+
+    // Check if Shopify is configured
+    if (!shopify.isConfigured()) {
+      return sendJson(res, 503, { success: false, error: 'Shopify not configured' });
+    }
+
+    // Load pricing
+    const pricing = readPricingSheet();
+    const metalPrintPricing = pricing['metal-print'];
+    if (!metalPrintPricing || !metalPrintPricing.sizes) {
+      return sendJson(res, 400, { success: false, error: 'Metal print pricing not configured' });
+    }
+
+    // Generate job ID
+    const jobId = `metal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const jobSlug = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+    // Initialize job status
+    const jobStatus = {
+      jobId,
+      campaignName,
+      total: artworkData.length,
+      processed: 0,
+      successCount: 0,
+      failCount: 0,
+      status: 'starting',
+      startedAt: new Date().toISOString(),
+      collectionId: null,
+      collectionHandle: null,
+      results: []
+    };
+    metalPrintExportJobs.set(jobId, jobStatus);
+
+    // Save initial status to file
+    const statusPath = path.join(DATA_DIR, `metal-export-${jobSlug}.json`);
+    fs.writeFileSync(statusPath, JSON.stringify(jobStatus, null, 2));
+
+    console.log(`[Metal Print Campaign] Starting async export job ${jobId} for "${campaignName}" with ${artworkData.length} artworks`);
+
+    // Return immediately with job ID - process in background
+    sendJson(res, 202, {
+      success: true,
+      async: true,
+      jobId,
+      statusUrl: `/api/metal-print/export-status/${jobSlug}`,
+      message: `Export started for ${artworkData.length} artworks. Poll status URL for progress.`
+    });
+
+    // Process in background using setImmediate to not block
+    setImmediate(async () => {
+      try {
+        // Get or create collection with campaign template
+        const collectionTitle = collectionName || campaignName;
+        let collection = null;
+        try {
+          collection = await shopify.findCustomCollectionByTitle(collectionTitle);
+          if (collection) {
+            console.log(`[Metal Print Campaign] Found existing collection: ${collection.id}`);
+            try {
+              await shopify.updateCustomCollection(collection.id, { template_suffix: 'campaign' });
+            } catch (templateErr) {
+              console.log(`[Metal Print Campaign] Could not update template: ${templateErr.message}`);
+            }
+          }
+        } catch (err) {
+          console.log(`[Metal Print Campaign] Collection search failed: ${err.message}`);
+        }
+
+        if (!collection) {
+          try {
+            collection = await shopify.createCustomCollection(collectionTitle, {
+              template_suffix: 'campaign'
+            });
+            console.log(`[Metal Print Campaign] Created new collection: ${collection.id}`);
+          } catch (err) {
+            console.error(`[Metal Print Campaign] Failed to create collection: ${err.message}`);
+          }
+        }
+
+        const collectionId = collection?.id || null;
+        const collectionHandle = collection?.handle || null;
+        jobStatus.collectionId = collectionId;
+        jobStatus.collectionHandle = collectionHandle;
+        jobStatus.status = 'processing';
+
+        const results = [];
+        const rateLimitMs = Number(process.env.SHOPIFY_EXPORT_RATE_LIMIT_MS || 500);
+        const sizes = metalPrintPricing.sizes;
+
+        // Process each artwork
+        for (const artwork of artworkData) {
+          const artworkId = artwork.id;
+          try {
+            console.log(`[Metal Print Campaign] Processing artwork: ${artwork.title || artworkId}`);
+
+            // Get image data
+            let inputBuffer;
+            if (artwork.imageBase64) {
+              inputBuffer = Buffer.from(artwork.imageBase64, 'base64');
+            } else if (artwork.filePath) {
+              let imagePath = artwork.filePath;
+              if (imagePath.startsWith('/library/') || imagePath.startsWith('library/')) {
+                imagePath = path.join(WEB_DIR, imagePath.replace(/^\//, ''));
+              } else if (imagePath.startsWith('/images/') || imagePath.startsWith('images/')) {
+                imagePath = path.join(WEB_DIR, imagePath.replace(/^\//, ''));
+              } else if (!path.isAbsolute(imagePath)) {
+                imagePath = path.join(WEB_DIR, imagePath);
+              }
+              if (!fs.existsSync(imagePath)) {
+                results.push({ artworkId, success: false, error: 'Image file not found' });
+                jobStatus.failCount++;
+                jobStatus.processed++;
+                continue;
+              }
+              inputBuffer = fs.readFileSync(imagePath);
+            } else {
+              results.push({ artworkId, success: false, error: 'No artwork image data or path' });
+              jobStatus.failCount++;
+              jobStatus.processed++;
+              continue;
+            }
+
+            // Apply sublimation filter
+            const filteredBuffer = await sharp(inputBuffer)
+              .modulate({ brightness: 1.05, saturation: 1.4 })
+              .linear(1.3, -(128 * 0.3))
+              .recomb([
+                [1.0, 0.0, 0.0],
+                [0.0, 1.05, 0.0],
+                [0.0, 0.0, 1.08]
+              ])
+              .png({ quality: 95 })
+              .toBuffer();
+
+            const imageBase64 = filteredBuffer.toString('base64');
+
+            // Clean title
+            let productTitle = artwork.title || 'Metal Print';
+            productTitle = productTitle
+              .replace(/^Lucid\s*Origin\s*/i, '')
+              .replace(/^(gen_|generated_|ai_|flux_|leonardo_|a cinematic photo of\s*)/i, '')
+              .replace(/[a-f0-9]{8}[-\s][a-f0-9]{4}[-\s][a-f0-9]{4}[-\s][a-f0-9]{4}[-\s][a-f0-9]{12}/gi, '')
+              .replace(/\s+[a-f0-9]{8,}$/i, '')
+              .replace(/_/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+            if (!productTitle) productTitle = `Metal Print ${artworkId}`;
+
+            // Create variants
+            const variants = [];
+            for (const [sizeName, sizeData] of Object.entries(sizes)) {
+              variants.push({
+                option1: sizeName,
+                price: (sizeData.priceCents / 100).toFixed(2),
+                sku: sizeData.sku || `METAL-${sizeName.replace('x', '')}`,
+                inventory_management: 'shopify',
+                inventory_policy: 'continue',
+                requires_shipping: true,
+                taxable: true
+              });
+            }
+
+            // Check for existing product
+            let existingProduct = null;
+            try {
+              const searchTag = `artwork-id-${artworkId}`;
+              existingProduct = await shopify.findProductByTag(searchTag);
+              if (!existingProduct && collectionId) {
+                const collectionProducts = await shopify.getCollectionProducts(collectionId, { limit: 250 });
+                existingProduct = collectionProducts.find(p =>
+                  p.title.toLowerCase().trim() === productTitle.toLowerCase().trim() &&
+                  p.product_type === 'Metal Print'
+                );
+              }
+            } catch (searchErr) {
+              console.log(`[Metal Print Campaign] Product search failed: ${searchErr.message}`);
+            }
+
+            // Build product data
+            const campaignTag = campaignName.toLowerCase().replace(/\s+/g, '-');
+            const productData = {
+              title: productTitle,
+              body_html: `<p>High-quality sublimation metal print. Vibrant colors and stunning detail on aluminum.</p><p>Available in sizes: ${Object.keys(sizes).join(', ')}</p>`,
+              vendor: process.env.SHOPIFY_VENDOR || 'Custom Vinyl',
+              product_type: 'Metal Print',
+              tags: ['metal-print', 'sublimation', 'wall-art', campaignTag, `artwork-id-${artworkId}`],
+              variants: variants,
+              options: [{ name: 'Size', values: Object.keys(sizes) }],
+              images: [{ attachment: imageBase64, filename: `${productTitle.replace(/\s+/g, '-')}.png` }]
+            };
+
+            let shopifyProduct;
+            if (existingProduct && existingProduct.id) {
+              const existingVariantCount = existingProduct.variants ? existingProduct.variants.length : 0;
+              if (existingVariantCount !== variants.length) {
+                console.log(`[Metal Print Campaign] Variant count mismatch - deleting and recreating...`);
+                try {
+                  await shopify.deleteProduct(existingProduct.id);
+                  await new Promise(r => setTimeout(r, 500));
+                } catch (delErr) {
+                  console.log(`[Metal Print Campaign] Delete failed: ${delErr.message}`);
+                }
+                shopifyProduct = await shopify.createProduct(productData);
+                console.log(`[Metal Print Campaign] Recreated product: ${shopifyProduct.id}`);
+              } else {
+                shopifyProduct = await shopify.updateProduct(existingProduct.id, {
+                  title: productTitle,
+                  body_html: productData.body_html,
+                  tags: productData.tags.join(', '),
+                  variants: variants,
+                  options: [{ name: 'Size', values: Object.keys(sizes) }]
+                });
+                shopifyProduct = { id: existingProduct.id, ...shopifyProduct };
+              }
+            } else {
+              shopifyProduct = await shopify.createProduct(productData);
+              console.log(`[Metal Print Campaign] Created product: ${shopifyProduct.id}`);
+            }
+
+            // Add to collection
+            if (collectionId && shopifyProduct.id) {
+              try {
+                await shopify.addProductToCollection(shopifyProduct.id, collectionId);
+              } catch (colErr) {
+                console.log(`[Metal Print Campaign] Failed to add to collection: ${colErr.message}`);
+              }
+            }
+
+            results.push({ artworkId, success: true, shopifyProductId: shopifyProduct.id, title: productTitle });
+            jobStatus.successCount++;
+            jobStatus.processed++;
+
+            // Rate limit
+            await new Promise(r => setTimeout(r, rateLimitMs));
+
+          } catch (artErr) {
+            console.error(`[Metal Print Campaign] Error processing artwork ${artworkId}:`, artErr);
+            results.push({ artworkId, success: false, error: artErr.message });
+            jobStatus.failCount++;
+            jobStatus.processed++;
+          }
+
+          // Update status file periodically
+          jobStatus.results = results;
+          fs.writeFileSync(statusPath, JSON.stringify(jobStatus, null, 2));
+        }
+
+        // Set collection mockup if provided
+        if (collectionId && mockupPath) {
+          try {
+            let mockupFullPath;
+            if (mockupPath.startsWith('http://') || mockupPath.startsWith('https://')) {
+              mockupFullPath = path.join(WEB_DIR, new URL(mockupPath).pathname);
+            } else if (mockupPath.startsWith('/')) {
+              mockupFullPath = path.join(WEB_DIR, mockupPath);
+            } else {
+              mockupFullPath = path.join(WEB_DIR, mockupPath);
+            }
+
+            if (fs.existsSync(mockupFullPath)) {
+              const mockupBuffer = await fs.promises.readFile(mockupFullPath);
+              const mockupBase64 = mockupBuffer.toString('base64');
+              await shopify.updateCustomCollection(collectionId, {
+                image: { attachment: mockupBase64 }
+              });
+              console.log(`[Metal Print Campaign] Set collection mockup image`);
+            }
+          } catch (mockupErr) {
+            console.log(`[Metal Print Campaign] Could not set collection mockup: ${mockupErr.message}`);
+          }
+        }
+
+        // Final status update
+        jobStatus.status = 'complete';
+        jobStatus.completedAt = new Date().toISOString();
+        jobStatus.results = results;
+        fs.writeFileSync(statusPath, JSON.stringify(jobStatus, null, 2));
+        console.log(`[Metal Print Campaign] Export complete: ${jobStatus.successCount} success, ${jobStatus.failCount} failed`);
+
+      } catch (bgErr) {
+        console.error('[Metal Print Campaign] Background processing error:', bgErr);
+        jobStatus.status = 'error';
+        jobStatus.error = bgErr.message;
+        fs.writeFileSync(statusPath, JSON.stringify(jobStatus, null, 2));
+      }
+    });
+
+  } catch (err) {
+    console.error('[Metal Print Campaign Export] Error:', err);
+    return sendJson(res, 500, { success: false, error: err.message || 'Failed to start export' });
+  }
+}
+
+// Metal print export status endpoint handler
+async function handleMetalPrintExportStatus(req, res, slug) {
+  try {
+    const statusPath = path.join(DATA_DIR, `metal-export-${slug}.json`);
+    if (!fs.existsSync(statusPath)) {
+      return sendJson(res, 404, { success: false, error: 'Export job not found' });
+    }
+    const status = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
+    return sendJson(res, 200, { success: true, ...status });
+  } catch (err) {
+    return sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+// Legacy synchronous export for small batches (kept for backwards compatibility)
+async function handleMetalPrintCampaignExportSync(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { campaignName, collectionName, artworkData, mockupPath } = body;
+
+    if (!campaignName) {
+      return sendJson(res, 400, { success: false, error: 'campaignName is required' });
+    }
+    if (!artworkData || !Array.isArray(artworkData) || artworkData.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'artworkData array is required' });
+    }
+
+    console.log(`[Metal Print Campaign SYNC] Starting export for "${campaignName}" with ${artworkData.length} artworks`);
+
+    // Check if Shopify is configured
+    if (!shopify.isConfigured()) {
+      return sendJson(res, 503, { success: false, error: 'Shopify not configured' });
+    }
+
+    // Load pricing
+    const pricing = readPricingSheet();
+    const metalPrintPricing = pricing['metal-print'];
+    if (!metalPrintPricing || !metalPrintPricing.sizes) {
+      return sendJson(res, 400, { success: false, error: 'Metal print pricing not configured' });
+    }
+
+    // Get or create collection with campaign template
+    const collectionTitle = collectionName || campaignName;
+    let collection = null;
+    try {
+      collection = await shopify.findCustomCollectionByTitle(collectionTitle);
+      if (collection) {
+        console.log(`[Metal Print Campaign] Found existing collection: ${collection.id}`);
+        // Ensure existing collection uses campaign template
+        try {
+          await shopify.updateCustomCollection(collection.id, { template_suffix: 'campaign' });
+          console.log(`[Metal Print Campaign] Set collection template to 'campaign'`);
+        } catch (templateErr) {
+          console.log(`[Metal Print Campaign] Could not update template: ${templateErr.message}`);
+        }
+      }
+    } catch (err) {
+      console.log(`[Metal Print Campaign] Collection search failed: ${err.message}`);
+    }
+
+    if (!collection) {
+      try {
+        // Create collection with campaign template
+        collection = await shopify.createCustomCollection(collectionTitle, {
+          template_suffix: 'campaign'
+        });
+        console.log(`[Metal Print Campaign] Created new collection with campaign template: ${collection.id}`);
+      } catch (err) {
+        console.error(`[Metal Print Campaign] Failed to create collection: ${err.message}`);
+      }
+    }
+
+    const collectionId = collection?.id || null;
+    const results = [];
+    const rateLimitMs = Number(process.env.SHOPIFY_EXPORT_RATE_LIMIT_MS || 500);
+
+    // Process each artwork - artworkData contains { id, title, category, filePath } or legacy { id, title, category, imageBase64 }
+    for (const artwork of artworkData) {
+      const artworkId = artwork.id;
+      try {
+        console.log(`[Metal Print Campaign] Processing artwork: ${artwork.title || artworkId}`);
+
+        // Get image data - either from base64 (legacy) or read from disk (optimized)
+        let inputBuffer;
+        if (artwork.imageBase64) {
+          // Legacy: base64 data sent in payload
+          inputBuffer = Buffer.from(artwork.imageBase64, 'base64');
+        } else if (artwork.filePath) {
+          // Optimized: read from disk using file path
+          let imagePath = artwork.filePath;
+          // Handle relative paths from custom_art_artwork table
+          // Paths like "library/uploads/..." are relative to WEB_DIR (/home/ubuntu/vinylApp/web)
+          // Paths like "/images/..." are also relative to WEB_DIR
+          if (imagePath.startsWith('/library/') || imagePath.startsWith('library/')) {
+            imagePath = path.join(WEB_DIR, imagePath.replace(/^\//, ''));
+          } else if (imagePath.startsWith('/images/') || imagePath.startsWith('images/')) {
+            imagePath = path.join(WEB_DIR, imagePath.replace(/^\//, ''));
+          } else if (!path.isAbsolute(imagePath)) {
+            imagePath = path.join(WEB_DIR, imagePath);
+          }
+          console.log(`[Metal Print Campaign] Reading image from: ${imagePath}`);
+          if (!fs.existsSync(imagePath)) {
+            console.log(`[Metal Print Campaign] Image not found: ${imagePath}`);
+            results.push({ artworkId, success: false, error: 'Image file not found' });
+            continue;
+          }
+          inputBuffer = fs.readFileSync(imagePath);
+        } else {
+          console.log(`[Metal Print Campaign] No image data or path for artwork: ${artworkId}`);
+          results.push({ artworkId, success: false, error: 'No artwork image data or path' });
+          continue;
+        }
+
+        // Apply sublimation filter to inputBuffer
+        const filteredBuffer = await sharp(inputBuffer)
+          .modulate({ brightness: 1.05, saturation: 1.4 })
+          .linear(1.3, -(128 * 0.3))
+          .recomb([
+            [1.0, 0.0, 0.0],
+            [0.0, 1.05, 0.0],
+            [0.0, 0.0, 1.08]
+          ])
+          .png({ quality: 95 })
+          .toBuffer();
+
+        // Convert to base64 for Shopify upload
+        const imageBase64 = filteredBuffer.toString('base64');
+
+        // Clean title (remove generation prefix, UUID, Lucid Origin, etc.)
+        let productTitle = artwork.title || 'Metal Print';
+        productTitle = productTitle
+          // Remove "Lucid Origin" prefix (case insensitive)
+          .replace(/^Lucid\s*Origin\s*/i, '')
+          // Remove common AI generation prefixes
+          .replace(/^(gen_|generated_|ai_|flux_|leonardo_|a cinematic photo of\s*)/i, '')
+          // Remove UUIDs in various formats (with dashes or spaces)
+          .replace(/[a-f0-9]{8}[-\s][a-f0-9]{4}[-\s][a-f0-9]{4}[-\s][a-f0-9]{4}[-\s][a-f0-9]{12}/gi, '')
+          // Remove standalone hex strings that look like truncated UUIDs (8+ hex chars at end)
+          .replace(/\s+[a-f0-9]{8,}$/i, '')
+          // Clean up underscores and extra spaces
+          .replace(/_/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        // Ensure we have a title
+        if (!productTitle) {
+          productTitle = `Metal Print ${artworkId}`;
+        }
+
+        // Create variants array for Shopify
+        const variants = [];
+        const sizes = metalPrintPricing.sizes;
+
+        for (const [sizeName, sizeData] of Object.entries(sizes)) {
+          variants.push({
+            option1: sizeName,
+            price: (sizeData.priceCents / 100).toFixed(2),
+            sku: sizeData.sku || `METAL-${sizeName.replace('x', '')}`,
+            inventory_management: 'shopify',
+            inventory_policy: 'continue',
+            requires_shipping: true,
+            taxable: true
+          });
+        }
+
+        // Check if product already exists by title
+        let existingProduct = null;
+        try {
+          // Search for existing product with same title and product_type
+          const searchTag = `artwork-id-${artworkId}`;
+          existingProduct = await shopify.findProductByTag(searchTag);
+          if (!existingProduct) {
+            // Also try finding by title in collection
+            if (collectionId) {
+              const collectionProducts = await shopify.getCollectionProducts(collectionId, { limit: 250 });
+              existingProduct = collectionProducts.find(p =>
+                p.title.toLowerCase().trim() === productTitle.toLowerCase().trim() &&
+                p.product_type === 'Metal Print'
+              );
+            }
+          }
+        } catch (searchErr) {
+          console.log(`[Metal Print Campaign] Product search failed: ${searchErr.message}`);
+        }
+
+        // Build product data
+        const campaignTag = campaignName.toLowerCase().replace(/\s+/g, '-');
+        const productData = {
+          title: productTitle,
+          body_html: `<p>High-quality sublimation metal print. Vibrant colors and stunning detail on aluminum.</p><p>Available in sizes: ${Object.keys(sizes).join(', ')}</p>`,
+          vendor: process.env.SHOPIFY_VENDOR || 'Custom Vinyl',
+          product_type: 'Metal Print',
+          tags: ['metal-print', 'sublimation', 'wall-art', campaignTag, `artwork-id-${artworkId}`],
+          variants: variants,
+          options: [{ name: 'Size', values: Object.keys(sizes) }],
+          images: [{ attachment: imageBase64, filename: `${productTitle.replace(/\s+/g, '-')}.png` }]
+        };
+
+        // NOTE: For metal prints, only the artwork image is added to individual products
+        // The campaign mockup is used for collection/marketing display only, not on products
+
+        let shopifyProduct;
+        if (existingProduct && existingProduct.id) {
+          // Check if variant count matches - Shopify REST API can't add new variants on update
+          const existingVariantCount = existingProduct.variants ? existingProduct.variants.length : 0;
+          const newVariantCount = variants.length;
+
+          if (existingVariantCount !== newVariantCount) {
+            // Variant count mismatch - delete and recreate to get all variants
+            console.log(`[Metal Print Campaign] Variant count mismatch (existing: ${existingVariantCount}, new: ${newVariantCount}) - deleting and recreating...`);
+            try {
+              await shopify.deleteProduct(existingProduct.id);
+              console.log(`[Metal Print Campaign] Deleted old product ${existingProduct.id}`);
+              // Small delay after delete
+              await new Promise(r => setTimeout(r, 500));
+            } catch (delErr) {
+              console.log(`[Metal Print Campaign] Delete failed: ${delErr.message}, trying to create anyway`);
+            }
+            // Create fresh product with all variants
+            shopifyProduct = await shopify.createProduct(productData);
+            console.log(`[Metal Print Campaign] Recreated product: ${shopifyProduct.id} - ${productTitle} with ${newVariantCount} variants`);
+          } else {
+            // Same variant count - just update existing product
+            console.log(`[Metal Print Campaign] Found existing product ${existingProduct.id}, updating...`);
+            shopifyProduct = await shopify.updateProduct(existingProduct.id, {
+              title: productTitle,
+              body_html: productData.body_html,
+              tags: productData.tags.join(', '),
+              variants: variants,
+              options: [{ name: 'Size', values: Object.keys(sizes) }]
+            });
+            console.log(`[Metal Print Campaign] Updated product: ${existingProduct.id} - ${productTitle}`);
+            shopifyProduct = { id: existingProduct.id, ...shopifyProduct };
+          }
+        } else {
+          // Create new product
+          shopifyProduct = await shopify.createProduct(productData);
+          console.log(`[Metal Print Campaign] Created product: ${shopifyProduct.id} - ${productTitle} with ${variants.length} variants`);
+        }
+
+        // Add to collection if we have one
+        if (collectionId && shopifyProduct.id) {
+          try {
+            await shopify.addProductToCollection(shopifyProduct.id, collectionId);
+            console.log(`[Metal Print Campaign] Added product to collection`);
+          } catch (colErr) {
+            console.log(`[Metal Print Campaign] Failed to add to collection: ${colErr.message}`);
+          }
+        }
+
+        results.push({
+          artworkId,
+          success: true,
+          shopifyProductId: shopifyProduct.id,
+          title: productTitle
+        });
+
+        // Rate limit
+        await new Promise(r => setTimeout(r, rateLimitMs));
+
+      } catch (artErr) {
+        console.error(`[Metal Print Campaign] Error processing artwork ${artworkId}:`, artErr);
+        results.push({ artworkId, success: false, error: artErr.message });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    // Set the collection mockup image if provided
+    if (collectionId && mockupPath) {
+      try {
+        console.log(`[Metal Print Campaign] Processing mockup path: ${mockupPath}`);
+
+        // Handle different mockup path formats:
+        // 1. Full URL: https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_xxx.jpg
+        // 2. Web path: /images/custom-art/mockup-prod_xxx.jpg
+        // 3. Legacy campaign path: /uploads/campaigns/xxx.jpg
+
+        let mockupFullPath;
+        if (mockupPath.startsWith('http://') || mockupPath.startsWith('https://')) {
+          // Full URL - extract the path portion and map to WEB_DIR
+          const urlPath = new URL(mockupPath).pathname;
+          mockupFullPath = path.join(WEB_DIR, urlPath);
+        } else if (mockupPath.startsWith('/images/')) {
+          // Web path like /images/custom-art/mockup-prod_xxx.jpg
+          mockupFullPath = path.join(WEB_DIR, mockupPath);
+        } else if (mockupPath.startsWith('/uploads/campaigns/')) {
+          // Legacy campaign uploads
+          mockupFullPath = path.join(CAMPAIGNS_DIR, mockupPath.replace('/uploads/campaigns/', ''));
+        } else if (mockupPath.startsWith('/')) {
+          // Generic absolute web path
+          mockupFullPath = path.join(WEB_DIR, mockupPath);
+        } else {
+          // Relative path - assume it's relative to WEB_DIR
+          mockupFullPath = path.join(WEB_DIR, mockupPath);
+        }
+
+        console.log(`[Metal Print Campaign] Resolved mockup path: ${mockupFullPath}`);
+
+        if (fs.existsSync(mockupFullPath)) {
+          const mockupBuffer = await fs.promises.readFile(mockupFullPath);
+          const mockupBase64 = mockupBuffer.toString('base64');
+
+          // Update collection with mockup as the collection image
+          await shopify.updateCustomCollection(collectionId, {
+            image: { attachment: mockupBase64 },
+            body_html: `<p>Premium sublimation metal prints featuring stunning artwork. Available in 5x7, 8x10, and 11x14 sizes.</p>`
+          });
+          console.log(`[Metal Print Campaign] Set collection mockup image successfully`);
+        } else {
+          console.log(`[Metal Print Campaign] Mockup file not found: ${mockupFullPath}`);
+        }
+      } catch (mockupErr) {
+        console.log(`[Metal Print Campaign] Could not set collection mockup: ${mockupErr.message}`);
+      }
+    }
+
+    console.log(`[Metal Print Campaign] Export complete: ${successCount} success, ${failCount} failed`);
+
+    return sendJson(res, 200, {
+      success: true,
+      campaignName,
+      collectionId,
+      collectionHandle: collection?.handle,
+      totalProcessed: results.length,
+      successCount,
+      failCount,
+      results
+    });
+
+  } catch (err) {
+    console.error('[Metal Print Campaign Export] Error:', err);
+    return sendJson(res, 500, { success: false, error: err.message || 'Failed to export campaign' });
+  }
+}
+
+/**
+ * Get artwork by ID from the custom art database
+ */
+async function getArtworkById(artworkId) {
+  try {
+    const sqlite = db.getDb();
+    const artwork = sqlite.prepare('SELECT * FROM custom_art_artwork WHERE id = ?').get(artworkId);
+    return artwork;
+  } catch (err) {
+    console.error('[getArtworkById] Error:', err);
+    return null;
+  }
+}
 
 async function handleArtworkUpload(req, res) {
   const createdFiles = [];
