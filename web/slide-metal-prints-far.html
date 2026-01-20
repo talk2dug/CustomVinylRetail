@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metal Prints - Far</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Bebas Neue', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f23 100%);
+            color: white;
+            min-height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .shimmer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
+            animation: shimmer 3s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+
+        .content {
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 {
+            font-size: 18rem;
+            line-height: 0.85;
+            letter-spacing: 10px;
+            background: linear-gradient(180deg, #ffffff 0%, #c0c0c0 50%, #808080 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        .price {
+            font-size: 8rem;
+            color: #f4d03f;
+            margin-top: 20px;
+            text-shadow: 0 0 60px rgba(244, 208, 63, 0.5);
+        }
+
+        .tagline {
+            font-size: 3rem;
+            color: #888;
+            letter-spacing: 8px;
+            margin-top: 20px;
+        }
+
+        .branding {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.5rem;
+            letter-spacing: 5px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="shimmer"></div>
+    <div class="content">
+        <h1>METAL<br>PRINTS</h1>
+        <div class="price">FROM $25</div>
+        <div class="tagline">HD ALUMINUM • READY TO HANG</div>
+    </div>
+    <div class="branding">BLUE RIDGE CUSTOM CO</div>
+</body>
+</html>

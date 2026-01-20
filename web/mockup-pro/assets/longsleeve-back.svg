@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" fill="#808080">
+  <!-- Long Sleeve Shirt Back View - Grayscale Base -->
+  <path d="
+    M 220 120
+    L 100 200
+    L 20 400
+    L 40 420
+    L 100 400
+    L 180 380
+    L 200 240
+    L 220 260
+    L 220 680
+    L 580 680
+    L 580 260
+    L 600 240
+    L 620 380
+    L 700 400
+    L 760 420
+    L 780 400
+    L 700 200
+    L 580 120
+    Q 500 80 400 80
+    Q 300 80 220 120
+    Z
+  " />
+  <!-- Back collar line -->
+  <path d="
+    M 280 100
+    Q 400 130 520 100
+  " stroke="#707070" stroke-width="8" fill="none" />
+  <!-- Left sleeve cuff -->
+  <rect x="20" y="400" width="80" height="30" rx="5" fill="#707070" />
+  <!-- Right sleeve cuff -->
+  <rect x="700" y="400" width="80" height="30" rx="5" fill="#707070" />
+  <!-- Sleeve shading -->
+  <path d="
+    M 100 200
+    L 20 400
+    L 100 380
+    L 160 220
+    Z
+  " fill="#757575" opacity="0.4" />
+  <path d="
+    M 700 200
+    L 780 400
+    L 700 380
+    L 640 220
+    Z
+  " fill="#858585" opacity="0.4" />
+</svg>

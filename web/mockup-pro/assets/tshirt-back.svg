@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" fill="#808080">
+  <!-- T-Shirt Back View - Grayscale Base -->
+  <path d="
+    M 220 120
+    L 120 180
+    L 80 320
+    L 180 340
+    L 200 240
+    L 220 260
+    L 220 680
+    L 580 680
+    L 580 260
+    L 600 240
+    L 620 340
+    L 720 320
+    L 680 180
+    L 580 120
+    Q 500 80 400 80
+    Q 300 80 220 120
+    Z
+  " />
+  <!-- Back collar line -->
+  <path d="
+    M 280 100
+    Q 400 130 520 100
+  " stroke="#707070" stroke-width="8" fill="none" />
+  <!-- Subtle shading -->
+  <path d="
+    M 220 260
+    L 220 680
+    L 280 680
+    L 280 280
+    Z
+  " fill="#757575" opacity="0.5" />
+  <path d="
+    M 520 280
+    L 520 680
+    L 580 680
+    L 580 260
+    Z
+  " fill="#858585" opacity="0.5" />
+</svg>

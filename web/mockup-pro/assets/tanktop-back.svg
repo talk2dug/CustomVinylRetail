@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" fill="#808080">
+  <!-- Tank Top Back View - Grayscale Base -->
+  <path d="
+    M 260 120
+    L 240 200
+    L 240 680
+    L 560 680
+    L 560 200
+    L 540 120
+    Q 480 80 400 80
+    Q 320 80 260 120
+    Z
+  " />
+  <!-- Back neckline (higher than front) -->
+  <path d="
+    M 280 100
+    Q 400 130 520 100
+  " stroke="#707070" stroke-width="8" fill="none" />
+  <!-- Armholes -->
+  <ellipse cx="240" cy="200" rx="30" ry="60" fill="#0f172a" />
+  <ellipse cx="560" cy="200" rx="30" ry="60" fill="#0f172a" />
+  <!-- Side shading -->
+  <path d="
+    M 240 200
+    L 240 680
+    L 280 680
+    L 280 220
+    Z
+  " fill="#757575" opacity="0.4" />
+  <path d="
+    M 520 220
+    L 520 680
+    L 560 680
+    L 560 200
+    Z
+  " fill="#858585" opacity="0.4" />
+</svg>

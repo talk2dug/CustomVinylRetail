@@ -1,0 +1,2422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiosk Display Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #111;
+            color: #fff;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        h1 {
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 1rem;
+        }
+
+        .connection-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin-left: 1rem;
+        }
+
+        .connection-badge.connected {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+        }
+
+        .connection-badge.disconnected {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .connection-badge .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .tab-btn {
+            padding: 0.6rem 1.2rem;
+            background: #222;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #888;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .tab-btn:hover {
+            background: #2a2a2a;
+            color: #fff;
+        }
+
+        .tab-btn.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .panels {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 2rem;
+        }
+
+        .panel {
+            background: #1a1a1a;
+            border-radius: 12px;
+            border: 1px solid #333;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 1rem 1.5rem;
+            background: #222;
+            border-bottom: 1px solid #333;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-body {
+            padding: 1.5rem;
+        }
+
+        /* Displays Grid */
+        .displays-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .display-card {
+            background: #222;
+            border-radius: 8px;
+            border: 1px solid #333;
+            padding: 1rem;
+            transition: all 0.2s;
+        }
+
+        .display-card:hover {
+            border-color: #3b82f6;
+        }
+
+        .display-card.offline {
+            opacity: 0.5;
+        }
+
+        .display-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .display-name {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .display-name input {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: inherit;
+            font-weight: inherit;
+            width: 150px;
+        }
+
+        .display-name input:focus {
+            outline: none;
+            border-bottom: 1px solid #3b82f6;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #22c55e;
+        }
+
+        .status-dot.offline {
+            background: #ef4444;
+        }
+
+        .display-ip {
+            font-size: 0.75rem;
+            color: #666;
+            font-family: monospace;
+        }
+
+        .display-preview {
+            background: #0a0a0a;
+            border-radius: 6px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0.75rem 0;
+            font-size: 0.85rem;
+            color: #666;
+            overflow: hidden;
+        }
+
+        .display-preview img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .display-current {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 0.75rem;
+        }
+
+        .display-current strong {
+            color: #3b82f6;
+        }
+
+        .content-select {
+            width: 100%;
+            padding: 0.5rem;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: white;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .content-select:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        /* Content Library */
+        .content-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .content-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            background: #222;
+            border-radius: 6px;
+            cursor: grab;
+            transition: all 0.2s;
+        }
+
+        .content-item:hover {
+            background: #2a2a2a;
+        }
+
+        .content-icon {
+            width: 40px;
+            height: 40px;
+            background: #333;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .content-info {
+            flex: 1;
+        }
+
+        .content-name {
+            font-weight: 500;
+            margin-bottom: 0.2rem;
+        }
+
+        .content-desc {
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        /* Broadcast Section */
+        .broadcast-section {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #333;
+        }
+
+        .broadcast-btn {
+            width: 100%;
+            padding: 0.75rem;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .broadcast-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #666;
+        }
+
+        .empty-state .icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Quick Actions */
+        .quick-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .quick-btn {
+            flex: 1;
+            padding: 0.4rem;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #888;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-btn:hover {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        /* Promotions Tab */
+        .promo-layout {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 2rem;
+        }
+
+        .promo-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 1.5rem;
+            background: #1a1a1a;
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+
+        .promo-form h3 {
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .form-group label {
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.6rem;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: white;
+            font-size: 0.9rem;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .file-drop-zone {
+            border: 2px dashed #444;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-drop-zone:hover,
+        .file-drop-zone.dragover {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .file-drop-zone.has-file {
+            border-style: solid;
+            border-color: #22c55e;
+        }
+
+        .file-preview-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .file-preview-thumb {
+            width: 100px;
+            height: 100px;
+            background: #222;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .file-preview-thumb img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .display-checkboxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .display-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 0.8rem;
+            background: #333;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .display-checkbox:hover {
+            background: #444;
+        }
+
+        .display-checkbox.checked {
+            background: rgba(59, 130, 246, 0.3);
+            color: #60a5fa;
+        }
+
+        .display-checkbox input {
+            display: none;
+        }
+
+        .submit-btn {
+            padding: 0.75rem;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 0.5rem;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Promotions List */
+        .promo-list-container {
+            background: #1a1a1a;
+            border-radius: 12px;
+            border: 1px solid #333;
+            overflow: hidden;
+        }
+
+        .promo-list-header {
+            padding: 1rem 1.5rem;
+            background: #222;
+            border-bottom: 1px solid #333;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .promo-list {
+            padding: 1rem;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .promo-grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .promo-card {
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            background: #222;
+            border-radius: 8px;
+            border: 1px solid #333;
+            transition: all 0.2s;
+        }
+
+        .promo-card:hover {
+            border-color: #3b82f6;
+        }
+
+        .promo-card.disabled {
+            opacity: 0.5;
+        }
+
+        .promo-thumb {
+            width: 100px;
+            height: 100px;
+            background: #333;
+            border-radius: 8px;
+            flex-shrink: 0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .promo-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .promo-details {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .promo-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .promo-desc {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 0.5rem;
+        }
+
+        .promo-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .promo-badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .promo-badge.sale { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .promo-badge.special { background: rgba(234, 179, 8, 0.2); color: #eab308; }
+        .promo-badge.announcement { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+
+        .promo-targets {
+            font-size: 0.75rem;
+            color: #3b82f6;
+            margin-top: 0.5rem;
+        }
+
+        .promo-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .promo-action-btn {
+            padding: 0.4rem 0.8rem;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #888;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .promo-action-btn:hover {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        .promo-action-btn.danger:hover {
+            background: #ef4444;
+            border-color: #ef4444;
+        }
+
+        .promo-action-btn.success:hover {
+            background: #22c55e;
+            border-color: #22c55e;
+        }
+
+        /* Shopify Tab */
+        .shopify-layout {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            gap: 1.5rem;
+            height: calc(100vh - 200px);
+        }
+
+        .collection-list {
+            background: #1a1a1a;
+            border-radius: 12px;
+            border: 1px solid #333;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .collection-list-header {
+            padding: 1rem;
+            background: #222;
+            border-bottom: 1px solid #333;
+            font-weight: 600;
+        }
+
+        .collection-items {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .collection-item {
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 0.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .collection-item:hover {
+            background: #2a2a2a;
+        }
+
+        .collection-item.active {
+            background: rgba(59, 130, 246, 0.2);
+            border-left: 3px solid #3b82f6;
+        }
+
+        .collection-item.has-image {
+            border-left: 3px solid #22c55e;
+        }
+
+        .collection-item.has-image.active {
+            border-left: 3px solid #3b82f6;
+        }
+
+        .collection-thumb {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .collection-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .collection-item .name {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .collection-item .count {
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .collection-image-card {
+            border-color: #3b82f6 !important;
+        }
+
+        .collection-image-card:hover {
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3) !important;
+        }
+
+        .product-grid-container {
+            background: #1a1a1a;
+            border-radius: 12px;
+            border: 1px solid #333;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .product-grid-header {
+            padding: 1rem;
+            background: #222;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .product-grid-header .title {
+            font-weight: 600;
+        }
+
+        .product-grid-header .actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .select-all-btn {
+            padding: 0.4rem 0.8rem;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #888;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .select-all-btn:hover {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        .product-grid {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+            align-content: start;
+        }
+
+        .product-card {
+            background: #222;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .product-card:hover {
+            border-color: #444;
+            transform: translateY(-2px);
+        }
+
+        .product-card.selected {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+
+        .product-card .image {
+            width: 100%;
+            aspect-ratio: 1;
+            background: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .product-card .image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .product-card .info {
+            padding: 0.5rem;
+        }
+
+        .product-card .title {
+            font-size: 0.8rem;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .product-card .check {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            width: 24px;
+            height: 24px;
+            background: #3b82f6;
+            border-radius: 50%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+
+        .product-card.selected .check {
+            display: flex;
+        }
+
+        .product-card {
+            position: relative;
+        }
+
+        .product-card .mockup-badge {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: #fff;
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 3px 6px;
+            border-radius: 4px;
+            z-index: 10;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .product-card.has-mockups {
+            border-color: #22c55e;
+        }
+
+        .product-card.has-mockups:hover {
+            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+        }
+
+        .slideshow-config {
+            background: #1a1a1a;
+            border-radius: 12px;
+            border: 1px solid #333;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .slideshow-config-header {
+            padding: 1rem;
+            background: #222;
+            border-bottom: 1px solid #333;
+            font-weight: 600;
+        }
+
+        .slideshow-config-body {
+            padding: 1rem;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .selected-products {
+            margin-top: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .selected-product {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem;
+            background: #222;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+        }
+
+        .selected-product img {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .selected-product .title {
+            flex: 1;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .selected-product .remove {
+            color: #666;
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+
+        .selected-product .remove:hover {
+            color: #ef4444;
+        }
+
+        .saved-slideshows {
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid #333;
+        }
+
+        .saved-slideshow {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: #222;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+        }
+
+        .saved-slideshow .info {
+            flex: 1;
+        }
+
+        .saved-slideshow .name {
+            font-weight: 500;
+        }
+
+        .saved-slideshow .meta {
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .loading-spinner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            color: #666;
+        }
+
+        /* Rotating Slides Section */
+        .rotating-slides-section {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #333;
+        }
+
+        .rotating-slides-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .rotating-slides-header h4 {
+            margin: 0;
+            font-size: 0.95rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #333;
+            transition: 0.3s;
+            border-radius: 26px;
+            border: 1px solid #444;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: #666;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: rgba(34, 197, 94, 0.3);
+            border-color: #22c55e;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+            background-color: #22c55e;
+        }
+
+        .slides-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .slide-item {
+            padding: 0.6rem 0.8rem;
+            background: #222;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border: 1px solid #333;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .slide-item:hover {
+            background: #2a2a2a;
+        }
+
+        .slide-item.selected {
+            border-color: #22c55e;
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .slide-item .checkbox {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #444;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: transparent;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .slide-item.selected .checkbox {
+            background: #22c55e;
+            border-color: #22c55e;
+            color: #fff;
+        }
+
+        .slide-item .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+        }
+
+        .rotating-enabled .slide-item.selected .dot {
+            background: #22c55e;
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .rotating-status {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .rotating-enabled .rotating-status {
+            color: #22c55e;
+        }
+    </style>
+</head>
+<body>
+    <h1>
+        Kiosk Display Manager
+        <span id="connection-badge" class="connection-badge disconnected">
+            <span class="dot"></span>
+            <span class="status-text">Disconnected</span>
+        </span>
+    </h1>
+    <p class="subtitle">Control booth displays from here</p>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="displays">Displays</button>
+        <button class="tab-btn" data-tab="promotions">Promotions</button>
+        <button class="tab-btn" data-tab="shopify">Shopify Products</button>
+    </div>
+
+    <!-- Displays Tab -->
+    <div id="displays-tab" class="tab-content active">
+        <div class="panels">
+            <div class="panel">
+                <div class="panel-header">
+                    <span>Connected Displays</span>
+                    <span id="display-count">0 displays</span>
+                </div>
+                <div class="panel-body">
+                    <div id="displays-grid" class="displays-grid">
+                        <div class="empty-state">
+                            <div class="icon">📺</div>
+                            <p>No displays connected yet</p>
+                            <p style="font-size: 0.85rem; margin-top: 0.5rem;">
+                                Displays will appear here when they connect
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">Content Library</div>
+                <div class="panel-body">
+                    <div id="content-list" class="content-list">
+                        <!-- Populated dynamically -->
+                    </div>
+
+                    <div class="broadcast-section">
+                        <label style="font-size: 0.85rem; color: #888; display: block; margin-bottom: 0.5rem;">
+                            Broadcast to All Displays:
+                        </label>
+                        <select id="broadcast-select" class="content-select">
+                            <option value="">-- Select content --</option>
+                        </select>
+                        <button id="broadcast-btn" class="broadcast-btn" style="margin-top: 0.5rem;">
+                            Broadcast to All
+                        </button>
+                    </div>
+
+                    <!-- Rotating Service Slides -->
+                    <div class="rotating-slides-section" id="rotating-slides-section">
+                        <div class="rotating-slides-header">
+                            <h4>🔄 Service Slides</h4>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="rotating-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <p style="font-size: 0.8rem; color: #666; margin-bottom: 0.75rem;">
+                            Show rotating service slides on all displays (6+ seconds each, never duplicated across screens)
+                        </p>
+                        <div class="slides-list" id="slides-list">
+                            <!-- Populated dynamically -->
+                        </div>
+                        <div class="rotating-status" id="rotating-status">
+                            Disabled - slides won't be shown
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Promotions Tab -->
+    <div id="promotions-tab" class="tab-content">
+        <div class="promo-layout">
+            <!-- Upload Form -->
+            <div class="promo-form">
+                <h3>Create Promotion</h3>
+
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="promo-title" placeholder="e.g., 20% Off All Stickers!">
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="promo-description" rows="2" placeholder="Optional details..."></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="promo-type">
+                            <option value="sale">Sale</option>
+                            <option value="special">Special</option>
+                            <option value="announcement">Announcement</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Priority (1-10)</label>
+                        <input type="number" id="promo-priority" value="5" min="1" max="10">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Image/Video</label>
+                    <div class="file-drop-zone" id="file-drop-zone">
+                        <div>Drop image here or click to browse</div>
+                        <div style="font-size: 0.8rem; color: #666; margin-top: 0.5rem;">
+                            Supports: JPG, PNG, GIF, MP4, WebM
+                        </div>
+                    </div>
+                    <input type="file" id="promo-file" accept="image/*,video/*" style="display: none;">
+                    <div class="file-preview-container" id="file-preview" style="display: none;">
+                        <div class="file-preview-thumb" id="file-thumb"></div>
+                        <div>
+                            <div id="file-name"></div>
+                            <button type="button" onclick="clearFile()" style="margin-top: 0.5rem; padding: 0.3rem 0.6rem; background: #333; border: 1px solid #444; border-radius: 4px; color: #888; cursor: pointer;">Remove</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Show Duration (seconds)</label>
+                        <input type="number" id="promo-duration" value="8" min="3" max="60">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="promo-slideshow" checked style="width: auto; margin-right: 0.5rem;">
+                            Include in Slideshow
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Start Date (optional)</label>
+                        <input type="datetime-local" id="promo-starts">
+                    </div>
+                    <div class="form-group">
+                        <label>End Date (optional)</label>
+                        <input type="datetime-local" id="promo-expires">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Target Displays (leave empty for all)</label>
+                    <div class="display-checkboxes" id="target-displays">
+                        <span style="color: #666; font-size: 0.8rem;">No displays connected</span>
+                    </div>
+                </div>
+
+                <button type="button" class="submit-btn" id="create-promo-btn">
+                    Create Promotion
+                </button>
+            </div>
+
+            <!-- Promotions List -->
+            <div class="promo-list-container">
+                <div class="promo-list-header">
+                    <span>Active Promotions</span>
+                    <span id="promo-count">0 promotions</span>
+                </div>
+                <div class="promo-list">
+                    <div class="promo-grid" id="promo-grid">
+                        <div class="empty-state">
+                            <div class="icon">📢</div>
+                            <p>No promotions yet</p>
+                            <p style="font-size: 0.85rem; margin-top: 0.5rem;">
+                                Create your first promotion using the form
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shopify Tab -->
+    <div id="shopify-tab" class="tab-content">
+        <div class="shopify-layout">
+            <!-- Collections List -->
+            <div class="collection-list">
+                <div class="collection-list-header">Shopify Collections</div>
+                <div class="collection-items" id="collection-list">
+                    <div class="loading-spinner">Loading collections...</div>
+                </div>
+            </div>
+
+            <!-- Product Grid -->
+            <div class="product-grid-container">
+                <div class="product-grid-header">
+                    <span class="title" id="product-grid-title">Select a collection</span>
+                    <div class="actions">
+                        <button class="select-all-btn" id="select-all-btn">Select All</button>
+                        <button class="select-all-btn" id="clear-selection-btn">Clear</button>
+                    </div>
+                </div>
+                <div class="product-grid" id="product-grid">
+                    <div class="empty-state" style="grid-column: 1/-1;">
+                        <div class="icon">🛍️</div>
+                        <p>Select a collection to browse products</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Slideshow Config -->
+            <div class="slideshow-config">
+                <div class="slideshow-config-header">Create Product Slideshow</div>
+                <div class="slideshow-config-body">
+                    <div class="form-group">
+                        <label>Slideshow Name</label>
+                        <input type="text" id="shopify-slideshow-name" placeholder="e.g., Featured Products">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Duration per Product (seconds)</label>
+                        <input type="number" id="shopify-duration" value="6" min="3" max="30">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Target Displays</label>
+                        <div class="display-checkboxes" id="shopify-target-displays">
+                            <span style="color: #666; font-size: 0.8rem;">No displays connected</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Selected Products (<span id="selected-count">0</span>)</label>
+                        <div class="selected-products" id="selected-products">
+                            <div style="color: #666; font-size: 0.85rem; text-align: center; padding: 1rem;">
+                                Click on products to select them
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="submit-btn" id="create-shopify-slideshow-btn" disabled>
+                        Create Slideshow
+                    </button>
+
+                    <!-- Saved Slideshows -->
+                    <div class="saved-slideshows">
+                        <label style="font-size: 0.85rem; color: #888;">Saved Slideshows</label>
+                        <div id="saved-slideshows">
+                            <div style="color: #666; font-size: 0.85rem; text-align: center; padding: 0.5rem;">
+                                No saved slideshows
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Extract API key from URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const API_KEY = urlParams.get('key') || '';
+
+        class KioskAdmin {
+            constructor() {
+                this.ws = null;
+                this.displays = [];
+                this.contentLibrary = [];
+                this.promotions = [];
+                this.shopifySlideshows = [];
+                this.selectedFile = null;
+
+                // Shopify state
+                this.collections = [];
+                this.currentCollectionId = null;
+                this.currentCollectionTitle = null;
+                this.currentCollectionImage = null;
+                this.products = [];
+                this.selectedProducts = new Map(); // id -> product
+
+                // Rotating slides state
+                this.serviceSlides = [];
+                this.rotatingEnabled = false;
+                this.selectedSlides = new Set(); // IDs of slides to include in rotation
+
+                this.connect();
+                this.setupEventListeners();
+            }
+
+            connect() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/kiosk-ws?key=${encodeURIComponent(API_KEY)}`;
+
+                this.ws = new WebSocket(wsUrl);
+
+                this.ws.onopen = () => {
+                    console.log('Connected to kiosk server');
+                    this.updateConnectionStatus(true);
+                    this.ws.send(JSON.stringify({ type: 'admin-connect' }));
+                };
+
+                this.ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    this.handleMessage(data);
+                };
+
+                this.ws.onclose = () => {
+                    this.updateConnectionStatus(false);
+                    setTimeout(() => this.connect(), 3000);
+                };
+            }
+
+            setupEventListeners() {
+                // Tab switching
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                        btn.classList.add('active');
+                        document.getElementById(`${btn.dataset.tab}-tab`).classList.add('active');
+                    });
+                });
+
+                // File drop zone
+                const dropZone = document.getElementById('file-drop-zone');
+                const fileInput = document.getElementById('promo-file');
+
+                dropZone.addEventListener('click', () => fileInput.click());
+                dropZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('dragover');
+                });
+                dropZone.addEventListener('dragleave', () => {
+                    dropZone.classList.remove('dragover');
+                });
+                dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('dragover');
+                    if (e.dataTransfer.files.length) {
+                        this.handleFileSelect(e.dataTransfer.files[0]);
+                    }
+                });
+
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files.length) {
+                        this.handleFileSelect(e.target.files[0]);
+                    }
+                });
+
+                // Create promotion button
+                document.getElementById('create-promo-btn').addEventListener('click', () => {
+                    this.createPromotion();
+                });
+
+                // Broadcast button
+                document.getElementById('broadcast-btn').addEventListener('click', () => {
+                    const select = document.getElementById('broadcast-select');
+                    this.broadcast(select.value);
+                });
+
+                // Shopify buttons
+                document.getElementById('select-all-btn').addEventListener('click', () => {
+                    this.selectAllProducts();
+                });
+
+                document.getElementById('clear-selection-btn').addEventListener('click', () => {
+                    this.clearProductSelection();
+                });
+
+                document.getElementById('create-shopify-slideshow-btn').addEventListener('click', () => {
+                    this.createShopifySlideshow();
+                });
+
+                // Rotating slides toggle
+                document.getElementById('rotating-toggle').addEventListener('change', (e) => {
+                    this.toggleRotatingSlides(e.target.checked);
+                });
+            }
+
+            handleFileSelect(file) {
+                this.selectedFile = file;
+                const dropZone = document.getElementById('file-drop-zone');
+                const preview = document.getElementById('file-preview');
+                const thumb = document.getElementById('file-thumb');
+                const fileName = document.getElementById('file-name');
+
+                dropZone.style.display = 'none';
+                preview.style.display = 'flex';
+                fileName.textContent = file.name;
+
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        thumb.innerHTML = `<img src="${e.target.result}">`;
+                    };
+                    reader.readAsDataURL(file);
+                } else if (file.type.startsWith('video/')) {
+                    thumb.innerHTML = '<span style="font-size: 2rem;">🎬</span>';
+                }
+            }
+
+            handleMessage(data) {
+                switch (data.type) {
+                    case 'admin-init':
+                        this.displays = data.displays;
+                        this.contentLibrary = data.contentLibrary;
+                        this.promotions = data.promotions || [];
+                        this.shopifySlideshows = data.shopifySlideshows || [];
+                        this.serviceSlides = data.serviceSlides || [];
+                        this.rotatingEnabled = data.rotatingEnabled || false;
+                        // Load selected slides from server, default to all if not set
+                        if (data.selectedSlideIds && data.selectedSlideIds.length > 0) {
+                            this.selectedSlides = new Set(data.selectedSlideIds);
+                        } else {
+                            this.selectedSlides = new Set(this.serviceSlides.map(s => s.id));
+                        }
+                        this.renderAll();
+                        break;
+
+                    case 'display-list':
+                        this.displays = data.displays;
+                        this.renderDisplays();
+                        this.renderTargetDisplays();
+                        this.renderShopifyTargetDisplays();
+                        break;
+
+                    case 'content-library':
+                        this.contentLibrary = data.contentLibrary;
+                        this.renderContentLibrary();
+                        break;
+
+                    case 'promotions-list':
+                        this.promotions = data.promotions;
+                        this.renderPromotions();
+                        break;
+
+                    case 'shopify-slideshows':
+                        this.shopifySlideshows = data.slideshows || [];
+                        this.renderSavedSlideshows();
+                        break;
+
+                    case 'rotating-state':
+                        this.rotatingEnabled = data.enabled;
+                        this.serviceSlides = data.serviceSlides || [];
+                        // Update selected slides if provided by server
+                        if (data.selectedSlideIds && data.selectedSlideIds.length > 0) {
+                            this.selectedSlides = new Set(data.selectedSlideIds);
+                        }
+                        this.renderRotatingSlides();
+                        break;
+                }
+            }
+
+            updateConnectionStatus(connected) {
+                const badge = document.getElementById('connection-badge');
+                badge.className = `connection-badge ${connected ? 'connected' : 'disconnected'}`;
+                badge.querySelector('.status-text').textContent = connected ? 'Connected' : 'Disconnected';
+            }
+
+            renderAll() {
+                this.renderDisplays();
+                this.renderContentLibrary();
+                this.renderPromotions();
+                this.renderTargetDisplays();
+                this.renderShopifyTargetDisplays();
+                this.renderSavedSlideshows();
+                this.renderRotatingSlides();
+                this.loadCollections();
+            }
+
+            renderDisplays() {
+                const grid = document.getElementById('displays-grid');
+                const count = document.getElementById('display-count');
+
+                count.textContent = `${this.displays.length} display${this.displays.length !== 1 ? 's' : ''}`;
+
+                if (this.displays.length === 0) {
+                    grid.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">📺</div>
+                            <p>No displays connected yet</p>
+                            <p style="font-size: 0.85rem; margin-top: 0.5rem;">
+                                Displays will appear here when they connect
+                            </p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                grid.innerHTML = this.displays.map(display => `
+                    <div class="display-card ${display.online ? '' : 'offline'}">
+                        <div class="display-header">
+                            <div class="display-name">
+                                <span class="status-dot ${display.online ? '' : 'offline'}"></span>
+                                <input type="text" value="${display.name}"
+                                    onchange="admin.renameDisplay('${display.id}', this.value)"
+                                    onclick="this.select()">
+                            </div>
+                            <span class="display-ip">${display.ip || 'Unknown'}</span>
+                        </div>
+
+                        <div class="display-preview">
+                            ${this.getPreviewContent(display.currentContent)}
+                        </div>
+
+                        <div class="display-current">
+                            Currently showing: <strong>${display.currentContent?.name || 'Nothing'}</strong>
+                        </div>
+
+                        <select class="content-select"
+                            onchange="admin.setDisplayContent('${display.id}', this.value)">
+                            <option value="">-- Select content --</option>
+                            ${this.contentLibrary.map(c => `
+                                <option value="${c.id}" ${display.currentContent?.id === c.id ? 'selected' : ''}>
+                                    ${c.name}
+                                </option>
+                            `).join('')}
+                        </select>
+
+                        <div class="quick-actions">
+                            <button class="quick-btn" onclick="admin.setDisplayContent('${display.id}', 'welcome')">
+                                Welcome
+                            </button>
+                            <button class="quick-btn" onclick="admin.setDisplayContent('${display.id}', 'campaigns')">
+                                Slideshow
+                            </button>
+                            <button class="quick-btn" onclick="admin.setDisplayContent('${display.id}', 'qr-shop')">
+                                QR
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            getPreviewContent(content) {
+                if (!content) return '<span>No content</span>';
+
+                const icons = {
+                    'welcome': '🏠',
+                    'qr-shop': '📱',
+                    'rally': '🏎️',
+                    'products': '🎨',
+                    'now-printing': '🖨️',
+                    'social': '📣',
+                    'campaigns': '📢'
+                };
+
+                return `<span style="font-size: 2rem;">${icons[content.id] || '📺'}</span>`;
+            }
+
+            renderContentLibrary() {
+                const list = document.getElementById('content-list');
+                const broadcastSelect = document.getElementById('broadcast-select');
+
+                const icons = {
+                    'welcome': '🏠',
+                    'qr-shop': '📱',
+                    'rally': '🏎️',
+                    'products': '🎨',
+                    'campaigns': '📢',
+                    'campaign-grid': '🔲',
+                    'now-printing': '🖨️',
+                    'social': '📣',
+                    'builtin': '⚙️',
+                    'slideshow': '🖼️',
+                    'campaign': '🎯',
+                    'live': '📡'
+                };
+
+                list.innerHTML = this.contentLibrary.map(item => `
+                    <div class="content-item" data-content-id="${item.id}">
+                        <div class="content-icon">${icons[item.id] || icons[item.type] || '📄'}</div>
+                        <div class="content-info">
+                            <div class="content-name">${item.name}</div>
+                            <div class="content-desc">${item.description}</div>
+                        </div>
+                    </div>
+                `).join('');
+
+                broadcastSelect.innerHTML = `
+                    <option value="">-- Select content --</option>
+                    ${this.contentLibrary.map(c => `
+                        <option value="${c.id}">${c.name}</option>
+                    `).join('')}
+                `;
+            }
+
+            renderPromotions() {
+                const grid = document.getElementById('promo-grid');
+                const count = document.getElementById('promo-count');
+
+                count.textContent = `${this.promotions.length} promotion${this.promotions.length !== 1 ? 's' : ''}`;
+
+                if (this.promotions.length === 0) {
+                    grid.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">📢</div>
+                            <p>No promotions yet</p>
+                            <p style="font-size: 0.85rem; margin-top: 0.5rem;">
+                                Create your first promotion using the form
+                            </p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                grid.innerHTML = this.promotions.map(promo => `
+                    <div class="promo-card ${promo.enabled ? '' : 'disabled'}">
+                        <div class="promo-thumb">
+                            ${promo.imageUrl ? `<img src="${promo.imageUrl}" alt="">` : '<span style="font-size: 2rem;">📢</span>'}
+                        </div>
+                        <div class="promo-details">
+                            <div class="promo-title">
+                                <span class="promo-badge ${promo.type}">${promo.type}</span>
+                                ${promo.title}
+                            </div>
+                            <div class="promo-desc">${promo.description || 'No description'}</div>
+                            <div class="promo-meta">
+                                <span>Priority: ${promo.priority}</span>
+                                <span>Duration: ${promo.duration}s</span>
+                                ${promo.expiresAt ? `<span>Expires: ${new Date(promo.expiresAt).toLocaleDateString()}</span>` : ''}
+                            </div>
+                            <div class="promo-targets">
+                                ${promo.targetDisplays && promo.targetDisplays.length > 0
+                                    ? `Targeted: ${promo.targetDisplays.length} display(s)`
+                                    : 'All displays'}
+                            </div>
+                        </div>
+                        <div class="promo-actions">
+                            <button class="promo-action-btn ${promo.enabled ? '' : 'success'}"
+                                onclick="admin.togglePromotion('${promo.id}', ${!promo.enabled})">
+                                ${promo.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                            <button class="promo-action-btn" onclick="admin.sendPromoNow('${promo.id}')">
+                                Send Now
+                            </button>
+                            <button class="promo-action-btn danger" onclick="admin.deletePromotion('${promo.id}')">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            renderTargetDisplays() {
+                const container = document.getElementById('target-displays');
+
+                if (this.displays.length === 0) {
+                    container.innerHTML = '<span style="color: #666; font-size: 0.8rem;">No displays connected</span>';
+                    return;
+                }
+
+                container.innerHTML = this.displays.map(display => `
+                    <label class="display-checkbox" data-id="${display.id}">
+                        <input type="checkbox" value="${display.id}">
+                        ${display.name}
+                    </label>
+                `).join('');
+
+                // Add click handlers
+                container.querySelectorAll('.display-checkbox').forEach(label => {
+                    label.addEventListener('click', () => {
+                        const checkbox = label.querySelector('input');
+                        checkbox.checked = !checkbox.checked;
+                        label.classList.toggle('checked', checkbox.checked);
+                    });
+                });
+            }
+
+            async createPromotion() {
+                const title = document.getElementById('promo-title').value.trim();
+                if (!title) {
+                    alert('Please enter a title');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('title', title);
+                formData.append('description', document.getElementById('promo-description').value);
+                formData.append('type', document.getElementById('promo-type').value);
+                formData.append('priority', document.getElementById('promo-priority').value);
+                formData.append('duration', document.getElementById('promo-duration').value);
+                formData.append('showInSlideshow', document.getElementById('promo-slideshow').checked);
+
+                const startsAt = document.getElementById('promo-starts').value;
+                const expiresAt = document.getElementById('promo-expires').value;
+                if (startsAt) formData.append('startsAt', startsAt);
+                if (expiresAt) formData.append('expiresAt', expiresAt);
+
+                // Get selected displays
+                const targetDisplays = [];
+                document.querySelectorAll('#target-displays input:checked').forEach(input => {
+                    targetDisplays.push(input.value);
+                });
+                targetDisplays.forEach(id => formData.append('targetDisplays', id));
+
+                // Add file if selected
+                if (this.selectedFile) {
+                    formData.append('image', this.selectedFile);
+                }
+
+                const btn = document.getElementById('create-promo-btn');
+                btn.disabled = true;
+                btn.textContent = 'Creating...';
+
+                try {
+                    const response = await fetch(`/api/kiosk/promotions?key=${encodeURIComponent(API_KEY)}`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        // Clear form
+                        document.getElementById('promo-title').value = '';
+                        document.getElementById('promo-description').value = '';
+                        document.getElementById('promo-priority').value = '5';
+                        document.getElementById('promo-starts').value = '';
+                        document.getElementById('promo-expires').value = '';
+                        window.clearFile();
+
+                        // Checkboxes will be updated via WebSocket
+                    } else {
+                        alert('Error creating promotion: ' + (result.error || 'Unknown error'));
+                    }
+                } catch (e) {
+                    alert('Error creating promotion: ' + e.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Create Promotion';
+                }
+            }
+
+            async togglePromotion(promoId, enabled) {
+                try {
+                    await fetch(`/api/kiosk/promotions/${promoId}?key=${encodeURIComponent(API_KEY)}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled })
+                    });
+                } catch (e) {
+                    console.error('Error toggling promotion:', e);
+                }
+            }
+
+            async deletePromotion(promoId) {
+                if (!confirm('Delete this promotion?')) return;
+
+                try {
+                    await fetch(`/api/kiosk/promotions/${promoId}?key=${encodeURIComponent(API_KEY)}`, {
+                        method: 'DELETE'
+                    });
+                } catch (e) {
+                    console.error('Error deleting promotion:', e);
+                }
+            }
+
+            sendPromoNow(promoId) {
+                const promo = this.promotions.find(p => p.id === promoId);
+                if (!promo) return;
+
+                const content = {
+                    id: `promo-${promo.id}`,
+                    type: 'promotion',
+                    name: promo.title,
+                    promotion: promo
+                };
+
+                // Send to targeted displays or all
+                if (promo.targetDisplays && promo.targetDisplays.length > 0) {
+                    promo.targetDisplays.forEach(displayId => {
+                        this.setDisplayContent(displayId, content.id, content);
+                    });
+                } else {
+                    this.broadcast(content.id, content);
+                }
+            }
+
+            setDisplayContent(displayId, contentId, customContent = null) {
+                const content = customContent || this.contentLibrary.find(c => c.id === contentId) || { id: contentId, name: contentId };
+
+                fetch(`/api/kiosk/display/${displayId}/content`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': API_KEY
+                    },
+                    body: JSON.stringify({ content })
+                });
+            }
+
+            renameDisplay(displayId, name) {
+                fetch(`/api/kiosk/display/${displayId}/rename`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': API_KEY
+                    },
+                    body: JSON.stringify({ name })
+                });
+            }
+
+            broadcast(contentId, customContent = null) {
+                if (!contentId) return;
+
+                const content = customContent || this.contentLibrary.find(c => c.id === contentId) || { id: contentId, name: contentId };
+
+                fetch('/api/kiosk/broadcast', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': API_KEY
+                    },
+                    body: JSON.stringify({ content })
+                });
+            }
+
+            // ==================== SHOPIFY METHODS ====================
+
+            async loadCollections() {
+                const container = document.getElementById('collection-list');
+                container.innerHTML = '<div class="loading-spinner">Loading collections...</div>';
+
+                try {
+                    const response = await fetch(`/api/kiosk/shopify/collections?key=${encodeURIComponent(API_KEY)}`);
+                    const data = await response.json();
+
+                    if (data.collections) {
+                        this.collections = data.collections;
+                        this.renderCollections();
+                    } else {
+                        container.innerHTML = '<div class="empty-state"><p>Could not load collections</p></div>';
+                    }
+                } catch (e) {
+                    console.error('Error loading collections:', e);
+                    container.innerHTML = '<div class="empty-state"><p>Error loading collections</p></div>';
+                }
+            }
+
+            renderCollections() {
+                const container = document.getElementById('collection-list');
+
+                if (this.collections.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><p>No collections found</p></div>';
+                    return;
+                }
+
+                container.innerHTML = this.collections.map(col => `
+                    <div class="collection-item ${this.currentCollectionId === col.id ? 'active' : ''} ${col.image ? 'has-image' : ''}"
+                         data-id="${col.id}" onclick="admin.selectCollection(${col.id}, '${col.title.replace(/'/g, "\\'")}')">
+                        ${col.image ? `<img src="${col.image.src}" alt="" class="collection-thumb">` : ''}
+                        <div class="collection-info">
+                            <div class="name">${col.title}</div>
+                            <div class="count">${col.products_count || 0} products</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            async selectCollection(collectionId, title) {
+                this.currentCollectionId = collectionId;
+                this.currentCollectionTitle = title;
+
+                // Get collection image from the collections list
+                const collection = this.collections.find(c => c.id === collectionId);
+                this.currentCollectionImage = collection?.image?.src || null;
+
+                this.renderCollections();
+
+                const grid = document.getElementById('product-grid');
+                const titleEl = document.getElementById('product-grid-title');
+
+                titleEl.textContent = title;
+                grid.innerHTML = '<div class="loading-spinner" style="grid-column: 1/-1;">Loading products...</div>';
+
+                try {
+                    const response = await fetch(`/api/kiosk/shopify/collections/${collectionId}/products?key=${encodeURIComponent(API_KEY)}&limit=100`);
+                    const data = await response.json();
+
+                    if (data.products) {
+                        this.products = data.products;
+                        this.renderProducts();
+                    } else {
+                        grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;"><p>No products found</p></div>';
+                    }
+                } catch (e) {
+                    console.error('Error loading products:', e);
+                    grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;"><p>Error loading products</p></div>';
+                }
+            }
+
+            renderProducts() {
+                const grid = document.getElementById('product-grid');
+
+                if (this.products.length === 0 && !this.currentCollectionImage) {
+                    grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;"><p>No products in this collection</p></div>';
+                    return;
+                }
+
+                let html = '';
+
+                // Show collection image as first selectable item if available
+                if (this.currentCollectionImage) {
+                    const isCollectionSelected = this.selectedProducts.has('collection-image');
+                    html += `
+                        <div class="product-card collection-image-card ${isCollectionSelected ? 'selected' : ''}"
+                             data-id="collection-image" onclick="admin.toggleCollectionImageSelection()">
+                            <div class="check">✓</div>
+                            <div class="mockup-badge" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">COLLECTION</div>
+                            <div class="image">
+                                <img src="${this.currentCollectionImage}" alt="Collection Image">
+                            </div>
+                            <div class="info">
+                                <div class="title">${this.currentCollectionTitle} (Collection)</div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                html += this.products.map(product => {
+                    const isSelected = this.selectedProducts.has(product.id);
+                    // Prefer mockups, fallback to Shopify images
+                    const imageUrl = product.featuredImage || (product.images && product.images[0]?.src) || '';
+                    const hasMockups = product.hasLocalMockups || (product.mockups && product.mockups.length > 0);
+                    const mockupCount = product.mockups?.length || 0;
+
+                    return `
+                        <div class="product-card ${isSelected ? 'selected' : ''} ${hasMockups ? 'has-mockups' : ''}"
+                             data-id="${product.id}" onclick="admin.toggleProductSelection(${product.id})">
+                            <div class="check">✓</div>
+                            ${hasMockups ? `<div class="mockup-badge">${mockupCount} mockup${mockupCount !== 1 ? 's' : ''}</div>` : ''}
+                            <div class="image">
+                                ${imageUrl ? `<img src="${imageUrl}" alt="${product.title}">` : '<span style="color: #666;">No image</span>'}
+                            </div>
+                            <div class="info">
+                                <div class="title">${product.title}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                grid.innerHTML = html;
+            }
+
+            toggleCollectionImageSelection() {
+                const collectionImageId = 'collection-image';
+                if (this.selectedProducts.has(collectionImageId)) {
+                    this.selectedProducts.delete(collectionImageId);
+                } else {
+                    // Store collection image as a pseudo-product
+                    this.selectedProducts.set(collectionImageId, {
+                        id: collectionImageId,
+                        title: this.currentCollectionTitle + ' (Collection)',
+                        handle: null,
+                        featuredImage: this.currentCollectionImage,
+                        isCollectionImage: true,
+                        mockups: [this.currentCollectionImage]
+                    });
+                }
+
+                this.renderProducts();
+                this.renderSelectedProducts();
+                this.updateCreateSlideshowButton();
+            }
+
+            toggleProductSelection(productId) {
+                const product = this.products.find(p => p.id === productId);
+                if (!product) return;
+
+                if (this.selectedProducts.has(productId)) {
+                    this.selectedProducts.delete(productId);
+                } else {
+                    this.selectedProducts.set(productId, product);
+                }
+
+                this.renderProducts();
+                this.renderSelectedProducts();
+                this.updateCreateSlideshowButton();
+            }
+
+            selectAllProducts() {
+                this.products.forEach(product => {
+                    this.selectedProducts.set(product.id, product);
+                });
+                this.renderProducts();
+                this.renderSelectedProducts();
+                this.updateCreateSlideshowButton();
+            }
+
+            clearProductSelection() {
+                this.selectedProducts.clear();
+                this.renderProducts();
+                this.renderSelectedProducts();
+                this.updateCreateSlideshowButton();
+            }
+
+            renderSelectedProducts() {
+                const container = document.getElementById('selected-products');
+                const countEl = document.getElementById('selected-count');
+
+                countEl.textContent = this.selectedProducts.size;
+
+                if (this.selectedProducts.size === 0) {
+                    container.innerHTML = '<div style="color: #666; font-size: 0.85rem; text-align: center; padding: 1rem;">Click on products to select them</div>';
+                    return;
+                }
+
+                container.innerHTML = Array.from(this.selectedProducts.values()).map(product => {
+                    const imageUrl = product.featuredImage || (product.images && product.images[0]?.src) || '';
+                    return `
+                        <div class="selected-product">
+                            ${imageUrl ? `<img src="${imageUrl}" alt="">` : '<div style="width: 40px; height: 40px; background: #333; border-radius: 4px;"></div>'}
+                            <span class="title">${product.title}</span>
+                            <span class="remove" onclick="admin.toggleProductSelection(${product.id})">✕</span>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            updateCreateSlideshowButton() {
+                const btn = document.getElementById('create-shopify-slideshow-btn');
+                btn.disabled = this.selectedProducts.size === 0;
+            }
+
+            renderShopifyTargetDisplays() {
+                const container = document.getElementById('shopify-target-displays');
+
+                if (this.displays.length === 0) {
+                    container.innerHTML = '<span style="color: #666; font-size: 0.8rem;">No displays connected</span>';
+                    return;
+                }
+
+                container.innerHTML = this.displays.map(display => `
+                    <label class="display-checkbox" data-id="${display.id}">
+                        <input type="checkbox" value="${display.id}">
+                        ${display.name}
+                    </label>
+                `).join('');
+
+                // Add click handlers
+                container.querySelectorAll('.display-checkbox').forEach(label => {
+                    label.addEventListener('click', () => {
+                        const checkbox = label.querySelector('input');
+                        checkbox.checked = !checkbox.checked;
+                        label.classList.toggle('checked', checkbox.checked);
+                    });
+                });
+            }
+
+            async createShopifySlideshow() {
+                const name = document.getElementById('shopify-slideshow-name').value.trim();
+                if (!name) {
+                    alert('Please enter a slideshow name');
+                    return;
+                }
+
+                if (this.selectedProducts.size === 0) {
+                    alert('Please select at least one product');
+                    return;
+                }
+
+                const duration = parseInt(document.getElementById('shopify-duration').value) || 6;
+
+                // Get selected displays
+                const targetDisplays = [];
+                document.querySelectorAll('#shopify-target-displays input:checked').forEach(input => {
+                    targetDisplays.push(input.value);
+                });
+
+                // Build products list - for products with multiple mockups, create an entry for each mockup
+                const products = [];
+                Array.from(this.selectedProducts.values()).forEach(p => {
+                    const mockups = p.mockups && p.mockups.length > 0 ? p.mockups : [p.featuredImage || (p.images && p.images[0]?.src) || ''];
+                    mockups.forEach((mockupUrl, idx) => {
+                        if (mockupUrl) {
+                            products.push({
+                                id: p.id,
+                                title: p.title,
+                                handle: p.handle,
+                                featuredImage: mockupUrl,
+                                mockupIndex: idx
+                            });
+                        }
+                    });
+                });
+
+                const btn = document.getElementById('create-shopify-slideshow-btn');
+                btn.disabled = true;
+                btn.textContent = 'Creating...';
+
+                try {
+                    const response = await fetch(`/api/kiosk/shopify/slideshow?key=${encodeURIComponent(API_KEY)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name,
+                            products,
+                            duration,
+                            targetDisplays,
+                            collectionId: this.currentCollectionId,
+                            collectionTitle: this.currentCollectionTitle
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        // Clear form
+                        document.getElementById('shopify-slideshow-name').value = '';
+                        this.clearProductSelection();
+
+                        // Slideshows will be updated via WebSocket
+                        alert('Slideshow created successfully!');
+                    } else {
+                        alert('Error creating slideshow: ' + (result.error || 'Unknown error'));
+                    }
+                } catch (e) {
+                    alert('Error creating slideshow: ' + e.message);
+                } finally {
+                    btn.disabled = this.selectedProducts.size === 0;
+                    btn.textContent = 'Create Slideshow';
+                }
+            }
+
+            renderSavedSlideshows() {
+                const container = document.getElementById('saved-slideshows');
+
+                if (this.shopifySlideshows.length === 0) {
+                    container.innerHTML = '<div style="color: #666; font-size: 0.85rem; text-align: center; padding: 0.5rem;">No saved slideshows</div>';
+                    return;
+                }
+
+                container.innerHTML = this.shopifySlideshows.map(slideshow => `
+                    <div class="saved-slideshow">
+                        <div class="info">
+                            <div class="name">${slideshow.name}</div>
+                            <div class="meta">${slideshow.products?.length || 0} products • ${slideshow.duration}s each</div>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="promo-action-btn" onclick="admin.sendShopifySlideshow('${slideshow.id}')">Send</button>
+                            <button class="promo-action-btn danger" onclick="admin.deleteShopifySlideshow('${slideshow.id}')">✕</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            sendShopifySlideshow(slideshowId) {
+                const slideshow = this.shopifySlideshows.find(s => s.id === slideshowId);
+                if (!slideshow) return;
+
+                const content = {
+                    id: `shopify-slideshow-${slideshow.id}`,
+                    type: 'shopify-slideshow',
+                    name: slideshow.name,
+                    slideshow: slideshow
+                };
+
+                // Send to targeted displays or all
+                if (slideshow.targetDisplays && slideshow.targetDisplays.length > 0) {
+                    slideshow.targetDisplays.forEach(displayId => {
+                        this.setDisplayContent(displayId, content.id, content);
+                    });
+                } else {
+                    this.broadcast(content.id, content);
+                }
+            }
+
+            async deleteShopifySlideshow(slideshowId) {
+                if (!confirm('Delete this slideshow?')) return;
+
+                try {
+                    await fetch(`/api/kiosk/shopify/slideshow/${slideshowId}?key=${encodeURIComponent(API_KEY)}`, {
+                        method: 'DELETE'
+                    });
+                } catch (e) {
+                    console.error('Error deleting slideshow:', e);
+                }
+            }
+
+            // ==================== ROTATING SLIDES METHODS ====================
+
+            renderRotatingSlides() {
+                const section = document.getElementById('rotating-slides-section');
+                const slidesList = document.getElementById('slides-list');
+                const toggle = document.getElementById('rotating-toggle');
+                const status = document.getElementById('rotating-status');
+
+                // Update toggle state
+                toggle.checked = this.rotatingEnabled;
+
+                // Update section class for styling
+                if (this.rotatingEnabled) {
+                    section.classList.add('rotating-enabled');
+                } else {
+                    section.classList.remove('rotating-enabled');
+                }
+
+                // Initialize selectedSlides with all slides if empty (first load)
+                if (this.selectedSlides.size === 0 && this.serviceSlides.length > 0) {
+                    this.serviceSlides.forEach(s => this.selectedSlides.add(s.id));
+                }
+
+                // Render slides list with checkboxes
+                if (this.serviceSlides.length === 0) {
+                    slidesList.innerHTML = '<div style="color: #666; font-size: 0.8rem; grid-column: 1/-1;">No service slides found</div>';
+                } else {
+                    slidesList.innerHTML = this.serviceSlides.map(slide => {
+                        const isSelected = this.selectedSlides.has(slide.id);
+                        return `
+                            <div class="slide-item ${isSelected ? 'selected' : ''}" data-slide-id="${slide.id}" onclick="admin.toggleSlideSelection('${slide.id}')">
+                                <span class="checkbox">✓</span>
+                                <span class="dot"></span>
+                                ${slide.name}
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+                // Update status
+                const selectedCount = this.selectedSlides.size;
+                if (this.rotatingEnabled) {
+                    status.textContent = `Active - rotating ${selectedCount} of ${this.serviceSlides.length} slides`;
+                } else {
+                    status.textContent = `Disabled - ${selectedCount} slides selected`;
+                }
+            }
+
+            toggleSlideSelection(slideId) {
+                if (this.selectedSlides.has(slideId)) {
+                    this.selectedSlides.delete(slideId);
+                } else {
+                    this.selectedSlides.add(slideId);
+                }
+                this.renderRotatingSlides();
+
+                // If rotation is enabled, update the server with new selection
+                if (this.rotatingEnabled) {
+                    this.updateRotatingSlides();
+                }
+            }
+
+            async updateRotatingSlides() {
+                try {
+                    await fetch(`/api/kiosk/rotating-slides?key=${encodeURIComponent(API_KEY)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            enabled: this.rotatingEnabled,
+                            selectedSlides: Array.from(this.selectedSlides)
+                        })
+                    });
+                } catch (e) {
+                    console.error('Error updating rotating slides:', e);
+                }
+            }
+
+            async toggleRotatingSlides(enabled) {
+                try {
+                    const response = await fetch(`/api/kiosk/rotating-slides?key=${encodeURIComponent(API_KEY)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            enabled,
+                            selectedSlides: Array.from(this.selectedSlides)
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (!result.success) {
+                        console.error('Failed to toggle rotating slides:', result.error);
+                        // Revert toggle
+                        document.getElementById('rotating-toggle').checked = this.rotatingEnabled;
+                    }
+                } catch (e) {
+                    console.error('Error toggling rotating slides:', e);
+                    // Revert toggle
+                    document.getElementById('rotating-toggle').checked = this.rotatingEnabled;
+                }
+            }
+        }
+
+        // Global functions
+        function clearFile() {
+            admin.selectedFile = null;
+            document.getElementById('promo-file').value = '';
+            document.getElementById('file-drop-zone').style.display = 'block';
+            document.getElementById('file-preview').style.display = 'none';
+        }
+
+        window.clearFile = clearFile;
+
+        // Initialize
+        const admin = new KioskAdmin();
+    </script>
+</body>
+</html>

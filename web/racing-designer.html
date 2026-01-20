@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Race Car Decal Designer | BlueRidgeCustomCo</title>
+  <meta name="description" content="Design your race car decals with accurate real-world dimensions. Drag and drop number plates, sponsor decals, and more onto your car template.">
+  <link rel="canonical" href="https://blueridgecustomco.com/racing-designer.html">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800;900&family=Montserrat:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="./racing-designer.css">
+  <link rel="stylesheet" href="./shared-modern.css">
+  <!-- Fabric.js for canvas editing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+</head>
+<body>
+  <header class="modern-header">
+    <div class="header-container">
+      <a href="./" class="logo">
+        <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo">
+        <div class="logo-text">
+          <span class="logo-name">BlueRidgeCustomCo</span>
+          <span class="logo-tagline">Premium Custom Designs</span>
+        </div>
+      </a>
+      <nav class="nav-menu">
+        <a href="./designer.html" class="nav-link">Designer</a>
+        <a href="./racing.html" class="nav-link">Racing</a>
+        <a href="https://store.swayzecustomvinyl.com/apparel.html" class="nav-link">Apparel</a>
+        <a href="./customer.html" class="cta-button">Account</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Banner -->
+    <section class="designer-hero">
+      <div class="hero-content">
+        <span class="eyebrow">Race Car Decal Designer</span>
+        <h1>Design Your Race Car Decals</h1>
+        <p>Place door numbers, sponsor logos, and name bars on your car template with accurate real-world dimensions.</p>
+      </div>
+    </section>
+
+    <!-- Progress Steps -->
+    <div class="progress-container">
+      <div class="progress-steps">
+        <div class="step active" data-step="1">
+          <div class="step-number">1</div>
+          <div class="step-label">Driver Info</div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-step="2">
+          <div class="step-number">2</div>
+          <div class="step-label">Vehicle</div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-step="3">
+          <div class="step-number">3</div>
+          <div class="step-label">Design</div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step" data-step="4">
+          <div class="step-number">4</div>
+          <div class="step-label">Quote</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step Content Container -->
+    <div class="wizard-container">
+
+      <!-- Step 1: Driver Info -->
+      <section class="wizard-step active" id="step-1">
+        <div class="step-card">
+          <h2>Driver & Team Information</h2>
+          <p class="step-description">This information will be used to generate your door numbers, name bars, and ensure compliance with racing series requirements.</p>
+
+          <form id="driver-info-form" class="form-grid">
+            <!-- Team/Business -->
+            <div class="form-group full-width">
+              <label for="team-name">Team / Business Name</label>
+              <input type="text" id="team-name" name="teamName" placeholder="e.g., Swayze Racing">
+            </div>
+
+            <!-- Car Number -->
+            <div class="form-group">
+              <label for="car-number">Car Number <span class="required">*</span></label>
+              <input type="text" id="car-number" name="carNumber" required maxlength="4" placeholder="e.g., 77">
+              <span class="field-hint">Competition number displayed on your vehicle</span>
+            </div>
+
+            <!-- Racing Series -->
+            <div class="form-group">
+              <label for="racing-series">Racing Series <span class="required">*</span></label>
+              <select id="racing-series" name="racingSeries" required>
+                <option value="">Select a series...</option>
+                <option value="ARA">ARA (American Rally Association)</option>
+                <option value="NASA">NASA (National Auto Sport Association)</option>
+                <option value="SCCA">SCCA (Sports Car Club of America)</option>
+                <option value="RallyCross">RallyCross</option>
+                <option value="AutoCross">AutoCross / Time Attack</option>
+                <option value="Other">Other / None</option>
+              </select>
+            </div>
+
+            <!-- Primary Driver Section -->
+            <div class="form-section full-width">
+              <h3>Primary Driver</h3>
+            </div>
+
+            <div class="form-group">
+              <label for="driver-name">Driver Name <span class="required">*</span></label>
+              <input type="text" id="driver-name" name="driverName" required placeholder="e.g., John Smith">
+            </div>
+
+            <div class="form-group">
+              <label for="driver-country">Country <span class="required">*</span></label>
+              <select id="driver-country" name="driverCountry" required>
+                <option value="">Select country...</option>
+              </select>
+            </div>
+
+            <!-- Co-Driver Section (Optional Toggle) -->
+            <div class="form-group full-width">
+              <label class="toggle-label">
+                <input type="checkbox" id="has-codriver" name="hasCoDriver">
+                <span class="toggle-switch"></span>
+                <span>Include Co-Driver (Rally / Endurance)</span>
+              </label>
+            </div>
+
+            <div class="codriver-fields hidden" id="codriver-section">
+              <div class="form-section full-width">
+                <h3>Co-Driver</h3>
+              </div>
+
+              <div class="form-group">
+                <label for="codriver-name">Co-Driver Name</label>
+                <input type="text" id="codriver-name" name="codriverName" placeholder="e.g., Jane Doe">
+              </div>
+
+              <div class="form-group">
+                <label for="codriver-country">Country</label>
+                <select id="codriver-country" name="codriverCountry">
+                  <option value="">Select country...</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-actions full-width">
+              <button type="button" class="btn-secondary" onclick="window.location.href='./racing.html'">Cancel</button>
+              <button type="submit" class="btn-primary">Continue to Vehicle</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Step 2: Vehicle Selection -->
+      <section class="wizard-step" id="step-2">
+        <div class="step-card">
+          <h2>Select Your Vehicle</h2>
+          <p class="step-description">Choose your car's make, model, and year. We'll load a template with accurate dimensions for decal placement.</p>
+
+          <form id="vehicle-form" class="form-grid">
+            <div class="form-group">
+              <label for="car-make">Make <span class="required">*</span></label>
+              <select id="car-make" name="carMake" required>
+                <option value="">Select make...</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="car-model">Model <span class="required">*</span></label>
+              <select id="car-model" name="carModel" required disabled>
+                <option value="">Select model...</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="car-year">Year <span class="required">*</span></label>
+              <select id="car-year" name="carYear" required disabled>
+                <option value="">Select year...</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="car-color">Primary Car Color</label>
+              <input type="text" id="car-color" name="carColor" placeholder="e.g., Rally Blue">
+              <span class="field-hint">Helps us match vinyl colors to your vehicle</span>
+            </div>
+
+            <!-- Template Preview -->
+            <div class="template-preview full-width" id="template-preview">
+              <div class="preview-placeholder">
+                <div class="placeholder-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                    <line x1="4" y1="22" x2="4" y2="15"></line>
+                  </svg>
+                </div>
+                <p>Select your vehicle to load the template</p>
+              </div>
+              <div class="preview-loading hidden">
+                <div class="spinner"></div>
+                <p>Loading template...</p>
+              </div>
+              <div class="preview-content hidden">
+                <div class="template-thumbnail" id="template-thumbnail"></div>
+                <div class="template-info">
+                  <h4 id="template-title">Vehicle Template</h4>
+                  <p id="template-dimensions">Dimensions will appear here</p>
+                </div>
+              </div>
+              <div class="preview-not-found hidden">
+                <div class="placeholder-icon warning">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                </div>
+                <p>No template found for this vehicle. You can still proceed and we'll create a custom template.</p>
+              </div>
+            </div>
+
+            <!-- Reference Photos Upload -->
+            <div class="form-section full-width">
+              <h3>Reference Photos (Optional)</h3>
+              <p class="section-description">Upload photos of your actual car. These will display alongside the template for reference while designing.</p>
+            </div>
+
+            <div class="photo-upload-area full-width" id="photo-upload-area">
+              <input type="file" id="photo-upload" name="photos" multiple accept="image/*" hidden>
+              <div class="upload-dropzone" id="photo-dropzone">
+                <div class="dropzone-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                </div>
+                <p>Drag & drop photos here or <button type="button" class="link-button" onclick="document.getElementById('photo-upload').click()">browse</button></p>
+                <span class="upload-hint">Up to 5 photos, max 10MB each. JPG, PNG supported.</span>
+              </div>
+              <div class="photo-thumbnails" id="photo-thumbnails"></div>
+            </div>
+
+            <div class="form-actions full-width">
+              <button type="button" class="btn-secondary" onclick="goToStep(1)">Back</button>
+              <button type="submit" class="btn-primary">Continue to Designer</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Step 3: Design Editor -->
+      <section class="wizard-step" id="step-3">
+        <div class="editor-layout">
+          <!-- Left Sidebar: Tools -->
+          <aside class="editor-sidebar left">
+            <div class="sidebar-section">
+              <h3>Decals</h3>
+              <div class="tool-group">
+                <button class="tool-btn" id="upload-decal-btn" title="Upload decal image">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                  </svg>
+                  <span>Upload</span>
+                </button>
+                <input type="file" id="decal-upload" accept="image/*,.svg" hidden>
+              </div>
+            </div>
+
+            <div class="sidebar-section">
+              <h3>Auto-Generated</h3>
+              <div class="generated-items" id="generated-items">
+                <div class="generated-item" data-type="door-number">
+                  <div class="item-preview number-preview" id="door-number-preview">77</div>
+                  <span>Door Numbers</span>
+                </div>
+                <div class="generated-item" data-type="name-bar-driver">
+                  <div class="item-preview name-preview">Driver Name</div>
+                  <span>Driver Name Bar</span>
+                </div>
+                <div class="generated-item hidden" data-type="name-bar-codriver" id="codriver-name-item">
+                  <div class="item-preview name-preview">Co-Driver Name</div>
+                  <span>Co-Driver Name Bar</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-section">
+              <h3>Colors</h3>
+              <div class="color-tools">
+                <div class="color-picker-group">
+                  <label for="fill-color">Fill</label>
+                  <input type="color" id="fill-color" value="#ffffff">
+                </div>
+                <div class="color-picker-group">
+                  <label for="stroke-color">Stroke</label>
+                  <input type="color" id="stroke-color" value="#000000">
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-section">
+              <h3>Transform</h3>
+              <div class="transform-tools">
+                <button class="tool-btn small" id="flip-h-btn" title="Flip Horizontal">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 3v18M9 6l-6 6 6 6M15 6l6 6-6 6"></path>
+                  </svg>
+                </button>
+                <button class="tool-btn small" id="flip-v-btn" title="Flip Vertical">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12h18M6 9l6-6 6 6M6 15l6 6 6-6"></path>
+                  </svg>
+                </button>
+                <button class="tool-btn small" id="duplicate-btn" title="Duplicate">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </button>
+                <button class="tool-btn small danger" id="delete-btn" title="Delete">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="sidebar-section">
+              <h3>Layer Order</h3>
+              <div class="layer-tools">
+                <button class="tool-btn small" id="bring-front-btn" title="Bring to Front">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="2" width="8" height="8" fill="currentColor" opacity="0.3"></rect>
+                    <rect x="14" y="14" width="8" height="8"></rect>
+                  </svg>
+                  <span>Front</span>
+                </button>
+                <button class="tool-btn small" id="send-back-btn" title="Send to Back">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="2" width="8" height="8"></rect>
+                    <rect x="14" y="14" width="8" height="8" fill="currentColor" opacity="0.3"></rect>
+                  </svg>
+                  <span>Back</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="sidebar-section">
+              <h3>History</h3>
+              <div class="history-tools">
+                <button class="tool-btn small" id="undo-btn" title="Undo" disabled>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 14 4 9 9 4"></polyline>
+                    <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+                  </svg>
+                  <span>Undo</span>
+                </button>
+                <button class="tool-btn small" id="redo-btn" title="Redo" disabled>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 14 20 9 15 4"></polyline>
+                    <path d="M4 20v-7a4 4 0 0 1 4-4h12"></path>
+                  </svg>
+                  <span>Redo</span>
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Center: Canvas -->
+          <div class="editor-main">
+            <div class="canvas-toolbar">
+              <div class="view-tabs">
+                <button class="view-tab active" data-view="side">Side View</button>
+                <button class="view-tab" data-view="front">Front View</button>
+                <button class="view-tab" data-view="rear">Rear View</button>
+              </div>
+              <div class="zoom-controls">
+                <button class="zoom-btn" id="zoom-out-btn">-</button>
+                <span class="zoom-level" id="zoom-level">100%</span>
+                <button class="zoom-btn" id="zoom-in-btn">+</button>
+                <button class="zoom-btn" id="zoom-fit-btn">Fit</button>
+              </div>
+            </div>
+            <div class="canvas-container" id="canvas-container">
+              <canvas id="design-canvas"></canvas>
+            </div>
+            <div class="canvas-footer">
+              <div class="dimension-readout" id="dimension-readout">
+                <span class="dim-label">Selected:</span>
+                <span class="dim-value" id="selected-dims">No selection</span>
+              </div>
+              <div class="scale-info">
+                Scale: 1px = 0.1 inches
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Sidebar: Info & Layers -->
+          <aside class="editor-sidebar right">
+            <div class="sidebar-section">
+              <h3>Reference Photos</h3>
+              <div class="reference-photos" id="reference-photos">
+                <p class="no-photos">No photos uploaded</p>
+              </div>
+            </div>
+
+            <div class="sidebar-section">
+              <h3>Selected Object</h3>
+              <div class="object-info" id="object-info">
+                <p class="no-selection">Click an object to see details</p>
+                <div class="selection-details hidden" id="selection-details">
+                  <div class="detail-row">
+                    <span class="detail-label">Width:</span>
+                    <span class="detail-value" id="obj-width">-</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Height:</span>
+                    <span class="detail-value" id="obj-height">-</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Position:</span>
+                    <span class="detail-value" id="obj-position">-</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Rotation:</span>
+                    <span class="detail-value" id="obj-rotation">-</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-section">
+              <h3>Layers</h3>
+              <div class="layers-list" id="layers-list">
+                <p class="no-layers">No decals placed yet</p>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="editor-actions">
+          <button type="button" class="btn-secondary" onclick="goToStep(2)">Back to Vehicle</button>
+          <button type="button" class="btn-secondary" id="save-design-btn">Save Draft</button>
+          <button type="button" class="btn-primary" id="continue-to-quote-btn">Continue to Quote</button>
+        </div>
+      </section>
+
+      <!-- Step 4: Review & Quote -->
+      <section class="wizard-step" id="step-4">
+        <div class="step-card">
+          <h2>Review Your Design & Get Quote</h2>
+          <p class="step-description">Review your decal specifications and generate a quote for production.</p>
+
+          <div class="review-grid">
+            <!-- Design Preview -->
+            <div class="review-section">
+              <h3>Design Preview</h3>
+              <div class="design-preview-large" id="design-preview-large">
+                <p>Preview will appear here</p>
+              </div>
+            </div>
+
+            <!-- Decal Specifications -->
+            <div class="review-section">
+              <h3>Decal Specifications</h3>
+              <div class="spec-table-container">
+                <table class="spec-table" id="decal-specs-table">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Dimensions</th>
+                      <th>Material</th>
+                      <th>Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody id="decal-specs-body">
+                    <tr>
+                      <td colspan="4" class="empty-row">No decals in design</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Driver/Vehicle Summary -->
+            <div class="review-section">
+              <h3>Driver & Vehicle Info</h3>
+              <div class="info-summary" id="info-summary">
+                <div class="summary-row">
+                  <span class="summary-label">Car Number:</span>
+                  <span class="summary-value" id="summary-car-number">-</span>
+                </div>
+                <div class="summary-row">
+                  <span class="summary-label">Driver:</span>
+                  <span class="summary-value" id="summary-driver">-</span>
+                </div>
+                <div class="summary-row" id="summary-codriver-row" style="display:none;">
+                  <span class="summary-label">Co-Driver:</span>
+                  <span class="summary-value" id="summary-codriver">-</span>
+                </div>
+                <div class="summary-row">
+                  <span class="summary-label">Series:</span>
+                  <span class="summary-value" id="summary-series">-</span>
+                </div>
+                <div class="summary-row">
+                  <span class="summary-label">Vehicle:</span>
+                  <span class="summary-value" id="summary-vehicle">-</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Additional Notes -->
+            <div class="review-section full-width">
+              <h3>Additional Notes</h3>
+              <textarea id="quote-notes" rows="4" placeholder="Add any special instructions, material preferences, or questions for the production team..."></textarea>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="goToStep(3)">Back to Editor</button>
+            <button type="button" class="btn-primary" id="submit-quote-btn">
+              <span class="btn-text">Submit for Quote</span>
+              <span class="btn-loading hidden">
+                <span class="spinner small"></span>
+                Submitting...
+              </span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Success State -->
+      <section class="wizard-step" id="step-success">
+        <div class="step-card success-card">
+          <div class="success-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+          </div>
+          <h2>Quote Request Submitted!</h2>
+          <p>We've received your race car decal design and will prepare a detailed quote.</p>
+          <div class="success-details">
+            <p><strong>What happens next:</strong></p>
+            <ol>
+              <li>Our team will review your design and specifications</li>
+              <li>You'll receive a detailed quote within 24-48 hours</li>
+              <li>Once approved, we'll begin production</li>
+            </ol>
+          </div>
+          <div class="success-actions">
+            <a href="./customer.html" class="btn-primary">View My Quotes</a>
+            <a href="./racing-designer.html" class="btn-secondary">Start New Design</a>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Auth Modal (for non-logged-in users) -->
+    <div class="modal-overlay hidden" id="auth-modal">
+      <div class="modal">
+        <button class="modal-close" onclick="closeAuthModal()">&times;</button>
+        <h2>Sign In to Continue</h2>
+        <p>Create an account or sign in to save your design and get a quote.</p>
+
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">Sign In</button>
+          <button class="auth-tab" data-tab="register">Create Account</button>
+        </div>
+
+        <form id="login-form" class="auth-form">
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" name="email" required>
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" name="password" required>
+          </div>
+          <button type="submit" class="btn-primary full-width">Sign In</button>
+        </form>
+
+        <form id="register-form" class="auth-form hidden">
+          <div class="form-group">
+            <label for="register-name">Full Name</label>
+            <input type="text" id="register-name" name="name" required>
+          </div>
+          <div class="form-group">
+            <label for="register-email">Email</label>
+            <input type="email" id="register-email" name="email" required>
+          </div>
+          <div class="form-group">
+            <label for="register-password">Password</label>
+            <input type="password" id="register-password" name="password" required minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="register-phone">Phone (Optional)</label>
+            <input type="tel" id="register-phone" name="phone">
+          </div>
+          <button type="submit" class="btn-primary full-width">Create Account</button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <footer class="modern-footer">
+    <div class="footer-container">
+      <p>&copy; 2024 BlueRidgeCustomCo. All rights reserved.</p>
+      <nav class="footer-links">
+        <a href="./racing.html">Racing Packages</a>
+        <a href="./customer.html">My Account</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="./racing-designer.js"></script>
+</body>
+</html>

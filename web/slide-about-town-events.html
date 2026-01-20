@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blue Ridge Custom Co - Town Events</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            min-height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Subtle grid pattern */
+        .grid-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* Blue accent corner */
+        .accent-corner {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            clip-path: polygon(50% 0, 100% 0, 100% 100%, 20% 100%);
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            min-height: 100vh;
+            position: relative;
+            z-index: 1;
+        }
+
+        .left {
+            padding: 70px 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .local-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 25px;
+            animation: fadeIn 0.6s ease-out;
+            width: fit-content;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1 {
+            font-size: 3.8rem;
+            font-weight: 800;
+            line-height: 1.15;
+            margin-bottom: 25px;
+            color: #0f172a;
+        }
+
+        h1 span {
+            display: block;
+            animation: slideIn 0.6s ease-out both;
+        }
+
+        h1 span:nth-child(1) { animation-delay: 0.1s; }
+        h1 span:nth-child(2) { animation-delay: 0.2s; }
+        h1 span:nth-child(3) { 
+            animation-delay: 0.3s; 
+            color: #3b82f6;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-30px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .description {
+            font-size: 1.25rem;
+            line-height: 1.8;
+            color: #475569;
+            margin-bottom: 40px;
+            max-width: 500px;
+            animation: fadeIn 0.6s ease-out 0.4s both;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            animation: fadeIn 0.6s ease-out 0.6s both;
+        }
+
+        .service-item {
+            background: white;
+            border: 1px solid #e2e8f0;
+            padding: 20px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .service-item:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .service-icon {
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+
+        .service-text {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .right {
+            padding: 70px 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            color: white;
+        }
+
+        .trust-section {
+            margin-bottom: 50px;
+            animation: fadeIn 0.6s ease-out 0.5s both;
+        }
+
+        .trust-label {
+            font-size: 0.85rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            opacity: 0.7;
+            margin-bottom: 15px;
+        }
+
+        .trust-heading {
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 1.3;
+            margin-bottom: 20px;
+        }
+
+        .trust-points {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .trust-point {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.1rem;
+        }
+
+        .trust-check {
+            width: 24px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+        }
+
+        .owner-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 30px;
+            border-radius: 16px;
+            animation: fadeIn 0.6s ease-out 0.7s both;
+        }
+
+        .owner-header {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .owner-avatar {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, #f59e0b, #fbbf24);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .owner-info h3 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+        .owner-info p {
+            font-size: 0.95rem;
+            opacity: 0.8;
+        }
+
+        .owner-bio {
+            font-size: 1rem;
+            line-height: 1.7;
+            opacity: 0.9;
+        }
+
+        .rally-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(245, 158, 11, 0.2);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            padding: 8px 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+
+        .contact-strip {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #0f172a;
+            padding: 20px 80px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            animation: slideUp 0.6s ease-out 0.9s both;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .contact-left {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #94a3b8;
+            font-size: 0.95rem;
+        }
+
+        .contact-item strong {
+            color: white;
+        }
+
+        .branding {
+            color: white;
+            text-align: right;
+        }
+
+        .branding-name {
+            font-size: 1.2rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .branding-sub {
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+    <div class="grid-bg"></div>
+    <div class="accent-corner"></div>
+
+    <div class="container">
+        <div class="left">
+            <div class="local-tag">
+                <span>📍</span>
+                <span>Asheville Local Business</span>
+            </div>
+
+            <h1>
+                <span>Your Local</span>
+                <span>Custom Print &</span>
+                <span>Design Partner</span>
+            </h1>
+
+            <p class="description">
+                From single custom stickers to bulk orders for your business or event — 
+                we handle it all in-house with fast turnaround and fair pricing. 
+                No minimums, no hassle.
+            </p>
+
+            <div class="services-grid">
+                <div class="service-item">
+                    <div class="service-icon">🎨</div>
+                    <div class="service-text">Custom Stickers</div>
+                </div>
+                <div class="service-item">
+                    <div class="service-icon">🖼️</div>
+                    <div class="service-text">Metal Prints</div>
+                </div>
+                <div class="service-item">
+                    <div class="service-icon">👕</div>
+                    <div class="service-text">Custom Apparel</div>
+                </div>
+                <div class="service-item">
+                    <div class="service-icon">✨</div>
+                    <div class="service-text">Laser Engraving</div>
+                </div>
+                <div class="service-item">
+                    <div class="service-icon">🎁</div>
+                    <div class="service-text">Personalized Gifts</div>
+                </div>
+                <div class="service-item">
+                    <div class="service-icon">🏢</div>
+                    <div class="service-text">Business Branding</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right">
+            <div class="trust-section">
+                <div class="trust-label">Why Work With Us</div>
+                <h2 class="trust-heading">Small Shop.<br>Big Capabilities.</h2>
+                <div class="trust-points">
+                    <div class="trust-point">
+                        <span class="trust-check">✓</span>
+                        <span>Everything made locally in Asheville</span>
+                    </div>
+                    <div class="trust-point">
+                        <span class="trust-check">✓</span>
+                        <span>Fast turnaround — most orders 1-3 days</span>
+                    </div>
+                    <div class="trust-point">
+                        <span class="trust-check">✓</span>
+                        <span>Work directly with the owner</span>
+                    </div>
+                    <div class="trust-point">
+                        <span class="trust-check">✓</span>
+                        <span>No minimum orders required</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="owner-card">
+                <div class="owner-header">
+                    <div class="owner-avatar">JS</div>
+                    <div class="owner-info">
+                        <h3>Jack Swayze</h3>
+                        <p>Owner & Maker</p>
+                    </div>
+                </div>
+                <p class="owner-bio">
+                    Every order goes through my hands. I take pride in quality work and 
+                    building relationships with local businesses and neighbors. Let's make 
+                    something great together.
+                </p>
+                <div class="rally-badge">
+                    <span>🏎️</span>
+                    <span>ARA Rally Driver #656</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="contact-strip">
+        <div class="contact-left">
+            <div class="contact-item">
+                <span>🌐</span>
+                <strong>blueridgecustom.co</strong>
+            </div>
+            <div class="contact-item">
+                <span>📍</span>
+                <span>Asheville, NC</span>
+            </div>
+            <div class="contact-item">
+                <span>⚡</span>
+                <span>Same-day quotes</span>
+            </div>
+        </div>
+        <div class="branding">
+            <div class="branding-name">BLUE RIDGE CUSTOM CO</div>
+            <div class="branding-sub">Custom Printing & Engraving</div>
+        </div>
+    </div>
+</body>
+</html>

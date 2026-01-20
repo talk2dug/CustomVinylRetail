@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - Farmers Market Far</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background: linear-gradient(180deg, #fef3c7 0%, #fde68a 50%, #fbbf24 100%);
+            color: #1c1917;
+            min-height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .sun {
+            position: absolute;
+            top: -80px;
+            right: 80px;
+            width: 250px;
+            height: 250px;
+            background: radial-gradient(circle, #fff9c4 0%, #fef08a 30%, transparent 70%);
+            border-radius: 50%;
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+        }
+
+        .hills {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 25%;
+        }
+
+        .hill {
+            position: absolute;
+            bottom: 0;
+            border-radius: 50% 50% 0 0;
+        }
+
+        .hill-1 { left: -10%; width: 50%; height: 100%; background: #86efac; }
+        .hill-2 { left: 25%; width: 40%; height: 70%; background: #4ade80; }
+        .hill-3 { right: -10%; width: 45%; height: 85%; background: #22c55e; }
+
+        .content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .wave {
+            font-size: 8rem;
+            animation: wave 1s ease-in-out infinite;
+            display: inline-block;
+        }
+
+        @keyframes wave {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(20deg); }
+            75% { transform: rotate(-10deg); }
+        }
+
+        h1 {
+            font-size: 11rem;
+            line-height: 0.95;
+            color: #292524;
+        }
+
+        h1 span {
+            display: block;
+        }
+
+        h1 .highlight {
+            color: #16a34a;
+        }
+
+        .tagline {
+            font-size: 2.5rem;
+            color: #57534e;
+            margin-top: 30px;
+        }
+
+        .branding {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.8rem;
+            color: #78716c;
+        }
+
+        .local-badge {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #16a34a;
+            color: white;
+            padding: 15px 35px;
+            border-radius: 12px;
+            font-size: 1.8rem;
+            box-shadow: 0 4px 20px rgba(22, 163, 74, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="sun"></div>
+    <div class="hills">
+        <div class="hill hill-1"></div>
+        <div class="hill hill-2"></div>
+        <div class="hill hill-3"></div>
+    </div>
+    
+    <div class="local-badge">🌿 SUPPORT LOCAL</div>
+
+    <div class="content">
+        <div class="wave">👋</div>
+        <h1>
+            <span>HEY</span>
+            <span class="highlight">NEIGHBOR!</span>
+        </h1>
+        <div class="tagline">CUSTOM STICKERS • PRINTS • SHIRTS • GIFTS</div>
+    </div>
+    <div class="branding">Blue Ridge Custom Co • Asheville</div>
+</body>
+</html>

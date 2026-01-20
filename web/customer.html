@@ -3,14 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>My Sticker Orders</title>
+  <title>BlueRidgeCustomCo - My Account</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="./customer.css">
+  <link rel="stylesheet" href="./shared-modern.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1>My Sticker Orders</h1>
-    <p>Sign in with the email you used at the booth to review progress and re-order your designs.</p>
+  <header class="modern-header">
+    <div class="header-container">
+      <a href="./" class="logo">
+        <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo">
+        <div class="logo-text">
+          <span class="logo-name">BlueRidgeCustomCo</span>
+          <span class="logo-tagline">Premium Custom Designs</span>
+        </div>
+      </a>
+      <nav class="nav-menu">
+        <a href="./designer.html" class="nav-link">Designer</a>
+        <a href="./racing.html" class="nav-link">Racing</a>
+        <a href="https://store.swayzecustomvinyl.com/apparel.html" class="nav-link">Apparel</a>
+        <a href="./customer.html" class="cta-button">Account</a>
+      </nav>
+    </div>
   </header>
 
   <main class="customer-portal">
@@ -20,7 +34,26 @@
         <span class="muted">(<span id="accountEmail"></span>)</span>
       </div>
       <button id="logoutButton" class="secondary">Sign out</button>
+      <button id="openQuoteModal" class="secondary">Request a quote</button>
+      <button id="payAllButton" class="primary" style="margin-left:auto;">Pay all unpaid</button>
     </section>
+
+    <!-- Shortcuts moved just under the account bar -->
+    <section id="shortcuts" class="shortcut-grid hidden">
+      <article class="shortcut-card">
+        <h3>Create a new sticker</h3>
+        <p>Start fresh in the catalog, pick your vinyl color, and add custom text right away.</p>
+        <a class="button primary" href="./catalog.html">Launch designer</a>
+      </article>
+      <article class="shortcut-card">
+        <h3>Upload existing artwork</h3>
+        <p>Have production-ready art? Upload it so we can prep it for cutting or engraving.</p>
+        <button id="uploadButton" type="button" class="button ghost">Upload artwork</button>
+        <input id="uploadInput" type="file" accept=".ai,.pdf,.eps,.svg,.png,.jpg" hidden>
+      </article>
+    </section>
+
+    
 
     <section id="authCard" class="card">
 
@@ -68,8 +101,7 @@
         <label class="sms-opt-in">
           <input id="registerSmsOptIn" type="checkbox">
           <span>
-            I agree to receive order updates and occasional offers by text message.
-            Message/data rates may apply. Reply STOP to cancel, HELP for help. See our
+            I agree to receive order updates and occasional offers by text message sent via an autodialer. Message/data rates may apply. Agreement is not a condition of any purchase. <span id="smsMsgsPerMonth">4</span> Msgs/month. Reply STOP to cancel, HELP for help. See our
             <a href="./terms.html#privacy" target="_blank" rel="noopener">privacy policy</a>.
           </span>
         </label>
@@ -114,84 +146,88 @@
 
     <section id="ordersContainer" class="orders-grid"></section>
 
-    <section id="racePackagesCard" class="card race-packages hidden">
-      <div class="race-packages__hero">
-        <img src="./images/race-kit-hero.jpg" alt="Race car with vinyl number kit" class="race-packages__image">
-        <div class="race-packages__intro">
-          <h2>Race car decal packages</h2>
-          <p>Create a cohesive look for your track car with number panels, sponsor decals, and accent graphics. Request a quote and we&rsquo;ll build a custom kit around your schedule.</p>
+    <!-- Race car decal packages section removed (moved to dedicated page) -->
+
+    <section id="raceQuotesCard" class="card race-quotes hidden">
+      <h2>My race quotes</h2>
+      <div id="raceQuotesList" class="race-quotes__list">No race quotes yet.</div>
+    </section>
+
+    
+
+    <!-- Moved to bottom: compact account preferences -->
+    <section id="prefsCard" class="card compact hidden">
+      <h2>Account preferences</h2>
+      <label class="inline">
+        <input id="smsPrefCheckbox" type="checkbox">
+        <span>Receive order updates by text message</span>
+      </label>
+      <div class="form-actions" style="margin-top:6px; display:flex; gap:8px;">
+        <button type="button" id="savePrefsButton" class="secondary">Save</button>
+      </div>
+      <div id="prefsStatus" class="status" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <template id="customerOrderTemplate">
+    <article class="order-card">
+      <header>
+        <h3></h3>
+        <span class="status-pill"></span>
+      </header>
+      <div class="order-body">
+        <img alt="Sticker preview" loading="lazy">
+        <dl class="meta"></dl>
+        <div class="text-layers"></div>
+        <div class="source-files"></div>
+      </div>
+      <footer class="order-footer">
+        <a class="download-link" target="_blank" rel="noopener noreferrer">Download preview</a>
+        <button type="button" class="secondary reorder-button">Re-order</button>
+      </footer>
+    </article>
+  </template>
+
+  <footer class="modern-footer">
+    <div class="footer-container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3>Products</h3>
+          <ul>
+            <li><a href="./designer.html">Custom Designer</a></li>
+            <li><a href="./racing.html">Racing Decals</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Resources</h3>
+          <ul>
+            <li><a href="./price-list.html">Pricing</a></li>
+            <li><a href="./terms.html">Terms & Conditions</a></li>
+            <li><a href="./customer.html">My Account</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Contact</h3>
+          <ul>
+            <li><a href="tel:+12027408240">(202) 740-8240</a></li>
+            <li><a href="mailto:info@blueridgecustomco.com">info@blueridgecustomco.com</a></li>
+          </ul>
         </div>
       </div>
-
-      <div class="race-promo-banner">
-        <strong>End of the Season Deals:</strong> Every vinyl package now includes four free crew tees (1 Crew Chief + 3 Crew) matched to your livery.
+      <div class="footer-bottom">
+        <p>&copy; 2024 BlueRidgeCustomCo. All rights reserved.</p>
       </div>
+    </div>
+  </footer>
 
-      <section class="race-packages__options">
-        <header>
-          <h3>Package options</h3>
-          <p>Choose the option that fits your program. All packages include color proofs and layout adjustments before production.</p>
-        </header>
-        <div class="race-package-grid">
-          <article class="race-package" data-package="basic">
-            <h4>Basic Number Kit</h4>
-            <ul>
-              <li>2× door numbers</li>
-              <li>1× roof number</li>
-              <li>2× driver name tags</li>
-              <li>1× small sponsor decal</li>
-            </ul>
-            <p class="race-package__meta">4–6 decals &bull; $75–$125</p>
-          </article>
-          <article class="race-package" data-package="sponsor">
-            <h4>Sponsor Kit</h4>
-            <ul>
-              <li>Everything in Basic kit</li>
-              <li>8–10 sponsor decals</li>
-            </ul>
-            <p class="race-package__meta">10–15 decals &bull; $150–$250</p>
-          </article>
-          <article class="race-package" data-package="pro">
-            <h4>Pro Package</h4>
-            <ul>
-              <li>Numbers, names, sponsors</li>
-              <li>Accent graphics and layout tweaks</li>
-            </ul>
-            <p class="race-package__meta">20–30 decals &bull; $300–$450</p>
-          </article>
-          <article class="race-package" data-package="elite">
-            <h4>Elite Custom Kit</h4>
-            <ul>
-              <li>Full custom layout</li>
-              <li>Multi-color or specialty vinyl</li>
-              <li>All sponsor branding</li>
-            </ul>
-            <p class="race-package__meta">30+ decals &bull; $500–$750+</p>
-          </article>
-        </div>
-      </section>
+  <script type="module" src="./customer.js"></script>
 
-      <section class="race-packages__addons">
-        <h3>Add-ons</h3>
-        <ul>
-          <li><strong>Metallic or reflective vinyl</strong> &mdash; +$25&ndash;$75</li>
-          <li><strong>Layered multi-color cuts</strong> &mdash; +$50&ndash;$100</li>
-          <li><strong>Custom design / layout</strong> &mdash; +$50&ndash;$100</li>
-          <li><strong>Number / lettering outline</strong> &mdash; +$15&ndash;$40</li>
-        </ul>
-      </section>
-
-      <section class="race-packages__notes">
-        <h3>Notes</h3>
-        <ul>
-          <li>Prices vary based on car size, decal count, and color count.</li>
-          <li>Custom artwork may require a design fee if vector files aren&rsquo;t supplied.</li>
-          <li>Typical turnaround: 3&ndash;5 business days after proof approval.</li>
-        </ul>
-      </section>
-
+  <!-- Quote Modal -->
+  <div id="quoteModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="quoteModalTitle">
+    <div class="modal-content">
+      <button id="closeQuoteModal" class="close-button" aria-label="Close">&times;</button>
+      <h2 id="quoteModalTitle">Request a quote</h2>
       <form id="raceQuoteForm" class="race-quote-form">
-        <h3>Request a quote</h3>
         <div class="race-quote-grid">
           <label>
             <span>Business</span>
@@ -309,49 +345,12 @@
           <button type="button" class="secondary" id="raceQuoteAddSponsor">Add sponsor</button>
         </section>
 
-        <button type="submit" class="primary">Request my quote</button>
+        <div class="form-actions" style="display:flex;justify-content:flex-end;gap:10px;">
+          <button type="button" id="closeQuoteModalFooter" class="secondary">Cancel</button>
+          <button type="submit" class="primary">Request my quote</button>
+        </div>
       </form>
-    </section>
-
-    <section id="raceQuotesCard" class="card race-quotes hidden">
-      <h2>My race quotes</h2>
-      <div id="raceQuotesList" class="race-quotes__list">No race quotes yet.</div>
-    </section>
-
-    <section id="shortcuts" class="shortcut-grid hidden">
-      <article class="shortcut-card">
-        <h3>Create a new sticker</h3>
-        <p>Start fresh in the catalog, pick your vinyl color, and add custom text right away.</p>
-        <a class="button primary" href="./catalog.html">Launch designer</a>
-      </article>
-      <article class="shortcut-card">
-        <h3>Upload existing artwork</h3>
-        <p>Have production-ready art? Upload it so we can prep it for cutting or engraving.</p>
-        <button id="uploadButton" type="button" class="button ghost">Upload artwork</button>
-        <input id="uploadInput" type="file" accept=".ai,.pdf,.eps,.svg,.png,.jpg" hidden>
-      </article>
-    </section>
-  </main>
-
-  <template id="customerOrderTemplate">
-    <article class="order-card">
-      <header>
-        <h3></h3>
-        <span class="status-pill"></span>
-      </header>
-      <div class="order-body">
-        <img alt="Sticker preview" loading="lazy">
-        <dl class="meta"></dl>
-        <div class="text-layers"></div>
-        <div class="source-files"></div>
-      </div>
-      <footer class="order-footer">
-        <a class="download-link" target="_blank" rel="noopener noreferrer">Download preview</a>
-        <button type="button" class="secondary reorder-button">Re-order</button>
-      </footer>
-    </article>
-  </template>
-
-  <script type="module" src="./customer.js"></script>
+    </div>
+  </div>
 </body>
 </html>

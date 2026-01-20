@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" fill="#808080">
+  <!-- Hoodie Back View - Grayscale Base -->
+  <!-- Main body -->
+  <path d="
+    M 220 100
+    L 100 200
+    L 60 380
+    L 180 400
+    L 200 280
+    L 220 300
+    L 220 700
+    L 580 700
+    L 580 300
+    L 600 280
+    L 620 400
+    L 740 380
+    L 700 200
+    L 580 100
+    Q 500 40 400 40
+    Q 300 40 220 100
+    Z
+  " />
+  <!-- Hood (back view - larger) -->
+  <path d="
+    M 240 100
+    Q 180 40 180 0
+    Q 180 -40 260 -40
+    L 540 -40
+    Q 620 -40 620 0
+    Q 620 40 560 100
+    Q 500 60 400 60
+    Q 300 60 240 100
+    Z
+  " fill="#757575" />
+  <!-- Hood seam -->
+  <path d="
+    M 400 -40
+    L 400 80
+  " stroke="#606060" stroke-width="3" />
+</svg>

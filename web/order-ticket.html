@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Order Ticket</title>
+  <style>
+    :root { --ink:#111827; --muted:#6b7280; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--ink); margin: 16px; }
+    .ticket { max-width: 640px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+    .row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+    .qr { text-align:center; }
+    .qr img { width: 200px; height: 200px; border: 1px solid #e5e7eb; border-radius: 8px; background:#fff; }
+    .qr canvas { width: 200px; height: 200px; border: 1px solid #e5e7eb; border-radius: 8px; background:#fff; }
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    p { margin: 4px 0; }
+    .muted { color: var(--muted); }
+    .meta { display:grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+    .meta div { font-size: 14px; }
+    .meta span { display:block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .notes { margin-top: 10px; border-top: 1px dashed #e5e7eb; padding-top: 8px; }
+    @media print { body { margin: 0; } .ticket { border:0; border-radius:0; } }
+  </style>
+</head>
+<body>
+  <div class="ticket">
+    <div class="row">
+      <div>
+        <h1 id="tTitle">Order</h1>
+        <p id="tSub" class="muted"></p>
+      </div>
+      <div class="qr">
+        <div id="tQrCanvas"></div>
+        <img id="tQr" alt="QR to customer portal" style="display:none;" />
+        <div id="tQrText" class="muted" style="font-size:10px;word-break:break-all;margin-top:4px;"></div>
+      </div>
+    </div>
+    <div class="meta" style="margin-top:8px;">
+      <div><span>Order #</span><strong id="tNumber">—</strong></div>
+      <div><span>Date</span><span id="tDate">—</span></div>
+      <div><span>Customer</span><span id="tCustomer">—</span></div>
+      <div><span>Phone</span><span id="tPhone">—</span></div>
+      <div><span>Size</span><span id="tSize">—</span></div>
+      <div><span>Quantity</span><span id="tQty">—</span></div>
+      <div><span>Vinyl</span><span id="tVinyl">—</span></div>
+      <div><span>Background</span><span id="tBg">—</span></div>
+    </div>
+    <div class="notes" id="tNotes"></div>
+  </div>
+  <script src="./qrcode.min.js"></script>
+  <script>
+    (function(){
+      const qs = new URLSearchParams(location.search);
+      const get = (k, d='') => (qs.get(k) || d);
+      const title = get('title','Custom sticker');
+      const num = get('num','—');
+      const date = get('date', new Date().toLocaleString());
+      const customer = get('name','—');
+      const phone = get('phone','—');
+      const size = get('size','—');
+      const qty = get('qty','1');
+      const vinyl = get('vinyl','—');
+      const bg = get('bg','—');
+      const notes = get('notes','');
+      let qr = get('qr','');
+      const qrText = get('qrlink','');
+      document.getElementById('tTitle').textContent = title;
+      document.getElementById('tSub').textContent = 'Production ticket';
+      document.getElementById('tNumber').textContent = num;
+      document.getElementById('tDate').textContent = date;
+      document.getElementById('tCustomer').textContent = customer;
+      document.getElementById('tPhone').textContent = phone;
+      document.getElementById('tSize').textContent = size;
+      document.getElementById('tQty').textContent = qty;
+      document.getElementById('tVinyl').textContent = vinyl;
+      document.getElementById('tBg').textContent = bg;
+      if (notes) {
+        const n = document.getElementById('tNotes');
+        n.innerHTML = `<strong>Notes:</strong><br>${notes.replace(/\n/g,'<br>')}`;
+      }
+      const imgEl = document.getElementById('tQr');
+      const boxEl = document.getElementById('tQrCanvas');
+      if (qr) {
+        imgEl.src = qr;
+      } else if (qrText) {
+        let dataUrl = '';
+        if (typeof QRCode !== 'undefined') {
+          try {
+            boxEl.innerHTML = '';
+            new QRCode(boxEl, { text: qrText, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
+            const qrImg = boxEl.querySelector('img');
+            const qrCv = boxEl.querySelector('canvas');
+            dataUrl = qrImg?.src || (qrCv?.toDataURL && qrCv.toDataURL('image/png')) || '';
+          } catch (e) { dataUrl = ''; }
+        }
+        if (dataUrl) {
+          imgEl.src = dataUrl;
+        }
+      }
+      if (qrText) document.getElementById('tQrText').textContent = qrText;
+      setTimeout(() => { try { window.print(); } catch(_){} }, 250);
+    })();
+  </script>
+</body>
+</html>

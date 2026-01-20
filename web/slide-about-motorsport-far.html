@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - Motorsport Far</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Bebas Neue', sans-serif;
+            background: #0a0a0a;
+            color: white;
+            min-height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .racing-stripes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(90deg, transparent 0%, transparent 45%, #f59e0b 45%, #f59e0b 47%, transparent 47%, transparent 53%, #f59e0b 53%, #f59e0b 55%, transparent 55%);
+            opacity: 0.15;
+        }
+
+        .speed-line {
+            position: absolute;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, #f59e0b, transparent);
+            animation: speedLine 1.5s linear infinite;
+        }
+
+        .speed-line:nth-child(1) { top: 25%; left: -100%; width: 400px; animation-delay: 0s; }
+        .speed-line:nth-child(2) { top: 50%; left: -100%; width: 300px; animation-delay: 0.4s; }
+        .speed-line:nth-child(3) { top: 75%; left: -100%; width: 350px; animation-delay: 0.8s; }
+
+        @keyframes speedLine {
+            0% { transform: translateX(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateX(calc(100vw + 400px)); opacity: 0; }
+        }
+
+        .content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .car-number {
+            font-size: 28rem;
+            line-height: 0.8;
+            color: #f59e0b;
+            text-shadow: 
+                0 0 80px rgba(245, 158, 11, 0.6),
+                0 0 150px rgba(245, 158, 11, 0.4);
+            animation: numberPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes numberPulse {
+            0%, 100% { text-shadow: 0 0 80px rgba(245, 158, 11, 0.6), 0 0 150px rgba(245, 158, 11, 0.4); }
+            50% { text-shadow: 0 0 100px rgba(245, 158, 11, 0.8), 0 0 180px rgba(245, 158, 11, 0.6); }
+        }
+
+        .team-name {
+            font-size: 5rem;
+            letter-spacing: 15px;
+            margin-top: 20px;
+        }
+
+        .series {
+            font-size: 2rem;
+            color: #666;
+            letter-spacing: 8px;
+            margin-top: 15px;
+        }
+
+        .tagline {
+            font-size: 2.5rem;
+            color: #888;
+            letter-spacing: 6px;
+            margin-top: 40px;
+            border-top: 2px solid #333;
+            padding-top: 30px;
+        }
+
+        .branding {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.5rem;
+            letter-spacing: 5px;
+            color: #444;
+        }
+    </style>
+</head>
+<body>
+    <div class="racing-stripes"></div>
+    <div class="speed-line"></div>
+    <div class="speed-line"></div>
+    <div class="speed-line"></div>
+    
+    <div class="content">
+        <div class="car-number">656</div>
+        <div class="team-name">SWAYZE RALLY TEAM</div>
+        <div class="series">AMERICAN RALLY ASSOCIATION</div>
+        <div class="tagline">RACE GRAPHICS • TEAM APPAREL • GARAGE ART</div>
+    </div>
+    <div class="branding">BLUE RIDGE CUSTOM CO</div>
+</body>
+</html>

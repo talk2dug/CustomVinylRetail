@@ -28,6 +28,7 @@ const ADMIN_RACE_QUOTE_UPDATE_ENDPOINT = (id) =>
 const ADMIN_RACE_QUOTE_PAYMENT_ENDPOINT = (id) =>
   `${API_BASE}/api/admin/race-quotes/${encodeURIComponent(id)}/payment-link`;
 const SAVED_FILE_URL = (file) => `${API_BASE}/files/saved/${encodeURIComponent(file)}`;
+const SSAW_CONFIG_ENDPOINT = `${API_BASE}/api/vendors/ssaw/config`;
 const MAX_SPECIAL_ITEMS = 4;
 const RACE_PACKAGE_LABELS = {
   basic: 'Basic Number Kit',
@@ -84,8 +85,20 @@ const elements = {
   specialsList: document.getElementById('specialsList'),
   specialsStatus: document.getElementById('specialsStatus'),
   raceQuotesCard: document.getElementById('raceQuotesCard'),
-  raceQuotesList: document.getElementById('raceQuotesList')
+  raceQuotesList: document.getElementById('raceQuotesList'),
+  // Visual picker modal
+  openVisualPicker: document.getElementById('openVisualPicker'),
+  visualPickerModal: document.getElementById('visualPickerModal'),
+  visualPickerClose: document.getElementById('visualPickerClose'),
+  visualPickerCrumbs: document.getElementById('visualPickerCrumbs'),
+  visualPickerGrid: document.getElementById('visualPickerGrid'),
+  visualPickerStatus: document.getElementById('visualPickerStatus')
 };
+
+// Settings elements
+elements.storefrontSettingsForm = document.getElementById('storefrontSettingsForm');
+elements.preferredWarehouseInput = document.getElementById('preferredWarehouseInput');
+elements.storefrontSettingsStatus = document.getElementById('storefrontSettingsStatus');
 
 function resolveAssetUrl(pathValue, { width, quality } = {}) {
   if (!pathValue) return '';
@@ -162,6 +175,50 @@ function setStatus(message, type = 'info') {
   if (!bar) return;
   bar.textContent = message || '';
   bar.className = `status-bar ${type === 'success' ? 'success' : type === 'error' ? 'error' : ''}`;
+}
+
+async function loadStorefrontSettings() {
+  if (!elements.storefrontSettingsForm) return;
+  try {
+    const res = await fetch(SSAW_CONFIG_ENDPOINT, { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    const pref = (data && data.preferredWarehouse) || '';
+    if (elements.preferredWarehouseInput) {
+      elements.preferredWarehouseInput.value = pref || '';
+    }
+    if (elements.storefrontSettingsStatus) {
+      elements.storefrontSettingsStatus.textContent = pref ? `Using ${pref}` : 'Not set';
+    }
+  } catch (error) {
+    if (elements.storefrontSettingsStatus) {
+      elements.storefrontSettingsStatus.textContent = 'Unable to load settings';
+    }
+  }
+}
+
+async function handleStorefrontSettingsSubmit(event) {
+  event.preventDefault();
+  if (!elements.preferredWarehouseInput) return;
+  let value = (elements.preferredWarehouseInput.value || '').trim().toUpperCase();
+  value = value.replace(/[^A-Z]/g, '').slice(0, 4);
+  try {
+    const res = await fetch(SSAW_CONFIG_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preferredWarehouse: value })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || 'Unable to save settings');
+    }
+    if (elements.storefrontSettingsStatus) {
+      elements.storefrontSettingsStatus.textContent = value ? `Saved (${value})` : 'Saved';
+    }
+  } catch (error) {
+    if (elements.storefrontSettingsStatus) {
+      elements.storefrontSettingsStatus.textContent = error.message || 'Save failed';
+    }
+  }
 }
 
 function formatAddonLabel(value) {
@@ -299,6 +356,38 @@ function handleCategoryModeChange() {
   applyCategoryMode(mode);
 }
 
+async function robustFetchJson(url, { cache = 'no-cache' } = {}) {
+  // Try parsing via text to catch truncated bodies; retry with cache-bust; then fallback to plain file
+  const attempts = [
+    { url, cache },
+    { url: `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`, cache },
+  ];
+  for (const attempt of attempts) {
+    try {
+      const res = await fetch(attempt.url, { cache: attempt.cache });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch (parseErr) {
+        // continue to next attempt
+        console.warn('JSON parse failed for', attempt.url, parseErr?.message || parseErr);
+      }
+    } catch (err) {
+      console.warn('Fetch failed for', attempt.url, err?.message || err);
+    }
+  }
+  // Fallback to static catalog.json in the same origin (if served)
+  try {
+    const fallback = new URL('/catalog.json', window.location.origin).toString();
+    const res = await fetch(`${fallback}?_=${Date.now()}`, { cache: 'no-store' });
+    const text = await res.text();
+    return JSON.parse(text);
+  } catch (err) {
+    throw err;
+  }
+}
+
 async function loadCategories(options = {}) {
   if (!elements.artCategorySelect) return null;
   const { preserveSelection = false, selectSlug = '' } = options;
@@ -306,9 +395,7 @@ async function loadCategories(options = {}) {
   const previousValue = preserveSelection ? select.value : '';
   try {
     const catalogUrl = new URL('/api/catalog', window.location.origin).toString();
-    const response = await fetch(catalogUrl, { cache: 'no-cache' });
-    if (!response.ok) throw new Error(`Failed to load catalog (${response.status})`);
-    const catalog = await response.json();
+    const catalog = await robustFetchJson(catalogUrl, { cache: 'no-cache' });
     state.assetRoot = catalog.assetRoot || '';
     const categories = Array.isArray(catalog.categories) ? catalog.categories : [];
     state.categories = categories;
@@ -347,7 +434,10 @@ async function loadCategories(options = {}) {
         }
       }
     } else if (categories.length) {
-      select.value = categories[0].slug;
+      const preferred = categories.find((c) => (c.name || '').toLowerCase().includes('car'))
+        || categories.find((c) => (c.slug || '').toLowerCase().includes('car'))
+        || categories[0];
+      select.value = preferred.slug;
       placeholder.selected = false;
       if (select.selectedIndex <= 0 && select.options.length > 1) {
         select.selectedIndex = 1;
@@ -1154,13 +1244,24 @@ function formatMoney(cents) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(rounded);
 }
 
-elements.refreshButton?.addEventListener('click', fetchOrders);
+  elements.refreshButton?.addEventListener('click', fetchOrders);
+  elements.storefrontSettingsForm?.addEventListener('submit', handleStorefrontSettingsSubmit);
 
 async function initSpecialsManager() {
   if (!elements.specialsForm || !elements.specialsList) return;
 
   refreshSpecialsFormOptions();
   updateSpecialsFormAvailability();
+
+  // Wire visual picker
+  if (elements.openVisualPicker) {
+    elements.openVisualPicker.addEventListener('click', async () => {
+      if (!state.categories.length) {
+        await loadCategories({ preserveSelection: true });
+      }
+      openVisualPickerModal();
+    });
+  }
 
   elements.specialsCategorySelect?.addEventListener('change', () => {
     updateSpecialsDesignOptions();
@@ -1184,6 +1285,147 @@ async function initSpecialsManager() {
   elements.specialsForm.addEventListener('submit', handleSpecialsFormSubmit);
 
   await loadSpecials();
+}
+
+// Visual Picker Implementation (categories -> designs)
+function openVisualPickerModal() {
+  if (!elements.visualPickerModal) return;
+  renderVisualPickerCategories();
+  elements.visualPickerModal.removeAttribute('hidden');
+  attachVisualPickerEvents();
+}
+
+function closeVisualPickerModal() {
+  if (!elements.visualPickerModal) return;
+  elements.visualPickerModal.setAttribute('hidden', '');
+}
+
+function attachVisualPickerEvents() {
+  if (elements.visualPickerClose) {
+    elements.visualPickerClose.onclick = closeVisualPickerModal;
+  }
+  if (elements.visualPickerModal) {
+    elements.visualPickerModal.addEventListener('click', (e) => {
+      const target = e.target;
+      if (target && target.getAttribute && target.getAttribute('data-picker-close') === 'true') {
+        closeVisualPickerModal();
+      }
+    });
+  }
+}
+
+function renderPickerCrumbs(parts = []) {
+  const nav = elements.visualPickerCrumbs;
+  if (!nav) return;
+  nav.innerHTML = '';
+  parts.forEach((part, idx) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = part.label;
+    if (part.onClick) btn.addEventListener('click', part.onClick);
+    if (idx === parts.length - 1) btn.classList.add('current');
+    nav.appendChild(btn);
+    if (idx !== parts.length - 1) {
+      const sep = document.createElement('span');
+      sep.textContent = '›';
+      sep.style.opacity = '0.6';
+      sep.style.margin = '0 4px';
+      nav.appendChild(sep);
+    }
+  });
+}
+
+function buildPickerCard({ title, meta, imageUrl, onClick }) {
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'picker-card';
+  card.addEventListener('click', onClick);
+  const media = document.createElement('div');
+  media.className = 'picker-card__media';
+  if (imageUrl) {
+    const img = document.createElement('img');
+    img.src = resolveAssetUrl(imageUrl, { width: 600, quality: 80 });
+    img.alt = title || 'Preview';
+    img.loading = 'lazy';
+    media.appendChild(img);
+  }
+  const body = document.createElement('div');
+  body.className = 'picker-card__body';
+  const h = document.createElement('div');
+  h.className = 'picker-card__title';
+  h.textContent = title || 'Untitled';
+  body.appendChild(h);
+  if (meta) {
+    const p = document.createElement('div');
+    p.className = 'picker-card__meta';
+    p.textContent = meta;
+    body.appendChild(p);
+  }
+  card.appendChild(media);
+  card.appendChild(body);
+  return card;
+}
+
+function renderVisualPickerCategories() {
+  const grid = elements.visualPickerGrid;
+  const status = elements.visualPickerStatus;
+  if (!grid || !status) return;
+  renderPickerCrumbs([{ label: 'Categories' }]);
+  status.textContent = '';
+  grid.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  state.categories.forEach((category) => {
+    const firstDesign = Array.isArray(category.designs) ? category.designs[0] : null;
+    const imageUrl = firstDesign?.image || '';
+    const meta = `${Array.isArray(category.designs) ? category.designs.length : 0} design(s)`;
+    const card = buildPickerCard({
+      title: category.name,
+      meta,
+      imageUrl,
+      onClick: () => renderVisualPickerDesigns(category.slug)
+    });
+    frag.appendChild(card);
+  });
+  grid.appendChild(frag);
+}
+
+function renderVisualPickerDesigns(categorySlug) {
+  const { category } = getDesignFromCatalog(categorySlug, '__noop__');
+  if (!category) return;
+  const grid = elements.visualPickerGrid;
+  const status = elements.visualPickerStatus;
+  if (!grid || !status) return;
+  renderPickerCrumbs([
+    { label: 'Categories', onClick: () => renderVisualPickerCategories() },
+    { label: category.name }
+  ]);
+  status.textContent = 'Click a design to select it.';
+  grid.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  category.designs.forEach((design) => {
+    const card = buildPickerCard({
+      title: design.name || design.id,
+      meta: '',
+      imageUrl: design.image,
+      onClick: () => selectDesignFromPicker(category.slug, design.id)
+    });
+    frag.appendChild(card);
+  });
+  grid.appendChild(frag);
+}
+
+function selectDesignFromPicker(categorySlug, designId) {
+  if (elements.specialsCategorySelect) {
+    elements.specialsCategorySelect.value = categorySlug;
+    updateSpecialsDesignOptions();
+  }
+  if (elements.specialsDesignSelect) {
+    elements.specialsDesignSelect.value = designId;
+    const { design } = getDesignFromCatalog(categorySlug, designId);
+    fillSpecialTitleFromDesign(design);
+    updateSpecialsFormAvailability();
+  }
+  closeVisualPickerModal();
 }
 
 async function initArtworkUploader() {
@@ -1273,6 +1515,153 @@ async function handleArtworkUpload(event) {
   }
 }
 
-fetchOrders();
+  fetchOrders();
+  loadStorefrontSettings();
 initArtworkUploader();
 loadRaceQuotesAdmin();
+
+// =====================================================
+// Shopify Product Sync
+// =====================================================
+const SHOPIFY_SYNC_ENDPOINT = `${API_BASE}/api/admin/shopify/sync-all-products`;
+
+const syncElements = {
+  syncBtn: document.getElementById('syncAllProductsBtn'),
+  syncStatus: document.getElementById('syncStatus'),
+  syncInventoryInput: document.getElementById('syncInventoryInput'),
+  syncProgressContainer: document.getElementById('syncProgressContainer'),
+  syncProgressFill: document.getElementById('syncProgressFill'),
+  syncProgressText: document.getElementById('syncProgressText'),
+  syncLog: document.getElementById('syncLog')
+};
+
+function setSyncStatus(message, type = 'info') {
+  if (!syncElements.syncStatus) return;
+  syncElements.syncStatus.textContent = message;
+  syncElements.syncStatus.className = `status-message ${type}`;
+}
+
+function appendSyncLog(html, type = 'info') {
+  if (!syncElements.syncLog) return;
+  const entry = document.createElement('div');
+  entry.className = `sync-log-entry sync-log-${type}`;
+  entry.innerHTML = html;
+  syncElements.syncLog.appendChild(entry);
+  syncElements.syncLog.scrollTop = syncElements.syncLog.scrollHeight;
+}
+
+function updateSyncProgress(current, total) {
+  if (!syncElements.syncProgressFill || !syncElements.syncProgressText) return;
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  syncElements.syncProgressFill.style.width = `${pct}%`;
+  syncElements.syncProgressText.textContent = `${current} / ${total} products`;
+}
+
+async function startShopifySync() {
+  if (!syncElements.syncBtn) return;
+
+  const defaultInventory = parseInt(syncElements.syncInventoryInput?.value || '999', 10);
+
+  // Reset UI
+  syncElements.syncBtn.disabled = true;
+  syncElements.syncBtn.textContent = 'Syncing...';
+  syncElements.syncProgressContainer.style.display = 'block';
+  syncElements.syncLog.style.display = 'block';
+  syncElements.syncLog.innerHTML = '';
+  updateSyncProgress(0, 0);
+  setSyncStatus('Starting sync...', 'info');
+
+  try {
+    const response = await fetch(SHOPIFY_SYNC_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Key': 'internal'
+      },
+      body: JSON.stringify({ defaultInventory })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          const eventType = line.slice(7).trim();
+          continue;
+        }
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            handleSyncEvent(data);
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      }
+    }
+
+  } catch (error) {
+    setSyncStatus(`Error: ${error.message}`, 'error');
+    appendSyncLog(`<span style="color: #ef4444;">Error: ${error.message}</span>`, 'error');
+  } finally {
+    syncElements.syncBtn.disabled = false;
+    syncElements.syncBtn.textContent = 'Sync All Products';
+  }
+}
+
+function handleSyncEvent(data) {
+  if (data.message) {
+    // Status or progress event
+    if (data.total !== undefined) {
+      // Complete event
+      setSyncStatus(data.message, data.errors > 0 ? 'warning' : 'success');
+      appendSyncLog(`<strong style="color: #10b981;">${data.message}</strong>`, 'complete');
+    } else {
+      setSyncStatus(data.message, 'info');
+      appendSyncLog(`<span style="color: #94a3b8;">${data.message}</span>`, 'status');
+    }
+  }
+
+  if (data.index !== undefined && data.total !== undefined) {
+    updateSyncProgress(data.index, data.total);
+
+    if (data.error) {
+      // Product error
+      appendSyncLog(
+        `<span style="color: #ef4444;">✗ [${data.index}/${data.total}] ${escapeHtml(data.title)} - ${escapeHtml(data.error)}</span>`,
+        'error'
+      );
+    } else if (data.actions) {
+      // Product success
+      const actionsHtml = data.actions.map(a => `<span style="color: #64748b; font-size: 0.8em; margin-left: 1rem;">• ${escapeHtml(a)}</span>`).join('<br>');
+      appendSyncLog(
+        `<span style="color: #10b981;">✓ [${data.index}/${data.total}]</span> ${escapeHtml(data.title)}<br>${actionsHtml}`,
+        'product'
+      );
+    }
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML;
+}
+
+// Bind sync button
+if (syncElements.syncBtn) {
+  syncElements.syncBtn.addEventListener('click', startShopifySync);
+}

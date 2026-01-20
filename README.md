@@ -52,14 +52,20 @@ Then open `http://192.168.0.67:8000/web/` (the root now serves the landing page)
 
    To receive payment status updates, add a Square webhook pointing to `https://<your-domain>/api/webhooks/square` and subscribe to the `payment.updated` event. Set the signature key as `SQUARE_WEBHOOK_SIGNATURE_KEY` in your environment so the server can verify incoming webhooks.
 
-   Enable Twilio SMS alerts (optional) so the crew receives a text whenever a new order or race quote hits the queue:
+   Enable SMS alerts (optional) so the crew receives a text whenever a new order or race quote hits the queue.
+
+   SMS via SimpleTexting:
    ```bash
-   export TWILIO_ACCOUNT_SID=ACxxxx
-   export TWILIO_AUTH_TOKEN=super-secret
-   export TWILIO_FROM_NUMBER='+15551234567'        # or set TWILIO_MESSAGING_SERVICE_SID
+   export SMS_PROVIDER=simpletexting
+   export SIMPLETEXTING_API_KEY='your-simpletexting-api-key'
+   # optional (if your account requires/uses a specific sender):
+   export SIMPLETEXTING_FROM='+15551234567'
+   # optional overrides if your account uses a different API base or path
+   # export SIMPLETEXTING_API_BASE='https://api.simpletexting.com'
+   # export SIMPLETEXTING_SEND_PATH='/v2/messages'
    export SMS_ADMIN_RECIPIENTS='+15559876543,+15557654321'
    ```
-   The server only sends texts when all required Twilio values are present and at least one recipient number is configured.
+   The server only sends texts when SimpleTexting is configured and at least one recipient number is provided in `SMS_ADMIN_RECIPIENTS`.
 
    > DreamHost expects STARTTLS on port 587 (or implicit SSL on port 465). The mailer automatically enables STARTTLS whenever `SMTP_PORT=587`.
 

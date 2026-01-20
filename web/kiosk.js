@@ -78,7 +78,8 @@ const state = {
   pricing: null,
   isSaving: false,
   layerMetrics: new Map(),
-  dragging: null
+  dragging: null,
+  decalOnly: false
 };
 
 const elements = {
@@ -87,6 +88,8 @@ const elements = {
   heightInput: document.getElementById('heightInput'),
   quantityInput: document.getElementById('quantityInput'),
   vinylColorInput: document.getElementById('vinylColorInput'),
+  enableDecalColorCheckbox: document.getElementById('enableDecalColorCheckbox'),
+  decalColorHint: document.getElementById('decalColorHint'),
   backgroundColorInput: document.getElementById('backgroundColorInput'),
   transparentBackgroundToggle: document.getElementById('transparentBackgroundToggle'),
   backgroundShapeRow: document.getElementById('backgroundShapeRow'),
@@ -111,7 +114,9 @@ const elements = {
   closeOrderDialog: document.getElementById('closeOrderDialog'),
   cancelOrderButton: document.getElementById('cancelOrderButton'),
   orderForm: document.getElementById('orderForm'),
-  orderStatus: document.getElementById('orderStatus')
+  orderStatus: document.getElementById('orderStatus'),
+  // Removed manual code send/verify UI – codes are auto-sent on submission and embedded in QR
+  decalOnlyButton: document.getElementById('decalOnlyButton')
 };
 
 const ctx = elements.canvas.getContext('2d', { willReadFrequently: true });
@@ -146,6 +151,77 @@ function resolveSaveServerBase(port = '4000') {
 
 const SAVE_SERVER_BASE = resolveSaveServerBase();
 const SAVE_ENDPOINT = `${SAVE_SERVER_BASE}/api/save-design`;
+const LOGIN_CODE_REQUEST_ENDPOINT = `${SAVE_SERVER_BASE}/api/auth/login-code/request`;
+const LOGIN_CODE_VERIFY_ENDPOINT = `${SAVE_SERVER_BASE}/api/auth/login-code/verify`;
+
+function setAuthStatus(text, variant = 'muted') {
+  if (!elements.authStatus) return;
+  elements.authStatus.textContent = text;
+  elements.authStatus.className = 'status-bar';
+  if (variant) elements.authStatus.classList.add(variant);
+}
+
+function getKioskToken() {
+  try { return localStorage.getItem('kioskToken') || ''; } catch (_) { return ''; }
+}
+
+function setKioskToken(token) {
+  try {
+    if (token) localStorage.setItem('kioskToken', token);
+    else localStorage.removeItem('kioskToken');
+  } catch (_) {}
+}
+
+function getKioskUserEmail() {
+  try { return localStorage.getItem('kioskUserEmail') || ''; } catch (_) { return ''; }
+}
+
+function setKioskUserEmail(email) {
+  try {
+    if (email) localStorage.setItem('kioskUserEmail', email);
+    else localStorage.removeItem('kioskUserEmail');
+  } catch (_) {}
+}
+
+const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+const WARNING_BEFORE_MS = 15 * 1000; // 15 seconds before logout
+let inactivityWarningTimer = null;
+let inactivityLogoutTimer = null;
+
+function clearInactivityTimers() {
+  if (inactivityWarningTimer) { clearTimeout(inactivityWarningTimer); inactivityWarningTimer = null; }
+  if (inactivityLogoutTimer) { clearTimeout(inactivityLogoutTimer); inactivityLogoutTimer = null; }
+}
+
+function startInactivityTimers() {
+  clearInactivityTimers();
+  inactivityWarningTimer = setTimeout(() => {
+    showToast('No activity detected. Logging out in 15 seconds…', 'info', 5000);
+    setAuthStatus('Inactivity timeout in 15 seconds…', 'warning');
+  }, Math.max(0, INACTIVITY_TIMEOUT_MS - WARNING_BEFORE_MS));
+  inactivityLogoutTimer = setTimeout(() => {
+    signOutSession(true);
+  }, INACTIVITY_TIMEOUT_MS);
+}
+
+function handleActivity() {
+  // Only track when signed in
+  if (getKioskToken()) {
+    startInactivityTimers();
+  }
+}
+
+function signInSession(token, email) {
+  setKioskToken(token);
+  setKioskUserEmail(email || '');
+  startInactivityTimers();
+}
+
+function signOutSession(fromTimeout = false) {
+  setKioskToken('');
+  setKioskUserEmail('');
+  clearInactivityTimers();
+}
 
 function formatMoney(cents) {
   if (cents == null) return '$0.00';
@@ -178,10 +254,16 @@ function computePricing({ widthInches, quantity }) {
 
   const colorCount = 1;
   const sizePricing = STICKER_PRICE_TABLE[sizeKey] || STICKER_PRICE_TABLE[4];
-  const unitPriceCents = sizePricing?.[colorCount] ?? sizePricing?.[1] ?? 400;
+  const rawUnit = sizePricing?.[colorCount] ?? sizePricing?.[1] ?? 400;
+  let unitPriceCents = roundUpToQuarterDollar(rawUnit);
   const qty = Math.max(1, quantity || 1);
+  const discountRate = getBulkDiscountRate(qty);
+  if (discountRate > 0) {
+    unitPriceCents = roundUpToQuarterDollar(Math.round(unitPriceCents * (1 - discountRate)));
+  }
   const subtotalCents = unitPriceCents * qty;
-  const shippingCents = qty >= 4 ? 400 : 300;
+  // Kiosk orders do not include shipping
+  const shippingCents = 0;
 
   return {
     descriptor: `${sizeKey}" sticker · ${colorCount} color`,
@@ -194,6 +276,19 @@ function computePricing({ widthInches, quantity }) {
     quantity: qty,
     currency: 'USD'
   };
+}
+
+function roundUpToQuarterDollar(cents) {
+  const value = Math.max(0, Math.round(Number(cents) || 0));
+  return Math.ceil(value / 25) * 25;
+}
+
+function getBulkDiscountRate(quantity) {
+  const qty = Math.max(0, Number(quantity) || 0);
+  if (qty >= 30) return 0.25;
+  if (qty >= 21) return 0.15;
+  if (qty >= 10) return 0.10;
+  return 0;
 }
 
 function setStatus(message, variant = 'info') {
@@ -212,6 +307,70 @@ function setCanvasSize(widthInches, heightInches) {
   const heightPx = Math.max(1, Math.round(heightInches * CANVAS_PX_PER_INCH));
   elements.canvas.width = widthPx;
   elements.canvas.height = heightPx;
+  renderCanvas();
+}
+
+function getFirstImageLayer() {
+  return state.layers.find((l) => l.type === 'image') || null;
+}
+
+function updateDecalOnlyUI() {
+  const btn = elements.decalOnlyButton;
+  const heightInput = elements.heightInput;
+  if (btn) btn.classList.toggle('primary', state.decalOnly);
+  if (heightInput) heightInput.disabled = state.decalOnly;
+  if (state.decalOnly) {
+    state.transparentBackground = true;
+    if (elements.transparentBackgroundToggle) {
+      elements.transparentBackgroundToggle.checked = true;
+      elements.transparentBackgroundToggle.disabled = true;
+    }
+  } else if (elements.transparentBackgroundToggle) {
+    elements.transparentBackgroundToggle.disabled = false;
+  }
+  updateBackgroundShapeControls();
+}
+
+function applyDecalOnlySizingFromLayer(layer) {
+  if (!layer || !layer.image) return;
+  const natW = Number(layer.image.naturalWidth || layer.image.width || 0) || 0;
+  const natH = Number(layer.image.naturalHeight || layer.image.height || 0) || 0;
+  const aspect = natW > 0 ? natH / natW : 1;
+  const widthIn = state.canvasWidthInches;
+  const heightIn = Math.max(MIN_INCH, Math.min(MAX_INCH, Number((widthIn * aspect).toFixed(2))));
+  state.canvasHeightInches = heightIn;
+  if (elements.heightInput) elements.heightInput.value = String(heightIn);
+  updateLayer(layer.id, { scale: 1, x: 50, y: 50, rotation: 0 }, { skipLayerList: true, skipInspector: true, skipCanvas: true });
+  setCanvasSize(widthIn, heightIn);
+}
+
+function enterDecalOnlyMode() {
+  state.decalOnly = true;
+  const img = getFirstImageLayer();
+  if (img) {
+    state.layers = [img];
+    state.activeLayerId = img.id;
+    applyDecalOnlySizingFromLayer(img);
+    setStatus('Decal Only mode: canvas matches decal size.', 'success');
+  } else {
+    state.layers = [];
+    state.activeLayerId = null;
+    setStatus('Decal Only mode: choose a graphic from the catalog.', 'info');
+  }
+  if (elements.addTextLayerButton) elements.addTextLayerButton.disabled = true;
+  updateDecalOnlyUI();
+  renderLayerList();
+  renderInspector();
+  renderCanvas();
+}
+
+function exitDecalOnlyMode() {
+  state.decalOnly = false;
+  if (elements.addTextLayerButton) elements.addTextLayerButton.disabled = false;
+  if (elements.transparentBackgroundToggle) elements.transparentBackgroundToggle.disabled = false;
+  updateDecalOnlyUI();
+  setStatus('Decal Only mode off.', 'info');
+  renderInspector();
   renderCanvas();
 }
 
@@ -310,10 +469,17 @@ function renderLayerList() {
       if (button) return; // handled below
       selectLayer(layer.id);
     });
-    template.querySelector('[data-action="duplicate"]').addEventListener('click', (event) => {
-      event.stopPropagation();
-      duplicateLayer(layer.id);
-    });
+    const dupBtn = template.querySelector('[data-action="duplicate"]');
+    if (dupBtn) {
+      if (state.decalOnly) {
+        dupBtn.style.display = 'none';
+      } else {
+        dupBtn.addEventListener('click', (event) => {
+          event.stopPropagation();
+          duplicateLayer(layer.id);
+        });
+      }
+    }
     template.querySelector('[data-action="delete"]').addEventListener('click', (event) => {
       event.stopPropagation();
       removeLayer(layer.id);
@@ -340,7 +506,12 @@ function drawImageLayer(layer) {
   ctx.translate(centerX, centerY);
   ctx.rotate(rotation);
   ctx.globalAlpha = clamp(layer.opacity ?? 1, 0, 1);
-  ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  if (shouldRecolorActiveImage()) {
+    const colored = renderImageWithVinylColor(image, drawWidth, drawHeight, state.vinylColor);
+    ctx.drawImage(colored, -drawWidth / 2, -drawHeight / 2);
+  } else {
+    ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  }
   ctx.restore();
   recordLayerMetrics(layer.id, {
     centerX,
@@ -556,7 +727,16 @@ function renderCanvas() {
   ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
   clearLayerMetrics();
 
-  if (!state.transparentBackground) {
+  if (state.decalOnly) {
+    // Always render a white background in decal-only mode for visibility
+    elements.canvasWrapper.classList.remove('transparent');
+    const width = elements.canvas.width;
+    const height = elements.canvas.height;
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  } else if (!state.transparentBackground) {
     elements.canvasWrapper.classList.remove('transparent');
     drawBackgroundShape();
   } else {
@@ -566,9 +746,78 @@ function renderCanvas() {
   state.layers.forEach(drawLayer);
 }
 
+function hexToRgb(hex) {
+  const normalized = String(hex || '').trim();
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(normalized);
+  if (!m) return { r: 0, g: 0, b: 0 };
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+function renderImageWithVinylColor(image, width, height, hexColor) {
+  const off = document.createElement('canvas');
+  off.width = Math.max(1, Math.round(width));
+  off.height = Math.max(1, Math.round(height));
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  octx.drawImage(image, 0, 0, off.width, off.height);
+  const data = octx.getImageData(0, 0, off.width, off.height);
+  const buf = data.data;
+  const rgb = hexToRgb(hexColor || '#000000');
+  const threshold = 230;
+  for (let i = 0; i < buf.length; i += 4) {
+    const r = buf[i], g = buf[i + 1], b = buf[i + 2], a = buf[i + 3];
+    if (a === 0) continue;
+    const brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (brightness > threshold) {
+      // treat near-white as cut-out
+      buf[i + 3] = 0;
+    } else {
+      buf[i] = rgb.r; buf[i + 1] = rgb.g; buf[i + 2] = rgb.b; buf[i + 3] = 255;
+    }
+  }
+  octx.putImageData(data, 0, 0);
+  return off;
+}
+
+function estimateMonochrome(image) {
+  try {
+    const w = Math.max(20, Math.min(160, image.naturalWidth || image.width || 160));
+    const h = Math.max(20, Math.round((w * (image.naturalHeight || image.height || w)) / (image.naturalWidth || image.width || w)));
+    const off = document.createElement('canvas');
+    off.width = w; off.height = h;
+    const ctx2 = off.getContext('2d', { willReadFrequently: true });
+    ctx2.drawImage(image, 0, 0, w, h);
+    const { data } = ctx2.getImageData(0, 0, w, h);
+    let total = 0, colorish = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3]; if (a < 10) continue;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      total++;
+      const maxc = Math.max(r, g, b), minc = Math.min(r, g, b);
+      if (maxc - minc > 15) colorish++;
+    }
+    if (total === 0) return false;
+    const ratio = colorish / total;
+    return ratio < 0.05;
+  } catch (_) {
+    return false;
+  }
+}
+
+function shouldRecolorActiveImage() {
+  if (!elements.enableDecalColorCheckbox) return false;
+  if (!elements.enableDecalColorCheckbox.checked) return false;
+  const img = getFirstImageLayer();
+  if (!img || !img.image) return false;
+  return state.isMonochrome === true;
+}
+
 function renderInspector() {
   const container = elements.layerInspector;
   if (!container) return;
+  if (state.decalOnly) {
+    container.innerHTML = '<p class="placeholder">Decal Only mode: Adjust width; height locks to aspect.</p>';
+    return;
+  }
   const layer = state.layers.find((item) => item.id === state.activeLayerId);
   if (!layer) {
     container.innerHTML = '<p class="placeholder">Select a layer to edit controls.</p>';
@@ -811,6 +1060,113 @@ function resolveAssetUrl(pathValue, { width, quality } = {}) {
   }
 }
 
+// --- Vectorization helpers (auto background removal + ImageTracer) ---
+function tryLoadScript(src) {
+  return new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = src; s.async = true;
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureImageTracer() {
+  if (typeof ImageTracer !== 'undefined') return true;
+  const relOk = await tryLoadScript('./imagetracer.min.js');
+  if (relOk && typeof ImageTracer !== 'undefined') return true;
+  const rootOk = await tryLoadScript(`${window.location.origin}/web/imagetracer.min.js`);
+  if (rootOk && typeof ImageTracer !== 'undefined') return true;
+  const vendorOk = await tryLoadScript(`${window.location.origin}/web/vendor/imagetracer.min.js`);
+  if (vendorOk && typeof ImageTracer !== 'undefined') return true;
+  return false;
+}
+
+function autoRemoveBackground(imgData) {
+  const { data, width, height } = imgData;
+  if (!data || !width || !height) return;
+  let sr = 0, sg = 0, sb = 0, n = 0;
+  const step = Math.max(1, Math.floor(Math.min(width, height) / 80));
+  for (let x = 0; x < width; x += step) {
+    let i = (0 * width + x) * 4; sr += data[i]; sg += data[i+1]; sb += data[i+2]; n++;
+    i = ((height - 1) * width + x) * 4; sr += data[i]; sg += data[i+1]; sb += data[i+2]; n++;
+  }
+  for (let y = 0; y < height; y += step) {
+    let i = (y * width + 0) * 4; sr += data[i]; sg += data[i+1]; sb += data[i+2]; n++;
+    i = (y * width + (width - 1)) * 4; sr += data[i]; sg += data[i+1]; sb += data[i+2]; n++;
+  }
+  if (!n) return;
+  const br = sr / n, bg = sg / n, bb = sb / n;
+  let sum = 0, sumSq = 0, cnt = 0;
+  const dist = (r, g, b) => {
+    const dr = r - br, dg = g - bg, db = b - bb; return Math.sqrt(dr*dr + dg*dg + db*db);
+  };
+  for (let x = 0; x < width; x += step) {
+    let i = (0 * width + x) * 4; let d = dist(data[i], data[i+1], data[i+2]); sum += d; sumSq += d * d; cnt++;
+    i = ((height - 1) * width + x) * 4; d = dist(data[i], data[i+1], data[i+2]); sum += d; sumSq += d * d; cnt++;
+  }
+  for (let y = 0; y < height; y += step) {
+    let i = (y * width + 0) * 4; let d = dist(data[i], data[i+1], data[i+2]); sum += d; sumSq += d * d; cnt++;
+    i = (y * width + (width - 1)) * 4; d = dist(data[i], data[i+1], data[i+2]); sum += d; sumSq += d * d; cnt++;
+  }
+  const mean = cnt ? sum / cnt : 0;
+  const variance = Math.max(0, (sumSq / Math.max(1, cnt)) - mean * mean);
+  const std = Math.sqrt(variance);
+  const thr = Math.max(20, Math.min(80, mean + 2 * std));
+  for (let i = 0; i < data.length; i += 4) {
+    const dr = data[i] - br, dg = data[i + 1] - bg, db = data[i + 2] - bb;
+    const d = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (d <= thr) { data[i + 3] = 0; }
+  }
+}
+
+async function vectorizeImageFromUrl(srcUrl) {
+  await ensureImageTracer();
+  if (typeof ImageTracer === 'undefined') return null;
+  return new Promise((resolve) => {
+    const imgEl = new Image();
+    imgEl.crossOrigin = 'anonymous';
+    imgEl.onload = () => {
+      try {
+        const iw = imgEl.naturalWidth || imgEl.width || 0;
+        const ih = imgEl.naturalHeight || imgEl.height || 0;
+        if (!iw || !ih) return resolve(null);
+        // Cap resolution for tracing performance
+        const MAX_W = 1000;
+        const scale = Math.min(MAX_W / iw, 1);
+        const tw = Math.max(1, Math.round(iw * scale));
+        const th = Math.max(1, Math.round(ih * scale));
+        const off = document.createElement('canvas');
+        off.width = tw; off.height = th;
+        const octx = off.getContext('2d', { willReadFrequently: true });
+        octx.drawImage(imgEl, 0, 0, tw, th);
+        const imgData = octx.getImageData(0, 0, tw, th);
+        // Auto background removal
+        try { autoRemoveBackground(imgData); } catch (_) {}
+        const options = {
+          numberofcolors: 6,
+          colorquantcycles: 3,
+          strokewidth: 0,
+          ltres: 1,
+          qtres: 1,
+          pathomit: 8
+        };
+        const svgstr = ImageTracer.imagedataToSVG(imgData, options);
+        const svgUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgstr);
+        const out = new Image();
+        out.onload = () => resolve(out);
+        out.onerror = () => resolve(null);
+        out.src = svgUrl;
+      } catch (e) {
+        console.error('Vectorize failed:', e);
+        resolve(null);
+      }
+    };
+    imgEl.onerror = () => resolve(null);
+    imgEl.src = srcUrl;
+  });
+}
+
 async function loadCatalog() {
   try {
     setStatus('Loading catalog…');
@@ -825,7 +1181,10 @@ async function loadCatalog() {
     state.catalogAssetRoot = catalog.assetRoot || '';
     state.catalogCategories = Array.isArray(catalog.categories) ? catalog.categories : [];
     if (state.catalogCategories.length) {
-      state.selectedCategorySlug = state.catalogCategories[0].slug;
+      const preferred = state.catalogCategories.find((c) => (c.name || '').toLowerCase().includes('car'))
+        || state.catalogCategories.find((c) => (c.slug || '').toLowerCase().includes('car'))
+        || state.catalogCategories[0];
+      state.selectedCategorySlug = preferred.slug;
       populateCatalogCategories();
       filterCatalogDesigns();
       renderCatalogList();
@@ -864,7 +1223,10 @@ function populateCatalogCategories() {
     select.appendChild(option);
   });
   if (!state.selectedCategorySlug && state.catalogCategories.length) {
-    state.selectedCategorySlug = state.catalogCategories[0].slug;
+    const preferred = state.catalogCategories.find((c) => (c.name || '').toLowerCase().includes('car'))
+      || state.catalogCategories.find((c) => (c.slug || '').toLowerCase().includes('car'))
+      || state.catalogCategories[0];
+    state.selectedCategorySlug = preferred.slug;
   }
   if (state.selectedCategorySlug) {
     select.value = state.selectedCategorySlug;
@@ -912,23 +1274,81 @@ function renderCatalogList() {
   container.appendChild(fragment);
 }
 
-function addCatalogDesign(design) {
-  const image = new Image();
-  image.crossOrigin = 'anonymous';
-  image.onload = () => {
-    addLayer({
-      ...deepClone(DEFAULT_IMAGE_SETTINGS),
-      id: `image-${Date.now()}`,
-      type: 'image',
-      name: design.name,
-      image,
-      source: resolveAssetUrl(design.image, { width: 1600, quality: 90 })
-    });
-  };
-  image.onerror = () => {
-    showToast('Unable to load graphic. Try another selection.', 'error');
-  };
-  image.src = resolveAssetUrl(design.image, { width: 1600, quality: 90 });
+async function addCatalogDesign(design) {
+  try {
+    setStatus('Preparing graphic…');
+    const src = resolveAssetUrl(design.image, { width: 1600, quality: 90 });
+    const vect = await vectorizeImageFromUrl(src);
+    const image = vect;
+    if (image) {
+      const newLayer = {
+        ...deepClone(DEFAULT_IMAGE_SETTINGS),
+        id: `image-${Date.now()}`,
+        type: 'image',
+        name: design.name,
+        image,
+        source: src
+      };
+      // Estimate if monochrome to allow recoloring UI
+      state.isMonochrome = estimateMonochrome(image);
+      if (elements.decalColorHint) {
+        elements.decalColorHint.style.display = state.isMonochrome ? 'block' : 'none';
+      }
+      if (elements.enableDecalColorCheckbox) {
+        elements.enableDecalColorCheckbox.disabled = !state.isMonochrome;
+        if (!state.isMonochrome) elements.enableDecalColorCheckbox.checked = false;
+      }
+      if (state.decalOnly) {
+        state.layers = [];
+        addLayer(newLayer);
+        const img = getFirstImageLayer();
+        if (img) applyDecalOnlySizingFromLayer(img);
+      } else {
+        addLayer(newLayer);
+      }
+      setStatus('Graphic added (vectorized)', 'success');
+      return;
+    }
+    // Fallback to original raster if vectorization fails
+    const fallback = new Image();
+    fallback.crossOrigin = 'anonymous';
+    fallback.onload = () => {
+      const newLayer = {
+        ...deepClone(DEFAULT_IMAGE_SETTINGS),
+        id: `image-${Date.now()}`,
+        type: 'image',
+        name: design.name,
+        image: fallback,
+        source: src
+      };
+      state.isMonochrome = estimateMonochrome(fallback);
+      if (elements.decalColorHint) {
+        elements.decalColorHint.style.display = state.isMonochrome ? 'block' : 'none';
+      }
+      if (elements.enableDecalColorCheckbox) {
+        elements.enableDecalColorCheckbox.disabled = !state.isMonochrome;
+        if (!state.isMonochrome) elements.enableDecalColorCheckbox.checked = false;
+      }
+      if (state.decalOnly) {
+        state.layers = [];
+        addLayer(newLayer);
+        const img = getFirstImageLayer();
+        if (img) applyDecalOnlySizingFromLayer(img);
+      } else {
+        addLayer(newLayer);
+      }
+      setStatus('Graphic added', 'success');
+    };
+    fallback.onerror = () => {
+      showToast('Unable to load graphic. Try another selection.', 'error');
+      setStatus('Failed to add graphic', 'error');
+    };
+    fallback.src = src;
+  } catch (e) {
+    console.error('addCatalogDesign failed:', e);
+    showToast('Unable to add graphic. Try another.', 'error');
+    setStatus('Unable to add graphic', 'error');
+  }
 }
 
 function addTextLayer() {
@@ -1044,9 +1464,12 @@ async function submitOrder(event) {
       }
     };
 
+    const headers = { 'Content-Type': 'application/json' };
+    const token = getKioskToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const response = await fetch(SAVE_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload)
     });
 
@@ -1056,9 +1479,76 @@ async function submitOrder(event) {
     }
 
     elements.orderStatus.textContent =
-      'Order received! Please let our team know so we can finalize payment.';
+      'Order received! We emailed you a one-time code to view and pay.';
     elements.orderStatus.className = 'status-bar success';
-    showToast('Order submitted to production queue.', 'success', 6000);
+    showToast('Order submitted and code sent by email.', 'success', 6000);
+    // Request a one-time code and render a QR that auto-verifies (email+code)
+    try {
+      // Request login code
+      const req = await fetch(LOGIN_CODE_REQUEST_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: customer.email, name: customer.name, phone: customer.phone, address: '' })
+      });
+      const rdata = await req.json().catch(() => ({}));
+      const code = rdata?.code || '';
+      const token = data?.sessionToken || '';
+      const qrBox = document.getElementById('orderQr');
+      const qrImg = document.getElementById('orderQrImg');
+      const qrCanvasBox = document.getElementById('orderQrCanvas');
+      const qrLink = document.getElementById('orderQrLink');
+      if (qrBox && qrImg && customer.email && (code || token)) {
+        const url = code
+          ? `${window.location.origin}/web/customer.html?email=${encodeURIComponent(customer.email)}&code=${encodeURIComponent(code)}&kiosk=1`
+          : `${window.location.origin}/web/customer.html?session=${encodeURIComponent(token)}`;
+        // Render QR locally if library present
+        let dataUrl = '';
+        if (typeof QRCode !== 'undefined') {
+          try {
+            const tmp = document.createElement('div');
+            (qrCanvasBox || tmp).innerHTML = '';
+            const target = qrCanvasBox || tmp;
+            // eslint-disable-next-line no-undef
+            const qrobj = new QRCode(target, { text: url, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M });
+            const imgEl = target.querySelector('img');
+            const cvEl = target.querySelector('canvas');
+            dataUrl = imgEl?.src || (cvEl?.toDataURL && cvEl.toDataURL('image/png')) || '';
+          } catch (e) { dataUrl = ''; }
+        }
+        if (dataUrl) {
+          qrImg.src = dataUrl;
+        }
+        if (qrCanvasBox) {
+          // Prefer canvas rendering visually; keep <img> hidden for ticket usage
+          qrImg.style.display = 'none';
+        }
+        if (qrLink) qrLink.textContent = url;
+        qrBox.classList.remove('hidden');
+        qrBox.removeAttribute('aria-hidden');
+        // Wire up Print ticket button
+        const btn = document.getElementById('printTicketButton');
+        if (btn) {
+          btn.onclick = () => {
+            const params = new URLSearchParams({
+              title: 'Custom kiosk sticker',
+              num: String(data?.orderNumber || ''),
+              date: new Date().toLocaleString(),
+              name: customer.name || '',
+              phone: customer.phone || '',
+              size: `${state.canvasWidthInches.toFixed(1)}\"`,
+              qty: String(state.quantity || 1),
+              vinyl: state.vinylColor || '',
+              bg: state.transparentBackground ? 'transparent' : (state.backgroundColor || ''),
+              notes: (formData.get('notes')?.toString() || ''),
+              qr: qrImg.src || '',
+              qrlink: url
+            });
+            const tUrl = `${window.location.origin}/web/order-ticket.html?${params.toString()}`;
+            window.open(tUrl, '_blank');
+          };
+        }
+      }
+    } catch (_) {}
     state.layers = [];
     state.activeLayerId = null;
     renderLayerList();
@@ -1070,6 +1560,74 @@ async function submitOrder(event) {
     elements.orderStatus.className = 'status-bar error';
   } finally {
     state.isSaving = false;
+  }
+}
+
+async function requestLoginCode() {
+  try {
+    if (elements.sendSpinner) elements.sendSpinner.classList.remove('hidden');
+    if (elements.sendCodeButton) elements.sendCodeButton.disabled = true;
+    const formData = new FormData(elements.orderForm);
+    const email = (formData.get('email') || '').toString().trim();
+    const name = (formData.get('name') || '').toString().trim();
+    const phone = (formData.get('phone') || '').toString().trim();
+    if (!email) {
+      setAuthStatus('Enter your email first.', 'error');
+      return;
+    }
+    setAuthStatus('Sending code…', 'muted');
+    const response = await fetch(LOGIN_CODE_REQUEST_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, phone })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg = response.status === 404 ? 'Code login is not available yet on this kiosk. Please ask an attendant.' : (data.error || `Request failed (${response.status})`);
+      throw new Error(msg);
+    }
+    setAuthStatus('Code sent! Check your email.', 'success');
+  } catch (error) {
+    console.error('Login code request failed:', error);
+    setAuthStatus(error.message || 'Unable to send code.', 'error');
+  }
+  finally {
+    if (elements.sendSpinner) elements.sendSpinner.classList.add('hidden');
+    if (elements.sendCodeButton) elements.sendCodeButton.disabled = false;
+  }
+}
+
+async function verifyLoginCode() {
+  try {
+    if (elements.verifySpinner) elements.verifySpinner.classList.remove('hidden');
+    if (elements.verifyCodeButton) elements.verifyCodeButton.disabled = true;
+    const formData = new FormData(elements.orderForm);
+    const email = (formData.get('email') || '').toString().trim();
+    const code = (elements.loginCodeInput?.value || '').toString().trim();
+    if (!email || !code) {
+      setAuthStatus('Enter your email and code.', 'error');
+      return;
+    }
+    setAuthStatus('Verifying…', 'muted');
+    const response = await fetch(LOGIN_CODE_VERIFY_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.token) {
+      const msg = response.status === 404 ? 'Code login is not available yet on this kiosk. Please ask an attendant.' : (data.error || `Verify failed (${response.status})`);
+      throw new Error(msg);
+    }
+    // reuse email from above
+    signInSession(data.token, email);
+  } catch (error) {
+    console.error('Login code verify failed:', error);
+    setAuthStatus(error.message || 'Unable to verify code.', 'error');
+  }
+  finally {
+    if (elements.verifySpinner) elements.verifySpinner.classList.add('hidden');
+    if (elements.verifyCodeButton) elements.verifyCodeButton.disabled = false;
   }
 }
 
@@ -1199,7 +1757,13 @@ function initEventListeners() {
     const value = clamp(Number(event.target.value) || MIN_INCH, MIN_INCH, MAX_INCH);
     state.canvasWidthInches = value;
     event.target.value = value;
-    setCanvasSize(state.canvasWidthInches, state.canvasHeightInches);
+    if (state.decalOnly) {
+      const img = getFirstImageLayer();
+      if (img) applyDecalOnlySizingFromLayer(img);
+      else setCanvasSize(state.canvasWidthInches, state.canvasHeightInches);
+    } else {
+      setCanvasSize(state.canvasWidthInches, state.canvasHeightInches);
+    }
     updatePricing();
   });
 
@@ -1219,12 +1783,22 @@ function initEventListeners() {
 
   elements.vinylColorInput.addEventListener('input', (event) => {
     state.vinylColor = event.target.value;
+    // If recolor is enabled, repaint immediately
+    if (elements.enableDecalColorCheckbox?.checked) {
+      renderCanvas();
+    }
   });
 
   elements.backgroundColorInput.addEventListener('input', (event) => {
     state.backgroundColor = event.target.value;
     renderCanvas();
   });
+
+  if (elements.enableDecalColorCheckbox) {
+    elements.enableDecalColorCheckbox.addEventListener('change', () => {
+      renderCanvas();
+    });
+  }
 
   elements.transparentBackgroundToggle.addEventListener('change', (event) => {
     state.transparentBackground = event.target.checked;
@@ -1270,6 +1844,19 @@ function initEventListeners() {
   elements.closeOrderDialog.addEventListener('click', closeOrderDialog);
   elements.cancelOrderButton.addEventListener('click', closeOrderDialog);
   elements.orderForm.addEventListener('submit', submitOrder);
+  elements.decalOnlyButton?.addEventListener('click', () => {
+    if (state.decalOnly) exitDecalOnlyMode(); else enterDecalOnlyMode();
+  });
+  // Code send/verify removed; QR flow handles it
+
+  // Restore session on load
+  const token = getKioskToken();
+  if (token) { startInactivityTimers(); }
+
+  // Inactivity tracking
+  ['mousemove','keydown','pointerdown','touchstart'].forEach((evt) => {
+    document.addEventListener(evt, handleActivity, { passive: true });
+  });
 
   elements.canvas.addEventListener('pointerdown', handleCanvasPointerDown);
   elements.canvas.addEventListener('pointermove', handleCanvasPointerMove);
@@ -1292,6 +1879,7 @@ function bootstrap() {
 
   setCanvasSize(state.canvasWidthInches, state.canvasHeightInches);
   updateBackgroundShapeControls();
+  updateDecalOnlyUI();
   updatePricing();
   initEventListeners();
   loadCatalog();

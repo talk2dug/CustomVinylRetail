@@ -28,6 +28,8 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  /* Respect iPad safe areas */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .kiosk-header {
@@ -122,7 +124,8 @@ textarea {
   padding: 8px 12px;
   color: var(--text);
   font: inherit;
-  min-height: 38px;
+  min-height: 44px; /* Comfortable touch target on tablets */
+  font-size: 16px; /* Prevent iOS zoom */
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
@@ -136,7 +139,7 @@ textarea:focus {
 
 input[type='color'] {
   padding: 0;
-  height: 38px;
+  height: 44px;
 }
 
 .hidden {
@@ -151,8 +154,8 @@ input[type='color'] {
 }
 
 .checkbox input {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
 }
 
 .pricing-summary {
@@ -201,6 +204,10 @@ button {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  min-height: 44px; /* Comfortable touch target on tablets */
+  font-size: 16px; /* Prevent iOS zoom */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.18s ease;
 }
 
@@ -254,6 +261,7 @@ button {
     50% / 20px 20px;
   padding: 18px;
   min-height: 460px;
+  max-height: calc(100vh - 280px); /* Fit better on iPad portrait */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -261,7 +269,7 @@ button {
 }
 
 .canvas-wrapper canvas {
-  width: min(90vw, 100%);
+  width: min(92vw, 100%);
   max-width: 100%;
   height: auto;
   border-radius: 12px;
@@ -277,6 +285,11 @@ button {
 
 .canvas-wrapper.dragging canvas {
   cursor: grabbing;
+}
+
+/* Disable drag cursor when decal-only mode is active */
+.canvas-wrapper.no-drag canvas {
+  cursor: default;
 }
 
 .workspace-actions {
@@ -473,7 +486,7 @@ button {
   border-radius: 18px;
   border: 1px solid var(--border);
   padding: 28px;
-  width: min(520px, 100%);
+  width: min(900px, 100%);
   box-shadow: 0 34px 72px rgba(15, 23, 42, 0.55);
   position: relative;
   display: flex;
@@ -490,6 +503,28 @@ button {
   flex-direction: column;
   gap: 12px;
 }
+
+.order-columns {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.order-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (max-width: 720px) {
+  .modal-content { width: min(520px, 100%); }
+  .order-columns { grid-template-columns: 1fr; }
+}
+
+.qr { text-align: center; border-top: 1px solid var(--border); padding-top: 10px; }
+.qr img { display:block; margin: 8px auto; width: 220px; height: 220px; background:#fff; border-radius: 8px; border:1px solid rgba(148,163,184,.25); }
+.qr canvas { display:block; margin: 8px auto; width: 220px; height: 220px; background:#fff; border-radius: 8px; border:1px solid rgba(148,163,184,.25); }
 
 .modal-content label {
   display: flex;
@@ -533,6 +568,21 @@ button {
   margin: 0;
 }
 
+/* Inline spinner for async actions */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.35);
+  border-top-color: var(--accent);
+  animation: kiosk-spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes kiosk-spin {
+  to { transform: rotate(360deg); }
+}
+
 @media (max-width: 1200px) {
   .kiosk-layout {
     grid-template-columns: 1fr;
@@ -540,6 +590,7 @@ button {
   .workspace {
     grid-template-columns: 1fr;
   }
+  .canvas-wrapper { max-height: none; }
 }
 
 @media (max-width: 720px) {

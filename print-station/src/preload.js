@@ -3,12 +3,65 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('printStation', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (config) => ipcRenderer.invoke('config:set', config),
+  readFileAsBase64: (filePath) => ipcRenderer.invoke('file:readAsBase64', filePath),
+  fetchImageAsBase64: (url) => ipcRenderer.invoke('file:fetchAsBase64', url),
   fetchQueue: (options) => ipcRenderer.invoke('queue:fetch', options),
   markDownloaded: (payload) => ipcRenderer.invoke('queue:ack', payload),
   markCompleted: (payload) => ipcRenderer.invoke('queue:complete', payload),
   listOrders: () => ipcRenderer.invoke('orders:list'),
+  updateOrder: (payload) => ipcRenderer.invoke('orders:update', payload || {}),
   fetchCatalog: (options) => ipcRenderer.invoke('catalog:fetch', options || {}),
+  catalogMove: (payload) => ipcRenderer.invoke('catalog:move', payload || {}),
+  catalogRename: (payload) => ipcRenderer.invoke('catalog:rename', payload || {}),
+  catalogDelete: (payload) => ipcRenderer.invoke('catalog:delete', payload || {}),
+  catalogCreateFolder: (payload) => ipcRenderer.invoke('catalog:folder:create', payload || {}),
+  catalogExtractZip: (zipPath) => ipcRenderer.invoke('catalog:extract-zip', zipPath),
   uploadArtwork: (payload) => ipcRenderer.invoke('artwork:upload', payload),
+  // Local catalogging
+  selectFolder: (options) => ipcRenderer.invoke('dialog:selectFolder', options || {}),
+  scanLocal: (payload) => ipcRenderer.invoke('local:scan', payload || {}),
+  importLocal: (payload) => ipcRenderer.invoke('local:import', payload || {}),
+  listLocal: (options) => ipcRenderer.invoke('local:list', options || {}),
+  updateLocal: (id, updates) => ipcRenderer.invoke('local:update', { id, updates } || {}),
+  deleteLocal: (id) => ipcRenderer.invoke('local:delete', id),
+  listLocalCategories: () => ipcRenderer.invoke('local:categories'),
+  approveLocal: (ids) => ipcRenderer.invoke('local:approve', { ids } || {}),
+  approveLocalCategory: (category) => ipcRenderer.invoke('local:approveCategory', category),
+  exportLocal: (payload) => ipcRenderer.invoke('local:export', payload || {}),
+  generateLocalMockups: (payload) => ipcRenderer.invoke('local:mockups', payload || {}),
+  watchImportNow: () => ipcRenderer.invoke('watch:importNow'),
+  onMockupsProgress: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const handler = (_e, data) => cb(data || {});
+    ipcRenderer.on('local:mockups:progress', handler);
+    return () => ipcRenderer.off('local:mockups:progress', handler);
+  },
+  onRemoveBgProgress: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const handler = (_e, data) => cb(data || {});
+    ipcRenderer.on('local:previews:remove-bg:progress', handler);
+    return () => ipcRenderer.off('local:previews:remove-bg:progress', handler);
+  },
+  removeBgFromPreviews: (payload) => ipcRenderer.invoke('local:previews:remove-bg', payload || {}),
+  cancelJob: (jobId) => ipcRenderer.invoke('jobs:cancel', jobId),
+  genJobId: () => `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  optimizeLocal: (id) => ipcRenderer.invoke('local:optimize', id),
+  optimizeLocalMany: async (ids = []) => {
+    const results = [];
+    for (const id of Array.isArray(ids) ? ids : []) {
+      try { results.push(await ipcRenderer.invoke('local:optimize', id)); } catch (e) { results.push(null); }
+    }
+    return results;
+  },
+  publishLocal: (ids) => ipcRenderer.invoke('local:publish', { ids } || {}),
+  // OCR
+  ocrLocal: (payload) => ipcRenderer.invoke('local:ocr', payload || {}),
+  ocrFromUrl: (url) => ipcRenderer.invoke('ocr:fromUrl', url),
+  ocrCategoryLocal: (payload) => ipcRenderer.invoke('ocr:categoryLocal', payload || {}),
+  onOcrProgress: (channel, callback) => {
+    ipcRenderer.on(channel, (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners(channel);
+  },
   openExternal: (target) => ipcRenderer.invoke('system:openExternal', target),
   selectFiles: (options) => ipcRenderer.invoke('dialog:selectFiles', options),
   fetchRaceQuotes: () => ipcRenderer.invoke('quotes:fetch'),
@@ -21,5 +74,384 @@ contextBridge.exposeInMainWorld('printStation', {
   createInventoryItem: (payload) => ipcRenderer.invoke('inventory:create', payload || {}),
   adjustInventory: (payload) => ipcRenderer.invoke('inventory:adjust', payload || {}),
   updateInventoryItem: (payload) => ipcRenderer.invoke('inventory:update', payload || {}),
-  downloadFile: (payload) => ipcRenderer.invoke('files:download', payload || {})
+  deleteInventoryItem: (payload) => ipcRenderer.invoke('inventory:delete', payload || {}),
+  fetchApparelCategories: () => ipcRenderer.invoke('apparel:categories:list'),
+  createApparelCategory: (payload) => ipcRenderer.invoke('apparel:categories:create', payload || {}),
+  fetchApparelStore: () => ipcRenderer.invoke('apparel:store'),
+  updateApparelStoreItem: (payload) => ipcRenderer.invoke('apparel:store:update', payload || {}),
+  fetchSsawStyles: (params) => ipcRenderer.invoke('vendor:ssaw:styles', params || {}),
+  fetchSsawProducts: (style) => ipcRenderer.invoke('vendor:ssaw:products', style),
+  createVendorOrder: (payload) => ipcRenderer.invoke('vendor:ssaw:order:create', payload || {}),
+  fetchSsawOrders: (params) => ipcRenderer.invoke('vendor:ssaw:orders:list', params || {}),
+  fetchLocalVendorOrders: (params) => ipcRenderer.invoke('vendor:local:orders', params || {}),
+  updateLocalVendorOrder: (id, updates) => ipcRenderer.invoke('vendor:local:orders:update', { id, updates } || {}),
+  createLocalVendorOrderDraft: (payload) => ipcRenderer.invoke('vendor:local:orders:create', payload || {}),
+  approveLocalVendorOrder: (id) => ipcRenderer.invoke('vendor:local:orders:approve', id),
+  rejectLocalVendorOrder: (id) => ipcRenderer.invoke('vendor:local:orders:reject', id),
+  fetchLocalTopVendorItems: (params) => ipcRenderer.invoke('vendor:local:orders:top', params || {}),
+  fetchSsawConfig: () => ipcRenderer.invoke('vendor:ssaw:config'),
+  updateSsawConfig: (payload) => ipcRenderer.invoke('vendor:ssaw:config:update', payload || {}),
+  listImageFiles: (payload) => ipcRenderer.invoke('fs:listImages', payload || {}),
+  downloadFile: (payload) => ipcRenderer.invoke('files:download', payload || {}),
+  // AI Recolor
+  checkRecolorCache: (payload) => ipcRenderer.invoke('recolor:checkCache', payload || {}),
+  generateRecolor: (payload) => ipcRenderer.invoke('recolor:generate', payload || {}),
+  // Campaigns
+  createCampaign: (payload) => ipcRenderer.invoke('campaigns:create', payload || {}),
+  listCampaigns: () => ipcRenderer.invoke('campaigns:list'),
+  getCampaign: (slug) => ipcRenderer.invoke('campaigns:get', slug),
+  updateCampaign: (slug, payload) => ipcRenderer.invoke('campaigns:update', { slug, payload } || {}),
+  deleteCampaign: (slug) => ipcRenderer.invoke('campaigns:delete', slug),
+  // Admin cleanup
+  listOrphanOrders: () => ipcRenderer.invoke('admin:orders:orphans'),
+  cleanupOrders: (payload) => ipcRenderer.invoke('admin:orders:cleanup', payload || {}),
+  deleteOrderAdmin: (id) => ipcRenderer.invoke('admin:orders:delete', id),
+  sendTestSms: (payload) => ipcRenderer.invoke('admin:sms:test', payload || {})
+  ,
+  listInboundMessages: (query) => ipcRenderer.invoke('admin:inbound:list', query || {}),
+  sendSms: (payload) => ipcRenderer.invoke('admin:sms:send', payload || {}),
+  // Sales reports
+  fetchSalesSummary: (query) => ipcRenderer.invoke('reports:sales:summary', query || {}),
+  fetchSalesByDay: (query) => ipcRenderer.invoke('reports:sales:by-day', query || {}),
+  fetchSalesByCategory: (query) => ipcRenderer.invoke('reports:sales:by-category', query || {}),
+  fetchSalesByColor: (query) => ipcRenderer.invoke('reports:sales:by-color', query || {}),
+  fetchSalesByCampaign: (query) => ipcRenderer.invoke('reports:sales:by-campaign', query || {}),
+  fetchTopDesigns: (query) => ipcRenderer.invoke('reports:sales:top-designs', query || {})
+  ,
+  fetchCampaignPerformance: (query) => ipcRenderer.invoke('reports:campaigns', query || {})
+  ,
+  testInternalApi: () => ipcRenderer.invoke('internal:test')
+  ,
+  testLlm: () => ipcRenderer.invoke('llm:test')
+  ,
+  // Marketing/admin
+  fetchAudienceMap: () => ipcRenderer.invoke('marketing:audience-map'),
+  marketingClassify: (product) => ipcRenderer.invoke('marketing:classify', product || {}),
+  marketingLaunch: (payload) => ipcRenderer.invoke('marketing:launch', payload || {}),
+  marketingPreview: (payload) => ipcRenderer.invoke('marketing:preview', payload || {}),
+  marketingLlmClassify: (payload) => ipcRenderer.invoke('marketing:llm:classify', payload || {}),
+  fetchAdTemplates: () => ipcRenderer.invoke('marketing:ad-templates'),
+  fetchAdsPerformance: (limit) => ipcRenderer.invoke('ads:performance:list', limit || 200),
+  // Shopify test: carts webhook storage
+  listShopifyTestCarts: () => ipcRenderer.invoke('shopify:test:carts:list'),
+  clearShopifyTestCarts: () => ipcRenderer.invoke('shopify:test:carts:clear'),
+  getCollectionMarketingProfile: (id) => ipcRenderer.invoke('shopify:collection:get', id),
+  updateCollectionMarketingProfile: (id, profile) => ipcRenderer.invoke('shopify:collection:update', { id, profile }),
+  listShopifyCollections: (query) => ipcRenderer.invoke('shopify:collections:list', query || {})
+  ,
+  // Campaign → Shopify export
+  exportCampaignToShopify: (slug, only, force, skipMockups) => ipcRenderer.invoke('shopify:campaign:export', { slug, only, force, skipMockups })
+  ,
+  // Campaign → Shopify landing page
+  createShopifyCampaignPage: (slug) => ipcRenderer.invoke('shopify:campaign:page', slug)
+  ,
+  // Campaign → Shopify refresh descriptions
+  refreshShopifyCampaignDescriptions: (slug) => ipcRenderer.invoke('shopify:campaign:refresh-descriptions', slug)
+  ,
+  // Export job status
+  getShopifyExportStatus: (slug) => ipcRenderer.invoke('shopify:campaign:export:status', slug)
+  ,
+  cancelShopifyExport: (slug) => ipcRenderer.invoke('shopify:campaign:export:cancel', slug)
+  ,
+  // Promo/discount stats
+  getPromoStats: (discountId) => ipcRenderer.invoke('shopify:promo:stats', discountId)
+  ,
+  // Pricing sheet
+  getPricing: () => ipcRenderer.invoke('pricing:get')
+  ,
+  savePricing: (pricing) => ipcRenderer.invoke('pricing:save', pricing)
+  ,
+  // POD fulfillment
+  fulfillPod: (payload) => ipcRenderer.invoke('pod:fulfill', payload || {})
+  ,
+  // Guided mockup composition
+  composeMockup: (payload) => ipcRenderer.invoke('mockup:compose', payload || {})
+  ,
+  // Vectorize an image (convert raster to SVG)
+  vectorizeImage: (imagePath) => ipcRenderer.invoke('image:vectorize', imagePath)
+  ,
+  // Remove background from an image
+  removeImageBackground: (payload) => ipcRenderer.invoke('image:removeBackground', payload || {})
+  ,
+  // Save a data URL to a temp image file
+  saveTempImage: (payload) => ipcRenderer.invoke('image:saveTemp', payload || {})
+  ,
+  // Image tools preflight
+  imageToolsPreflight: () => ipcRenderer.invoke('image:preflight')
+  ,
+  // Facebook AI
+  generateFacebookAds: (payload) => ipcRenderer.invoke('facebook-ai:generate', payload || {})
+  ,
+  optimizeFacebookShop: (payload) => ipcRenderer.invoke('facebook-shop:optimize', payload || {})
+  ,
+  // Social Marketing - Facebook Posts
+  generateFacebookPost: (payload) => ipcRenderer.invoke('social:fb:generate', payload || {}),
+  publishFacebookPost: (payload) => ipcRenderer.invoke('social:fb:publish', payload || {}),
+  scheduleFacebookPost: (payload) => ipcRenderer.invoke('social:fb:schedule', payload || {}),
+  createCollageImage: (payload) => ipcRenderer.invoke('social:collage:create', payload || {}),
+  listScheduledPosts: () => ipcRenderer.invoke('social:fb:scheduled:list'),
+  cancelScheduledPost: (id) => ipcRenderer.invoke('social:fb:scheduled:cancel', id),
+
+  // Social Marketing - TikTok Posts
+  tiktok: {
+    getAuthUrl: () => ipcRenderer.invoke('social:tiktok:authUrl'),
+    getStatus: () => ipcRenderer.invoke('social:tiktok:status'),
+    getUserInfo: () => ipcRenderer.invoke('social:tiktok:userInfo'),
+    uploadVideo: (payload) => ipcRenderer.invoke('social:tiktok:upload', payload || {}),
+    uploadVideoFromUrl: (payload) => ipcRenderer.invoke('social:tiktok:uploadFromUrl', payload || {}),
+    getPublishStatus: (publishId) => ipcRenderer.invoke('social:tiktok:publishStatus', publishId),
+    generateCaption: (payload) => ipcRenderer.invoke('social:tiktok:generateCaption', payload || {}),
+    disconnect: () => ipcRenderer.invoke('social:tiktok:disconnect')
+  },
+
+  // ============================================================================
+  // PRINTER API
+  // ============================================================================
+  printer: {
+    getPrinters: () => ipcRenderer.invoke('print:getPrinters'),
+    getDefaultPrinter: () => ipcRenderer.invoke('print:getDefault'),
+    print: (options) => ipcRenderer.invoke('print:print', options),
+    printWithDialog: (options) => ipcRenderer.invoke('print:printWithDialog', options),
+    printToPdf: (options) => ipcRenderer.invoke('print:toPdf', options),
+    selectFile: () => ipcRenderer.invoke('print:selectFile'),
+    savePdfDialog: () => ipcRenderer.invoke('print:savePdfDialog')
+  },
+
+  // ============================================================================
+  // AUTO-UPDATE API
+  // ============================================================================
+  update: {
+    check: () => ipcRenderer.invoke('update:check'),
+    download: () => ipcRenderer.invoke('update:download'),
+    install: () => ipcRenderer.invoke('update:install'),
+    getStatus: () => ipcRenderer.invoke('update:getStatus'),
+    getVersion: () => ipcRenderer.invoke('update:getVersion'),
+    onStatusChange: (callback) => {
+      const handler = (_event, status) => callback(status);
+      ipcRenderer.on('update:status', handler);
+      return () => ipcRenderer.off('update:status', handler);
+    }
+  },
+
+  // ============================================================================
+  // FACEBOOK SCHEDULE MANAGER API (Server-based campaign scheduling)
+  // ============================================================================
+  listMockupTemplates: () => ipcRenderer.invoke('fb-schedule:list-templates'),
+  createMockupTemplate: (template) => ipcRenderer.invoke('fb-schedule:create-template', template),
+  listFbScheduledPosts: () => ipcRenderer.invoke('fb-schedule:list-posts'),
+  scheduleCampaignPosts: (options) => ipcRenderer.invoke('fb-schedule:schedule-campaign', options),
+  processPendingPosts: () => ipcRenderer.invoke('fb-schedule:process-pending'),
+  postScheduledNow: (postId) => ipcRenderer.invoke('fb-schedule:post-now', postId),
+  deleteFbScheduledPost: (postId) => ipcRenderer.invoke('fb-schedule:delete-post', postId),
+  retryScheduledPost: (postId) => ipcRenderer.invoke('fb-schedule:retry-post', postId),
+
+  // Facebook Insights API
+  getFbPostInsights: (facebookPostId) => ipcRenderer.invoke('fb-insights:get-post', facebookPostId),
+  getFbScheduledPostsInsights: (options) => ipcRenderer.invoke('fb-insights:get-all', options || {}),
+  getFbInsightsSummary: (options) => ipcRenderer.invoke('fb-insights:get-summary', options || {}),
+
+  // ============================================================================
+  // CUSTOM ART API
+  // ============================================================================
+
+  // Custom Art - Rooms
+  customArt: {
+    // Rooms
+    listRooms: (query) => ipcRenderer.invoke('custom-art:rooms:list', query || {}),
+    getRoom: (id) => ipcRenderer.invoke('custom-art:rooms:get', id),
+    createRoom: (payload) => ipcRenderer.invoke('custom-art:rooms:create', payload || {}),
+    updateRoom: (id, payload) => ipcRenderer.invoke('custom-art:rooms:update', { id, payload }),
+    deleteRoom: (id) => ipcRenderer.invoke('custom-art:rooms:delete', id),
+    generateRoomMetadata: (imagePath) => ipcRenderer.invoke('custom-art:rooms:ai-metadata', imagePath),
+
+    // Artwork
+    listArtwork: (query) => ipcRenderer.invoke('custom-art:artwork:list', query || {}),
+    getArtworkCategories: () => ipcRenderer.invoke('custom-art:artwork:categories'),
+    getArtwork: (id) => ipcRenderer.invoke('custom-art:artwork:get', id),
+    createArtwork: (payload) => ipcRenderer.invoke('custom-art:artwork:create', payload || {}),
+    updateArtwork: (id, payload) => ipcRenderer.invoke('custom-art:artwork:update', { id, payload }),
+    deleteArtwork: (id) => ipcRenderer.invoke('custom-art:artwork:delete', id),
+    generateAIMetadata: (id) => ipcRenderer.invoke('custom-art:artwork:ai-metadata', id),
+
+    // Materials
+    listMaterials: (query) => ipcRenderer.invoke('custom-art:materials:list', query || {}),
+    getMaterial: (id) => ipcRenderer.invoke('custom-art:materials:get', id),
+    createMaterial: (payload) => ipcRenderer.invoke('custom-art:materials:create', payload || {}),
+    updateMaterial: (id, payload) => ipcRenderer.invoke('custom-art:materials:update', { id, payload }),
+    deleteMaterial: (id) => ipcRenderer.invoke('custom-art:materials:delete', id),
+
+    // Products
+    listProducts: (query) => ipcRenderer.invoke('custom-art:products:list', query || {}),
+    getProduct: (id) => ipcRenderer.invoke('custom-art:products:get', id),
+    createProduct: (payload) => ipcRenderer.invoke('custom-art:products:create', payload || {}),
+    updateProduct: (id, payload) => ipcRenderer.invoke('custom-art:products:update', { id, payload }),
+    deleteProduct: (id) => ipcRenderer.invoke('custom-art:products:delete', id),
+
+    // Product Variants
+    listVariants: (productId) => ipcRenderer.invoke('custom-art:variants:list', productId),
+    createVariant: (productId, payload) => ipcRenderer.invoke('custom-art:variants:create', { productId, payload }),
+    updateVariant: (id, payload) => ipcRenderer.invoke('custom-art:variants:update', { id, payload }),
+    deleteVariant: (id) => ipcRenderer.invoke('custom-art:variants:delete', id),
+
+    // Mockups CRUD (full management)
+    listMockups: (query) => ipcRenderer.invoke('custom-art:mockups:list', query || {}),
+    getMockup: (id) => ipcRenderer.invoke('custom-art:mockups:get', id),
+    createMockup: (payload) => ipcRenderer.invoke('custom-art:mockups:create', payload || {}),
+    updateMockup: (id, payload) => ipcRenderer.invoke('custom-art:mockups:update', { id, payload }),
+    deleteMockup: (id, hard) => ipcRenderer.invoke('custom-art:mockups:delete', { id, hard: !!hard }),
+
+    // File operations
+    selectFile: (options) => ipcRenderer.invoke('custom-art:select-file', options || {}),
+    selectFiles: (options) => ipcRenderer.invoke('custom-art:select-files', options || {}),
+    uploadFile: (filePath, type) => ipcRenderer.invoke('custom-art:upload', { filePath, type }),
+    extractZip: (zipPath) => ipcRenderer.invoke('custom-art:extract-zip', zipPath),
+
+    // Mockup save
+    saveMockup: (payload) => ipcRenderer.invoke('custom-art:mockup:save', payload || {}),
+
+    // Tiled artwork save (for wall tiling patterns)
+    saveTiledArtwork: (payload) => ipcRenderer.invoke('custom-art:tiled-artwork:save', payload || {}),
+
+    // Generate tiles (split artwork into panels)
+    generateTiles: (payload) => ipcRenderer.invoke('custom-art:tiles:generate', payload || {}),
+
+    // Split artwork into grid tiles (for mockup modal)
+    splitArtwork: (payload) => ipcRenderer.invoke('custom-art:split-artwork', payload || {}),
+
+    // Shopify export
+    exportToShopify: (payload) => ipcRenderer.invoke('custom-art:shopify:export', payload || {}),
+
+    // Metal print sublimation filter
+    applyMetalPrintFilter: (payload) => ipcRenderer.invoke('metal-print:apply-filter', payload || {})
+  },
+
+  // Campaign API (for campaign mockups and other campaign-specific operations)
+  campaign: {
+    saveCampaignMockup: (payload) => ipcRenderer.invoke('campaign:save-mockup', payload || {})
+  },
+
+  // Metal Print Campaign API
+  metalPrint: {
+    applyFilter: (payload) => ipcRenderer.invoke('metal-print:apply-filter', payload || {}),
+    exportCampaign: (payload) => ipcRenderer.invoke('metal-print:export-campaign', payload || {}),
+    getExportStatus: (slug) => ipcRenderer.invoke('metal-print:export-status', slug || '')
+  },
+
+  // Sticker Sheets API
+  stickerSheets: {
+    getCategories: () => ipcRenderer.invoke('sticker-sheets:categories'),
+    getCatalog: (category) => ipcRenderer.invoke('sticker-sheets:catalog', { category }),
+    getGridInfo: (stickerSizeInches) => ipcRenderer.invoke('sticker-sheets:grid-info', { stickerSizeInches }),
+    generate: (payload) => ipcRenderer.invoke('sticker-sheets:generate', payload || {}),
+    generateFromLayout: (layoutData) => ipcRenderer.invoke('sticker-sheets:generate-from-layout', layoutData || {}),
+    fromOrder: (payload) => ipcRenderer.invoke('sticker-sheets:from-order', payload || {}),
+    list: () => ipcRenderer.invoke('sticker-sheets:list'),
+    // New methods for order-based storage
+    listSavedOrders: () => ipcRenderer.invoke('sticker-sheets:list-saved-orders'),
+    getOrderSheets: (orderNumber) => ipcRenderer.invoke('sticker-sheets:get-order-sheets', { orderNumber }),
+    sendToCameo: (payload) => ipcRenderer.invoke('sticker-sheets:send-to-cameo', payload || {}),
+    // Lazy contour generation
+    getContour: (imagePath) => ipcRenderer.invoke('sticker-sheets:get-contour', { imagePath }),
+    // Delete a batch
+    deleteBatch: (batchName) => ipcRenderer.invoke('sticker-sheets:delete-batch', { batchName })
+  },
+
+  // Vinyl Cutter API
+  vinylCutter: {
+    vectorize: (imagePath) => ipcRenderer.invoke('vinyl-cutter:vectorize', { imagePath }),
+    generate: (data) => ipcRenderer.invoke('vinyl-cutter:generate', data || {}),
+    list: () => ipcRenderer.invoke('vinyl-cutter:list'),
+    delete: (batchName) => ipcRenderer.invoke('vinyl-cutter:delete', { batchName }),
+    sendToSilhouette: (payload) => ipcRenderer.invoke('vinyl-cutter:send-to-silhouette', payload || {})
+  },
+
+  // Silhouette Cameo API (local cutting via sendto_silhouette.py)
+  cameo: {
+    openCutFile: (options) => ipcRenderer.invoke('cameo:open-cut-file', options || {}),
+    getScriptPath: () => ipcRenderer.invoke('cameo:get-script-path')
+  },
+
+  // Google Drive Sync API
+  gdrive: {
+    list: (folder) => ipcRenderer.invoke('gdrive:list', folder),
+    syncCustomArt: (fileIds) => ipcRenderer.invoke('gdrive:sync-custom-art', fileIds),
+    syncCatalog: (items) => ipcRenderer.invoke('gdrive:sync-catalog', items),
+    syncMockups: (filenames) => ipcRenderer.invoke('gdrive:sync-mockups', filenames),
+    syncRooms: (filenames) => ipcRenderer.invoke('gdrive:sync-rooms', filenames),
+    sync: (files) => ipcRenderer.invoke('gdrive:sync', files),
+    // Pull (reverse sync) methods
+    pullCollection: (categories) => ipcRenderer.invoke('gdrive:pull-collection', categories),
+    pullCustomArt: () => ipcRenderer.invoke('gdrive:pull-custom-art'),
+    pullMockups: () => ipcRenderer.invoke('gdrive:pull-mockups'),
+    pullRooms: () => ipcRenderer.invoke('gdrive:pull-rooms')
+  },
+
+  // Human Models API
+  humanModels: {
+    list: (query) => ipcRenderer.invoke('human-models:list', query || {}),
+    getCategories: () => ipcRenderer.invoke('human-models:categories'),
+    get: (id) => ipcRenderer.invoke('human-models:get', id),
+    create: (payload) => ipcRenderer.invoke('human-models:create', payload || {}),
+    update: (id, payload) => ipcRenderer.invoke('human-models:update', { id, payload }),
+    delete: (id) => ipcRenderer.invoke('human-models:delete', id),
+    selectFile: (options) => ipcRenderer.invoke('human-models:select-file', options || {}),
+    selectFiles: (options) => ipcRenderer.invoke('human-models:select-files', options || {}),
+    uploadFile: (filePath) => ipcRenderer.invoke('human-models:upload', { filePath }),
+    extractZip: (zipPath) => ipcRenderer.invoke('human-models:extract-zip', zipPath),
+    analyzeMetadata: (modelId) => ipcRenderer.invoke('human-models:analyze-metadata', modelId),
+    // AI-powered garment recoloring
+    recolor: (modelId, color, garmentType, force) => ipcRenderer.invoke('human-models:recolor', { modelId, color, garmentType, force }),
+    listColorVariants: (modelId) => ipcRenderer.invoke('human-models:color-variants', modelId)
+  },
+
+  // Mockup Backgrounds API (for decal mockups)
+  mockupBackgrounds: {
+    list: (query) => ipcRenderer.invoke('mockup-backgrounds:list', query || {}),
+    getCategories: () => ipcRenderer.invoke('mockup-backgrounds:categories'),
+    get: (id) => ipcRenderer.invoke('mockup-backgrounds:get', id),
+    create: (payload) => ipcRenderer.invoke('mockup-backgrounds:create', payload || {}),
+    update: (id, payload) => ipcRenderer.invoke('mockup-backgrounds:update', { id, payload }),
+    delete: (id) => ipcRenderer.invoke('mockup-backgrounds:delete', id),
+    selectFile: (options) => ipcRenderer.invoke('mockup-backgrounds:select-file', options || {}),
+    uploadFile: (filePath) => ipcRenderer.invoke('mockup-backgrounds:upload', { filePath })
+  },
+
+  // Dashboard APIs
+  dashboard: {
+    getStats: (period) => ipcRenderer.invoke('dashboard:stats', { period }),
+    getServerStats: () => ipcRenderer.invoke('dashboard:server-stats'),
+    getSocialStats: (period) => ipcRenderer.invoke('dashboard:social-stats', { period })
+  },
+
+  // Shopify Manager APIs
+  shopifyManager: {
+    listProducts: (query) => ipcRenderer.invoke('shopify-manager:products:list', query || {}),
+    getProduct: (id) => ipcRenderer.invoke('shopify-manager:products:get', id),
+    updateProduct: (id, updates) => ipcRenderer.invoke('shopify-manager:products:update', { id, updates }),
+    updateVariant: (id, updates) => ipcRenderer.invoke('shopify-manager:variants:update', { id, updates }),
+    bulkUpdate: (payload) => ipcRenderer.invoke('shopify-manager:bulk:update', payload || {}),
+    listCollections: () => ipcRenderer.invoke('shopify-manager:collections:list'),
+    getCollectionProducts: (collectionId) => ipcRenderer.invoke('shopify-manager:collections:products', collectionId)
+  },
+
+  // Copy Generator APIs - AI-powered ad copy
+  copyGenerator: {
+    generateCampaignCopy: (campaign, options) => ipcRenderer.invoke('copy:campaign:generate', { campaign, options }),
+    generateHeadlines: (campaign, count, options) => ipcRenderer.invoke('copy:headlines:generate', { campaign, count, options }),
+    generateDescription: (product, options) => ipcRenderer.invoke('copy:description:generate', { product, options }),
+    generateEmailSubjects: (campaign, count, options) => ipcRenderer.invoke('copy:email:generate', { campaign, count, options }),
+    generateABTest: (originalCopy, element, count) => ipcRenderer.invoke('copy:abtest:generate', { originalCopy, element, count }),
+    improveCopy: (existingCopy, options) => ipcRenderer.invoke('copy:improve', { existingCopy, options })
+  },
+
+  // Native confirm dialog (avoids focus issues with window.confirm in Electron)
+  showConfirm: (message, title) => ipcRenderer.invoke('dialog:confirm', { message, title }),
+
+  // Preview image caching (fetches and stores previews locally for faster loading)
+  previewCache: {
+    get: (url, forceRefresh) => ipcRenderer.invoke('preview:getCached', { url, forceRefresh }),
+    batch: (urls) => ipcRenderer.invoke('preview:batchCache', { urls }),
+    clear: () => ipcRenderer.invoke('preview:clearCache'),
+    stats: () => ipcRenderer.invoke('preview:cacheStats')
+  }
 });

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metal Prints Video Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #000;
+      color: white;
+    }
+
+    .test-section {
+      padding: 40px 20px;
+      border-bottom: 1px solid #333;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 20px;
+      color: #00d4ff;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      color: #ff00ff;
+    }
+
+    .status {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-weight: 600;
+    }
+
+    .status.success {
+      background: #10b98144;
+      border: 1px solid #10b981;
+      color: #10b981;
+    }
+
+    .status.error {
+      background: #ef444444;
+      border: 1px solid #ef4444;
+      color: #ef4444;
+    }
+
+    .video-container {
+      position: relative;
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      border: 2px solid #00d4ff;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #1a0b2e;
+    }
+
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .hero-preview {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      min-height: 600px;
+      max-height: 800px;
+      overflow: hidden;
+      background: linear-gradient(135deg, #1a0b2e 0%, #3a1c71 50%, #1a0b2e 100%);
+    }
+
+    .hero-video {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      min-width: 100%;
+      min-height: 100%;
+      width: auto;
+      height: auto;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+      opacity: 0.4;
+      filter: brightness(0.7) contrast(1.2);
+    }
+
+    .hero-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg,
+        rgba(26, 11, 46, 0.85) 0%,
+        rgba(58, 28, 113, 0.75) 50%,
+        rgba(26, 11, 46, 0.85) 100%);
+      z-index: 2;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .hero-headline {
+      font-size: clamp(48px, 8vw, 96px);
+      font-weight: 900;
+      margin: 0 0 24px 0;
+      background: linear-gradient(135deg, #00d4ff 0%, #ff00ff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-subheadline {
+      font-size: clamp(20px, 3vw, 32px);
+      font-weight: 600;
+      margin: 0 0 16px 0;
+      color: rgba(255, 255, 255, 0.95);
+    }
+
+    .hero-description {
+      font-size: clamp(16px, 2vw, 20px);
+      color: rgba(255, 255, 255, 0.8);
+      max-width: 700px;
+      margin: 0 auto 40px auto;
+      line-height: 1.6;
+    }
+
+    .info {
+      background: #1a0b2e;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-family: monospace;
+      font-size: 14px;
+      color: #00d4ff;
+    }
+
+    code {
+      color: #ff00ff;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="test-section">
+    <h1>🎬 Metal Prints Video Test Page</h1>
+    <p style="margin-bottom: 20px; color: #aaa;">
+      This page tests the metallic showcase video in different configurations.
+    </p>
+  </div>
+
+  <div class="test-section">
+    <h2>1. Direct Video Playback (Full Visibility)</h2>
+    <p style="margin-bottom: 16px; color: #aaa;">
+      This shows the video at 100% opacity with no effects - you should see it clearly.
+    </p>
+
+    <div class="video-container">
+      <video id="directVideo" autoplay loop muted playsinline controls>
+        <source src="/web/videos/metallic-showcase.mov" type="video/quicktime">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+
+    <div id="directStatus" class="status" style="margin-top: 16px; display: none;"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>2. Hero Section Preview (As It Will Appear on Product Page)</h2>
+    <p style="margin-bottom: 16px; color: #aaa;">
+      This shows how the video looks with the actual hero styling - subtle background with overlay.
+    </p>
+
+    <div class="hero-preview">
+      <video class="hero-video" autoplay loop muted playsinline>
+        <source src="/web/videos/metallic-showcase.mov" type="video/quicktime">
+      </video>
+
+      <div class="hero-overlay"></div>
+
+      <div class="hero-content">
+        <h1 class="hero-headline">Premium Metal Prints</h1>
+        <p class="hero-subheadline">Your Photos. Transformed into Stunning Metal Art.</p>
+        <p class="hero-description">
+          Experience the brilliance of aluminum printing - where colors explode with vibrancy
+          and your memories shine with a breathtaking metallic finish.
+        </p>
+      </div>
+    </div>
+
+    <div class="info" style="margin-top: 16px;">
+      <strong>Note:</strong> The video in the hero section is intentionally subtle (40% opacity, darkened)
+      to create atmosphere without overwhelming the text. This is the same effect used on the product page.
+    </div>
+  </div>
+
+  <div class="test-section">
+    <h2>3. Video Information</h2>
+
+    <div class="info">
+      <div><strong>Video URL:</strong> <code>/web/videos/metallic-showcase.mov</code></div>
+      <div><strong>Expected Size:</strong> ~29MB</div>
+      <div><strong>Format:</strong> QuickTime (.mov)</div>
+      <div><strong>Server Route:</strong> Serves all files from <code>/web/videos/</code></div>
+    </div>
+
+    <div id="videoInfo" style="margin-top: 16px;"></div>
+  </div>
+
+  <script>
+    // Check if direct video loaded
+    const directVideo = document.getElementById('directVideo');
+    const directStatus = document.getElementById('directStatus');
+    const videoInfo = document.getElementById('videoInfo');
+
+    directVideo.addEventListener('loadedmetadata', () => {
+      directStatus.className = 'status success';
+      directStatus.textContent = '✓ Video loaded successfully!';
+      directStatus.style.display = 'block';
+
+      videoInfo.innerHTML = `
+        <div class="status success">
+          <div><strong>✓ Video Details:</strong></div>
+          <div>Duration: ${directVideo.duration.toFixed(2)} seconds</div>
+          <div>Dimensions: ${directVideo.videoWidth} × ${directVideo.videoHeight}</div>
+          <div>Ready to use in Shopify templates!</div>
+        </div>
+      `;
+    });
+
+    directVideo.addEventListener('error', (e) => {
+      directStatus.className = 'status error';
+      directStatus.textContent = '✗ Video failed to load. Check server console.';
+      directStatus.style.display = 'block';
+
+      videoInfo.innerHTML = `
+        <div class="status error">
+          <div><strong>✗ Video Error:</strong></div>
+          <div>The video could not be loaded from: /web/videos/metallic-showcase.mov</div>
+          <div>Check that:</div>
+          <ul style="margin-left: 20px; margin-top: 8px;">
+            <li>Server is running</li>
+            <li>Video file exists at /web/videos/metallic-showcase.mov</li>
+            <li>Server route for /web/videos/ is working</li>
+          </ul>
+        </div>
+      `;
+    });
+
+    // Test video accessibility
+    fetch('/web/videos/metallic-showcase.mov', { method: 'HEAD' })
+      .then(response => {
+        if (response.ok) {
+          console.log('✓ Video is accessible');
+          console.log('Content-Type:', response.headers.get('content-type'));
+          console.log('Content-Length:', response.headers.get('content-length'));
+        } else {
+          console.error('✗ Video not accessible:', response.status, response.statusText);
+        }
+      })
+      .catch(error => {
+        console.error('✗ Failed to fetch video:', error);
+      });
+  </script>
+
+</body>
+</html>

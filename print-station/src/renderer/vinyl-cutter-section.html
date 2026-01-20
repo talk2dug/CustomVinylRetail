@@ -1,0 +1,173 @@
+      <!-- ================================================================== -->
+      <!-- VINYL CUTTER SECTION                                               -->
+      <!-- ================================================================== -->
+      <section id="vinylCutterView" class="view">
+        <div class="view-toolbar">
+          <div class="catalog-toolbar-group">
+            <h3 style="margin:0;">Vinyl Cutter</h3>
+            <span id="vinylCutterStatus" class="catalog-status muted">Ready</span>
+          </div>
+          <div class="catalog-toolbar-actions" style="display:flex;gap:12px;align-items:center;">
+            <!-- Canvas Size Inputs -->
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;">
+                <span>W:</span>
+                <input type="number" id="vinylCanvasWidth" value="12" min="1" max="24" step="1" style="width:50px;" />
+              </label>
+              <span style="color:#888;">x</span>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;">
+                <span>H:</span>
+                <input type="number" id="vinylCanvasHeight" value="12" min="1" max="24" step="1" style="width:50px;" />
+              </label>
+              <span style="font-size:12px;color:#888;">inches</span>
+              <button id="vinylApplyCanvasSizeBtn" class="secondary" style="font-size:11px;padding:4px 10px;">Apply</button>
+            </div>
+            <span style="color:#555;">|</span>
+            <button id="vinylClearCanvasBtn" class="secondary">Clear Canvas</button>
+            <button id="vinylGenerateCutFilesBtn" class="primary" disabled>Generate Cut Files</button>
+          </div>
+        </div>
+
+        <div class="vinyl-cutter-layout" style="display:flex;gap:16px;height:calc(100% - 60px);padding:16px;">
+          <!-- Left Panel: Canvas Area -->
+          <div class="vinyl-main-panel" style="flex:2;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
+
+            <!-- Canvas Toolbar -->
+            <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                    <input type="checkbox" id="vinylShowGrid" checked />
+                    <span>Show Grid</span>
+                  </label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                    <input type="checkbox" id="vinylSnapToGrid" />
+                    <span>Snap to Grid</span>
+                  </label>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <button id="vinylContourToggle" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="toggleVinylContourVisibility()">Hide Contours</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Canvas Container -->
+            <div class="inventory-card" style="flex:1;overflow:auto;display:flex;flex-direction:column;background:#2a2a3a;">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <span style="font-size:13px;font-weight:500;">Vinyl Sheet</span>
+                  <span id="vinylCanvasSizeLabel" style="font-size:11px;color:#888;">12" x 12" @ 96 DPI</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <!-- Zoom Controls -->
+                  <button id="vinylZoomOutBtn" class="secondary" style="font-size:11px;padding:2px 8px;min-width:28px;" onclick="zoomVinylCanvas(-1)" title="Zoom Out">-</button>
+                  <span id="vinylZoomLevel" style="font-size:11px;min-width:40px;text-align:center;color:#ccc;">100%</span>
+                  <button id="vinylZoomInBtn" class="secondary" style="font-size:11px;padding:2px 8px;min-width:28px;" onclick="zoomVinylCanvas(1)" title="Zoom In">+</button>
+                  <button id="vinylZoomResetBtn" class="secondary" style="font-size:11px;padding:2px 8px;" onclick="resetVinylZoom()" title="Fit to View">Fit</button>
+                  <span style="font-size:12px;color:#888;">|</span>
+                  <span style="font-size:12px;"><span id="vinylItemCount">0</span> items</span>
+                </div>
+              </div>
+
+              <!-- Canvas with Rulers -->
+              <div id="vinylCanvasContainer" style="flex:1;display:flex;overflow:auto;position:relative;">
+                <!-- Top Ruler -->
+                <div id="vinylTopRuler" style="position:absolute;top:0;left:30px;height:25px;background:#1a1a2e;border-bottom:1px solid #444;z-index:10;"></div>
+                <!-- Left Ruler -->
+                <div id="vinylLeftRuler" style="position:absolute;top:25px;left:0;width:30px;background:#1a1a2e;border-right:1px solid #444;z-index:10;"></div>
+                <!-- Corner -->
+                <div style="position:absolute;top:0;left:0;width:30px;height:25px;background:#1a1a2e;z-index:11;border-right:1px solid #444;border-bottom:1px solid #444;"></div>
+                <!-- Canvas Area -->
+                <div style="flex:1;display:flex;justify-content:center;align-items:center;padding:45px 20px 20px 50px;overflow:auto;">
+                  <canvas id="vinylEditorCanvas" style="border:1px solid #444;box-shadow:0 4px 20px rgba(0,0,0,0.3);"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <!-- Contour Editing Controls -->
+            <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                <!-- Item Controls -->
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <button id="vinylRefreshContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#3b82f6;color:white;border-color:#3b82f6;" onclick="refreshVinylContour()" disabled title="Re-fetch contour from server">Refresh</button>
+                  <button id="vinylEditContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#22c55e;color:white;border-color:#22c55e;" onclick="enterVinylContourEditMode()" disabled title="Edit cut line points">Edit Contour</button>
+                  <button id="vinylDoneEditingBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#22c55e;color:white;border-color:#22c55e;display:none;" onclick="exitVinylContourEditMode(true)">Done Editing</button>
+                  <button id="vinylCircleContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="setVinylContourToCircle(16)" title="Circle/ellipse contour">Circle</button>
+                  <button id="vinylRoundedRectBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="setVinylContourToRoundedRect(20)" title="Rounded rectangle contour">Rounded</button>
+                  <button id="vinylSquareContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="resetVinylContourToDefault()" title="Square/rectangle contour">Square</button>
+                  <button id="vinylSmoothContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="smoothVinylContour()" title="Smooth out blocky contours">Smooth</button>
+                  <button id="vinylAddPointBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="addVinylContourPoint()" title="Add point to contour">+ Point</button>
+                  <button id="vinylRemovePointBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="removeVinylContourPoint()" title="Remove selected point">- Point</button>
+                </div>
+                <!-- Transform Controls -->
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <button id="vinylRotateBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="rotateVinylItem(90)" disabled title="Rotate 90">Rotate</button>
+                  <button id="vinylScaleUpBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="scaleVinylItem(1.1)" disabled title="Scale Up">+</button>
+                  <button id="vinylScaleDownBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="scaleVinylItem(0.9)" disabled title="Scale Down">-</button>
+                  <button id="vinylDeleteBtn" class="secondary" style="font-size:11px;padding:4px 10px;color:#ef4444;" onclick="removeVinylItem()" disabled title="Delete">Delete</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Panel: Items & Colors -->
+          <div class="vinyl-side-panel" style="width:340px;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
+
+            <!-- Available Items Panel -->
+            <div class="inventory-card" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+              <h4 style="margin:0 0 10px 0;">Items on Canvas</h4>
+              <p style="font-size:11px;color:#888;margin:0 0 10px 0;">Select items from catalog and click "Send to Vinyl Cutter"</p>
+              <div id="vinylItemsList" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
+                <div class="placeholder" style="text-align:center;padding:20px;color:#888;">
+                  No items added yet
+                </div>
+              </div>
+            </div>
+
+            <!-- Color Layers Panel -->
+            <div class="inventory-card" style="flex-shrink:0;max-height:200px;overflow:hidden;display:flex;flex-direction:column;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <h4 style="margin:0;">Detected Colors</h4>
+                <span id="vinylColorCount" style="font-size:11px;color:#888;">0 colors</span>
+              </div>
+              <div id="vinylColorLayers" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+                <div class="placeholder" style="text-align:center;padding:15px;color:#888;font-size:12px;">
+                  Colors will appear after adding items
+                </div>
+              </div>
+            </div>
+
+            <!-- Weeding Options -->
+            <div class="inventory-card" style="flex-shrink:0;">
+              <h4 style="margin:0 0 10px 0;">Cut Options</h4>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                <input type="checkbox" id="vinylAddWeeding" />
+                <span>Add weeding lines/boxes</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:8px;">
+                <input type="checkbox" id="vinylAddRegistration" checked />
+                <span>Add registration marks</span>
+              </label>
+            </div>
+
+            <!-- Generate Button -->
+            <div class="inventory-card" style="flex-shrink:0;">
+              <button id="vinylGenerateBtn" class="primary" style="width:100%;padding:12px;" onclick="generateVinylCutFiles()" disabled>
+                Generate Cut Files
+              </button>
+              <p id="vinylGenerateStatus" style="font-size:11px;color:#888;margin:8px 0 0 0;text-align:center;">Add items to canvas first</p>
+            </div>
+
+            <!-- Output Panel -->
+            <div id="vinylOutputPanel" class="inventory-card" style="display:none;flex-shrink:0;background:#0f2918;border:1px solid #34d399;">
+              <h4 style="margin:0 0 8px 0;color:#34d399;">Generated Cut Files</h4>
+              <div id="vinylOutputFiles" style="display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
+
+            <!-- View Generated Files -->
+            <div class="inventory-card" style="flex-shrink:0;">
+              <button id="vinylViewFilesBtn" class="secondary" style="width:100%;" onclick="openVinylCutsBrowser()">View Generated Cut Files</button>
+            </div>
+          </div>
+        </div>
+      </section>

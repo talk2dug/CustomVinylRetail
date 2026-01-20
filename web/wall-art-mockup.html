@@ -1,0 +1,2503 @@
+<!DOCTYPE html>
+<!-- Version: 2024-12-06-v2 - Fixed artworkId passing for tile split -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wall Art Mockup Tool - With Zoom</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #111; 
+      color: white; 
+      min-height: 100vh;
+    }
+    .container { max-width: 1400px; margin: 0 auto; padding: 15px; }
+    h1 { text-align: center; margin-bottom: 15px; font-size: 24px; }
+    
+    .controls { 
+      display: flex; 
+      flex-wrap: wrap; 
+      gap: 8px; 
+      justify-content: center; 
+      margin-bottom: 12px; 
+    }
+    
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #222;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    
+    .control-group label {
+      color: #aaa;
+      white-space: nowrap;
+    }
+    
+    .control-group input[type="range"] {
+      width: 70px;
+    }
+    
+    .control-group input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+    
+    .control-group select {
+      background: #333;
+      color: white;
+      border: 1px solid #444;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    
+    .zoom-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #1a3a1a;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    
+    .zoom-control label {
+      color: #8f8;
+    }
+    
+    .zoom-control input[type="range"] {
+      width: 100px;
+    }
+    
+    .zoom-control .zoom-value {
+      color: #8f8;
+      font-weight: 600;
+      min-width: 45px;
+      text-align: center;
+    }
+    
+    .zoom-control button {
+      background: #2a4a2a;
+      border: none;
+      color: #8f8;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .zoom-control button:hover {
+      background: #3a5a3a;
+    }
+    
+    .panel {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .panel h3 {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    
+    .panel-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .panel-control {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .panel-control label {
+      font-size: 11px;
+      color: #888;
+    }
+    
+    .panel-control input[type="range"] {
+      width: 100px;
+    }
+    
+    .panel-control .value {
+      font-size: 11px;
+      color: #3b82f6;
+      font-weight: 600;
+    }
+    
+    .filter-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    
+    .filter-btn {
+      padding: 8px 16px;
+      border: 2px solid #444;
+      border-radius: 6px;
+      background: #222;
+      color: #ccc;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover {
+      border-color: #666;
+      color: white;
+    }
+    .filter-btn.active {
+      border-color: #3b82f6;
+      background: #1e3a5f;
+      color: white;
+    }
+    
+    .filter-btn .icon {
+      display: block;
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+    
+    .btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-blue { background: #2563eb; color: white; }
+    .btn-blue:hover { background: #1d4ed8; }
+    .btn-green { background: #16a34a; color: white; }
+    .btn-green:hover { background: #15803d; }
+    .btn-purple { background: #7c3aed; color: white; }
+    .btn-purple:hover { background: #6d28d9; }
+    .btn-red { background: #dc2626; color: white; }
+    .btn-red:hover { background: #b91c1c; }
+    .btn-orange { background: #ea580c; color: white; }
+    .btn-orange:hover { background: #c2410c; }
+    .btn-yellow { background: #ca8a04; color: white; }
+    .btn-yellow:hover { background: #a16207; }
+    .btn-gray { background: #4b5563; color: white; }
+    .btn-gray:hover { background: #374151; }
+    .btn-teal { background: #0d9488; color: white; }
+    .btn-teal:hover { background: #0f766e; }
+    .btn-cyan { background: #06b6d4; color: white; }
+    .btn-cyan:hover { background: #0891b2; }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+    
+    .hidden-input { display: none; }
+    
+    .canvas-wrapper {
+      overflow: auto;
+      max-height: 70vh;
+      border-radius: 12px;
+      background: #0a0a0a;
+      border: 1px solid #333;
+    }
+    
+    .canvas-area {
+      position: relative;
+      background: #222;
+      user-select: none;
+      transform-origin: top left;
+      display: inline-block;
+    }
+    
+    .room-image {
+      display: block;
+    }
+    
+    .grid-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      opacity: 0.3;
+    }
+    
+    .artwork {
+      position: absolute;
+      cursor: move;
+      transform-origin: center center;
+    }
+    .artwork.selected { 
+      outline: 3px solid #3b82f6; 
+      outline-offset: 2px; 
+    }
+    
+    .artwork-inner {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .frame-metal {
+      box-shadow: 
+        inset 0 0 0 5px #1a1a1a,
+        6px 6px 20px rgba(0,0,0,0.6);
+      border-radius: 1px;
+    }
+    
+    .frame-canvas {
+      box-shadow: 
+        inset 0 0 0 3px #2a2520,
+        inset 3px 3px 0 0 #3d362e,
+        inset -3px -3px 0 0 #1a1815,
+        8px 8px 20px rgba(0,0,0,0.5);
+      border-radius: 0;
+    }
+    
+    .artwork img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    
+    .filter-metal img {
+      filter: saturate(1.4) contrast(1.15) brightness(1.05);
+    }
+    .filter-metal .metal-sheen {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.1) 25%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.1) 75%, rgba(255,255,255,0) 100%);
+      pointer-events: none;
+      mix-blend-mode: overlay;
+    }
+    .filter-metal .metal-edge-highlight {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      box-shadow: inset 1px 1px 0 rgba(255,255,255,0.3), inset -1px -1px 0 rgba(0,0,0,0.3);
+      pointer-events: none;
+    }
+    
+    .filter-canvas img {
+      filter: saturate(0.9) contrast(0.95) brightness(0.98);
+    }
+    .filter-canvas .canvas-texture {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      opacity: 0.4;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-size: 100px 100px;
+    }
+    .filter-canvas .canvas-weave {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      opacity: 0.15;
+      background-image: linear-gradient(0deg, transparent 50%, rgba(0,0,0,0.1) 50%), linear-gradient(90deg, transparent 50%, rgba(0,0,0,0.1) 50%);
+      background-size: 4px 4px;
+    }
+    .filter-canvas .canvas-depth {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      box-shadow: inset 2px 2px 4px rgba(0,0,0,0.2), inset -1px -1px 2px rgba(255,255,255,0.1);
+    }
+    
+    .resize-handle {
+      position: absolute;
+      bottom: -10px;
+      right: -10px;
+      width: 20px;
+      height: 20px;
+      background: #3b82f6;
+      border: 2px solid white;
+      border-radius: 50%;
+      cursor: se-resize;
+      z-index: 10;
+    }
+    
+    .rotate-handle {
+      position: absolute;
+      top: -30px;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      background: #f59e0b;
+      border: 2px solid white;
+      border-radius: 50%;
+      cursor: grab;
+      z-index: 10;
+    }
+    .rotate-handle:active { cursor: grabbing; }
+    
+    .rotate-line {
+      position: absolute;
+      top: -20px;
+      left: 50%;
+      width: 2px;
+      height: 20px;
+      background: #f59e0b;
+    }
+    
+    .placeholder {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    .placeholder p { margin: 10px 0; }
+    .placeholder .big { font-size: 22px; }
+    
+    .tips {
+      text-align: center;
+      color: #666;
+      margin-top: 12px;
+      font-size: 12px;
+    }
+    
+    .size-info {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      background: rgba(0,0,0,0.85);
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      white-space: nowrap;
+      margin-bottom: 5px;
+      z-index: 20;
+    }
+    
+    .snap-indicator {
+      position: absolute;
+      background: #3b82f6;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    .snap-indicator.horizontal { height: 2px; left: 0; right: 0; }
+    .snap-indicator.vertical { width: 2px; top: 0; bottom: 0; }
+    
+    .num-input {
+      width: 45px;
+      padding: 3px 5px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background: #333;
+      color: white;
+      font-size: 12px;
+      text-align: center;
+    }
+    
+    .info-text {
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    .two-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 800px) {
+      .two-columns { grid-template-columns: 1fr; }
+    }
+
+    /* Artwork Database Modal */
+    .artwork-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+
+    .artwork-modal {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 900px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .artwork-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid #333;
+    }
+
+    .artwork-modal-header h2 {
+      font-size: 18px;
+      margin: 0;
+    }
+
+    .artwork-modal-close {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .artwork-modal-close:hover {
+      color: white;
+    }
+
+    .artwork-modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .artwork-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 16px;
+    }
+
+    .artwork-item {
+      background: #222;
+      border: 2px solid #333;
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .artwork-item:hover {
+      border-color: #3b82f6;
+      transform: translateY(-2px);
+    }
+    .artwork-item.selected {
+      border-color: #22c55e;
+      background: #1a2f1a;
+    }
+
+    .artwork-item img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 4px;
+      background: #111;
+    }
+
+    .artwork-item-name {
+      font-size: 11px;
+      color: #aaa;
+      margin-top: 8px;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .artwork-modal-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-top: 1px solid #333;
+      gap: 12px;
+    }
+
+    .artwork-modal-loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    /* Tile Configuration Modal */
+    .tile-config {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .tile-config label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #aaa;
+      font-size: 14px;
+    }
+
+    .tile-config input[type="number"] {
+      width: 60px;
+      padding: 6px 10px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background: #333;
+      color: white;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .tile-preview {
+      display: grid;
+      gap: 4px;
+      background: #333;
+      padding: 8px;
+      border-radius: 8px;
+      width: 100px;
+      height: 100px;
+    }
+
+    .tile-preview-cell {
+      background: #3b82f6;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Early ready signal before React loads -->
+  <script>
+    console.log('[Mockup] Early script - setting up message listener');
+    window._pendingMessages = [];
+    window._reactReady = false;
+
+    // Listen for messages immediately
+    window.addEventListener('message', function(event) {
+      console.log('[Mockup] Early listener got message:', event.data?.type);
+      if (!window._reactReady && event.data?.type) {
+        console.log('[Mockup] Queuing message for React:', event.data.type);
+        window._pendingMessages.push(event.data);
+      }
+    });
+
+    // Send ready signal immediately
+    if (window.parent !== window) {
+      console.log('[Mockup] Sending early MOCKUP_READY');
+      window.parent.postMessage({ type: 'MOCKUP_READY' }, '*');
+    }
+  </script>
+
+  <script type="text/babel">
+    console.log('[Mockup] Script starting...');
+    const { useState, useRef, useCallback, useEffect } = React;
+
+    function WallArtMockup() {
+      const [roomImage, setRoomImage] = useState(null);
+      const [roomSize, setRoomSize] = useState({ width: 0, height: 0 });
+      const [artworks, setArtworks] = useState([]);
+      const [selectedArt, setSelectedArt] = useState(null);
+      const [isDragging, setIsDragging] = useState(false);
+      const [isResizing, setIsResizing] = useState(false);
+      const [isRotating, setIsRotating] = useState(false);
+      const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+      const [copiedPerspective, setCopiedPerspective] = useState(null);
+
+      // Zoom
+      const [zoom, setZoom] = useState(1);
+
+      // Grid and snapping
+      const [snapEnabled, setSnapEnabled] = useState(true);
+      const [snapToArt, setSnapToArt] = useState(true);
+      const [showGrid, setShowGrid] = useState(false);
+      const [gridSize, setGridSize] = useState(20);
+      const [gap, setGap] = useState(10);
+      const [snapLines, setSnapLines] = useState({ horizontal: [], vertical: [] });
+
+      // For external export (postMessage)
+      const [exportRequested, setExportRequested] = useState(false);
+
+      // Debug state
+      const [debugMsg, setDebugMsg] = useState('Waiting for message...');
+
+      // Artwork database modal state
+      const [showArtworkModal, setShowArtworkModal] = useState(false);
+      const [dbArtworks, setDbArtworks] = useState([]);
+      const [loadingDbArtworks, setLoadingDbArtworks] = useState(false);
+      const [selectedDbArtwork, setSelectedDbArtwork] = useState(null);
+
+      // Tile modal state
+      const [showTileModal, setShowTileModal] = useState(false);
+      const [tileCols, setTileCols] = useState(2);
+      const [tileRows, setTileRows] = useState(2);
+      const [tileArtworkId, setTileArtworkId] = useState(null); // Store the artwork ID being tiled
+      // Tile dimensions (in inches) - determines aspect ratio of each tile
+      const [tileSizeWidth, setTileSizeWidth] = useState(12);
+      const [tileSizeHeight, setTileSizeHeight] = useState(12);
+
+      // Size scale - pixels per inch for converting to real dimensions
+      // Default 10 means 100px = 10 inches (user can adjust)
+      const [pixelsPerInch, setPixelsPerInch] = useState(10);
+
+      // Master tile size - ensures all tiles across all artworks are uniform
+      // When set, new tiles will match this size and existing tiles can be normalized
+      const [masterTileSize, setMasterTileSize] = useState({ width: 100, height: 100 });
+
+      // Multi-select for tile groups - array of selected artwork IDs
+      const [selectedGroup, setSelectedGroup] = useState([]);
+
+      const containerRef = useRef(null);
+      const roomRef = useRef(null);
+      const wrapperRef = useRef(null);
+
+      const snapThreshold = 8;
+
+      // Listen for messages from parent window (print-station)
+      useEffect(() => {
+        console.log('[Mockup] Setting up message listener');
+        setDebugMsg('Message listener set up');
+        const handleMessage = (event) => {
+          setDebugMsg('Message received: ' + (event.data?.type || 'unknown'));
+          console.log('[Mockup] Received message:', event.data?.type);
+          const { type, roomImage: newRoomImage, artworkImage, materialFilter } = event.data || {};
+
+          if (type === 'SET_MOCKUP') {
+            // Set room image from URL
+            if (newRoomImage) {
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onload = () => {
+                setRoomSize({ width: img.width, height: img.height });
+                setRoomImage(newRoomImage);
+                setZoom(1);
+              };
+              img.src = newRoomImage;
+            }
+
+            // Add artwork if provided
+            if (artworkImage) {
+              const artImg = new Image();
+              artImg.crossOrigin = 'anonymous';
+              artImg.onload = () => {
+                // Calculate aspect ratio and scale to fit within max bounds while maintaining ratio
+                const aspectRatio = artImg.width / artImg.height;
+                const maxWidth = 400;
+                const maxHeight = 300;
+                let width, height;
+
+                if (artImg.width <= maxWidth && artImg.height <= maxHeight) {
+                  // Image fits within bounds, use original size
+                  width = artImg.width;
+                  height = artImg.height;
+                } else if (aspectRatio > maxWidth / maxHeight) {
+                  // Width is the limiting factor
+                  width = maxWidth;
+                  height = maxWidth / aspectRatio;
+                } else {
+                  // Height is the limiting factor
+                  height = maxHeight;
+                  width = maxHeight * aspectRatio;
+                }
+
+                const newArt = {
+                  id: Date.now(),
+                  src: artworkImage,
+                  x: 100,
+                  y: 100,
+                  width: width,
+                  height: height,
+                  aspectRatio: aspectRatio,
+                  rotation: 0,
+                  perspective: { rotateX: 0, rotateY: 0, scale: 1 },
+                  filter: materialFilter || 'none'
+                };
+                setArtworks([newArt]);
+                setSelectedArt(newArt.id);
+              };
+              artImg.src = artworkImage;
+            }
+          }
+
+          if (type === 'EXPORT_MOCKUP') {
+            setExportRequested(true);
+          }
+
+          // Handle artwork list from database
+          if (type === 'ARTWORK_LIST') {
+            console.log('[Mockup] Received ARTWORK_LIST:', event.data.artworks?.length || 0, 'items');
+            setDbArtworks(event.data.artworks || []);
+            setLoadingDbArtworks(false);
+          }
+
+          // Handle tiled artwork result - replace current artwork with tiles
+          if (type === 'TILED_ARTWORK_RESULT') {
+            const { artworkId, tiles, cols, rows, tileWidth: msgTileWidth, tileHeight: msgTileHeight, tileAspectRatio } = event.data;
+            console.log('[Mockup] Received TILED_ARTWORK_RESULT:', tiles?.length || 0, 'tiles, artworkId:', artworkId, 'aspectRatio:', tileAspectRatio);
+
+            if (tiles && tiles.length > 0) {
+              // First, detect gap from existing tiles (before setArtworks)
+              // We need to access current artworks to detect the gap
+              const currentArtworksSnapshot = artworks;
+              const existingTilesSnapshot = currentArtworksSnapshot.filter(a => a.tileRow !== undefined);
+
+              let detectedGap = gap || 10;
+              if (existingTilesSnapshot.length >= 2) {
+                const sortedByX = [...existingTilesSnapshot].sort((a, b) => a.x - b.x);
+                for (let i = 1; i < sortedByX.length; i++) {
+                  const prev = sortedByX[i - 1];
+                  const curr = sortedByX[i];
+                  if (Math.abs(prev.y - curr.y) < 5) {
+                    const gapCalc = curr.x - (prev.x + prev.width);
+                    if (gapCalc > 0 && gapCalc < 200) {
+                      detectedGap = gapCalc;
+                      console.log('[Mockup] Pre-detected gap from existing tiles:', detectedGap);
+                      break;
+                    }
+                  }
+                }
+              }
+
+              // Update gap state immediately so new tiles use it
+              setGap(detectedGap);
+
+              // Use functional update to get current artworks state
+              setArtworks(currentArtworks => {
+                console.log('[Mockup] Current artworks:', currentArtworks.map(a => ({ id: a.id, type: typeof a.id })));
+
+                // Find the original artwork to get its position (use artworkId from message)
+                const artIdToReplace = artworkId;
+                console.log('[Mockup] Will replace artwork with id:', artIdToReplace, 'type:', typeof artIdToReplace);
+
+                const originalArt = currentArtworks.find(a => a.id === artIdToReplace);
+                console.log('[Mockup] Found original art:', originalArt ? 'yes' : 'no');
+
+                if (!originalArt) {
+                  // Try loose comparison in case of type mismatch
+                  const looseMatch = currentArtworks.find(a => String(a.id) === String(artIdToReplace));
+                  console.log('[Mockup] Loose match found:', looseMatch ? 'yes' : 'no');
+                }
+
+                const baseX = originalArt ? originalArt.x : 100;
+                const baseY = originalArt ? originalArt.y : 100;
+
+                // Check if there are existing tiles to match size with
+                const existingTiles = currentArtworks.filter(a => a.tileRow !== undefined);
+                let tileWidth, tileHeight;
+
+                if (existingTiles.length > 0) {
+                  // Match size of existing tiles for uniformity
+                  tileWidth = existingTiles[0].width;
+                  tileHeight = existingTiles[0].height;
+                  console.log('[Mockup] Matching existing tile size:', tileWidth, 'x', tileHeight);
+                } else {
+                  // Use the aspect ratio from the message to calculate tile dimensions
+                  // Base size is 100px for the larger dimension, then calculate the other
+                  const basePixelSize = 100;
+                  const aspectRatio = tileAspectRatio || (msgTileWidth && msgTileHeight ? msgTileWidth / msgTileHeight : 1);
+
+                  if (aspectRatio >= 1) {
+                    // Width is larger or equal - width = baseSize, height = baseSize / ratio
+                    tileWidth = basePixelSize;
+                    tileHeight = basePixelSize / aspectRatio;
+                  } else {
+                    // Height is larger - height = baseSize, width = baseSize * ratio
+                    tileHeight = basePixelSize;
+                    tileWidth = basePixelSize * aspectRatio;
+                  }
+                  console.log('[Mockup] Using aspect ratio:', aspectRatio, '-> tile size:', tileWidth, 'x', tileHeight);
+                }
+
+                // Use the detected gap
+                const tileGap = detectedGap;
+                console.log('[Mockup] Using tile gap:', tileGap);
+
+                // Filter out the original and add tiles
+                const filtered = currentArtworks.filter(a => a.id !== artIdToReplace);
+                console.log('[Mockup] Filtered count:', filtered.length, 'from:', currentArtworks.length);
+
+                // Generate a unique group ID for this set of tiles
+                const tileGroupId = `group_${Date.now()}`;
+
+                const newTiles = tiles.map((tile, idx) => {
+                  const col = tile.col - 1;
+                  const row = tile.row - 1;
+                  // Round positions to integers to avoid floating-point precision issues with gaps
+                  const x = Math.round(baseX + col * (tileWidth + tileGap));
+                  const y = Math.round(baseY + row * (tileHeight + tileGap));
+                  return {
+                    id: Date.now() + idx,
+                    src: tile.url,
+                    name: `Tile ${tile.row}-${tile.col}`,
+                    x,
+                    y,
+                    width: tileWidth,
+                    height: tileHeight,
+                    aspectRatio: tileWidth / tileHeight,
+                    rotation: 0,
+                    rotateX: 0,
+                    rotateY: 0,
+                    skewX: 0,
+                    skewY: 0,
+                    filter: 'none',
+                    tileRow: tile.row,
+                    tileCol: tile.col,
+                    tileGroupId  // Track which tiles belong together
+                  };
+                });
+
+                // Update master tile size to match what we used
+                setMasterTileSize({ width: tileWidth, height: tileHeight });
+
+                return [...filtered, ...newTiles];
+              });
+
+              setSelectedArt(null);
+              setTileArtworkId(null);
+            }
+          }
+
+          // Handle tiled mockup (split panel artwork)
+          if (type === 'SET_TILED_MOCKUP') {
+            const { roomImage: tiledRoomImage, cols, rows, tileWidth, tileHeight, gap: tileGap, tiles } = event.data;
+            console.log('[Mockup] SET_TILED_MOCKUP received:', { tiledRoomImage, cols, rows, tileWidth, tileHeight, tileGap, tilesCount: tiles?.length });
+            console.log('[Mockup] Tiles:', tiles);
+
+            // Load the room image first
+            if (tiledRoomImage) {
+              console.log('[Mockup] Loading room image, length:', tiledRoomImage.length, 'starts with:', tiledRoomImage.substring(0, 50));
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onerror = (e) => {
+                console.error('[Mockup] FAILED to load room image:', e);
+              };
+              img.onload = () => {
+                console.log('[Mockup] Room image loaded:', img.width, 'x', img.height);
+                setRoomSize({ width: img.width, height: img.height });
+                setRoomImage(tiledRoomImage);
+                setZoom(1);
+
+                // Once room is loaded, add the tiles as artwork pieces
+                // We'll position them in a grid layout
+                const baseSize = 100; // Base pixel size for tiles in mockup
+                const scaleFactor = baseSize / Math.max(tileWidth, tileHeight);
+                const pixelWidth = tileWidth * scaleFactor;
+                const pixelHeight = tileHeight * scaleFactor;
+                const pixelGap = (tileGap || 1) * scaleFactor;
+
+                // Starting position (center of room roughly)
+                const startX = (img.width / 2) - ((cols * pixelWidth + (cols - 1) * pixelGap) / 2);
+                const startY = (img.height / 2) - ((rows * pixelHeight + (rows - 1) * pixelGap) / 2);
+
+                const newArtworks = [];
+                let loadedCount = 0;
+                const totalTiles = tiles.length;
+                // Generate a unique group ID for this set of tiles
+                const tileGroupId = `group_${Date.now()}`;
+
+                tiles.forEach((tile, index) => {
+                  const tileImg = new Image();
+                  tileImg.crossOrigin = 'anonymous';
+                  tileImg.onload = () => {
+                    const col = tile.col - 1; // 1-indexed from server
+                    const row = tile.row - 1;
+                    // Round positions to integers to avoid floating-point precision issues
+                    const x = Math.round(startX + (col * (pixelWidth + pixelGap)));
+                    const y = Math.round(startY + (row * (pixelHeight + pixelGap)));
+
+                    newArtworks.push({
+                      id: Date.now() + index,
+                      src: tile.url,
+                      x,
+                      y,
+                      width: pixelWidth,
+                      height: pixelHeight,
+                      aspectRatio: pixelWidth / pixelHeight,
+                      rotation: 0,
+                      rotateX: 0,
+                      rotateY: 0,
+                      skewX: 0,
+                      skewY: 0,
+                      filter: 'none',
+                      tileRow: tile.row,
+                      tileCol: tile.col,
+                      tileGroupId  // Track which tiles belong together
+                    });
+
+                    loadedCount++;
+                    if (loadedCount === totalTiles) {
+                      // All tiles loaded, sort by row then col and set
+                      newArtworks.sort((a, b) => {
+                        if (a.tileRow !== b.tileRow) return a.tileRow - b.tileRow;
+                        return a.tileCol - b.tileCol;
+                      });
+                      setArtworks(newArtworks);
+                      setGap(pixelGap);
+                      // Set the master tile size so subsequent tiles match
+                      setMasterTileSize({ width: pixelWidth, height: pixelHeight });
+                    }
+                  };
+                  tileImg.onerror = () => {
+                    console.error('[Mockup] Failed to load tile:', tile.url);
+                    loadedCount++;
+                  };
+                  tileImg.src = tile.url;
+                });
+              };
+              img.onerror = () => console.error('[Mockup] Failed to load room image:', tiledRoomImage);
+              img.src = tiledRoomImage;
+            }
+          }
+        };
+
+        window.addEventListener('message', handleMessage);
+
+        // Mark React as ready and process any queued messages
+        window._reactReady = true;
+        console.log('[Mockup] React mounted, processing', window._pendingMessages?.length || 0, 'queued messages');
+        if (window._pendingMessages && window._pendingMessages.length > 0) {
+          window._pendingMessages.forEach(data => {
+            console.log('[Mockup] Processing queued message:', data.type);
+            handleMessage({ data });
+          });
+          window._pendingMessages = [];
+        }
+
+        // Signal to parent that we're ready to receive messages
+        console.log('[Mockup] React mounted, sending MOCKUP_READY signal');
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'MOCKUP_READY' }, '*');
+        }
+
+        return () => window.removeEventListener('message', handleMessage);
+      }, []);
+
+      // Handle export request
+      useEffect(() => {
+        if (exportRequested && roomImage) {
+          exportImage(true); // true = send via postMessage
+          setExportRequested(false);
+        }
+      }, [exportRequested, roomImage]);
+
+      const filters = [
+        { id: 'none', name: 'None', icon: '🖼️' },
+        { id: 'metal', name: 'Metal Print', icon: '✨' },
+        { id: 'canvas', name: 'Canvas', icon: '🎨' },
+      ];
+
+      const handleRoomUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              setRoomSize({ width: img.width, height: img.height });
+              setRoomImage(e.target.result);
+              setZoom(1);
+            };
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const handleArtUpload = (e) => {
+        const files = Array.from(e.target.files);
+        files.forEach((file) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const aspectRatio = img.width / img.height;
+              const defaultHeight = 160;
+              setArtworks((prev) => [
+                ...prev,
+                {
+                  id: Date.now() + Math.random(),
+                  src: event.target.result,
+                  name: file.name,
+                  x: 80 + (prev.length % 4) * 50,
+                  y: 80 + Math.floor(prev.length / 4) * 50,
+                  width: defaultHeight * aspectRatio,
+                  height: defaultHeight,
+                  aspectRatio,
+                  rotation: 0,
+                  rotateX: 0,
+                  rotateY: 0,
+                  skewX: 0,
+                  skewY: 0,
+                  filter: 'none',
+                },
+              ]);
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        });
+        e.target.value = '';
+      };
+
+      // Open artwork modal and request artwork list from parent
+      const openArtworkModal = () => {
+        console.log('[Mockup] openArtworkModal CALLED');
+        setShowArtworkModal(true);
+        setLoadingDbArtworks(true);
+        setSelectedDbArtwork(null);
+        // Request artwork list from parent window
+        if (window.parent !== window) {
+          console.log('[Mockup] Requesting artwork list from parent');
+          window.parent.postMessage({ type: 'GET_ARTWORK_LIST' }, '*');
+        } else {
+          console.log('[Mockup] WARNING: window.parent === window, cannot send message');
+        }
+      };
+
+      // Add selected database artwork to canvas
+      const addDbArtworkToCanvas = () => {
+        if (!selectedDbArtwork) return;
+
+        const artImg = new Image();
+        artImg.crossOrigin = 'anonymous';
+        artImg.onload = () => {
+          const aspectRatio = artImg.width / artImg.height;
+          const defaultHeight = 160;
+          setArtworks((prev) => [
+            ...prev,
+            {
+              id: Date.now() + Math.random(),
+              src: selectedDbArtwork.url,
+              name: selectedDbArtwork.name || 'Artwork',
+              x: 80 + (prev.length % 4) * 50,
+              y: 80 + Math.floor(prev.length / 4) * 50,
+              width: defaultHeight * aspectRatio,
+              height: defaultHeight,
+              aspectRatio,
+              rotation: 0,
+              rotateX: 0,
+              rotateY: 0,
+              skewX: 0,
+              skewY: 0,
+              filter: 'none',
+            },
+          ]);
+          setShowArtworkModal(false);
+          setSelectedDbArtwork(null);
+        };
+        artImg.onerror = () => {
+          console.error('[Mockup] Failed to load artwork:', selectedDbArtwork.url);
+        };
+        artImg.src = selectedDbArtwork.url;
+      };
+
+      // Open tile modal for selected artwork
+      const openTileModal = (e) => {
+        console.log('[Mockup] openTileModal called, selectedArt:', selectedArt);
+        // Stop all event propagation immediately
+        if (e) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+        if (!selectedArt) {
+          console.log('[Mockup] openTileModal: no selectedArt, returning');
+          return;
+        }
+        const artId = selectedArt; // Capture the value
+        setTileArtworkId(artId); // Store the artwork ID
+        console.log('[Mockup] openTileModal: setting showTileModal to true, artId:', artId);
+        // Use setTimeout to ensure the state update happens after event processing
+        setTimeout(() => {
+          setShowTileModal(true);
+          console.log('[Mockup] openTileModal: showTileModal should now be true');
+        }, 0);
+      };
+
+      // Request tiling of selected artwork
+      const tileSelectedArtwork = () => {
+        const artId = tileArtworkId || selectedArt;
+        const artwork = artworks.find(a => a.id === artId);
+        if (!artwork || !window.parent) return;
+
+        // Calculate aspect ratio from tile dimensions
+        const tileAspectRatio = tileSizeWidth / tileSizeHeight;
+
+        console.log('[Mockup] Requesting tile split:', { artId, cols: tileCols, rows: tileRows, tileWidth: tileSizeWidth, tileHeight: tileSizeHeight, aspectRatio: tileAspectRatio });
+        window.parent.postMessage({
+          type: 'TILE_ARTWORK',
+          artworkId: artId,  // Pass the ID so we can remove the original when tiles come back
+          artworkSrc: artwork.src,
+          artworkName: artwork.name || 'Artwork',
+          cols: tileCols,
+          rows: tileRows,
+          tileWidth: tileSizeWidth,
+          tileHeight: tileSizeHeight,
+          tileAspectRatio
+        }, '*');
+        setShowTileModal(false);
+        // Don't clear tileArtworkId here - we need it when result comes back
+        // Actually we pass it in the message now, so it's ok to clear
+        setTileArtworkId(null);
+      };
+
+      const handleZoom = (delta) => {
+        setZoom((prev) => Math.min(4, Math.max(0.25, prev + delta)));
+      };
+
+      const snapToGridFn = (value) => {
+        if (!snapEnabled) return value;
+        return Math.round(value / gridSize) * gridSize;
+      };
+
+      const findSnapPoints = (currentArt, newX, newY, newWidth, newHeight) => {
+        if (!snapToArt) return { x: newX, y: newY, lines: { horizontal: [], vertical: [] } };
+        
+        const lines = { horizontal: [], vertical: [] };
+        let snappedX = newX;
+        let snappedY = newY;
+        
+        const currentRight = newX + newWidth;
+        const currentBottom = newY + newHeight;
+        const currentCenterX = newX + newWidth / 2;
+        const currentCenterY = newY + newHeight / 2;
+
+        artworks.forEach((art) => {
+          if (art.id === currentArt.id) return;
+          
+          const artRight = art.x + art.width;
+          const artBottom = art.y + art.height;
+          const artCenterX = art.x + art.width / 2;
+          const artCenterY = art.y + art.height / 2;
+
+          if (Math.abs(newX - art.x) < snapThreshold) { snappedX = art.x; lines.vertical.push(art.x); }
+          if (Math.abs(newX - artRight - gap) < snapThreshold) { snappedX = artRight + gap; lines.vertical.push(artRight + gap / 2); }
+          if (Math.abs(currentRight - artRight) < snapThreshold) { snappedX = artRight - newWidth; lines.vertical.push(artRight); }
+          if (Math.abs(currentRight - art.x + gap) < snapThreshold) { snappedX = art.x - gap - newWidth; lines.vertical.push(art.x - gap / 2); }
+          if (Math.abs(currentCenterX - artCenterX) < snapThreshold) { snappedX = artCenterX - newWidth / 2; lines.vertical.push(artCenterX); }
+          if (Math.abs(newY - art.y) < snapThreshold) { snappedY = art.y; lines.horizontal.push(art.y); }
+          if (Math.abs(newY - artBottom - gap) < snapThreshold) { snappedY = artBottom + gap; lines.horizontal.push(artBottom + gap / 2); }
+          if (Math.abs(currentBottom - artBottom) < snapThreshold) { snappedY = artBottom - newHeight; lines.horizontal.push(artBottom); }
+          if (Math.abs(currentBottom - art.y + gap) < snapThreshold) { snappedY = art.y - gap - newHeight; lines.horizontal.push(art.y - gap / 2); }
+          if (Math.abs(currentCenterY - artCenterY) < snapThreshold) { snappedY = artCenterY - newHeight / 2; lines.horizontal.push(artCenterY); }
+        });
+
+        return { x: snappedX, y: snappedY, lines };
+      };
+
+      const handleMouseDown = (e, art, action = 'drag') => {
+        e.stopPropagation();
+        e.preventDefault();
+        setSelectedArt(art.id);
+        
+        if (action === 'resize') {
+          setIsResizing(true);
+        } else if (action === 'rotate') {
+          setIsRotating(true);
+        } else {
+          setIsDragging(true);
+          const rect = containerRef.current.getBoundingClientRect();
+          const mouseX = (e.clientX - rect.left) / zoom;
+          const mouseY = (e.clientY - rect.top) / zoom;
+          setDragOffset({ x: mouseX - art.x, y: mouseY - art.y });
+        }
+      };
+
+      const handleMouseMove = (e) => {
+        if (!selectedArt || !containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const currentArt = artworks.find(a => a.id === selectedArt);
+        if (!currentArt) return;
+        
+        // Adjust mouse position for zoom
+        const mouseX = (e.clientX - rect.left) / zoom;
+        const mouseY = (e.clientY - rect.top) / zoom;
+        
+        if (isDragging) {
+          let newX = mouseX - dragOffset.x;
+          let newY = mouseY - dragOffset.y;
+          
+          if (snapEnabled && !snapToArt) {
+            newX = snapToGridFn(newX);
+            newY = snapToGridFn(newY);
+          }
+          
+          const snapResult = findSnapPoints(currentArt, newX, newY, currentArt.width, currentArt.height);
+          newX = snapResult.x;
+          newY = snapResult.y;
+          setSnapLines(snapResult.lines);
+          
+          setArtworks((prev) =>
+            prev.map((art) =>
+              art.id === selectedArt
+                ? { ...art, x: Math.max(0, newX), y: Math.max(0, newY) }
+                : art
+            )
+          );
+        } else if (isResizing) {
+          let newWidth = Math.max(60, mouseX - currentArt.x);
+          if (snapEnabled) newWidth = snapToGridFn(newWidth);
+          const newHeight = newWidth / currentArt.aspectRatio;
+          
+          setArtworks((prev) =>
+            prev.map((art) =>
+              art.id === selectedArt ? { ...art, width: newWidth, height: newHeight } : art
+            )
+          );
+        } else if (isRotating) {
+          const artCenterX = currentArt.x + currentArt.width / 2;
+          const artCenterY = currentArt.y + currentArt.height / 2;
+          const angle = Math.atan2(mouseX - artCenterX, -(mouseY - artCenterY)) * (180 / Math.PI);
+          
+          setArtworks((prev) =>
+            prev.map((art) =>
+              art.id === selectedArt ? { ...art, rotation: Math.round(angle) } : art
+            )
+          );
+        }
+      };
+
+      const handleMouseUp = () => {
+        setIsDragging(false);
+        setIsResizing(false);
+        setIsRotating(false);
+        setSnapLines({ horizontal: [], vertical: [] });
+      };
+
+      const handleCanvasClick = (e) => {
+        if (e.target === containerRef.current || e.target.classList.contains('room-image')) {
+          setSelectedArt(null);
+        }
+      };
+
+      const handleWheel = (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const delta = e.deltaY > 0 ? -0.1 : 0.1;
+          handleZoom(delta);
+        }
+      };
+
+      const updateArtwork = (property, value) => {
+        setArtworks((prev) =>
+          prev.map((art) =>
+            art.id === selectedArt ? { ...art, [property]: value } : art
+          )
+        );
+      };
+
+      const setFilter = (filterId) => updateArtwork('filter', filterId);
+
+      const applyFilterToAll = (filterId) => {
+        setArtworks((prev) => prev.map((art) => ({ ...art, filter: filterId })));
+      };
+
+      const deleteSelected = () => {
+        if (selectedGroup.length > 0) {
+          // Delete all tiles in the selected group
+          setArtworks((prev) => prev.filter((a) => !selectedGroup.includes(a.id)));
+          setSelectedGroup([]);
+          setSelectedArt(null);
+        } else {
+          setArtworks((prev) => prev.filter((a) => a.id !== selectedArt));
+          setSelectedArt(null);
+        }
+      };
+
+      // Select all tiles that belong to the same group as the currently selected tile
+      const selectTileGroup = () => {
+        const selectedArtwork = artworks.find(a => a.id === selectedArt);
+        if (!selectedArtwork?.tileGroupId) return;
+
+        const groupTiles = artworks.filter(a => a.tileGroupId === selectedArtwork.tileGroupId);
+        setSelectedGroup(groupTiles.map(t => t.id));
+      };
+
+      // Clear group selection
+      const clearGroupSelection = () => {
+        setSelectedGroup([]);
+      };
+
+      // Check if selected artwork is part of a tile group
+      const selectedArtwork = artworks.find((a) => a.id === selectedArt);
+      const isSelectedTile = selectedArtwork?.tileGroupId !== undefined;
+      const groupTileCount = isSelectedTile
+        ? artworks.filter(a => a.tileGroupId === selectedArtwork.tileGroupId).length
+        : 0;
+
+      const adjustSize = (delta) => {
+        // If group is selected, resize all tiles in the group uniformly
+        const idsToResize = selectedGroup.length > 0 ? selectedGroup : [selectedArt];
+
+        setArtworks((prev) =>
+          prev.map((art) => {
+            if (idsToResize.includes(art.id)) {
+              let newWidth = Math.max(60, art.width + delta);
+              if (snapEnabled) newWidth = snapToGridFn(newWidth);
+              const newHeight = newWidth / art.aspectRatio;
+
+              // Keep centered when resizing
+              const widthDiff = newWidth - art.width;
+              const heightDiff = newHeight - art.height;
+
+              return {
+                ...art,
+                width: newWidth,
+                height: newHeight,
+                x: art.x - widthDiff / 2,
+                y: art.y - heightDiff / 2
+              };
+            }
+            return art;
+          })
+        );
+
+        // Update master tile size if resizing tiles
+        if (selectedGroup.length > 0) {
+          const firstTile = artworks.find(a => a.id === selectedGroup[0]);
+          if (firstTile) {
+            let newWidth = Math.max(60, firstTile.width + delta);
+            if (snapEnabled) newWidth = snapToGridFn(newWidth);
+            setMasterTileSize({ width: newWidth, height: newWidth / firstTile.aspectRatio });
+          }
+        }
+      };
+
+      // Adjust gap between tiles in the selected group
+      const adjustGroupGap = (delta) => {
+        if (selectedGroup.length < 2) return;
+
+        // Get the tiles in the group
+        const groupTiles = artworks.filter(a => selectedGroup.includes(a.id));
+        if (groupTiles.length < 2) return;
+
+        // Find the grid structure (rows and cols based on positions)
+        const uniqueXs = [...new Set(groupTiles.map(a => Math.round(a.x)))].sort((a, b) => a - b);
+        const uniqueYs = [...new Set(groupTiles.map(a => Math.round(a.y)))].sort((a, b) => a - b);
+
+        const cols = uniqueXs.length;
+        const rows = uniqueYs.length;
+
+        // Find the first tile (top-left) as anchor
+        const firstTile = groupTiles.reduce((min, t) =>
+          (t.y < min.y || (t.y === min.y && t.x < min.x)) ? t : min
+        , groupTiles[0]);
+
+        const newGap = Math.max(0, gap + delta);
+        setGap(newGap);
+
+        // Reposition all tiles in the group based on new gap
+        setArtworks(prev => prev.map(art => {
+          if (!selectedGroup.includes(art.id)) return art;
+
+          // Find this tile's grid position
+          const col = uniqueXs.indexOf(Math.round(art.x));
+          const row = uniqueYs.indexOf(Math.round(art.y));
+
+          if (col === -1 || row === -1) return art;
+
+          // Calculate new position (round to avoid floating-point precision issues)
+          const newX = Math.round(firstTile.x + col * (art.width + newGap));
+          const newY = Math.round(firstTile.y + row * (art.height + newGap));
+
+          return { ...art, x: newX, y: newY };
+        }));
+      };
+
+      // Move all tiles in the selected group together
+      const moveGroup = (deltaX, deltaY) => {
+        if (selectedGroup.length === 0) return;
+
+        setArtworks(prev => prev.map(art => {
+          if (!selectedGroup.includes(art.id)) return art;
+          return { ...art, x: art.x + deltaX, y: art.y + deltaY };
+        }));
+      };
+
+      const duplicateSelected = () => {
+        const art = artworks.find((a) => a.id === selectedArt);
+        if (art) {
+          const newX = snapEnabled ? snapToGridFn(art.x + art.width + gap) : art.x + art.width + gap;
+          setArtworks((prev) => [...prev, { ...art, id: Date.now(), x: newX }]);
+        }
+      };
+
+      const resetPerspective = () => {
+        setArtworks((prev) =>
+          prev.map((art) =>
+            art.id === selectedArt
+              ? { ...art, rotation: 0, rotateX: 0, rotateY: 0, skewX: 0, skewY: 0 }
+              : art
+          )
+        );
+      };
+
+      const applyPerspectiveToAll = () => {
+        const art = artworks.find((a) => a.id === selectedArt);
+        if (art) {
+          const perspective = { rotation: art.rotation, rotateX: art.rotateX, rotateY: art.rotateY, skewX: art.skewX, skewY: art.skewY };
+          setArtworks((prev) => prev.map((a) => ({ ...a, ...perspective })));
+        }
+      };
+
+      // Normalize all tiles to match the master tile size
+      // This ensures uniform sizes across all artworks when adding multiple tiled images
+      const normalizeAllTilesToSize = (targetWidth, targetHeight) => {
+        // Get all tiles (artworks that have tileRow property)
+        const tiles = artworks.filter(a => a.tileRow !== undefined);
+        if (tiles.length === 0) return;
+
+        // Group tiles by their approximate grid position to maintain layout
+        setArtworks(prev => {
+          // Find groups of connected tiles (by checking for common grid patterns)
+          const tilesWithNewSize = prev.map(art => {
+            if (art.tileRow === undefined) return art; // Not a tile, keep as-is
+
+            // Calculate the center of each tile to reposition around it
+            const centerX = art.x + art.width / 2;
+            const centerY = art.y + art.height / 2;
+
+            // Recalculate position to keep tiles centered at same spot
+            const newX = centerX - targetWidth / 2;
+            const newY = centerY - targetHeight / 2;
+
+            return {
+              ...art,
+              width: targetWidth,
+              height: targetHeight,
+              aspectRatio: targetWidth / targetHeight,
+              x: newX,
+              y: newY
+            };
+          });
+
+          return tilesWithNewSize;
+        });
+
+        // Update the master tile size
+        setMasterTileSize({ width: targetWidth, height: targetHeight });
+      };
+
+      // Check if tiles have mixed sizes (for showing warning/normalize button)
+      const checkTileUniformity = () => {
+        const tiles = artworks.filter(a => a.tileRow !== undefined);
+        if (tiles.length < 2) return { uniform: true, tiles: tiles.length };
+
+        const firstTile = tiles[0];
+        const hasNonUniform = tiles.some(t =>
+          Math.abs(t.width - firstTile.width) > 1 || Math.abs(t.height - firstTile.height) > 1
+        );
+
+        return {
+          uniform: !hasNonUniform,
+          tiles: tiles.length,
+          firstWidth: firstTile.width,
+          firstHeight: firstTile.height
+        };
+      };
+
+      const tileUniformity = checkTileUniformity();
+
+      const distributeHorizontally = () => {
+        if (artworks.length < 2) return;
+        const sorted = [...artworks].sort((a, b) => a.x - b.x);
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+        const totalWidth = (last.x + last.width) - first.x;
+        const artWidths = sorted.reduce((sum, a) => sum + a.width, 0);
+        const gapBetween = (totalWidth - artWidths) / (sorted.length - 1);
+
+        let currentX = first.x;
+        const newPositions = sorted.map((art) => {
+          const newArt = { ...art, x: currentX };
+          currentX += art.width + gapBetween;
+          return newArt;
+        });
+        setArtworks(newPositions);
+      };
+
+      // Calculate total bounding box of all artwork pieces
+      // Returns dimensions in inches (assuming 1 pixel = some real-world size)
+      // User can set a scale factor via the pixelsPerInch state
+      const calculateTotalSize = () => {
+        if (artworks.length === 0) return null;
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        artworks.forEach(art => {
+          minX = Math.min(minX, art.x);
+          minY = Math.min(minY, art.y);
+          maxX = Math.max(maxX, art.x + art.width);
+          maxY = Math.max(maxY, art.y + art.height);
+        });
+
+        const totalWidthPx = maxX - minX;
+        const totalHeightPx = maxY - minY;
+
+        // Calculate individual piece sizes and gaps
+        // For tiled artwork, calculate the tile size and gap
+        let tileInfo = null;
+        if (artworks.length > 1) {
+          // Check if tiles have consistent sizes (indicates tiled artwork)
+          const firstArt = artworks[0];
+          const allSameSize = artworks.every(a =>
+            Math.abs(a.width - firstArt.width) < 1 && Math.abs(a.height - firstArt.height) < 1
+          );
+
+          if (allSameSize) {
+            // Calculate grid layout (rows x cols)
+            const uniqueXs = [...new Set(artworks.map(a => Math.round(a.x)))].sort((a, b) => a - b);
+            const uniqueYs = [...new Set(artworks.map(a => Math.round(a.y)))].sort((a, b) => a - b);
+            const cols = uniqueXs.length;
+            const rows = uniqueYs.length;
+
+            // Calculate gap between tiles
+            let gapX = 0, gapY = 0;
+            if (cols > 1 && uniqueXs.length > 1) {
+              gapX = uniqueXs[1] - uniqueXs[0] - firstArt.width;
+            }
+            if (rows > 1 && uniqueYs.length > 1) {
+              gapY = uniqueYs[1] - uniqueYs[0] - firstArt.height;
+            }
+
+            tileInfo = {
+              cols,
+              rows,
+              tileWidth: firstArt.width,
+              tileHeight: firstArt.height,
+              gapX: Math.max(0, gapX),
+              gapY: Math.max(0, gapY),
+              // Product size = sum of all panel dimensions (no gaps)
+              productWidthPx: cols * firstArt.width,
+              productHeightPx: rows * firstArt.height
+            };
+          }
+        }
+
+        // Calculate total product size (sum of all panels, excluding gaps)
+        let productWidthPx = 0;
+        let productHeightPx = 0;
+        if (tileInfo) {
+          productWidthPx = tileInfo.productWidthPx;
+          productHeightPx = tileInfo.productHeightPx;
+        } else {
+          // For non-tiled artwork, sum up individual piece dimensions
+          artworks.forEach(art => {
+            productWidthPx += art.width;
+            productHeightPx += art.height;
+          });
+        }
+
+        return {
+          totalWidthPx,
+          totalHeightPx,
+          productWidthPx,
+          productHeightPx,
+          pieceCount: artworks.length,
+          tileInfo
+        };
+      };
+
+      const totalSizeInfo = calculateTotalSize();
+
+      const getTransformStyle = (art) => {
+        const transforms = [];
+        if (art.rotation) transforms.push(`rotate(${art.rotation}deg)`);
+        if (art.rotateX || art.rotateY) {
+          transforms.push(`perspective(800px)`);
+          if (art.rotateX) transforms.push(`rotateX(${art.rotateX}deg)`);
+          if (art.rotateY) transforms.push(`rotateY(${art.rotateY}deg)`);
+        }
+        if (art.skewX) transforms.push(`skewX(${art.skewX}deg)`);
+        if (art.skewY) transforms.push(`skewY(${art.skewY}deg)`);
+        return transforms.join(' ');
+      };
+
+      const getFrameClass = (filter) => {
+        switch (filter) {
+          case 'metal': return 'frame-metal';
+          case 'canvas': return 'frame-canvas';
+          default: return 'frame-metal';
+        }
+      };
+
+      // Inverse scale for handles so they stay same size visually
+      const handleScale = 1 / zoom;
+
+      const exportImage = (sendToParent = false) => {
+        const roomImg = roomRef.current;
+        if (!roomImg) return;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = roomSize.width;
+        canvas.height = roomSize.height;
+        const ctx = canvas.getContext('2d');
+
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0);
+
+          const loadPromises = artworks.map((art) => {
+            return new Promise((resolve) => {
+              const artImg = new Image();
+              artImg.crossOrigin = 'anonymous';
+              artImg.onload = () => resolve({ img: artImg, art });
+              artImg.onerror = () => resolve(null);
+              artImg.src = art.src;
+            });
+          });
+
+          Promise.all(loadPromises).then((results) => {
+            results.forEach((result) => {
+              if (!result) return;
+              const { img: artImg, art } = result;
+              
+              const scaleX = roomSize.width / roomRef.current.width;
+              const scaleY = roomSize.height / roomRef.current.height;
+              
+              const x = art.x * scaleX;
+              const y = art.y * scaleY;
+              const w = art.width * scaleX;
+              const h = art.height * scaleY;
+              const frame = art.filter === 'canvas' ? 4 * scaleX : 6 * scaleX;
+              const centerX = x + w / 2;
+              const centerY = y + h / 2;
+
+              ctx.save();
+              ctx.translate(centerX, centerY);
+              
+              // Apply rotation
+              if (art.rotation) {
+                ctx.rotate(art.rotation * Math.PI / 180);
+              }
+              
+              // Convert 3D perspective rotations to 2D skew approximation
+              // rotateY creates horizontal perspective (like looking from side)
+              // rotateX creates vertical perspective (like looking from above/below)
+              let skewXTotal = art.skewX || 0;
+              let skewYTotal = art.skewY || 0;
+              let scaleXFactor = 1;
+              let scaleYFactor = 1;
+              
+              // Approximate rotateY with horizontal skew and scale
+              if (art.rotateY) {
+                const rotateYRad = art.rotateY * Math.PI / 180;
+                skewYTotal += art.rotateY * 0.5; // Approximate skew
+                scaleXFactor *= Math.cos(rotateYRad); // Foreshortening
+              }
+              
+              // Approximate rotateX with vertical skew and scale
+              if (art.rotateX) {
+                const rotateXRad = art.rotateX * Math.PI / 180;
+                skewXTotal += art.rotateX * 0.5; // Approximate skew
+                scaleYFactor *= Math.cos(rotateXRad); // Foreshortening
+              }
+              
+              // Apply combined transform matrix
+              // transform(scaleX, skewY, skewX, scaleY, translateX, translateY)
+              ctx.transform(
+                scaleXFactor,
+                Math.tan(skewYTotal * Math.PI / 180),
+                Math.tan(skewXTotal * Math.PI / 180),
+                scaleYFactor,
+                0,
+                0
+              );
+
+              ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+              ctx.shadowBlur = 20 * scaleX;
+              ctx.shadowOffsetX = 8 * scaleX;
+              ctx.shadowOffsetY = 8 * scaleY;
+
+              // Only draw frame/border for non-tiled artwork
+              // Tiled artwork (split panels) should not have individual borders
+              const isTiledArtwork = (art.tileRow != null) || (art.tileCol != null) || (art.tileGroupId != null);
+              console.log('[Export] Drawing art:', art.id, 'isTiled:', isTiledArtwork, 'tileRow:', art.tileRow, 'tileCol:', art.tileCol);
+              if (!isTiledArtwork) {
+                ctx.fillStyle = art.filter === 'canvas' ? '#2a2520' : '#1a1a1a';
+                ctx.fillRect(-w/2 - frame, -h/2 - frame, w + frame * 2, h + frame * 2);
+              }
+
+              ctx.shadowColor = 'transparent';
+
+              const tempCanvas = document.createElement('canvas');
+              tempCanvas.width = w;
+              tempCanvas.height = h;
+              const tempCtx = tempCanvas.getContext('2d');
+              
+              tempCtx.drawImage(artImg, 0, 0, w, h);
+              
+              if (art.filter === 'metal') {
+                tempCtx.filter = 'saturate(1.4) contrast(1.15) brightness(1.05)';
+                tempCtx.drawImage(tempCanvas, 0, 0);
+                tempCtx.filter = 'none';
+                
+                const gradient = tempCtx.createLinearGradient(0, 0, w, h);
+                gradient.addColorStop(0, 'rgba(255,255,255,0)');
+                gradient.addColorStop(0.25, 'rgba(255,255,255,0.08)');
+                gradient.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+                gradient.addColorStop(0.75, 'rgba(255,255,255,0.08)');
+                gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                tempCtx.fillStyle = gradient;
+                tempCtx.globalCompositeOperation = 'overlay';
+                tempCtx.fillRect(0, 0, w, h);
+                tempCtx.globalCompositeOperation = 'source-over';
+              } else if (art.filter === 'canvas') {
+                tempCtx.filter = 'saturate(0.9) contrast(0.95) brightness(0.98)';
+                tempCtx.drawImage(tempCanvas, 0, 0);
+                tempCtx.filter = 'none';
+                
+                tempCtx.globalCompositeOperation = 'multiply';
+                tempCtx.fillStyle = 'rgba(245, 240, 230, 0.1)';
+                tempCtx.fillRect(0, 0, w, h);
+                tempCtx.globalCompositeOperation = 'source-over';
+                
+                tempCtx.globalAlpha = 0.08;
+                for (let i = 0; i < w; i += 3) {
+                  tempCtx.fillStyle = 'rgba(0,0,0,0.3)';
+                  tempCtx.fillRect(i, 0, 1, h);
+                }
+                for (let j = 0; j < h; j += 3) {
+                  tempCtx.fillRect(0, j, w, 1);
+                }
+                tempCtx.globalAlpha = 1;
+              }
+
+              ctx.drawImage(tempCanvas, -w/2, -h/2, w, h);
+              ctx.restore();
+            });
+
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+            const filename = 'room-mockup.jpg';
+
+            if (sendToParent && window.parent !== window) {
+              // Send to parent window via postMessage
+              // Include all artwork sources for saving tiled versions
+              const artworkSources = artworks.map((art, idx) => ({
+                index: idx,
+                src: art.src,
+                x: art.x,
+                y: art.y,
+                width: art.width,
+                height: art.height,
+                tileRow: art.tileRow,
+                tileCol: art.tileCol,
+                tileGroupId: art.tileGroupId
+              }));
+
+              // Calculate product size info to send to parent
+              const sizeInfo = calculateTotalSize();
+              const productSizeInfo = sizeInfo ? {
+                // Product size = sum of panels (what you're actually getting)
+                productWidth: (sizeInfo.productWidthPx / pixelsPerInch).toFixed(1),
+                productHeight: (sizeInfo.productHeightPx / pixelsPerInch).toFixed(1),
+                // Wall coverage = bounding box including gaps
+                wallWidth: (sizeInfo.totalWidthPx / pixelsPerInch).toFixed(1),
+                wallHeight: (sizeInfo.totalHeightPx / pixelsPerInch).toFixed(1),
+                pieceCount: sizeInfo.pieceCount,
+                tileInfo: sizeInfo.tileInfo ? {
+                  cols: sizeInfo.tileInfo.cols,
+                  rows: sizeInfo.tileInfo.rows,
+                  tileWidth: (sizeInfo.tileInfo.tileWidth / pixelsPerInch).toFixed(1),
+                  tileHeight: (sizeInfo.tileInfo.tileHeight / pixelsPerInch).toFixed(1),
+                  gapX: (sizeInfo.tileInfo.gapX / pixelsPerInch).toFixed(1),
+                  gapY: (sizeInfo.tileInfo.gapY / pixelsPerInch).toFixed(1)
+                } : null,
+                pixelsPerInch
+              } : null;
+
+              window.parent.postMessage({
+                type: 'MOCKUP_EXPORTED',
+                dataUrl,
+                filename,
+                artworks: artworkSources,
+                productSizeInfo,
+                roomImage,
+                roomSize
+              }, '*');
+            } else {
+              // Download locally
+              const link = document.createElement('a');
+              link.download = filename;
+              link.href = dataUrl;
+              link.click();
+            }
+          });
+        };
+        img.crossOrigin = 'anonymous';
+        img.src = roomImage;
+      };
+
+      const renderGrid = () => {
+        if (!showGrid || !roomRef.current) return null;
+        const width = roomRef.current.width;
+        const height = roomRef.current.height;
+        
+        const lines = [];
+        for (let x = 0; x < width; x += gridSize) {
+          lines.push(<line key={`v${x}`} x1={x} y1={0} x2={x} y2={height} stroke="#fff" strokeWidth={0.5 / zoom} />);
+        }
+        for (let y = 0; y < height; y += gridSize) {
+          lines.push(<line key={`h${y}`} x1={0} y1={y} x2={width} y2={y} stroke="#fff" strokeWidth={0.5 / zoom} />);
+        }
+        
+        return (
+          <svg className="grid-overlay" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>{lines}</svg>
+        );
+      };
+
+      return (
+        <div className="container">
+          <h1>🖼️ Wall Art Mockup Tool</h1>
+
+          <div className="controls">
+            <label className="btn btn-blue">
+              📷 Room
+              <input type="file" accept="image/*" onChange={handleRoomUpload} className="hidden-input" />
+            </label>
+
+            {roomImage && (
+              <button onClick={openArtworkModal} className="btn btn-green">
+                🖼️ Add Art
+              </button>
+            )}
+
+            {roomImage && (
+              <>
+                <div className="zoom-control">
+                  <button onClick={() => handleZoom(-0.25)}>−</button>
+                  <label>🔍</label>
+                  <input 
+                    type="range" 
+                    min="0.25" 
+                    max="4" 
+                    step="0.05" 
+                    value={zoom} 
+                    onChange={(e) => setZoom(Number(e.target.value))} 
+                  />
+                  <span className="zoom-value">{Math.round(zoom * 100)}%</span>
+                  <button onClick={() => handleZoom(0.25)}>+</button>
+                </div>
+                
+                <div className="control-group">
+                  <input type="checkbox" checked={snapEnabled} onChange={(e) => setSnapEnabled(e.target.checked)} id="snapGrid" />
+                  <label htmlFor="snapGrid">Snap</label>
+                </div>
+                <div className="control-group">
+                  <input type="checkbox" checked={snapToArt} onChange={(e) => setSnapToArt(e.target.checked)} id="snapArt" />
+                  <label htmlFor="snapArt">to Art</label>
+                </div>
+                <div className="control-group">
+                  <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} id="showGrid" />
+                  <label htmlFor="showGrid">Grid</label>
+                </div>
+                <div className="control-group">
+                  <label>Gap:</label>
+                  <input type="number" className="num-input" min="0" max="100" value={gap} onChange={(e) => setGap(Number(e.target.value))} />
+                </div>
+              </>
+            )}
+
+            {artworks.length > 0 && (
+              <button onClick={exportImage} className="btn btn-orange">💾 Export</button>
+            )}
+          </div>
+
+          {/* Total Size Info Panel - shows when artwork is present */}
+          {totalSizeInfo && artworks.length > 0 && (
+            <div className="panel" style={{ marginTop: '12px', padding: '12px 16px', background: '#1a2a1a', border: '1px solid #3a5' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  {/* Product Size - sum of all panels (most important) */}
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>Product Size (panels)</div>
+                    <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#fa9' }}>
+                      {(totalSizeInfo.productWidthPx / pixelsPerInch).toFixed(1)}" × {(totalSizeInfo.productHeightPx / pixelsPerInch).toFixed(1)}"
+                    </div>
+                  </div>
+                  <div style={{ borderLeft: '1px solid #444', height: '36px' }} />
+                  {/* Wall Coverage - bounding box including gaps */}
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>Wall Coverage</div>
+                    <div style={{ fontSize: '16px', color: '#4a9' }}>
+                      {(totalSizeInfo.totalWidthPx / pixelsPerInch).toFixed(1)}" × {(totalSizeInfo.totalHeightPx / pixelsPerInch).toFixed(1)}"
+                    </div>
+                  </div>
+                  {totalSizeInfo.tileInfo && (
+                    <>
+                      <div style={{ borderLeft: '1px solid #444', height: '36px' }} />
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>Grid Layout</div>
+                        <div style={{ fontSize: '16px', color: '#9af' }}>
+                          {totalSizeInfo.tileInfo.cols} × {totalSizeInfo.tileInfo.rows} ({totalSizeInfo.pieceCount} panels)
+                        </div>
+                      </div>
+                      <div style={{ borderLeft: '1px solid #444', height: '36px' }} />
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>Each Panel</div>
+                        <div style={{ fontSize: '16px', color: '#fa9' }}>
+                          {(totalSizeInfo.tileInfo.tileWidth / pixelsPerInch).toFixed(1)}" × {(totalSizeInfo.tileInfo.tileHeight / pixelsPerInch).toFixed(1)}"
+                        </div>
+                      </div>
+                      {(totalSizeInfo.tileInfo.gapX > 0 || totalSizeInfo.tileInfo.gapY > 0) && (
+                        <>
+                          <div style={{ borderLeft: '1px solid #444', height: '36px' }} />
+                          <div>
+                            <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>Gap</div>
+                            <div style={{ fontSize: '16px', color: '#aaa' }}>
+                              {(Math.max(totalSizeInfo.tileInfo.gapX, totalSizeInfo.tileInfo.gapY) / pixelsPerInch).toFixed(1)}"
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {!totalSizeInfo.tileInfo && totalSizeInfo.pieceCount > 1 && (
+                    <>
+                      <div style={{ borderLeft: '1px solid #444', height: '36px' }} />
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>Pieces</div>
+                        <div style={{ fontSize: '16px', color: '#9af' }}>{totalSizeInfo.pieceCount}</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '11px', color: '#888' }}>Scale (px/in):</label>
+                  <input
+                    type="number"
+                    className="num-input"
+                    min="1"
+                    max="100"
+                    value={pixelsPerInch}
+                    onChange={(e) => setPixelsPerInch(Math.max(1, Number(e.target.value) || 10))}
+                    style={{ width: '50px' }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tile Size Controls - shows when tiles are present */}
+          {tileUniformity.tiles > 0 && (
+            <div className="panel" style={{ marginTop: '8px', padding: '12px 16px', background: '#1a1a2a', border: '1px solid #59f' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>Uniform Tile Size</div>
+                    <div style={{ fontSize: '14px', color: tileUniformity.uniform ? '#4a9' : '#f94' }}>
+                      {tileUniformity.uniform ? '✓ All tiles uniform' : '⚠ Mixed tile sizes detected'}
+                    </div>
+                  </div>
+                  <div style={{ borderLeft: '1px solid #444', height: '36px' }} />
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>Master Tile Size (px)</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input
+                        type="number"
+                        className="num-input"
+                        min="50"
+                        max="500"
+                        value={Math.round(masterTileSize.width)}
+                        onChange={(e) => setMasterTileSize(prev => ({ ...prev, width: Math.max(50, Number(e.target.value) || 100) }))}
+                        style={{ width: '60px' }}
+                      />
+                      <span style={{ color: '#666' }}>×</span>
+                      <input
+                        type="number"
+                        className="num-input"
+                        min="50"
+                        max="500"
+                        value={Math.round(masterTileSize.height)}
+                        onChange={(e) => setMasterTileSize(prev => ({ ...prev, height: Math.max(50, Number(e.target.value) || 100) }))}
+                        style={{ width: '60px' }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ borderLeft: '1px solid #444', height: '36px' }} />
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>In Inches</div>
+                    <div style={{ fontSize: '14px', color: '#9af' }}>
+                      {(masterTileSize.width / pixelsPerInch).toFixed(1)}" × {(masterTileSize.height / pixelsPerInch).toFixed(1)}"
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    onClick={() => normalizeAllTilesToSize(masterTileSize.width, masterTileSize.height)}
+                    className="btn btn-blue btn-sm"
+                    title="Apply master tile size to all tiles"
+                  >
+                    📐 Apply to All Tiles
+                  </button>
+                  {!tileUniformity.uniform && (
+                    <button
+                      onClick={() => normalizeAllTilesToSize(tileUniformity.firstWidth, tileUniformity.firstHeight)}
+                      className="btn btn-orange btn-sm"
+                      title="Make all tiles match the first tile's size"
+                    >
+                      ⚡ Match First Tile
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selectedArt && selectedArtwork && (
+            <>
+              <div className="controls">
+                <button onClick={(e) => { e.stopPropagation(); adjustSize(30); }} className="btn btn-purple btn-sm">➕ Bigger</button>
+                <button onClick={(e) => { e.stopPropagation(); adjustSize(-30); }} className="btn btn-purple btn-sm">➖ Smaller</button>
+                <button onClick={(e) => { e.stopPropagation(); duplicateSelected(); }} className="btn btn-yellow btn-sm">📋 Duplicate</button>
+                <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); openTileModal(e); }} className="btn btn-blue btn-sm">🔲 Tile/Split</button>
+                <button onClick={(e) => { e.stopPropagation(); deleteSelected(); }} className="btn btn-red btn-sm">🗑️ Delete</button>
+                {artworks.length > 1 && (
+                  <button onClick={(e) => { e.stopPropagation(); distributeHorizontally(); }} className="btn btn-teal btn-sm">⬌ Distribute</button>
+                )}
+                {/* Show Select Group button when a tile is selected */}
+                {isSelectedTile && selectedGroup.length === 0 && groupTileCount > 1 && (
+                  <button onClick={(e) => { e.stopPropagation(); selectTileGroup(); }} className="btn btn-cyan btn-sm" title={`Select all ${groupTileCount} tiles in this group`}>
+                    🔗 Select Group ({groupTileCount})
+                  </button>
+                )}
+              </div>
+
+              {/* Group Controls - shows when a tile group is selected */}
+              {selectedGroup.length > 1 && (
+                <div className="panel" style={{ marginTop: '8px', padding: '12px 16px', background: '#2a1a2a', border: '1px solid #a5f' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>Group Selected</div>
+                        <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#a5f' }}>
+                          {selectedGroup.length} tiles selected
+                        </div>
+                      </div>
+                      <div style={{ borderLeft: '1px solid #444', height: '36px' }} />
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>Gap Between Tiles</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <button onClick={(e) => { e.stopPropagation(); adjustGroupGap(-5); }} className="btn btn-gray btn-sm">−</button>
+                          <span style={{ color: '#fff', minWidth: '40px', textAlign: 'center' }}>{gap.toFixed(0)}px</span>
+                          <button onClick={(e) => { e.stopPropagation(); adjustGroupGap(5); }} className="btn btn-gray btn-sm">+</button>
+                        </div>
+                      </div>
+                      <div style={{ borderLeft: '1px solid #444', height: '36px' }} />
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>Move Group</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <button onClick={(e) => { e.stopPropagation(); moveGroup(-10, 0); }} className="btn btn-gray btn-sm">←</button>
+                          <button onClick={(e) => { e.stopPropagation(); moveGroup(0, -10); }} className="btn btn-gray btn-sm">↑</button>
+                          <button onClick={(e) => { e.stopPropagation(); moveGroup(0, 10); }} className="btn btn-gray btn-sm">↓</button>
+                          <button onClick={(e) => { e.stopPropagation(); moveGroup(10, 0); }} className="btn btn-gray btn-sm">→</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button onClick={(e) => { e.stopPropagation(); deleteSelected(); }} className="btn btn-red btn-sm" title="Delete all tiles in group">
+                        🗑️ Delete Group
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); clearGroupSelection(); }} className="btn btn-gray btn-sm">
+                        ✕ Deselect
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="two-columns">
+                <div className="panel">
+                  <h3>🎨 Print Type / Filter</h3>
+                  <div className="filter-buttons">
+                    {filters.map((filter) => (
+                      <button
+                        key={filter.id}
+                        className={`filter-btn ${selectedArtwork.filter === filter.id ? 'active' : ''}`}
+                        onClick={() => setFilter(filter.id)}
+                      >
+                        <span className="icon">{filter.icon}</span>
+                        {filter.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                    <button onClick={() => applyFilterToAll(selectedArtwork.filter)} className="btn btn-teal btn-sm">
+                      Apply to All Artwork
+                    </button>
+                  </div>
+                  <div className="info-text">
+                    {selectedArtwork.filter === 'metal' && '✨ Metal: Vibrant colors, high contrast, metallic sheen'}
+                    {selectedArtwork.filter === 'canvas' && '🎨 Canvas: Soft texture, muted tones, gallery wrap'}
+                    {selectedArtwork.filter === 'none' && '🖼️ None: Original image, standard frame'}
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <h3>📐 Perspective & Angle</h3>
+                  <div className="panel-controls">
+                    <div className="panel-control">
+                      <label>Rotation</label>
+                      <input type="range" min="-45" max="45" value={selectedArtwork.rotation} onChange={(e) => updateArtwork('rotation', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.rotation}°</span>
+                    </div>
+                    <div className="panel-control">
+                      <label>Tilt X</label>
+                      <input type="range" min="-30" max="30" value={selectedArtwork.rotateX} onChange={(e) => updateArtwork('rotateX', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.rotateX}°</span>
+                    </div>
+                    <div className="panel-control">
+                      <label>Tilt Y</label>
+                      <input type="range" min="-30" max="30" value={selectedArtwork.rotateY} onChange={(e) => updateArtwork('rotateY', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.rotateY}°</span>
+                    </div>
+                    <div className="panel-control">
+                      <label>Skew X</label>
+                      <input type="range" min="-20" max="20" value={selectedArtwork.skewX} onChange={(e) => updateArtwork('skewX', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.skewX}°</span>
+                    </div>
+                    <div className="panel-control">
+                      <label>Skew Y</label>
+                      <input type="range" min="-20" max="20" value={selectedArtwork.skewY} onChange={(e) => updateArtwork('skewY', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.skewY}°</span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <button onClick={resetPerspective} className="btn btn-gray btn-sm">↺ Reset</button>
+                    <button onClick={applyPerspectiveToAll} className="btn btn-teal btn-sm">Apply to All</button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {!roomImage && (
+            <div className="placeholder">
+              <p className="big">👆 Start by uploading a room photo</p>
+              <p>Then add your artwork images and drag them into position</p>
+              <p style={{ marginTop: '20px', fontSize: '13px' }}>
+                ✨ Use zoom (Ctrl + scroll or slider) to get close-up while editing!
+              </p>
+              <p style={{ marginTop: '20px', fontSize: '11px', color: '#888' }}>
+                Debug: {debugMsg}
+              </p>
+            </div>
+          )}
+
+          {roomImage && (
+            <>
+              <div
+                ref={wrapperRef}
+                className="canvas-wrapper"
+                onWheel={handleWheel}
+              >
+                <div
+                  ref={containerRef}
+                  className="canvas-area"
+                  style={{ transform: `scale(${zoom})` }}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                  onClick={handleCanvasClick}
+                >
+                  <img ref={roomRef} src={roomImage} alt="Room" className="room-image" draggable={false} />
+                  
+                  {renderGrid()}
+                  
+                  {snapLines.horizontal.map((y, i) => (
+                    <div key={`h${i}`} className="snap-indicator horizontal" style={{ top: y, height: 2 / zoom }} />
+                  ))}
+                  {snapLines.vertical.map((x, i) => (
+                    <div key={`v${i}`} className="snap-indicator vertical" style={{ left: x, width: 2 / zoom }} />
+                  ))}
+
+                  {artworks.map((art) => {
+                    const isInSelectedGroup = selectedGroup.includes(art.id);
+                    const isSelected = selectedArt === art.id;
+
+                    return (
+                    <div
+                      key={art.id}
+                      className={`artwork ${isSelected ? 'selected' : ''} ${isInSelectedGroup ? 'group-selected' : ''}`}
+                      style={{
+                        left: art.x,
+                        top: art.y,
+                        width: art.width,
+                        height: art.height,
+                        transform: getTransformStyle(art),
+                        outlineWidth: isSelected ? 3 / zoom : (isInSelectedGroup ? 2 / zoom : 0),
+                        outlineColor: isInSelectedGroup && !isSelected ? '#a855f7' : undefined,
+                        outlineStyle: isInSelectedGroup && !isSelected ? 'dashed' : undefined,
+                      }}
+                      onMouseDown={(e) => handleMouseDown(e, art, 'drag')}
+                    >
+                      {selectedArt === art.id && (
+                        <div 
+                          className="size-info" 
+                          style={{ 
+                            transform: `translateX(-50%) scale(${handleScale})`,
+                            transformOrigin: 'bottom center',
+                          }}
+                        >
+                          {Math.round(art.width)} × {Math.round(art.height)} • {filters.find(f => f.id === art.filter)?.name}
+                        </div>
+                      )}
+                      <div className={`artwork-inner ${getFrameClass(art.filter)} filter-${art.filter}`}>
+                        <img src={art.src} alt="Artwork" draggable={false} />
+                        {art.filter === 'metal' && (
+                          <>
+                            <div className="metal-sheen" />
+                            <div className="metal-edge-highlight" />
+                          </>
+                        )}
+                        {art.filter === 'canvas' && (
+                          <>
+                            <div className="canvas-texture" />
+                            <div className="canvas-weave" />
+                            <div className="canvas-depth" />
+                          </>
+                        )}
+                      </div>
+                      {selectedArt === art.id && (
+                        <>
+                          <div 
+                            className="rotate-line" 
+                            style={{ 
+                              transform: `translateX(-50%) scaleY(${handleScale})`,
+                              top: -20 * handleScale,
+                              height: 20 * handleScale,
+                              width: 2 / zoom,
+                            }} 
+                          />
+                          <div
+                            className="rotate-handle"
+                            style={{
+                              transform: `translateX(-50%) scale(${handleScale})`,
+                              top: -30 * handleScale,
+                            }}
+                            onMouseDown={(e) => handleMouseDown(e, art, 'rotate')}
+                            title="Drag to rotate"
+                          />
+                          <div
+                            className="resize-handle"
+                            style={{
+                              transform: `scale(${handleScale})`,
+                              bottom: -10 * handleScale,
+                              right: -10 * handleScale,
+                            }}
+                            onMouseDown={(e) => handleMouseDown(e, art, 'resize')}
+                            title="Drag to resize"
+                          />
+                        </>
+                      )}
+                    </div>
+                  );
+                  })}
+                </div>
+              </div>
+
+              <div className="tips">
+                💡 Ctrl + Scroll to zoom • Drag to move • Handles stay same size at any zoom level
+              </div>
+            </>
+          )}
+
+          {/* Artwork Database Modal */}
+          {showArtworkModal && (
+            <div
+              className="artwork-modal-overlay"
+              onClick={(e) => { if (e.target === e.currentTarget) setShowArtworkModal(false); }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="artwork-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="artwork-modal-header">
+                  <h2>Select Artwork from Database</h2>
+                  <button className="artwork-modal-close" onClick={() => setShowArtworkModal(false)}>×</button>
+                </div>
+                <div className="artwork-modal-body">
+                  {loadingDbArtworks ? (
+                    <div className="artwork-modal-loading">Loading artwork...</div>
+                  ) : dbArtworks.length === 0 ? (
+                    <div className="artwork-modal-loading">No artwork found in database</div>
+                  ) : (
+                    <div className="artwork-grid">
+                      {dbArtworks.map((art) => (
+                        <div
+                          key={art.id || art.url}
+                          className={`artwork-item ${selectedDbArtwork?.id === art.id ? 'selected' : ''}`}
+                          onClick={() => setSelectedDbArtwork(art)}
+                        >
+                          <img
+                            src={art.thumbnail || art.url}
+                            alt={art.name || 'Artwork'}
+                            crossOrigin="anonymous"
+                            onError={(e) => {
+                              console.error('[Mockup] Failed to load thumbnail:', art.thumbnail || art.url);
+                              e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 75"><rect fill="%231a1a2e" width="100" height="75"/><text x="50" y="40" fill="%23f66" text-anchor="middle" font-size="8">Load Error</text></svg>';
+                            }}
+                            onLoad={() => console.log('[Mockup] Loaded:', art.thumbnail || art.url)}
+                          />
+                          <div className="artwork-item-name">{art.name || 'Untitled'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="artwork-modal-footer">
+                  <button className="btn btn-gray" onClick={() => setShowArtworkModal(false)}>Cancel</button>
+                  <button
+                    className="btn btn-green"
+                    onClick={addDbArtworkToCanvas}
+                    disabled={!selectedDbArtwork}
+                  >
+                    Add to Canvas
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tile/Split Modal */}
+          {showTileModal && (
+            <div
+              className="artwork-modal-overlay"
+              onClick={(e) => {
+                console.log('[Mockup] Tile overlay onClick, target className:', e.target?.className, 'currentTarget className:', e.currentTarget?.className);
+                // Only close if the click was directly on the overlay (not bubbled from children)
+                if (e.target === e.currentTarget && e.target.classList.contains('artwork-modal-overlay')) {
+                  console.log('[Mockup] Closing tile modal from direct overlay click');
+                  setShowTileModal(false);
+                }
+              }}
+              onMouseDown={(e) => {
+                console.log('[Mockup] Tile overlay onMouseDown');
+                e.stopPropagation();
+              }}
+            >
+              <div className="artwork-modal" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+                <div className="artwork-modal-header">
+                  <h2>Tile/Split Artwork</h2>
+                  <button className="artwork-modal-close" onClick={() => setShowTileModal(false)}>×</button>
+                </div>
+                <div className="artwork-modal-body" onClick={(e) => e.stopPropagation()}>
+                  <p style={{ textAlign: 'center', color: '#888', marginBottom: '20px' }}>
+                    Split the selected artwork into a grid of tiles
+                  </p>
+                  <div className="tile-config" onClick={(e) => e.stopPropagation()}>
+                    <label onClick={(e) => e.stopPropagation()}>
+                      Columns:
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={tileCols}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onChange={(e) => setTileCols(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                      />
+                    </label>
+                    <label onClick={(e) => e.stopPropagation()}>
+                      Rows:
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={tileRows}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onChange={(e) => setTileRows(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                      />
+                    </label>
+                    <div
+                      className="tile-preview"
+                      style={{
+                        gridTemplateColumns: `repeat(${tileCols}, 1fr)`,
+                        gridTemplateRows: `repeat(${tileRows}, 1fr)`
+                      }}
+                    >
+                      {Array.from({ length: tileCols * tileRows }).map((_, i) => (
+                        <div key={i} className="tile-preview-cell" />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tile Size / Aspect Ratio */}
+                  <div style={{ marginTop: '20px', padding: '12px', background: '#222', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '12px', color: '#888', marginBottom: '10px', textAlign: 'center' }}>
+                      Tile Size (determines aspect ratio)
+                    </div>
+                    <div className="tile-config" onClick={(e) => e.stopPropagation()}>
+                      <label onClick={(e) => e.stopPropagation()}>
+                        Width:
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={tileSizeWidth}
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onChange={(e) => setTileSizeWidth(Math.max(1, Math.min(100, parseFloat(e.target.value) || 12)))}
+                        />
+                        <span style={{ color: '#666', marginLeft: '4px' }}>"</span>
+                      </label>
+                      <label onClick={(e) => e.stopPropagation()}>
+                        Height:
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={tileSizeHeight}
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onChange={(e) => setTileSizeHeight(Math.max(1, Math.min(100, parseFloat(e.target.value) || 12)))}
+                        />
+                        <span style={{ color: '#666', marginLeft: '4px' }}>"</span>
+                      </label>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#666', marginTop: '8px', textAlign: 'center' }}>
+                      Ratio: {(tileSizeWidth / tileSizeHeight).toFixed(2)} ({tileSizeWidth}" × {tileSizeHeight}" each)
+                    </div>
+                  </div>
+
+                  <p style={{ textAlign: 'center', color: '#666', marginTop: '16px', fontSize: '12px' }}>
+                    This will create {tileCols * tileRows} separate tile images
+                  </p>
+                </div>
+                <div className="artwork-modal-footer">
+                  <button className="btn btn-gray" onClick={() => setShowTileModal(false)}>Cancel</button>
+                  <button className="btn btn-blue" onClick={tileSelectedArtwork}>
+                    Split into {tileCols * tileRows} Tiles
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    console.log('[Mockup] Calling ReactDOM.render...');
+    ReactDOM.render(<WallArtMockup />, document.getElementById('root'));
+    console.log('[Mockup] ReactDOM.render complete');
+  </script>
+</body>
+</html>

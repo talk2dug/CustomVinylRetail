@@ -1,0 +1,515 @@
+{% comment %}
+  Campaign Collection Template
+
+  File name: collection.campaign.liquid
+
+  Installation:
+  1. Go to Shopify Admin → Online Store → Themes
+  2. Click "..." on your active theme → Edit code
+  3. In the Templates section, click "Add a new template"
+  4. Choose "collection" as the template type
+  5. Name it "campaign" (this creates collection.campaign.liquid)
+  6. Paste this code
+  7. Save
+
+  Usage:
+  - In your collection settings, select "campaign" as the template
+  - Or apply via API when creating collections from the Print Station
+{% endcomment %}
+
+<div class="campaign-collection-wrapper">
+
+  {%- comment -%} HERO SECTION {%- endcomment -%}
+  <section class="campaign-hero">
+    <div class="campaign-container">
+      <div class="campaign-hero-grid">
+
+        {%- comment -%} Left Column: Content {%- endcomment -%}
+        <div class="campaign-hero-content">
+
+          {%- comment -%} Badge {%- endcomment -%}
+          <span class="campaign-badge">Limited Collection</span>
+
+          {%- comment -%} Title {%- endcomment -%}
+          <h1 class="campaign-title">{{ collection.title }}</h1>
+
+          {%- comment -%} Tagline from metafield {%- endcomment -%}
+          {%- if collection.metafields.marketing.campaign_tagline -%}
+            <p class="campaign-tagline">{{ collection.metafields.marketing.campaign_tagline }}</p>
+          {%- endif -%}
+
+          {%- comment -%} Description {%- endcomment -%}
+          {%- if collection.description != blank -%}
+            <div class="campaign-description-html">
+              {{ collection.description }}
+            </div>
+          {%- endif -%}
+
+          {%- comment -%} Social Proof {%- endcomment -%}
+          {%- if collection.metafields.marketing.social_proof_text -%}
+            <div class="campaign-social-proof">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+              </svg>
+              <span>{{ collection.metafields.marketing.social_proof_text }}</span>
+            </div>
+          {%- endif -%}
+
+          {%- comment -%} Countdown Timer {%- endcomment -%}
+          {%- if collection.metafields.marketing.campaign_end_date -%}
+            <div class="campaign-countdown" data-end-date="{{ collection.metafields.marketing.campaign_end_date }}">
+              <p class="countdown-label">Offer ends in:</p>
+              <div class="countdown-timer">
+                <div class="countdown-segment">
+                  <span class="countdown-value" data-days>0</span>
+                  <span class="countdown-label-small">Days</span>
+                </div>
+                <div class="countdown-segment">
+                  <span class="countdown-value" data-hours>0</span>
+                  <span class="countdown-label-small">Hours</span>
+                </div>
+                <div class="countdown-segment">
+                  <span class="countdown-value" data-minutes>0</span>
+                  <span class="countdown-label-small">Minutes</span>
+                </div>
+                <div class="countdown-segment">
+                  <span class="countdown-value" data-seconds>0</span>
+                  <span class="countdown-label-small">Seconds</span>
+                </div>
+              </div>
+            </div>
+          {%- endif -%}
+
+          {%- comment -%} CTA Button {%- endcomment -%}
+          <a href="#products" class="campaign-cta-button">Shop Collection</a>
+
+        </div>
+
+        {%- comment -%} Right Column: Mockup Image {%- endcomment -%}
+        <div class="campaign-hero-mockup">
+          {%- if collection.image -%}
+            <img
+              src="{{ collection.image | image_url: width: 800 }}"
+              srcset="{{ collection.image | image_url: width: 400 }} 400w,
+                      {{ collection.image | image_url: width: 600 }} 600w,
+                      {{ collection.image | image_url: width: 800 }} 800w,
+                      {{ collection.image | image_url: width: 1000 }} 1000w"
+              sizes="(max-width: 768px) 100vw, 50vw"
+              alt="{{ collection.title }}"
+              class="campaign-mockup-image"
+              loading="eager">
+          {%- endif -%}
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  {%- comment -%} BENEFITS SECTION {%- endcomment -%}
+  {%- if collection.metafields.marketing.campaign_benefits -%}
+    {%- assign benefits = collection.metafields.marketing.campaign_benefits | parse_json -%}
+    {%- if benefits.size > 0 -%}
+      <section class="campaign-benefits">
+        <div class="campaign-container">
+          <div class="campaign-benefits-grid">
+            {%- for benefit in benefits -%}
+              <div class="campaign-benefit-item">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 13l4 4L19 7"/>
+                </svg>
+                <p>{{ benefit }}</p>
+              </div>
+            {%- endfor -%}
+          </div>
+        </div>
+      </section>
+    {%- endif -%}
+  {%- endif -%}
+
+  {%- comment -%} PRODUCTS GRID {%- endcomment -%}
+  <section class="campaign-products" id="products">
+    <div class="campaign-container">
+
+      <div class="campaign-products-header">
+        <h2>Choose Your Design</h2>
+        <p>{{ collection.products_count }} unique designs available</p>
+      </div>
+
+      {%- if collection.products.size > 0 -%}
+        <div class="campaign-products-grid">
+          {%- for product in collection.products -%}
+            {% render 'product-card', product: product, show_quick_add: true %}
+          {%- endfor -%}
+        </div>
+      {%- else -%}
+        <p class="campaign-empty">No products found in this collection.</p>
+      {%- endif -%}
+
+    </div>
+  </section>
+
+  {%- comment -%} TRUST BADGES {%- endcomment -%}
+  <section class="campaign-trust">
+    <div class="campaign-container">
+      <div class="campaign-trust-grid">
+
+        <div class="campaign-trust-item">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+          </svg>
+          <h3>Free Shipping</h3>
+          <p>On orders over $50</p>
+        </div>
+
+        <div class="campaign-trust-item">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <h3>Quality Guaranteed</h3>
+          <p>Premium materials</p>
+        </div>
+
+        <div class="campaign-trust-item">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+          <h3>Secure Checkout</h3>
+          <p>SSL encrypted</p>
+        </div>
+
+        <div class="campaign-trust-item">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <h3>Easy Returns</h3>
+          <p>30-day guarantee</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</div>
+
+{%- comment -%} STYLES {%- endcomment -%}
+<style>
+  .campaign-collection-wrapper {
+    width: 100%;
+  }
+
+  .campaign-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  /* HERO SECTION */
+  .campaign-hero {
+    background: linear-gradient(135deg, {{ collection.metafields.marketing.theme_color | default: '#667eea' }} 0%, {{ collection.metafields.marketing.theme_color | default: '#764ba2' | color_darken: 20 }} 100%);
+    color: white;
+    padding: 80px 20px;
+    margin-bottom: 60px;
+  }
+
+  .campaign-hero-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 60px;
+    align-items: center;
+  }
+
+  .campaign-badge {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 8px 20px;
+    border-radius: 24px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 20px;
+  }
+
+  .campaign-title {
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 0 0 20px 0;
+  }
+
+  .campaign-tagline {
+    font-size: 22px;
+    line-height: 1.4;
+    opacity: 0.95;
+    margin: 0 0 24px 0;
+  }
+
+  .campaign-description-html {
+    font-size: 16px;
+    line-height: 1.6;
+    opacity: 0.9;
+    margin: 0 0 32px 0;
+  }
+
+  .campaign-description-html h2 {
+    color: white;
+    margin-top: 0;
+  }
+
+  .campaign-social-proof {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 24px 0;
+    font-size: 16px;
+    opacity: 0.9;
+  }
+
+  .campaign-countdown {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 24px;
+    border-radius: 12px;
+    margin: 32px 0;
+  }
+
+  .countdown-label {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0 0 16px 0;
+    opacity: 0.9;
+  }
+
+  .countdown-timer {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+  }
+
+  .countdown-segment {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .countdown-value {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .countdown-label-small {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 8px;
+    opacity: 0.8;
+  }
+
+  .campaign-cta-button {
+    display: inline-block;
+    background: white;
+    color: {{ collection.metafields.marketing.theme_color | default: '#667eea' }};
+    padding: 18px 48px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 18px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  }
+
+  .campaign-cta-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .campaign-mockup-image {
+    width: 100%;
+    height: auto;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  }
+
+  /* BENEFITS SECTION */
+  .campaign-benefits {
+    padding: 60px 20px;
+    background: #f9fafb;
+  }
+
+  .campaign-benefits-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 40px;
+  }
+
+  .campaign-benefit-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .campaign-benefit-item svg {
+    flex-shrink: 0;
+    color: #10b981;
+    margin-top: 2px;
+  }
+
+  .campaign-benefit-item p {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.5;
+    color: #374151;
+  }
+
+  /* PRODUCTS SECTION */
+  .campaign-products {
+    padding: 80px 20px;
+  }
+
+  .campaign-products-header {
+    text-align: center;
+    margin-bottom: 60px;
+  }
+
+  .campaign-products-header h2 {
+    font-size: 36px;
+    font-weight: 700;
+    margin: 0 0 12px 0;
+    color: #111827;
+  }
+
+  .campaign-products-header p {
+    font-size: 18px;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  .campaign-products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 32px;
+  }
+
+  .campaign-empty {
+    text-align: center;
+    color: #6b7280;
+    font-size: 18px;
+    padding: 60px 20px;
+  }
+
+  /* TRUST BADGES */
+  .campaign-trust {
+    padding: 60px 20px;
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .campaign-trust-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 40px;
+  }
+
+  .campaign-trust-item {
+    text-align: center;
+  }
+
+  .campaign-trust-item svg {
+    color: {{ collection.metafields.marketing.theme_color | default: '#667eea' }};
+    margin-bottom: 16px;
+  }
+
+  .campaign-trust-item h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    color: #111827;
+  }
+
+  .campaign-trust-item p {
+    font-size: 14px;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 768px) {
+    .campaign-hero {
+      padding: 60px 20px;
+    }
+
+    .campaign-hero-grid {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+
+    .campaign-title {
+      font-size: 32px;
+    }
+
+    .campaign-tagline {
+      font-size: 18px;
+    }
+
+    .countdown-value {
+      font-size: 28px;
+    }
+
+    .countdown-timer {
+      gap: 12px;
+    }
+
+    .campaign-products-header h2 {
+      font-size: 28px;
+    }
+
+    .campaign-products-grid {
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 24px;
+    }
+
+    .campaign-trust-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+  }
+</style>
+
+{%- comment -%} COUNTDOWN TIMER SCRIPT {%- endcomment -%}
+<script>
+  (function() {
+    const countdownEl = document.querySelector('[data-end-date]');
+    if (!countdownEl) return;
+
+    const endDate = new Date(countdownEl.dataset.endDate);
+
+    function updateCountdown() {
+      const now = new Date();
+      const diff = endDate - now;
+
+      if (diff <= 0) {
+        countdownEl.style.display = 'none';
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      const daysEl = countdownEl.querySelector('[data-days]');
+      const hoursEl = countdownEl.querySelector('[data-hours]');
+      const minutesEl = countdownEl.querySelector('[data-minutes]');
+      const secondsEl = countdownEl.querySelector('[data-seconds]');
+
+      if (daysEl) daysEl.textContent = days;
+      if (hoursEl) hoursEl.textContent = hours;
+      if (minutesEl) minutesEl.textContent = minutes;
+      if (secondsEl) secondsEl.textContent = seconds;
+    }
+
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+  })();
+</script>

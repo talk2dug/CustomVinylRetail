@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wall Art Mockup Tool - With Zoom</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #111; 
+      color: white; 
+      min-height: 100vh;
+    }
+    .container { max-width: 1400px; margin: 0 auto; padding: 15px; }
+    h1 { text-align: center; margin-bottom: 15px; font-size: 24px; }
+    
+    .controls { 
+      display: flex; 
+      flex-wrap: wrap; 
+      gap: 8px; 
+      justify-content: center; 
+      margin-bottom: 12px; 
+    }
+    
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #222;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    
+    .control-group label {
+      color: #aaa;
+      white-space: nowrap;
+    }
+    
+    .control-group input[type="range"] {
+      width: 70px;
+    }
+    
+    .control-group input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+    
+    .control-group select {
+      background: #333;
+      color: white;
+      border: 1px solid #444;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    
+    .zoom-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #1a3a1a;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    
+    .zoom-control label {
+      color: #8f8;
+    }
+    
+    .zoom-control input[type="range"] {
+      width: 100px;
+    }
+    
+    .zoom-control .zoom-value {
+      color: #8f8;
+      font-weight: 600;
+      min-width: 45px;
+      text-align: center;
+    }
+    
+    .zoom-control button {
+      background: #2a4a2a;
+      border: none;
+      color: #8f8;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .zoom-control button:hover {
+      background: #3a5a3a;
+    }
+    
+    .panel {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .panel h3 {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    
+    .panel-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .panel-control {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .panel-control label {
+      font-size: 11px;
+      color: #888;
+    }
+    
+    .panel-control input[type="range"] {
+      width: 100px;
+    }
+    
+    .panel-control .value {
+      font-size: 11px;
+      color: #3b82f6;
+      font-weight: 600;
+    }
+    
+    .filter-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    
+    .filter-btn {
+      padding: 8px 16px;
+      border: 2px solid #444;
+      border-radius: 6px;
+      background: #222;
+      color: #ccc;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover {
+      border-color: #666;
+      color: white;
+    }
+    .filter-btn.active {
+      border-color: #3b82f6;
+      background: #1e3a5f;
+      color: white;
+    }
+    
+    .filter-btn .icon {
+      display: block;
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+    
+    .btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-blue { background: #2563eb; color: white; }
+    .btn-blue:hover { background: #1d4ed8; }
+    .btn-green { background: #16a34a; color: white; }
+    .btn-green:hover { background: #15803d; }
+    .btn-purple { background: #7c3aed; color: white; }
+    .btn-purple:hover { background: #6d28d9; }
+    .btn-red { background: #dc2626; color: white; }
+    .btn-red:hover { background: #b91c1c; }
+    .btn-orange { background: #ea580c; color: white; }
+    .btn-orange:hover { background: #c2410c; }
+    .btn-yellow { background: #ca8a04; color: white; }
+    .btn-yellow:hover { background: #a16207; }
+    .btn-gray { background: #4b5563; color: white; }
+    .btn-gray:hover { background: #374151; }
+    .btn-teal { background: #0d9488; color: white; }
+    .btn-teal:hover { background: #0f766e; }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+    
+    .hidden-input { display: none; }
+    
+    .canvas-wrapper {
+      overflow: auto;
+      max-height: 70vh;
+      border-radius: 12px;
+      background: #0a0a0a;
+      border: 1px solid #333;
+    }
+    
+    .canvas-area {
+      position: relative;
+      background: #222;
+      user-select: none;
+      transform-origin: top left;
+      display: inline-block;
+    }
+    
+    .room-image {
+      display: block;
+    }
+    
+    .grid-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      opacity: 0.3;
+    }
+    
+    .artwork {
+      position: absolute;
+      cursor: move;
+      transform-origin: center center;
+    }
+    .artwork.selected { 
+      outline: 3px solid #3b82f6; 
+      outline-offset: 2px; 
+    }
+    
+    .artwork-inner {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .frame-metal {
+      box-shadow: 
+        inset 0 0 0 5px #1a1a1a,
+        6px 6px 20px rgba(0,0,0,0.6);
+      border-radius: 1px;
+    }
+    
+    .frame-canvas {
+      box-shadow: 
+        inset 0 0 0 3px #2a2520,
+        inset 3px 3px 0 0 #3d362e,
+        inset -3px -3px 0 0 #1a1815,
+        8px 8px 20px rgba(0,0,0,0.5);
+      border-radius: 0;
+    }
+    
+    .artwork img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    
+    .filter-metal img {
+      filter: saturate(1.4) contrast(1.15) brightness(1.05);
+    }
+    .filter-metal .metal-sheen {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.1) 25%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.1) 75%, rgba(255,255,255,0) 100%);
+      pointer-events: none;
+      mix-blend-mode: overlay;
+    }
+    .filter-metal .metal-edge-highlight {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      box-shadow: inset 1px 1px 0 rgba(255,255,255,0.3), inset -1px -1px 0 rgba(0,0,0,0.3);
+      pointer-events: none;
+    }
+    
+    .filter-canvas img {
+      filter: saturate(0.9) contrast(0.95) brightness(0.98);
+    }
+    .filter-canvas .canvas-texture {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      opacity: 0.4;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-size: 100px 100px;
+    }
+    .filter-canvas .canvas-weave {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      opacity: 0.15;
+      background-image: linear-gradient(0deg, transparent 50%, rgba(0,0,0,0.1) 50%), linear-gradient(90deg, transparent 50%, rgba(0,0,0,0.1) 50%);
+      background-size: 4px 4px;
+    }
+    .filter-canvas .canvas-depth {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      box-shadow: inset 2px 2px 4px rgba(0,0,0,0.2), inset -1px -1px 2px rgba(255,255,255,0.1);
+    }
+    
+    .resize-handle {
+      position: absolute;
+      bottom: -10px;
+      right: -10px;
+      width: 20px;
+      height: 20px;
+      background: #3b82f6;
+      border: 2px solid white;
+      border-radius: 50%;
+      cursor: se-resize;
+      z-index: 10;
+    }
+    
+    .rotate-handle {
+      position: absolute;
+      top: -30px;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      background: #f59e0b;
+      border: 2px solid white;
+      border-radius: 50%;
+      cursor: grab;
+      z-index: 10;
+    }
+    .rotate-handle:active { cursor: grabbing; }
+    
+    .rotate-line {
+      position: absolute;
+      top: -20px;
+      left: 50%;
+      width: 2px;
+      height: 20px;
+      background: #f59e0b;
+    }
+    
+    .placeholder {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    .placeholder p { margin: 10px 0; }
+    .placeholder .big { font-size: 22px; }
+    
+    .tips {
+      text-align: center;
+      color: #666;
+      margin-top: 12px;
+      font-size: 12px;
+    }
+    
+    .size-info {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      background: rgba(0,0,0,0.85);
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      white-space: nowrap;
+      margin-bottom: 5px;
+      z-index: 20;
+    }
+    
+    .snap-indicator {
+      position: absolute;
+      background: #3b82f6;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    .snap-indicator.horizontal { height: 2px; left: 0; right: 0; }
+    .snap-indicator.vertical { width: 2px; top: 0; bottom: 0; }
+    
+    .num-input {
+      width: 45px;
+      padding: 3px 5px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background: #333;
+      color: white;
+      font-size: 12px;
+      text-align: center;
+    }
+    
+    .info-text {
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+      margin-top: 8px;
+    }
+    
+    .two-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    
+    @media (max-width: 800px) {
+      .two-columns { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Early ready signal before React loads -->
+  <script>
+    console.log('[Mockup] Early script - setting up message listener');
+    window._pendingMessages = [];
+    window._reactReady = false;
+
+    // Listen for messages immediately
+    window.addEventListener('message', function(event) {
+      console.log('[Mockup] Early listener got message:', event.data?.type);
+      if (!window._reactReady && event.data?.type) {
+        console.log('[Mockup] Queuing message for React:', event.data.type);
+        window._pendingMessages.push(event.data);
+      }
+    });
+
+    // Send ready signal immediately
+    if (window.parent !== window) {
+      console.log('[Mockup] Sending early MOCKUP_READY');
+      window.parent.postMessage({ type: 'MOCKUP_READY' }, '*');
+    }
+  </script>
+
+  <script type="text/babel">
+    console.log('[Mockup] Script starting...');
+    const { useState, useRef, useCallback, useEffect } = React;
+
+    function WallArtMockup() {
+      const [roomImage, setRoomImage] = useState(null);
+      const [roomSize, setRoomSize] = useState({ width: 0, height: 0 });
+      const [artworks, setArtworks] = useState([]);
+      const [selectedArt, setSelectedArt] = useState(null);
+      const [isDragging, setIsDragging] = useState(false);
+      const [isResizing, setIsResizing] = useState(false);
+      const [isRotating, setIsRotating] = useState(false);
+      const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+      const [copiedPerspective, setCopiedPerspective] = useState(null);
+
+      // Zoom
+      const [zoom, setZoom] = useState(1);
+
+      // Grid and snapping
+      const [snapEnabled, setSnapEnabled] = useState(true);
+      const [snapToArt, setSnapToArt] = useState(true);
+      const [showGrid, setShowGrid] = useState(false);
+      const [gridSize, setGridSize] = useState(20);
+      const [gap, setGap] = useState(10);
+      const [snapLines, setSnapLines] = useState({ horizontal: [], vertical: [] });
+
+      // For external export (postMessage)
+      const [exportRequested, setExportRequested] = useState(false);
+
+      // Debug state
+      const [debugMsg, setDebugMsg] = useState('Waiting for message...');
+
+      const containerRef = useRef(null);
+      const roomRef = useRef(null);
+      const wrapperRef = useRef(null);
+
+      const snapThreshold = 8;
+
+      // Listen for messages from parent window (print-station)
+      useEffect(() => {
+        console.log('[Mockup] Setting up message listener');
+        setDebugMsg('Message listener set up');
+        const handleMessage = (event) => {
+          setDebugMsg('Message received: ' + (event.data?.type || 'unknown'));
+          console.log('[Mockup] Received message:', event.data?.type);
+          const { type, roomImage: newRoomImage, artworkImage, materialFilter } = event.data || {};
+
+          if (type === 'SET_MOCKUP') {
+            // Set room image from URL
+            if (newRoomImage) {
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onload = () => {
+                setRoomSize({ width: img.width, height: img.height });
+                setRoomImage(newRoomImage);
+                setZoom(1);
+              };
+              img.src = newRoomImage;
+            }
+
+            // Add artwork if provided
+            if (artworkImage) {
+              const artImg = new Image();
+              artImg.crossOrigin = 'anonymous';
+              artImg.onload = () => {
+                // Calculate aspect ratio and scale to fit within max bounds while maintaining ratio
+                const aspectRatio = artImg.width / artImg.height;
+                const maxWidth = 400;
+                const maxHeight = 300;
+                let width, height;
+
+                if (artImg.width <= maxWidth && artImg.height <= maxHeight) {
+                  // Image fits within bounds, use original size
+                  width = artImg.width;
+                  height = artImg.height;
+                } else if (aspectRatio > maxWidth / maxHeight) {
+                  // Width is the limiting factor
+                  width = maxWidth;
+                  height = maxWidth / aspectRatio;
+                } else {
+                  // Height is the limiting factor
+                  height = maxHeight;
+                  width = maxHeight * aspectRatio;
+                }
+
+                const newArt = {
+                  id: Date.now(),
+                  src: artworkImage,
+                  x: 100,
+                  y: 100,
+                  width: width,
+                  height: height,
+                  aspectRatio: aspectRatio,
+                  rotation: 0,
+                  perspective: { rotateX: 0, rotateY: 0, scale: 1 },
+                  filter: materialFilter || 'none'
+                };
+                setArtworks([newArt]);
+                setSelectedArt(newArt.id);
+              };
+              artImg.src = artworkImage;
+            }
+          }
+
+          if (type === 'EXPORT_MOCKUP') {
+            console.log('[Mockup iframe] EXPORT_MOCKUP received, roomImage exists:', !!roomImage);
+            setExportRequested(true);
+          }
+
+          // Handle tiled mockup (split panel artwork)
+          if (type === 'SET_TILED_MOCKUP') {
+            const { roomImage: tiledRoomImage, cols, rows, tileWidth, tileHeight, gap: tileGap, tiles } = event.data;
+            console.log('[Mockup] SET_TILED_MOCKUP received:', { tiledRoomImage, cols, rows, tileWidth, tileHeight, tileGap, tilesCount: tiles?.length });
+            console.log('[Mockup] Tiles:', tiles);
+
+            // Load the room image first
+            if (tiledRoomImage) {
+              console.log('[Mockup] Loading room image, length:', tiledRoomImage.length, 'starts with:', tiledRoomImage.substring(0, 50));
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onerror = (e) => {
+                console.error('[Mockup] FAILED to load room image:', e);
+              };
+              img.onload = () => {
+                console.log('[Mockup] Room image loaded:', img.width, 'x', img.height);
+                setRoomSize({ width: img.width, height: img.height });
+                setRoomImage(tiledRoomImage);
+                setZoom(1);
+
+                // Once room is loaded, add the tiles as artwork pieces
+                // We'll position them in a grid layout
+                const baseSize = 100; // Base pixel size for tiles in mockup
+                const scaleFactor = baseSize / Math.max(tileWidth, tileHeight);
+                const pixelWidth = tileWidth * scaleFactor;
+                const pixelHeight = tileHeight * scaleFactor;
+                const pixelGap = (tileGap || 1) * scaleFactor;
+
+                // Starting position (center of room roughly)
+                const startX = (img.width / 2) - ((cols * pixelWidth + (cols - 1) * pixelGap) / 2);
+                const startY = (img.height / 2) - ((rows * pixelHeight + (rows - 1) * pixelGap) / 2);
+
+                const newArtworks = [];
+                let loadedCount = 0;
+                const totalTiles = tiles.length;
+
+                tiles.forEach((tile, index) => {
+                  const tileImg = new Image();
+                  tileImg.crossOrigin = 'anonymous';
+                  tileImg.onload = () => {
+                    const col = tile.col - 1; // 1-indexed from server
+                    const row = tile.row - 1;
+                    const x = startX + (col * (pixelWidth + pixelGap));
+                    const y = startY + (row * (pixelHeight + pixelGap));
+
+                    newArtworks.push({
+                      id: Date.now() + index,
+                      src: tile.url,
+                      x,
+                      y,
+                      width: pixelWidth,
+                      height: pixelHeight,
+                      aspectRatio: pixelWidth / pixelHeight,
+                      rotation: 0,
+                      rotateX: 0,
+                      rotateY: 0,
+                      skewX: 0,
+                      skewY: 0,
+                      filter: 'none',
+                      tileRow: tile.row,
+                      tileCol: tile.col
+                    });
+
+                    loadedCount++;
+                    if (loadedCount === totalTiles) {
+                      // All tiles loaded, sort by row then col and set
+                      newArtworks.sort((a, b) => {
+                        if (a.tileRow !== b.tileRow) return a.tileRow - b.tileRow;
+                        return a.tileCol - b.tileCol;
+                      });
+                      setArtworks(newArtworks);
+                      setGap(pixelGap);
+                    }
+                  };
+                  tileImg.onerror = () => {
+                    console.error('[Mockup] Failed to load tile:', tile.url);
+                    loadedCount++;
+                  };
+                  tileImg.src = tile.url;
+                });
+              };
+              img.onerror = () => console.error('[Mockup] Failed to load room image:', tiledRoomImage);
+              img.src = tiledRoomImage;
+            }
+          }
+        };
+
+        window.addEventListener('message', handleMessage);
+
+        // Mark React as ready and process any queued messages
+        window._reactReady = true;
+        console.log('[Mockup] React mounted, processing', window._pendingMessages?.length || 0, 'queued messages');
+        if (window._pendingMessages && window._pendingMessages.length > 0) {
+          window._pendingMessages.forEach(data => {
+            console.log('[Mockup] Processing queued message:', data.type);
+            handleMessage({ data });
+          });
+          window._pendingMessages = [];
+        }
+
+        // Signal to parent that we're ready to receive messages
+        console.log('[Mockup] React mounted, sending MOCKUP_READY signal');
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'MOCKUP_READY' }, '*');
+        }
+
+        return () => window.removeEventListener('message', handleMessage);
+      }, []);
+
+      // Handle export request
+      useEffect(() => {
+        console.log('[Mockup iframe] Export effect triggered, exportRequested:', exportRequested, 'roomImage exists:', !!roomImage);
+        if (exportRequested && roomImage) {
+          console.log('[Mockup iframe] Calling exportImage...');
+          exportImage(true); // true = send via postMessage
+          setExportRequested(false);
+        } else if (exportRequested && !roomImage) {
+          console.log('[Mockup iframe] EXPORT BLOCKED - no roomImage!');
+          setExportRequested(false);
+        }
+      }, [exportRequested, roomImage]);
+
+      const filters = [
+        { id: 'none', name: 'None', icon: '🖼️' },
+        { id: 'metal', name: 'Metal Print', icon: '✨' },
+        { id: 'canvas', name: 'Canvas', icon: '🎨' },
+      ];
+
+      const handleRoomUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              setRoomSize({ width: img.width, height: img.height });
+              setRoomImage(e.target.result);
+              setZoom(1);
+            };
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const handleArtUpload = (e) => {
+        const files = Array.from(e.target.files);
+        files.forEach((file) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const aspectRatio = img.width / img.height;
+              const defaultHeight = 160;
+              setArtworks((prev) => [
+                ...prev,
+                {
+                  id: Date.now() + Math.random(),
+                  src: event.target.result,
+                  name: file.name,
+                  x: 80 + (prev.length % 4) * 50,
+                  y: 80 + Math.floor(prev.length / 4) * 50,
+                  width: defaultHeight * aspectRatio,
+                  height: defaultHeight,
+                  aspectRatio,
+                  rotation: 0,
+                  rotateX: 0,
+                  rotateY: 0,
+                  skewX: 0,
+                  skewY: 0,
+                  filter: 'none',
+                },
+              ]);
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        });
+        e.target.value = '';
+      };
+
+      const handleZoom = (delta) => {
+        setZoom((prev) => Math.min(4, Math.max(0.25, prev + delta)));
+      };
+
+      const snapToGridFn = (value) => {
+        if (!snapEnabled) return value;
+        return Math.round(value / gridSize) * gridSize;
+      };
+
+      const findSnapPoints = (currentArt, newX, newY, newWidth, newHeight) => {
+        if (!snapToArt) return { x: newX, y: newY, lines: { horizontal: [], vertical: [] } };
+        
+        const lines = { horizontal: [], vertical: [] };
+        let snappedX = newX;
+        let snappedY = newY;
+        
+        const currentRight = newX + newWidth;
+        const currentBottom = newY + newHeight;
+        const currentCenterX = newX + newWidth / 2;
+        const currentCenterY = newY + newHeight / 2;
+
+        artworks.forEach((art) => {
+          if (art.id === currentArt.id) return;
+          
+          const artRight = art.x + art.width;
+          const artBottom = art.y + art.height;
+          const artCenterX = art.x + art.width / 2;
+          const artCenterY = art.y + art.height / 2;
+
+          if (Math.abs(newX - art.x) < snapThreshold) { snappedX = art.x; lines.vertical.push(art.x); }
+          if (Math.abs(newX - artRight - gap) < snapThreshold) { snappedX = artRight + gap; lines.vertical.push(artRight + gap / 2); }
+          if (Math.abs(currentRight - artRight) < snapThreshold) { snappedX = artRight - newWidth; lines.vertical.push(artRight); }
+          if (Math.abs(currentRight - art.x + gap) < snapThreshold) { snappedX = art.x - gap - newWidth; lines.vertical.push(art.x - gap / 2); }
+          if (Math.abs(currentCenterX - artCenterX) < snapThreshold) { snappedX = artCenterX - newWidth / 2; lines.vertical.push(artCenterX); }
+          if (Math.abs(newY - art.y) < snapThreshold) { snappedY = art.y; lines.horizontal.push(art.y); }
+          if (Math.abs(newY - artBottom - gap) < snapThreshold) { snappedY = artBottom + gap; lines.horizontal.push(artBottom + gap / 2); }
+          if (Math.abs(currentBottom - artBottom) < snapThreshold) { snappedY = artBottom - newHeight; lines.horizontal.push(artBottom); }
+          if (Math.abs(currentBottom - art.y + gap) < snapThreshold) { snappedY = art.y - gap - newHeight; lines.horizontal.push(art.y - gap / 2); }
+          if (Math.abs(currentCenterY - artCenterY) < snapThreshold) { snappedY = artCenterY - newHeight / 2; lines.horizontal.push(artCenterY); }
+        });
+
+        return { x: snappedX, y: snappedY, lines };
+      };
+
+      const handleMouseDown = (e, art, action = 'drag') => {
+        e.stopPropagation();
+        e.preventDefault();
+        setSelectedArt(art.id);
+        
+        if (action === 'resize') {
+          setIsResizing(true);
+        } else if (action === 'rotate') {
+          setIsRotating(true);
+        } else {
+          setIsDragging(true);
+          const rect = containerRef.current.getBoundingClientRect();
+          const mouseX = (e.clientX - rect.left) / zoom;
+          const mouseY = (e.clientY - rect.top) / zoom;
+          setDragOffset({ x: mouseX - art.x, y: mouseY - art.y });
+        }
+      };
+
+      const handleMouseMove = (e) => {
+        if (!selectedArt || !containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const currentArt = artworks.find(a => a.id === selectedArt);
+        if (!currentArt) return;
+        
+        // Adjust mouse position for zoom
+        const mouseX = (e.clientX - rect.left) / zoom;
+        const mouseY = (e.clientY - rect.top) / zoom;
+        
+        if (isDragging) {
+          let newX = mouseX - dragOffset.x;
+          let newY = mouseY - dragOffset.y;
+          
+          if (snapEnabled && !snapToArt) {
+            newX = snapToGridFn(newX);
+            newY = snapToGridFn(newY);
+          }
+          
+          const snapResult = findSnapPoints(currentArt, newX, newY, currentArt.width, currentArt.height);
+          newX = snapResult.x;
+          newY = snapResult.y;
+          setSnapLines(snapResult.lines);
+          
+          setArtworks((prev) =>
+            prev.map((art) =>
+              art.id === selectedArt
+                ? { ...art, x: Math.max(0, newX), y: Math.max(0, newY) }
+                : art
+            )
+          );
+        } else if (isResizing) {
+          let newWidth = Math.max(60, mouseX - currentArt.x);
+          if (snapEnabled) newWidth = snapToGridFn(newWidth);
+          const newHeight = newWidth / currentArt.aspectRatio;
+          
+          setArtworks((prev) =>
+            prev.map((art) =>
+              art.id === selectedArt ? { ...art, width: newWidth, height: newHeight } : art
+            )
+          );
+        } else if (isRotating) {
+          const artCenterX = currentArt.x + currentArt.width / 2;
+          const artCenterY = currentArt.y + currentArt.height / 2;
+          const angle = Math.atan2(mouseX - artCenterX, -(mouseY - artCenterY)) * (180 / Math.PI);
+          
+          setArtworks((prev) =>
+            prev.map((art) =>
+              art.id === selectedArt ? { ...art, rotation: Math.round(angle) } : art
+            )
+          );
+        }
+      };
+
+      const handleMouseUp = () => {
+        setIsDragging(false);
+        setIsResizing(false);
+        setIsRotating(false);
+        setSnapLines({ horizontal: [], vertical: [] });
+      };
+
+      const handleCanvasClick = (e) => {
+        if (e.target === containerRef.current || e.target.classList.contains('room-image')) {
+          setSelectedArt(null);
+        }
+      };
+
+      const handleWheel = (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const delta = e.deltaY > 0 ? -0.1 : 0.1;
+          handleZoom(delta);
+        }
+      };
+
+      const updateArtwork = (property, value) => {
+        setArtworks((prev) =>
+          prev.map((art) =>
+            art.id === selectedArt ? { ...art, [property]: value } : art
+          )
+        );
+      };
+
+      const setFilter = (filterId) => updateArtwork('filter', filterId);
+
+      const applyFilterToAll = (filterId) => {
+        setArtworks((prev) => prev.map((art) => ({ ...art, filter: filterId })));
+      };
+
+      const deleteSelected = () => {
+        setArtworks((prev) => prev.filter((a) => a.id !== selectedArt));
+        setSelectedArt(null);
+      };
+
+      const adjustSize = (delta) => {
+        setArtworks((prev) =>
+          prev.map((art) => {
+            if (art.id === selectedArt) {
+              let newWidth = Math.max(60, art.width + delta);
+              if (snapEnabled) newWidth = snapToGridFn(newWidth);
+              return { ...art, width: newWidth, height: newWidth / art.aspectRatio };
+            }
+            return art;
+          })
+        );
+      };
+
+      const duplicateSelected = () => {
+        const art = artworks.find((a) => a.id === selectedArt);
+        if (art) {
+          const newX = snapEnabled ? snapToGridFn(art.x + art.width + gap) : art.x + art.width + gap;
+          setArtworks((prev) => [...prev, { ...art, id: Date.now(), x: newX }]);
+        }
+      };
+
+      const resetPerspective = () => {
+        setArtworks((prev) =>
+          prev.map((art) =>
+            art.id === selectedArt
+              ? { ...art, rotation: 0, rotateX: 0, rotateY: 0, skewX: 0, skewY: 0 }
+              : art
+          )
+        );
+      };
+
+      const applyPerspectiveToAll = () => {
+        const art = artworks.find((a) => a.id === selectedArt);
+        if (art) {
+          const perspective = { rotation: art.rotation, rotateX: art.rotateX, rotateY: art.rotateY, skewX: art.skewX, skewY: art.skewY };
+          setArtworks((prev) => prev.map((a) => ({ ...a, ...perspective })));
+        }
+      };
+
+      const distributeHorizontally = () => {
+        if (artworks.length < 2) return;
+        const sorted = [...artworks].sort((a, b) => a.x - b.x);
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+        const totalWidth = (last.x + last.width) - first.x;
+        const artWidths = sorted.reduce((sum, a) => sum + a.width, 0);
+        const gapBetween = (totalWidth - artWidths) / (sorted.length - 1);
+        
+        let currentX = first.x;
+        const newPositions = sorted.map((art) => {
+          const newArt = { ...art, x: currentX };
+          currentX += art.width + gapBetween;
+          return newArt;
+        });
+        setArtworks(newPositions);
+      };
+
+      const getTransformStyle = (art) => {
+        const transforms = [];
+        if (art.rotation) transforms.push(`rotate(${art.rotation}deg)`);
+        if (art.rotateX || art.rotateY) {
+          transforms.push(`perspective(800px)`);
+          if (art.rotateX) transforms.push(`rotateX(${art.rotateX}deg)`);
+          if (art.rotateY) transforms.push(`rotateY(${art.rotateY}deg)`);
+        }
+        if (art.skewX) transforms.push(`skewX(${art.skewX}deg)`);
+        if (art.skewY) transforms.push(`skewY(${art.skewY}deg)`);
+        return transforms.join(' ');
+      };
+
+      const getFrameClass = (filter) => {
+        switch (filter) {
+          case 'metal': return 'frame-metal';
+          case 'canvas': return 'frame-canvas';
+          default: return 'frame-metal';
+        }
+      };
+
+      // Inverse scale for handles so they stay same size visually
+      const handleScale = 1 / zoom;
+
+      const exportImage = (sendToParent = false) => {
+        const roomImg = roomRef.current;
+        if (!roomImg) return;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = roomSize.width;
+        canvas.height = roomSize.height;
+        const ctx = canvas.getContext('2d');
+
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0);
+
+          const loadPromises = artworks.map((art) => {
+            return new Promise((resolve) => {
+              const artImg = new Image();
+              artImg.crossOrigin = 'anonymous';
+              artImg.onload = () => resolve({ img: artImg, art });
+              artImg.onerror = () => resolve(null);
+              artImg.src = art.src;
+            });
+          });
+
+          Promise.all(loadPromises).then((results) => {
+            results.forEach((result) => {
+              if (!result) return;
+              const { img: artImg, art } = result;
+              
+              const scaleX = roomSize.width / roomRef.current.width;
+              const scaleY = roomSize.height / roomRef.current.height;
+              
+              const x = art.x * scaleX;
+              const y = art.y * scaleY;
+              const w = art.width * scaleX;
+              const h = art.height * scaleY;
+              const frame = art.filter === 'canvas' ? 4 * scaleX : 6 * scaleX;
+              const centerX = x + w / 2;
+              const centerY = y + h / 2;
+
+              ctx.save();
+              ctx.translate(centerX, centerY);
+              
+              // Apply rotation
+              if (art.rotation) {
+                ctx.rotate(art.rotation * Math.PI / 180);
+              }
+              
+              // Convert 3D perspective rotations to 2D skew approximation
+              // rotateY creates horizontal perspective (like looking from side)
+              // rotateX creates vertical perspective (like looking from above/below)
+              let skewXTotal = art.skewX || 0;
+              let skewYTotal = art.skewY || 0;
+              let scaleXFactor = 1;
+              let scaleYFactor = 1;
+              
+              // Approximate rotateY with horizontal skew and scale
+              if (art.rotateY) {
+                const rotateYRad = art.rotateY * Math.PI / 180;
+                skewYTotal += art.rotateY * 0.5; // Approximate skew
+                scaleXFactor *= Math.cos(rotateYRad); // Foreshortening
+              }
+              
+              // Approximate rotateX with vertical skew and scale
+              if (art.rotateX) {
+                const rotateXRad = art.rotateX * Math.PI / 180;
+                skewXTotal += art.rotateX * 0.5; // Approximate skew
+                scaleYFactor *= Math.cos(rotateXRad); // Foreshortening
+              }
+              
+              // Apply combined transform matrix
+              // transform(scaleX, skewY, skewX, scaleY, translateX, translateY)
+              ctx.transform(
+                scaleXFactor,
+                Math.tan(skewYTotal * Math.PI / 180),
+                Math.tan(skewXTotal * Math.PI / 180),
+                scaleYFactor,
+                0,
+                0
+              );
+
+              ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+              ctx.shadowBlur = 20 * scaleX;
+              ctx.shadowOffsetX = 8 * scaleX;
+              ctx.shadowOffsetY = 8 * scaleY;
+
+              // Only draw frame/border for non-tiled artwork
+              // Tiled artwork (split panels) should not have individual borders
+              const isTiledArtwork = (art.tileRow != null) || (art.tileCol != null) || (art.tileGroupId != null);
+              console.log('[Export] Drawing art:', art.id, 'isTiled:', isTiledArtwork, 'tileRow:', art.tileRow, 'tileCol:', art.tileCol);
+              if (!isTiledArtwork) {
+                ctx.fillStyle = art.filter === 'canvas' ? '#2a2520' : '#1a1a1a';
+                ctx.fillRect(-w/2 - frame, -h/2 - frame, w + frame * 2, h + frame * 2);
+              }
+
+              ctx.shadowColor = 'transparent';
+
+              const tempCanvas = document.createElement('canvas');
+              tempCanvas.width = w;
+              tempCanvas.height = h;
+              const tempCtx = tempCanvas.getContext('2d');
+              
+              tempCtx.drawImage(artImg, 0, 0, w, h);
+              
+              if (art.filter === 'metal') {
+                tempCtx.filter = 'saturate(1.4) contrast(1.15) brightness(1.05)';
+                tempCtx.drawImage(tempCanvas, 0, 0);
+                tempCtx.filter = 'none';
+                
+                const gradient = tempCtx.createLinearGradient(0, 0, w, h);
+                gradient.addColorStop(0, 'rgba(255,255,255,0)');
+                gradient.addColorStop(0.25, 'rgba(255,255,255,0.08)');
+                gradient.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+                gradient.addColorStop(0.75, 'rgba(255,255,255,0.08)');
+                gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                tempCtx.fillStyle = gradient;
+                tempCtx.globalCompositeOperation = 'overlay';
+                tempCtx.fillRect(0, 0, w, h);
+                tempCtx.globalCompositeOperation = 'source-over';
+              } else if (art.filter === 'canvas') {
+                tempCtx.filter = 'saturate(0.9) contrast(0.95) brightness(0.98)';
+                tempCtx.drawImage(tempCanvas, 0, 0);
+                tempCtx.filter = 'none';
+                
+                tempCtx.globalCompositeOperation = 'multiply';
+                tempCtx.fillStyle = 'rgba(245, 240, 230, 0.1)';
+                tempCtx.fillRect(0, 0, w, h);
+                tempCtx.globalCompositeOperation = 'source-over';
+                
+                tempCtx.globalAlpha = 0.08;
+                for (let i = 0; i < w; i += 3) {
+                  tempCtx.fillStyle = 'rgba(0,0,0,0.3)';
+                  tempCtx.fillRect(i, 0, 1, h);
+                }
+                for (let j = 0; j < h; j += 3) {
+                  tempCtx.fillRect(0, j, w, 1);
+                }
+                tempCtx.globalAlpha = 1;
+              }
+
+              ctx.drawImage(tempCanvas, -w/2, -h/2, w, h);
+              ctx.restore();
+            });
+
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+            const filename = 'room-mockup.jpg';
+
+            if (sendToParent && window.parent !== window) {
+              // Send to parent window via postMessage
+              // Include all artwork sources for saving tiled versions
+              const artworkSources = artworks.map((art, idx) => ({
+                index: idx,
+                src: art.src,
+                x: art.x,
+                y: art.y,
+                width: art.width,
+                height: art.height,
+                rotation: art.rotation || 0
+              }));
+              window.parent.postMessage({
+                type: 'MOCKUP_EXPORTED',
+                dataUrl,
+                filename,
+                artworks: artworkSources,
+                // Include room info for template creation
+                roomImage: roomImage,
+                roomSize: roomSize
+              }, '*');
+            } else {
+              // Download locally
+              const link = document.createElement('a');
+              link.download = filename;
+              link.href = dataUrl;
+              link.click();
+            }
+          });
+        };
+        img.crossOrigin = 'anonymous';
+        img.src = roomImage;
+      };
+
+      const renderGrid = () => {
+        if (!showGrid || !roomRef.current) return null;
+        const width = roomRef.current.width;
+        const height = roomRef.current.height;
+        
+        const lines = [];
+        for (let x = 0; x < width; x += gridSize) {
+          lines.push(<line key={`v${x}`} x1={x} y1={0} x2={x} y2={height} stroke="#fff" strokeWidth={0.5 / zoom} />);
+        }
+        for (let y = 0; y < height; y += gridSize) {
+          lines.push(<line key={`h${y}`} x1={0} y1={y} x2={width} y2={y} stroke="#fff" strokeWidth={0.5 / zoom} />);
+        }
+        
+        return (
+          <svg className="grid-overlay" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>{lines}</svg>
+        );
+      };
+
+      const selectedArtwork = artworks.find((a) => a.id === selectedArt);
+
+      return (
+        <div className="container">
+          <h1>🖼️ Wall Art Mockup Tool</h1>
+
+          <div className="controls">
+            <label className="btn btn-blue">
+              📷 Room
+              <input type="file" accept="image/*" onChange={handleRoomUpload} className="hidden-input" />
+            </label>
+
+            {roomImage && (
+              <label className="btn btn-green">
+                🖼️ Add Art
+                <input type="file" accept="image/*" multiple onChange={handleArtUpload} className="hidden-input" />
+              </label>
+            )}
+
+            {roomImage && (
+              <>
+                <div className="zoom-control">
+                  <button onClick={() => handleZoom(-0.25)}>−</button>
+                  <label>🔍</label>
+                  <input 
+                    type="range" 
+                    min="0.25" 
+                    max="4" 
+                    step="0.05" 
+                    value={zoom} 
+                    onChange={(e) => setZoom(Number(e.target.value))} 
+                  />
+                  <span className="zoom-value">{Math.round(zoom * 100)}%</span>
+                  <button onClick={() => handleZoom(0.25)}>+</button>
+                </div>
+                
+                <div className="control-group">
+                  <input type="checkbox" checked={snapEnabled} onChange={(e) => setSnapEnabled(e.target.checked)} id="snapGrid" />
+                  <label htmlFor="snapGrid">Snap</label>
+                </div>
+                <div className="control-group">
+                  <input type="checkbox" checked={snapToArt} onChange={(e) => setSnapToArt(e.target.checked)} id="snapArt" />
+                  <label htmlFor="snapArt">to Art</label>
+                </div>
+                <div className="control-group">
+                  <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} id="showGrid" />
+                  <label htmlFor="showGrid">Grid</label>
+                </div>
+                <div className="control-group">
+                  <label>Gap:</label>
+                  <input type="number" className="num-input" min="0" max="100" value={gap} onChange={(e) => setGap(Number(e.target.value))} />
+                </div>
+              </>
+            )}
+
+            {artworks.length > 0 && (
+              <button onClick={exportImage} className="btn btn-orange">💾 Export</button>
+            )}
+          </div>
+
+          {selectedArt && selectedArtwork && (
+            <>
+              <div className="controls">
+                <button onClick={() => adjustSize(30)} className="btn btn-purple btn-sm">➕ Bigger</button>
+                <button onClick={() => adjustSize(-30)} className="btn btn-purple btn-sm">➖ Smaller</button>
+                <button onClick={duplicateSelected} className="btn btn-yellow btn-sm">📋 Duplicate</button>
+                <button onClick={deleteSelected} className="btn btn-red btn-sm">🗑️ Delete</button>
+                {artworks.length > 1 && (
+                  <button onClick={distributeHorizontally} className="btn btn-teal btn-sm">⬌ Distribute</button>
+                )}
+              </div>
+
+              <div className="two-columns">
+                <div className="panel">
+                  <h3>🎨 Print Type / Filter</h3>
+                  <div className="filter-buttons">
+                    {filters.map((filter) => (
+                      <button
+                        key={filter.id}
+                        className={`filter-btn ${selectedArtwork.filter === filter.id ? 'active' : ''}`}
+                        onClick={() => setFilter(filter.id)}
+                      >
+                        <span className="icon">{filter.icon}</span>
+                        {filter.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                    <button onClick={() => applyFilterToAll(selectedArtwork.filter)} className="btn btn-teal btn-sm">
+                      Apply to All Artwork
+                    </button>
+                  </div>
+                  <div className="info-text">
+                    {selectedArtwork.filter === 'metal' && '✨ Metal: Vibrant colors, high contrast, metallic sheen'}
+                    {selectedArtwork.filter === 'canvas' && '🎨 Canvas: Soft texture, muted tones, gallery wrap'}
+                    {selectedArtwork.filter === 'none' && '🖼️ None: Original image, standard frame'}
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <h3>📐 Perspective & Angle</h3>
+                  <div className="panel-controls">
+                    <div className="panel-control">
+                      <label>Rotation</label>
+                      <input type="range" min="-45" max="45" value={selectedArtwork.rotation} onChange={(e) => updateArtwork('rotation', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.rotation}°</span>
+                    </div>
+                    <div className="panel-control">
+                      <label>Tilt X</label>
+                      <input type="range" min="-30" max="30" value={selectedArtwork.rotateX} onChange={(e) => updateArtwork('rotateX', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.rotateX}°</span>
+                    </div>
+                    <div className="panel-control">
+                      <label>Tilt Y</label>
+                      <input type="range" min="-30" max="30" value={selectedArtwork.rotateY} onChange={(e) => updateArtwork('rotateY', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.rotateY}°</span>
+                    </div>
+                    <div className="panel-control">
+                      <label>Skew X</label>
+                      <input type="range" min="-20" max="20" value={selectedArtwork.skewX} onChange={(e) => updateArtwork('skewX', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.skewX}°</span>
+                    </div>
+                    <div className="panel-control">
+                      <label>Skew Y</label>
+                      <input type="range" min="-20" max="20" value={selectedArtwork.skewY} onChange={(e) => updateArtwork('skewY', Number(e.target.value))} />
+                      <span className="value">{selectedArtwork.skewY}°</span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <button onClick={resetPerspective} className="btn btn-gray btn-sm">↺ Reset</button>
+                    <button onClick={applyPerspectiveToAll} className="btn btn-teal btn-sm">Apply to All</button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {!roomImage && (
+            <div className="placeholder">
+              <p className="big">👆 Start by uploading a room photo</p>
+              <p>Then add your artwork images and drag them into position</p>
+              <p style={{ marginTop: '20px', fontSize: '13px' }}>
+                ✨ Use zoom (Ctrl + scroll or slider) to get close-up while editing!
+              </p>
+              <p style={{ marginTop: '20px', fontSize: '11px', color: '#888' }}>
+                Debug: {debugMsg}
+              </p>
+            </div>
+          )}
+
+          {roomImage && (
+            <>
+              <div
+                ref={wrapperRef}
+                className="canvas-wrapper"
+                onWheel={handleWheel}
+              >
+                <div
+                  ref={containerRef}
+                  className="canvas-area"
+                  style={{ transform: `scale(${zoom})` }}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                  onClick={handleCanvasClick}
+                >
+                  <img ref={roomRef} src={roomImage} alt="Room" className="room-image" draggable={false} />
+                  
+                  {renderGrid()}
+                  
+                  {snapLines.horizontal.map((y, i) => (
+                    <div key={`h${i}`} className="snap-indicator horizontal" style={{ top: y, height: 2 / zoom }} />
+                  ))}
+                  {snapLines.vertical.map((x, i) => (
+                    <div key={`v${i}`} className="snap-indicator vertical" style={{ left: x, width: 2 / zoom }} />
+                  ))}
+
+                  {artworks.map((art) => (
+                    <div
+                      key={art.id}
+                      className={`artwork ${selectedArt === art.id ? 'selected' : ''}`}
+                      style={{
+                        left: art.x,
+                        top: art.y,
+                        width: art.width,
+                        height: art.height,
+                        transform: getTransformStyle(art),
+                        outlineWidth: selectedArt === art.id ? 3 / zoom : 0,
+                      }}
+                      onMouseDown={(e) => handleMouseDown(e, art, 'drag')}
+                    >
+                      {selectedArt === art.id && (
+                        <div 
+                          className="size-info" 
+                          style={{ 
+                            transform: `translateX(-50%) scale(${handleScale})`,
+                            transformOrigin: 'bottom center',
+                          }}
+                        >
+                          {Math.round(art.width)} × {Math.round(art.height)} • {filters.find(f => f.id === art.filter)?.name}
+                        </div>
+                      )}
+                      <div className={`artwork-inner ${getFrameClass(art.filter)} filter-${art.filter}`}>
+                        <img src={art.src} alt="Artwork" draggable={false} />
+                        {art.filter === 'metal' && (
+                          <>
+                            <div className="metal-sheen" />
+                            <div className="metal-edge-highlight" />
+                          </>
+                        )}
+                        {art.filter === 'canvas' && (
+                          <>
+                            <div className="canvas-texture" />
+                            <div className="canvas-weave" />
+                            <div className="canvas-depth" />
+                          </>
+                        )}
+                      </div>
+                      {selectedArt === art.id && (
+                        <>
+                          <div 
+                            className="rotate-line" 
+                            style={{ 
+                              transform: `translateX(-50%) scaleY(${handleScale})`,
+                              top: -20 * handleScale,
+                              height: 20 * handleScale,
+                              width: 2 / zoom,
+                            }} 
+                          />
+                          <div
+                            className="rotate-handle"
+                            style={{
+                              transform: `translateX(-50%) scale(${handleScale})`,
+                              top: -30 * handleScale,
+                            }}
+                            onMouseDown={(e) => handleMouseDown(e, art, 'rotate')}
+                            title="Drag to rotate"
+                          />
+                          <div
+                            className="resize-handle"
+                            style={{
+                              transform: `scale(${handleScale})`,
+                              bottom: -10 * handleScale,
+                              right: -10 * handleScale,
+                            }}
+                            onMouseDown={(e) => handleMouseDown(e, art, 'resize')}
+                            title="Drag to resize"
+                          />
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="tips">
+                💡 Ctrl + Scroll to zoom • Drag to move • Handles stay same size at any zoom level
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    console.log('[Mockup] Calling ReactDOM.render...');
+    ReactDOM.render(<WallArtMockup />, document.getElementById('root'));
+    console.log('[Mockup] ReactDOM.render complete');
+  </script>
+</body>
+</html>

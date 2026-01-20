@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Custom Apparel Designer | BlueRidgeCustomCo</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./mockups.css" />
+    <link rel="stylesheet" href="./shared-modern.css" />
+  </head>
+  <body>
+    <header class="modern-header">
+      <div class="header-container">
+        <a href="./" class="logo">
+          <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo">
+          <div class="logo-text">
+            <span class="logo-name">BlueRidgeCustomCo</span>
+            <span class="logo-tagline">Premium Custom Designs</span>
+          </div>
+        </a>
+        <nav class="nav-menu">
+          <a href="./designer.html" class="nav-link">Designer</a>
+          <a href="./racing.html" class="nav-link">Racing</a>
+          <a href="https://store.swayzecustomvinyl.com/apparel.html" class="nav-link">Apparel</a>
+          <a href="./customer.html" class="cta-button">Account</a>
+        </nav>
+      </div>
+    </header>
+
+    <script>window.__PAGE_KEY__ = 'apparel';</script>
+
+    <main class="mockups">
+      <section class="mockups__sidebar" aria-label="Catalog">
+        <header class="mockups__sidebar-header">
+          <h1 class="mockups__title">Catalog</h1>
+          <div class="mockups__filters">
+            <input id="searchInput" class="mockups__search" type="search" placeholder="Search designs…" />
+            <select id="categorySelect" class="mockups__select">
+              <option value="">All categories</option>
+            </select>
+          </div>
+        </header>
+
+        <div id="catalogList" class="mockups__catalog" aria-live="polite"></div>
+        <div class="mockups__catalog-footer">
+          <button id="loadMoreBtn" class="btn" type="button">Load more</button>
+          <span id="resultsInfo" class="mockups__results-info"></span>
+        </div>
+      </section>
+
+      <section class="mockups__editor" aria-label="Editor">
+        <div class="mockups__toolbar">
+          <button id="bgChooseBtn" class="btn" type="button" title="Choose apparel background">Choose Background…</button>
+          <button id="frontBackToggle" class="btn" type="button" title="Switch between front and back view" style="display:none;">
+            <span id="frontBackLabel">Front</span> ▸ Back
+          </button>
+          <button id="clearBtn" class="btn" type="button">Clear Overlays</button>
+          <button id="vectorizeBtn" class="btn" type="button" title="Convert selected overlay to vector (SVG)">Vectorize Selected</button>
+          <label class="mockups__option" id="colorPickerWrapper" title="Change decal color (single-color decals only)" style="display:none;gap:8px;align-items:center;padding:6px 12px;border:2px solid #e2e8f0;border-radius:0.75rem;background:white;">
+            <span style="font-weight:600;font-size:0.875rem;">Color:</span>
+            <input id="decalColorPicker" type="color" value="#000000" style="width:40px;height:32px;border:2px solid #e2e8f0;border-radius:6px;cursor:pointer;" />
+          </label>
+          <label class="mockups__option" title="Automatically remove solid background (any color) during vectorization" style="display:flex;gap:6px;align-items:center;">
+            <input id="vectorizeRemoveWhite" type="checkbox" checked />
+            <span>Remove background (auto)</span>
+          </label>
+          <div class="mockups__spacer"></div>
+          <button id="myOrdersBtn" class="btn" type="button" title="View my orders">My Orders</button>
+          <button id="cartBtn" class="btn" type="button" title="View cart">Cart (<span id="cartCount">0</span>)</button>
+          <button id="addToCartBtn" class="btn btn--primary" type="button">Add to Cart</button>
+          <!-- Hidden stub to keep mockups.js happy (expects this element) -->
+          <button id="downloadPngBtn" type="button" style="display:none"></button>
+        </div>
+        <div class="mockups__stage-wrap">
+          <canvas id="mockupCanvas" width="1000" height="1000"></canvas>
+          <div id="vectorizeLoading" class="mockups__loading" hidden>
+            <div class="mockups__spinner" aria-hidden="true"></div>
+            <div class="mockups__loading-text">
+              <span id="vectorizeStepText">Vectorizing…</span>
+            </div>
+            <div class="mockups__progress" aria-hidden="true">
+              <div id="vectorizeProgressBar" class="mockups__progress-bar" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+        <p class="mockups__hint">Tip: Click a design to add it to the shirt. Drag, resize handles, and rotate as needed.</p>
+      </section>
+    </main>
+
+    <!-- Cart modal -->
+    <div id="cartModal" class="designer-modal" hidden>
+      <div class="designer-modal__backdrop" data-close="cart"></div>
+      <div class="designer-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="cartTitle">
+        <header class="designer-modal__header">
+          <div>
+            <h2 id="cartTitle">Your Cart</h2>
+            <p class="designer-modal__subtitle">Review items before checkout.</p>
+          </div>
+          <button id="cartClose" class="icon-button" type="button" aria-label="Close">&times;</button>
+        </header>
+        <div class="designer-modal__body">
+          <div class="designer-modal__stage" style="padding: 1rem; overflow:auto;">
+            <div id="cartList" class="mockups__catalog"></div>
+          </div>
+        </div>
+        <div class="designer-modal__footer">
+          <button id="cartCheckout" class="btn btn--primary" type="button">Checkout</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Background chooser modal -->
+    <div id="bgChooserModal" class="designer-modal" hidden>
+      <div class="designer-modal__backdrop" data-close="bg"></div>
+      <div class="designer-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="bgChooserTitle">
+        <header class="designer-modal__header">
+          <div>
+            <h2 id="bgChooserTitle">Choose apparel background</h2>
+            <p class="designer-modal__subtitle">Pick a garment from your apparel catalog to use as the mockup background.</p>
+          </div>
+          <button id="bgChooserClose" class="icon-button" type="button" aria-label="Close">&times;</button>
+        </header>
+        <div class="designer-modal__body">
+          <div class="designer-modal__stage" style="padding: 1rem; overflow: auto;">
+            <div id="bgChooserGrid" class="mockups__catalog" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Variant picker modal -->
+    <div id="variantPickerModal" class="designer-modal" hidden>
+      <div class="designer-modal__backdrop" data-close="variant"></div>
+      <div class="designer-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="variantPickerTitle">
+        <header class="designer-modal__header">
+          <div>
+            <h2 id="variantPickerTitle">Choose Variant</h2>
+            <p id="variantPickerSubtitle" class="designer-modal__subtitle">Select a color and size.</p>
+          </div>
+          <button id="variantPickerClose" class="icon-button" type="button" aria-label="Close">&times;</button>
+        </header>
+        <div class="designer-modal__body">
+          <div class="designer-modal__stage" style="padding: 1rem; overflow: auto;">
+            <div id="variantPickerGrid" class="mockups__catalog" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Size picker modal -->
+    <div id="sizePickerModal" class="designer-modal" hidden>
+      <div class="designer-modal__backdrop" data-close="size"></div>
+      <div class="designer-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="sizePickerTitle" style="max-width: 600px;">
+        <header class="designer-modal__header">
+          <div>
+            <h2 id="sizePickerTitle">Choose Size</h2>
+            <p id="sizePickerSubtitle" class="designer-modal__subtitle">Select a size.</p>
+          </div>
+          <button id="sizePickerClose" class="icon-button" type="button" aria-label="Close">&times;</button>
+        </header>
+        <div class="designer-modal__body">
+          <div class="designer-modal__stage" style="padding: 1.5rem; overflow: auto;">
+            <div id="sizePickerGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="modern-footer">
+      <div class="footer-container">
+        <div class="footer-content">
+          <div class="footer-section">
+            <h3>Products</h3>
+            <ul>
+              <li><a href="./designer.html">Custom Designer</a></li>
+              <li><a href="./racing.html">Racing Decals</a></li>
+            </ul>
+          </div>
+          <div class="footer-section">
+            <h3>Resources</h3>
+            <ul>
+              <li><a href="./price-list.html">Pricing</a></li>
+              <li><a href="./terms.html">Terms & Conditions</a></li>
+              <li><a href="./customer.html">My Account</a></li>
+            </ul>
+          </div>
+          <div class="footer-section">
+            <h3>Contact</h3>
+            <ul>
+              <li><a href="tel:+12027408240">(202) 740-8240</a></li>
+              <li><a href="mailto:info@blueridgecustomco.com">info@blueridgecustomco.com</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>&copy; 2024 BlueRidgeCustomCo. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
+    <!-- Capture Fabric canvas instance when created by mockups.js -->
+    <script>
+      (function(){
+        if (!window.fabric || !window.fabric.Canvas) return;
+        var Original = window.fabric.Canvas;
+        function PatchedCanvas(el, opts){
+          var instance = new Original(el, opts);
+          try { window.__APPAREL_FABRIC_CANVAS__ = instance; } catch(_){}
+          return instance;
+        }
+        PatchedCanvas.prototype = Original.prototype;
+        window.fabric.Canvas = PatchedCanvas;
+      })();
+    </script>
+    <script src="./mockups.js"></script>
+    <script src="./apparel.js"></script>
+  </body>
+  </html>

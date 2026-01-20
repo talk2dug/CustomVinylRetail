@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Print Station Mobile</title>
+    <link rel="stylesheet" href="./psm.css" />
+  </head>
+  <body>
+    <header class="psm-header">
+      <h1>Print Station</h1>
+      <span id="psmStatus" class="status">Not connected</span>
+    </header>
+
+    <main class="psm-main">
+      <!-- QUEUE VIEW -->
+      <section id="queueView" class="view active">
+        <div class="toolbar">
+          <input id="queueSearch" type="search" placeholder="Search orders..." />
+          <button id="queueRefresh" class="secondary">Refresh</button>
+        </div>
+        <ul id="queueList" class="list"></ul>
+        <div id="queueEmpty" class="empty">No orders yet.</div>
+      </section>
+
+      <!-- QUOTES VIEW -->
+      <section id="quotesView" class="view">
+        <div class="toolbar">
+          <input id="quoteSearch" type="search" placeholder="Search quotes..." />
+          <button id="quotesRefresh" class="secondary">Refresh</button>
+        </div>
+        <ul id="quotesList" class="list"></ul>
+        <div id="quotesEmpty" class="empty">No quotes found.</div>
+      </section>
+
+      <!-- STICKERS VIEW -->
+      <section id="stickersView" class="view">
+        <div class="stickers-header">
+          <h2>Sticker Sheet Generator</h2>
+          <div class="stickers-mode-toggle">
+            <button id="stickersModeOrder" class="mode-btn active">Order</button>
+            <button id="stickersModeManual" class="mode-btn">Manual</button>
+          </div>
+        </div>
+
+        <!-- ORDER MODE -->
+        <div id="stickersOrderPanel" class="stickers-panel">
+          <div class="card">
+            <h3>Import from Shopify Order</h3>
+            <div class="input-row">
+              <input type="text" id="stickersOrderId" placeholder="Order # (e.g., 1234)" />
+              <button id="stickersImportOrderBtn" class="primary">Import</button>
+            </div>
+            <div id="stickersOrderInfo" class="muted small"></div>
+          </div>
+
+          <div class="card flex-1">
+            <div class="card-header">
+              <h3>Saved Order Sheets</h3>
+              <button id="stickersRefreshSavedBtn" class="secondary small">Refresh</button>
+            </div>
+            <input type="search" id="stickersSavedSearch" placeholder="Search by order #..." />
+            <div id="stickersSavedOrdersList" class="saved-orders-list">
+              <div class="empty">No saved order sheets yet</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MANUAL MODE -->
+        <div id="stickersManualPanel" class="stickers-panel hidden">
+          <div class="stickers-filters">
+            <select id="stickersCategorySelect">
+              <option value="">All Categories</option>
+            </select>
+            <input type="search" id="stickersSearch" placeholder="Search stickers..." />
+          </div>
+
+          <div class="stickers-size-row">
+            <label>
+              <span>Size:</span>
+              <input type="number" id="stickersManualSize" value="3" min="1" max="6" step="0.25" />
+              <span>in</span>
+            </label>
+            <span id="stickersGridInfo" class="muted small">Grid: calculating...</span>
+          </div>
+
+          <div id="stickersCatalogGrid" class="sticker-grid">
+            <div class="empty">Select a category to browse stickers</div>
+          </div>
+        </div>
+
+        <!-- SELECTION PANEL (Both Modes) -->
+        <div id="stickersSelectionPanel" class="stickers-selection">
+          <!-- Current Order (Order Mode) -->
+          <div id="stickersCurrentOrder" class="card order-card hidden">
+            <div class="order-badge">Order #<span id="stickersOrderNumber">---</span></div>
+            <div class="muted small">Size: 3 inches (fixed)</div>
+          </div>
+
+          <!-- Selection Summary -->
+          <div class="card">
+            <h4>Selection</h4>
+            <div class="stats-grid">
+              <span>Stickers:</span><strong id="stickersSelectionCount">0</strong>
+              <span>Sheets:</span><strong id="stickersSheetsNeeded">0</strong>
+              <span>Per Sheet:</span><strong id="stickersPerSheet">~6</strong>
+            </div>
+          </div>
+
+          <!-- Cut Settings (Collapsible) -->
+          <div class="card collapsible">
+            <div class="card-header clickable" onclick="toggleCutSettings()">
+              <h4>Cut Settings</h4>
+              <span id="stickersCutSettingsToggle">+</span>
+            </div>
+            <div id="stickersCutSettingsPanel" class="collapse-content hidden">
+              <div class="settings-grid">
+                <label>
+                  <span>Depth</span>
+                  <input type="number" id="stickersCutDepth" value="6" min="0" max="10" />
+                </label>
+                <label>
+                  <span>Speed</span>
+                  <input type="number" id="stickersCutSpeed" value="4" min="1" max="10" />
+                </label>
+                <label>
+                  <span>Pressure</span>
+                  <input type="number" id="stickersCutPressure" value="15" min="1" max="33" />
+                </label>
+                <label>
+                  <span>Offset (mm)</span>
+                  <input type="number" id="stickersCutOffset" value="8.5" min="0" max="15" step="0.5" />
+                </label>
+              </div>
+              <button id="stickersSaveCutSettings" class="secondary full-width small">Save Settings</button>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="card">
+            <button id="stickersGenerateBtn" class="primary full-width" disabled>Generate Sheets (0)</button>
+            <div class="action-row">
+              <button id="stickersClearBtn" class="secondary flex-1">Clear</button>
+              <button id="stickersViewSheetsBtn" class="secondary flex-1">View Sheets</button>
+            </div>
+          </div>
+
+          <!-- Output Info -->
+          <div id="stickersOutputInfo" class="card success-card hidden">
+            <h4>Generated!</h4>
+            <div id="stickersOutputDetails" class="small"></div>
+            <div class="action-row">
+              <button id="stickersPrintBtn" class="primary flex-1" disabled>Print</button>
+              <button id="stickersSendCameoBtn" class="secondary flex-1" disabled>Cameo</button>
+            </div>
+          </div>
+
+          <!-- Selected Items List -->
+          <div class="card flex-1">
+            <h4>Selected Items</h4>
+            <div id="stickersSelectionList" class="selection-list">
+              <div class="empty">No stickers selected</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS VIEW -->
+      <section id="settingsView" class="view">
+        <form id="psmSettings" class="card">
+          <label>
+            <span>Server URL</span>
+            <input id="serverInput" type="url" placeholder="https://blueridgecustomco.com" />
+          </label>
+          <label>
+            <span>Internal API Key</span>
+            <input id="apiKeyInput" type="password" placeholder="PRINT_STATION_API_KEY" />
+          </label>
+          <label>
+            <span>Operator name</span>
+            <input id="operatorInput" type="text" placeholder="e.g., Alex" />
+          </label>
+          <div class="actions">
+            <button type="submit" class="primary">Save</button>
+            <button id="testButton" type="button" class="secondary">Test</button>
+          </div>
+          <div id="settingsStatus" class="status small">Not saved</div>
+        </form>
+      </section>
+    </main>
+
+    <nav class="psm-tabbar">
+      <button class="tab active" data-view="queueView">Queue</button>
+      <button class="tab" data-view="quotesView">Quotes</button>
+      <button class="tab" data-view="stickersView">Stickers</button>
+      <button class="tab" data-view="settingsView">Settings</button>
+    </nav>
+
+    <template id="orderItemTemplate">
+      <li class="item">
+        <div class="item-main">
+          <div class="item-title"></div>
+          <div class="item-sub"></div>
+        </div>
+        <div class="item-actions"></div>
+      </li>
+    </template>
+
+    <!-- Order detail sheet -->
+    <div id="orderSheet" class="sheet hidden" aria-hidden="true">
+      <div class="sheet-content">
+        <header class="sheet-header">
+          <div>
+            <div id="sheetTitle" class="sheet-title"></div>
+            <div id="sheetSub" class="sheet-sub"></div>
+          </div>
+          <button id="sheetClose" class="secondary btn-sm">Close</button>
+        </header>
+        <div id="sheetBody" class="sheet-body"></div>
+      </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="./psm.js"></script>
+  </body>
+</html>

@@ -38,9 +38,102 @@ const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryIt
 const { describeCatalogDesign } = require('../scripts/claude-describe');
 const stickerSheets = require('./sticker-sheet-generator');
 const taskTracker = require('./task-tracker');
+const kioskManager = require('./modules/kiosk-manager');
 // Shared utilities
 const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
 const { sendJson, handleOptions } = require('./utils/http');
+
+// ============================================================================
+// IMAGE RESIZE CACHE
+// ============================================================================
+// Disk-based cache for resized image thumbnails to reduce CPU usage
+const IMAGE_CACHE_DIR = path.join(os.tmpdir(), 'vinyl-image-cache');
+const IMAGE_CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+const IMAGE_CACHE_MAX_SIZE = 500; // Max cached files
+
+// Ensure cache directory exists
+try {
+  if (!fs.existsSync(IMAGE_CACHE_DIR)) {
+    fs.mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn('[ImageCache] Failed to create cache dir:', err.message);
+}
+
+/**
+ * Generate cache key for resized image
+ */
+function getImageCacheKey(filePath, width, quality, mtime) {
+  const hash = crypto.createHash('md5')
+    .update(`${filePath}:${width}:${quality}:${mtime}`)
+    .digest('hex');
+  return hash;
+}
+
+/**
+ * Get cached image path if exists and valid
+ */
+function getCachedImage(cacheKey, ext) {
+  const cachePath = path.join(IMAGE_CACHE_DIR, `${cacheKey}${ext}`);
+  try {
+    if (fs.existsSync(cachePath)) {
+      const stat = fs.statSync(cachePath);
+      // Check if cache is still valid (not expired)
+      if (Date.now() - stat.mtimeMs < IMAGE_CACHE_MAX_AGE) {
+        return cachePath;
+      }
+      // Expired, remove it
+      fs.unlinkSync(cachePath);
+    }
+  } catch (err) {
+    // Ignore errors
+  }
+  return null;
+}
+
+/**
+ * Clean up old cache files periodically
+ */
+let lastImageCacheClean = 0;
+function cleanImageCache() {
+  const now = Date.now();
+  // Only clean once per hour
+  if (now - lastImageCacheClean < 60 * 60 * 1000) return;
+  lastImageCacheClean = now;
+
+  try {
+    const files = fs.readdirSync(IMAGE_CACHE_DIR);
+    const fileStats = [];
+
+    for (const file of files) {
+      const filePath = path.join(IMAGE_CACHE_DIR, file);
+      try {
+        const stat = fs.statSync(filePath);
+        if (now - stat.mtimeMs > IMAGE_CACHE_MAX_AGE) {
+          // Delete expired files
+          fs.unlinkSync(filePath);
+        } else {
+          fileStats.push({ path: filePath, mtime: stat.mtimeMs });
+        }
+      } catch (e) {
+        // Ignore individual file errors
+      }
+    }
+
+    // If still over max size, delete oldest files
+    if (fileStats.length > IMAGE_CACHE_MAX_SIZE) {
+      fileStats.sort((a, b) => a.mtime - b.mtime);
+      const toDelete = fileStats.slice(0, fileStats.length - IMAGE_CACHE_MAX_SIZE);
+      for (const f of toDelete) {
+        try {
+          fs.unlinkSync(f.path);
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.warn('[ImageCache] Cleanup error:', err.message);
+  }
+}
 
 function parseMarketingTags(rawTags) {
   try {
@@ -2224,23 +2317,47 @@ function serveLibraryAsset(req, res, assetPath) {
     return;
   }
 
-  res.writeHead(200, headers);
-
-  const stream = fs.createReadStream(safePath);
-  stream.on('error', (error) => {
-    console.error('Failed to stream library asset:', error);
-    if (!res.headersSent) {
-      res.writeHead(500, { 'Content-Type': 'text/plain' });
-    }
-    res.end('Unable to read asset.');
-  });
-
+  // If not transformable, stream directly
   if (!isTransformableImage) {
+    res.writeHead(200, headers);
+    const stream = fs.createReadStream(safePath);
+    stream.on('error', (error) => {
+      console.error('Failed to stream library asset:', error);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+      }
+      res.end('Unable to read asset.');
+    });
     stream.pipe(res);
     return;
   }
 
+  // For resizable images, check cache first
   const targetWidth = Math.min(Math.max(Math.round(maxWidth), 1), 2400);
+  const ext = mimeType === 'image/jpeg' ? '.jpg' : mimeType === 'image/png' ? '.png' : '.webp';
+  const cacheKey = getImageCacheKey(safePath, targetWidth, quality, stat.mtimeMs);
+  const cachedPath = getCachedImage(cacheKey, ext);
+
+  // Periodically clean cache
+  cleanImageCache();
+
+  if (cachedPath) {
+    // Serve from cache
+    try {
+      const cachedStat = fs.statSync(cachedPath);
+      headers['Content-Length'] = cachedStat.size;
+      headers['X-Cache'] = 'HIT';
+      res.writeHead(200, headers);
+      fs.createReadStream(cachedPath).pipe(res);
+      return;
+    } catch (err) {
+      // Cache file disappeared, regenerate
+    }
+  }
+
+  // Generate and cache
+  headers['X-Cache'] = 'MISS';
+
   const transformer = sharp();
   transformer.rotate();
   transformer.resize({ width: targetWidth, withoutEnlargement: true });
@@ -2253,6 +2370,9 @@ function serveLibraryAsset(req, res, assetPath) {
     transformer.webp({ quality });
   }
 
+  // Collect transformed data to cache and respond
+  const chunks = [];
+  transformer.on('data', (chunk) => chunks.push(chunk));
   transformer.on('error', (error) => {
     console.error('Image transform error:', error);
     if (!res.headersSent) {
@@ -2260,8 +2380,33 @@ function serveLibraryAsset(req, res, assetPath) {
     }
     res.end('Unable to process image.');
   });
+  transformer.on('end', () => {
+    const buffer = Buffer.concat(chunks);
 
-  stream.pipe(transformer).pipe(res);
+    // Save to cache asynchronously (don't block response)
+    const cachePath = path.join(IMAGE_CACHE_DIR, `${cacheKey}${ext}`);
+    fs.writeFile(cachePath, buffer, (err) => {
+      if (err) {
+        console.warn('[ImageCache] Failed to write cache:', err.message);
+      }
+    });
+
+    // Send response
+    headers['Content-Length'] = buffer.length;
+    res.writeHead(200, headers);
+    res.end(buffer);
+  });
+
+  // Read source and transform
+  const stream = fs.createReadStream(safePath);
+  stream.on('error', (error) => {
+    console.error('Failed to read library asset:', error);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+    }
+    res.end('Unable to read asset.');
+  });
+  stream.pipe(transformer);
 }
 
 function serveSavedFile(res, fileName) {
@@ -2748,7 +2893,7 @@ function serveCatalogResponse(req, res, catalogType = 'apparel') {
     }
 
     const lastModified = stats.mtime.toUTCString();
-    const etag = `"${stats.size}-${Number(stats.mtimeMs)}"`;
+    const etag = `"${stats.size}-${Number(stats.mtimeMs)}-optimized"`;
     const headers = {
       'Content-Type': 'application/json',
       'Cache-Control': 'public, max-age=600',
@@ -2787,40 +2932,55 @@ function serveCatalogResponse(req, res, catalogType = 'apparel') {
       return;
     }
 
-    const acceptEncoding = req.headers['accept-encoding'] || '';
-    const readStream = fs.createReadStream(catalogPath);
-
-    const handleStreamError = (streamError) => {
-      console.error('Catalog stream error:', streamError);
-      if (!res.headersSent) {
-        sendJson(res, 500, { error: 'Unable to stream catalog.' });
-      } else {
-        res.destroy(streamError);
+    // Read and transform catalog to use preview paths
+    fs.readFile(catalogPath, 'utf8', (readErr, data) => {
+      if (readErr) {
+        sendJson(res, 500, { error: 'Unable to read catalog.' });
+        return;
       }
-    };
 
-    readStream.on('error', handleStreamError);
+      try {
+        const catalog = JSON.parse(data);
 
-    if (/\bbr\b/.test(acceptEncoding) && typeof zlib.createBrotliCompress === 'function') {
-      headers['Content-Encoding'] = 'br';
-      res.writeHead(200, headers);
-      const brotli = zlib.createBrotliCompress({
-        params: {
-          [zlib.constants.BROTLI_PARAM_QUALITY]: 5
+        // Transform image paths to use preview versions
+        if (catalog.categories && Array.isArray(catalog.categories)) {
+          catalog.categories.forEach(category => {
+            if (category.designs && Array.isArray(category.designs)) {
+              category.designs.forEach(design => {
+                if (design.image && typeof design.image === 'string') {
+                  // Convert paths like "/mnt/websit/Rockbands/uploads/file.jpg"
+                  // to "/mnt/websit/Rockbands/uploads/previews/file.jpg"
+                  design.image = design.image.replace(/\/uploads\/([^\/]+\.(jpg|jpeg|png|JPG|JPEG|PNG))$/, '/uploads/previews/$1');
+                  // Note: Previously converted PNG to JPG here, but the JPG files don't exist - keep original extension
+                }
+              });
+            }
+          });
         }
-      });
-      brotli.on('error', handleStreamError);
-      readStream.pipe(brotli).pipe(res);
-    } else if (/\bgzip\b/.test(acceptEncoding)) {
-      headers['Content-Encoding'] = 'gzip';
-      res.writeHead(200, headers);
-      const gzip = zlib.createGzip({ level: 5 });
-      gzip.on('error', handleStreamError);
-      readStream.pipe(gzip).pipe(res);
-    } else {
-      res.writeHead(200, headers);
-      readStream.pipe(res);
-    }
+
+        const transformedData = JSON.stringify(catalog);
+        const acceptEncoding = req.headers['accept-encoding'] || '';
+
+        if (/\bgzip\b/.test(acceptEncoding)) {
+          headers['Content-Encoding'] = 'gzip';
+          res.writeHead(200, headers);
+          zlib.gzip(transformedData, { level: 5 }, (gzipErr, compressed) => {
+            if (gzipErr) {
+              console.error('Gzip error:', gzipErr);
+              res.end(transformedData);
+            } else {
+              res.end(compressed);
+            }
+          });
+        } else {
+          res.writeHead(200, headers);
+          res.end(transformedData);
+        }
+      } catch (parseErr) {
+        console.error('Catalog parse error:', parseErr);
+        sendJson(res, 500, { error: 'Unable to parse catalog.' });
+      }
+    });
   });
 }
 
@@ -3321,6 +3481,392 @@ const requestHandler = async (req, res) => {
   // Lightweight health check for POD/Shopify backend
   if (req.method === 'GET' && parsedUrl.pathname === '/health') {
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // ===========================================
+  // Kiosk Display System (secured with INTERNAL_API_KEY)
+  // ===========================================
+  // Remote display management for trade shows/markets
+  // All kiosk endpoints require API key via query param (?key=) or header (x-api-key)
+
+  // Helper to check kiosk API key (supports both query param and header)
+  const checkKioskKey = (req, parsedUrl) => {
+    if (!INTERNAL_API_KEY) return true; // No key configured = allow all
+    const queryKey = parsedUrl.query.key;
+    const headerKey = req.headers['x-api-key'];
+    return queryKey === INTERNAL_API_KEY || headerKey === INTERNAL_API_KEY;
+  };
+
+  // Kiosk display page (full-screen client for kiosk devices)
+  // Requires ?key= query param so kiosk devices can bookmark the URL
+  if (req.method === 'GET' && parsedUrl.pathname === '/kiosk') {
+    if (!checkKioskKey(req, parsedUrl)) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    try {
+      const html = fs.readFileSync(path.join(WEB_DIR, 'kiosk.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch (e) {
+      sendJson(res, 404, { error: 'Kiosk page not found' });
+    }
+    return;
+  }
+
+  // Kiosk admin control panel (requires ?key= query param)
+  if (req.method === 'GET' && parsedUrl.pathname === '/kiosk-admin') {
+    if (!checkKioskKey(req, parsedUrl)) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    try {
+      const html = fs.readFileSync(path.join(WEB_DIR, 'kiosk-admin.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch (e) {
+      sendJson(res, 404, { error: 'Kiosk admin page not found' });
+    }
+    return;
+  }
+
+  // Kiosk API endpoints (requires x-api-key header or ?key= query param)
+  if (parsedUrl.pathname.startsWith('/api/kiosk/')) {
+    if (!checkKioskKey(req, parsedUrl)) {
+      sendJson(res, 401, { error: 'Invalid or missing API key' });
+      return;
+    }
+
+    const handlers = kioskManager.getApiHandlers();
+
+    // GET /api/kiosk/displays - list connected displays
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/displays') {
+      return handlers.getDisplays(req, res);
+    }
+
+    // GET /api/kiosk/content - list available content
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/content') {
+      return handlers.getContent(req, res);
+    }
+
+    // GET /api/kiosk/campaigns - get all campaigns for slideshow display
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/campaigns') {
+      try {
+        const campaigns = listCampaigns();
+        // Resolve campaign items to include full image URLs
+        const resolved = campaigns.map(c => {
+          const campaign = { ...c };
+          // Resolve hero image
+          if (campaign.hero && campaign.hero.image) {
+            campaign.hero.image = campaign.hero.image.startsWith('http')
+              ? campaign.hero.image
+              : campaign.hero.image;
+          }
+          // Resolve mockup image
+          if (campaign.sharedMockup && campaign.sharedMockup.image) {
+            campaign.sharedMockup.image = campaign.sharedMockup.image.startsWith('http')
+              ? campaign.sharedMockup.image
+              : campaign.sharedMockup.image;
+          }
+          return campaign;
+        });
+        sendJson(res, 200, { campaigns: resolved });
+      } catch (e) {
+        sendJson(res, 500, { error: e.message || 'Failed to load campaigns' });
+      }
+      return;
+    }
+
+    // POST /api/kiosk/display/:id/content - send content to a display
+    const contentMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/display\/([^/]+)\/content$/);
+    if (contentMatch && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          handlers.setContent(req, res, contentMatch[1], data);
+        } catch (e) {
+          sendJson(res, 400, { error: 'Invalid JSON' });
+        }
+      });
+      return;
+    }
+
+    // POST /api/kiosk/display/:id/rename - rename a display
+    const renameMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/display\/([^/]+)\/rename$/);
+    if (renameMatch && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          handlers.renameDisplay(req, res, renameMatch[1], data);
+        } catch (e) {
+          sendJson(res, 400, { error: 'Invalid JSON' });
+        }
+      });
+      return;
+    }
+
+    // POST /api/kiosk/broadcast - send content to all displays
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/kiosk/broadcast') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          handlers.broadcast(req, res, data);
+        } catch (e) {
+          sendJson(res, 400, { error: 'Invalid JSON' });
+        }
+      });
+      return;
+    }
+
+    // ========================================
+    // Promotions API
+    // ========================================
+
+    // GET /api/kiosk/promotions - list all promotions
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/promotions') {
+      sendJson(res, 200, { promotions: kioskManager.promotions });
+      return;
+    }
+
+    // GET /api/kiosk/promotions/:displayId - get promotions for a specific display
+    const promoDisplayMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/promotions\/display\/([^/]+)$/);
+    if (promoDisplayMatch && req.method === 'GET') {
+      const displayId = promoDisplayMatch[1];
+      const promos = kioskManager.getPromotionsForDisplay(displayId);
+      sendJson(res, 200, { promotions: promos });
+      return;
+    }
+
+    // POST /api/kiosk/promotions - create a new promotion (with file upload)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/kiosk/promotions') {
+      const form = formidable({
+        uploadDir: kioskManager.getPromotionsDir(),
+        keepExtensions: true,
+        maxFileSize: 50 * 1024 * 1024, // 50MB
+        filter: ({ mimetype }) => mimetype && (mimetype.startsWith('image/') || mimetype.startsWith('video/'))
+      });
+
+      form.parse(req, (err, fields, files) => {
+        if (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+
+        // Handle file upload
+        let imageUrl = null;
+        let imageFile = null;
+        const file = files.image?.[0] || files.image;
+        if (file) {
+          imageFile = path.basename(file.filepath || file.path);
+          imageUrl = `/kiosk-promotions/${imageFile}`;
+        }
+
+        // Parse fields (formidable may return arrays)
+        const getField = (name) => {
+          const val = fields[name];
+          return Array.isArray(val) ? val[0] : val;
+        };
+
+        const promotion = {
+          title: getField('title') || 'Untitled Promotion',
+          description: getField('description') || '',
+          type: getField('type') || 'sale', // sale, special, announcement
+          imageUrl,
+          imageFile,
+          priority: parseInt(getField('priority')) || 1,
+          enabled: getField('enabled') !== 'false',
+          targetDisplays: fields.targetDisplays ?
+            (Array.isArray(fields.targetDisplays) ? fields.targetDisplays : [fields.targetDisplays]) :
+            [],
+          showInSlideshow: getField('showInSlideshow') !== 'false',
+          duration: parseInt(getField('duration')) || 8, // seconds to show
+          startsAt: getField('startsAt') ? new Date(getField('startsAt')).getTime() : null,
+          expiresAt: getField('expiresAt') ? new Date(getField('expiresAt')).getTime() : null
+        };
+
+        const saved = kioskManager.addPromotion(promotion);
+        sendJson(res, 200, { success: true, promotion: saved });
+      });
+      return;
+    }
+
+    // PUT /api/kiosk/promotions/:id - update a promotion
+    const promoUpdateMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/promotions\/([^/]+)$/);
+    if (promoUpdateMatch && req.method === 'PUT') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const updates = JSON.parse(body);
+          const result = kioskManager.updatePromotion(promoUpdateMatch[1], updates);
+          if (result) {
+            sendJson(res, 200, { success: true, promotion: result });
+          } else {
+            sendJson(res, 404, { error: 'Promotion not found' });
+          }
+        } catch (e) {
+          sendJson(res, 400, { error: 'Invalid JSON' });
+        }
+      });
+      return;
+    }
+
+    // DELETE /api/kiosk/promotions/:id - delete a promotion
+    const promoDeleteMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/promotions\/([^/]+)$/);
+    if (promoDeleteMatch && req.method === 'DELETE') {
+      const success = kioskManager.deletePromotion(promoDeleteMatch[1]);
+      if (success) {
+        sendJson(res, 200, { success: true });
+      } else {
+        sendJson(res, 404, { error: 'Promotion not found' });
+      }
+      return;
+    }
+
+    // ========================================
+    // Shopify Collections API for Kiosk
+    // ========================================
+
+    // GET /api/kiosk/shopify/collections - list Shopify collections
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/shopify/collections') {
+      try {
+        if (!shopify.isConfigured()) {
+          sendJson(res, 503, { error: 'Shopify not configured' });
+          return;
+        }
+        const collections = await shopify.listCollections();
+        sendJson(res, 200, { collections });
+      } catch (e) {
+        sendJson(res, 500, { error: e.message || 'Failed to fetch collections' });
+      }
+      return;
+    }
+
+    // GET /api/kiosk/shopify/collections/:id/products - get products from a collection
+    const shopifyCollectionMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/shopify\/collections\/(\d+)\/products$/);
+    if (shopifyCollectionMatch && req.method === 'GET') {
+      try {
+        if (!shopify.isConfigured()) {
+          sendJson(res, 503, { error: 'Shopify not configured' });
+          return;
+        }
+        const collectionId = shopifyCollectionMatch[1];
+        const limit = parseInt(parsedUrl.query.limit) || 50;
+        const products = await shopify.getCollectionProducts(collectionId, Math.min(limit, 250));
+
+        // Get mockups from local database for these products
+        const shopifyIds = products.map(p => String(p.id));
+        const mockupData = db.getMockupsForShopifyProducts(shopifyIds);
+
+        // Extract product data and enrich with mockups
+        const productData = products.map(p => {
+          const localData = mockupData[String(p.id)];
+          let mockupImages = [];
+
+          if (localData) {
+            // Add mockups from the custom_art_mockups table
+            if (localData.mockups && localData.mockups.length > 0) {
+              mockupImages = localData.mockups.map(m => m.url || m.filePath).filter(Boolean);
+            }
+            // Also add the product's mockup_path if set
+            if (localData.mockupPath) {
+              mockupImages.unshift(localData.mockupPath);
+            }
+          }
+
+          return {
+            id: p.id,
+            title: p.title,
+            handle: p.handle,
+            vendor: p.vendor,
+            product_type: p.product_type,
+            images: (p.images || []).map(img => ({
+              id: img.id,
+              src: img.src,
+              alt: img.alt,
+              width: img.width,
+              height: img.height
+            })),
+            // Prefer mockups from database, fallback to Shopify images
+            featuredImage: mockupImages[0] || p.image?.src || (p.images && p.images[0]?.src) || null,
+            mockups: mockupImages,
+            hasLocalMockups: mockupImages.length > 0
+          };
+        });
+
+        sendJson(res, 200, { products: productData });
+      } catch (e) {
+        sendJson(res, 500, { error: e.message || 'Failed to fetch collection products' });
+      }
+      return;
+    }
+
+    // POST /api/kiosk/shopify/slideshow - save a Shopify slideshow configuration
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/kiosk/shopify/slideshow') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const slideshow = kioskManager.saveShopifySlideshow(data);
+          sendJson(res, 200, { success: true, slideshow });
+        } catch (e) {
+          sendJson(res, 400, { error: e.message || 'Invalid request' });
+        }
+      });
+      return;
+    }
+
+    // GET /api/kiosk/shopify/slideshows - list saved Shopify slideshows
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/shopify/slideshows') {
+      const slideshows = kioskManager.getShopifySlideshows();
+      sendJson(res, 200, { slideshows });
+      return;
+    }
+
+    // DELETE /api/kiosk/shopify/slideshow/:id - delete a saved slideshow
+    const slideshowDeleteMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/shopify\/slideshow\/([^/]+)$/);
+    if (slideshowDeleteMatch && req.method === 'DELETE') {
+      const success = kioskManager.deleteShopifySlideshow(slideshowDeleteMatch[1]);
+      sendJson(res, success ? 200 : 404, { success });
+      return;
+    }
+
+    // POST /api/kiosk/rotating-slides - toggle rotating slides on/off
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/kiosk/rotating-slides') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          kioskManager.setRotatingEnabled(data.enabled === true, data.selectedSlides || null);
+          sendJson(res, 200, { success: true, enabled: data.enabled, selectedSlides: data.selectedSlides });
+        } catch (e) {
+          sendJson(res, 400, { success: false, error: e.message });
+        }
+      });
+      return;
+    }
+
+    // GET /api/kiosk/rotating-slides - get current rotating slides state
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/rotating-slides') {
+      sendJson(res, 200, {
+        enabled: kioskManager.rotatingEnabled,
+        serviceSlides: kioskManager.serviceSlides,
+        selectedSlideIds: kioskManager.selectedSlideIds
+      });
+      return;
+    }
+
+    // 404 for unknown kiosk routes
+    sendJson(res, 404, { error: 'Kiosk endpoint not found' });
     return;
   }
 
@@ -6495,6 +7041,26 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Serve sticker catalog image by category/filename
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/sticker-catalog/image/')) {
+    handleStickerCatalogImage(req, res, parsedUrl).catch(err => {
+      console.error('[Sticker Catalog Image Error]', err);
+      res.statusCode = 404;
+      res.end('Not found');
+    });
+    return;
+  }
+
+  // Get or generate contour for a sticker (lazy generation with caching)
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/stickers/contour/')) {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerContour(req, res, parsedUrl).catch(err => {
+      console.error('[Sticker Contour Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
   // Generate sticker sheets from manual selection
   if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/generate') {
     if (!requireInternalKey(req, res)) return;
@@ -6510,6 +7076,16 @@ const requestHandler = async (req, res) => {
     if (!requireInternalKey(req, res)) return;
     handleStickerSheetFromOrder(req, res).catch(err => {
       console.error('[Sticker Sheet From Order Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Generate sticker sheets from manual visual layout
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/generate-from-layout') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetFromLayout(req, res).catch(err => {
+      console.error('[Sticker Sheet From Layout Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
     });
     return;
@@ -6539,6 +7115,101 @@ const requestHandler = async (req, res) => {
     if (!requireInternalKey(req, res)) return;
     handleStickerSheetsList(req, res).catch(err => {
       console.error('[Sticker Sheets List Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // List saved order sticker sheets
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sticker-sheets/saved-orders') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetsSavedOrders(req, res).catch(err => {
+      console.error('[Sticker Sheets Saved Orders Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Get sheets for a specific order
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/sticker-sheets/order/')) {
+    if (!requireInternalKey(req, res)) return;
+    const orderNumber = decodeURIComponent(parsedUrl.pathname.replace('/api/sticker-sheets/order/', ''));
+    handleStickerSheetsGetOrder(req, res, orderNumber).catch(err => {
+      console.error('[Sticker Sheets Get Order Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Send sticker sheets to Cameo cutter
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/send-to-cameo') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetsSendToCameo(req, res).catch(err => {
+      console.error('[Sticker Sheets Send to Cameo Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Delete a sticker sheet batch
+  if (req.method === 'DELETE' && parsedUrl.pathname.startsWith('/api/sticker-sheets/batch/')) {
+    if (!requireInternalKey(req, res)) return;
+    const batchName = decodeURIComponent(parsedUrl.pathname.replace('/api/sticker-sheets/batch/', ''));
+    handleDeleteStickerSheetBatch(req, res, batchName).catch(err => {
+      console.error('[Delete Sticker Sheet Batch Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // ===== VINYL CUTTER API =====
+
+  // Vectorize an image for vinyl cutting (with color detection)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/vectorize') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylVectorize(req, res).catch(err => {
+      console.error('[Vinyl Vectorize Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Generate vinyl cut files with color separation
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/generate') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylGenerate(req, res).catch(err => {
+      console.error('[Vinyl Generate Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // List generated vinyl cut batches
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/vinyl-cutter/list') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylList(req, res).catch(err => {
+      console.error('[Vinyl List Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Delete a vinyl cut batch
+  if (req.method === 'DELETE' && parsedUrl.pathname.startsWith('/api/vinyl-cutter/batch/')) {
+    if (!requireInternalKey(req, res)) return;
+    const batchName = decodeURIComponent(parsedUrl.pathname.replace('/api/vinyl-cutter/batch/', ''));
+    handleVinylDeleteBatch(req, res, batchName).catch(err => {
+      console.error('[Vinyl Delete Batch Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Send vinyl cut file to Silhouette
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/send-to-silhouette') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylSendToSilhouette(req, res).catch(err => {
+      console.error('[Vinyl Send to Silhouette Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
     });
     return;
@@ -8433,6 +9104,123 @@ const requestHandler = async (req, res) => {
 
   if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/artwork') {
     handleArtworkUpload(req, res);
+    return;
+  }
+
+  // =====================================================
+  // Export Mockups to Google Drive folder structure
+  // =====================================================
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/export-mockups') {
+    const { spawn } = require('child_process');
+    const scriptPath = path.join(__dirname, '..', 'scripts', 'export-mockups-to-drive.js');
+
+    // Check if script exists
+    if (!fs.existsSync(scriptPath)) {
+      sendJson(res, 404, { error: 'Export script not found' });
+      return;
+    }
+
+    // Run the export script
+    const child = spawn('node', [scriptPath], {
+      cwd: path.join(__dirname, '..'),
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        // Parse stats from output
+        const statsMatch = stdout.match(/Campaigns: (\d+)[\s\S]*Customer Orders: (\d+)[\s\S]*Total Files: (\d+)/);
+        const exportPath = path.join(__dirname, '..', 'exports', 'google-drive-mockups');
+
+        sendJson(res, 200, {
+          success: true,
+          message: 'Export completed successfully',
+          exportPath: exportPath,
+          stats: statsMatch ? {
+            campaigns: parseInt(statsMatch[1], 10),
+            customerOrders: parseInt(statsMatch[2], 10),
+            totalFiles: parseInt(statsMatch[3], 10)
+          } : null,
+          output: stdout
+        });
+      } else {
+        sendJson(res, 500, {
+          success: false,
+          error: 'Export failed',
+          stderr: stderr,
+          stdout: stdout,
+          exitCode: code
+        });
+      }
+    });
+
+    child.on('error', (err) => {
+      sendJson(res, 500, {
+        success: false,
+        error: `Failed to run export script: ${err.message}`
+      });
+    });
+    return;
+  }
+
+  // =====================================================
+  // Sync Catalog Items to Google Drive
+  // =====================================================
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/gdrive/sync-catalog') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const { items, category } = data;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+          sendJson(res, 400, { error: 'No items provided' });
+          return;
+        }
+
+        // Use gdrive-sync library
+        const gdriveSync = require('./lib/gdrive-sync');
+
+        // Convert items to the format expected by syncCatalogItems
+        const syncItems = items.map(item => ({
+          category: item.category || category,
+          subPath: item.subPath || `uploads/previews/${item.filename}`,
+          source: item.source || 'library'
+        }));
+
+        const decalCount = syncItems.filter(i => i.source === 'decal-icons').length;
+        const libraryCount = syncItems.filter(i => i.source === 'library').length;
+        console.log(`[GDrive Sync] Syncing ${syncItems.length} items (${libraryCount} library, ${decalCount} decal-icons)`);
+
+        const result = await gdriveSync.syncCatalogItems(syncItems);
+
+        sendJson(res, 200, {
+          success: result.success,
+          synced: result.synced,
+          failed: result.failed,
+          errors: result.errors,
+          message: `Synced ${result.synced} items to Google Drive Canva folder`
+        });
+      } catch (err) {
+        console.error('[GDrive Sync] Error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+    });
     return;
   }
 
@@ -10540,6 +11328,53 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Serve campaign mockups - route /api/uploads/campaigns/mockups/:filename
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/uploads/campaigns/mockups/')) {
+    const filename = parsedUrl.pathname.replace('/api/uploads/campaigns/mockups/', '');
+    if (!filename || filename.includes('..') || filename.includes('/')) {
+      sendJson(res, 400, { error: 'Invalid filename.' });
+      return;
+    }
+    // Try multiple possible locations for campaign mockups
+    const possibleDirs = [
+      path.join(CAMPAIGNS_DIR, 'mockups'),
+      path.join(WEB_DIR, 'library', 'data', 'campaigns', 'mockups'),
+      path.join(APP_ROOT, 'web', 'library', 'data', 'campaigns', 'mockups')
+    ];
+    let filePath = null;
+    for (const dir of possibleDirs) {
+      const candidate = path.join(dir, filename);
+      if (fs.existsSync(candidate)) {
+        filePath = candidate;
+        break;
+      }
+    }
+    if (!filePath) {
+      console.log(`[Campaign Mockup Serve] File not found in any location: ${filename}`);
+      console.log(`[Campaign Mockup Serve] Searched: ${possibleDirs.join(', ')}`);
+      sendJson(res, 404, { error: 'Campaign mockup not found.' });
+      return;
+    }
+    const ext = path.extname(filename).toLowerCase();
+    const mimeTypes = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp'
+    };
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Content-Length': stat.size,
+      'Cache-Control': 'public, max-age=86400',
+      'Access-Control-Allow-Origin': '*'
+    });
+    fs.createReadStream(filePath).pipe(res);
+    return;
+  }
+
   // ============================================================================
   // FACEBOOK POST SCHEDULING & MOCKUP TEMPLATE ENDPOINTS
   // ============================================================================
@@ -10631,7 +11466,7 @@ const requestHandler = async (req, res) => {
     if (!requireInternalKey(req, res)) return;
     try {
       const body = await getReqBodyJson(req);
-      const { campaignSlug, templateId, postText, postHashtags, collectionUrl, startDate, intervalHours, excludeProductUids } = body;
+      const { campaignSlug, templateId, postText, postHashtags, collectionUrl, startDate, intervalHours, excludeProductUids, generateAiPerItem, aiStyle } = body;
 
       if (!campaignSlug) {
         sendJson(res, 400, { error: 'campaignSlug is required.' });
@@ -10648,14 +11483,17 @@ const requestHandler = async (req, res) => {
       // Import scheduler
       const { schedulePostsForCampaign } = require('./lib/facebook-post-scheduler');
 
-      const result = schedulePostsForCampaign(campaign, db, {
+      // schedulePostsForCampaign is now async (for AI generation)
+      const result = await schedulePostsForCampaign(campaign, db, {
         templateId,
         postText,
         postHashtags,
         collectionUrl,
         startDate,
         intervalHours: intervalHours || 24,
-        excludeProductUids: excludeProductUids || []
+        excludeProductUids: excludeProductUids || [],
+        generateAiPerItem: generateAiPerItem || false,
+        aiStyle: aiStyle || 'showcase'
       });
 
       sendJson(res, 200, { success: true, ...result });
@@ -10676,7 +11514,7 @@ const requestHandler = async (req, res) => {
         status,
         fromDate,
         toDate,
-        limit: Number(limit) || 100,
+        limit: Number(limit) || 10000,
         offset: Number(offset) || 0
       });
       sendJson(res, 200, { posts, count: posts.length });
@@ -11866,9 +12704,13 @@ const requestHandler = async (req, res) => {
                     if (templateSuffix) updateFields.template_suffix = templateSuffix;
                     try { await shopify.updateProduct(created.id, updateFields); } catch (_) {}
                   }
+                  // Track that we need to upload images separately since initial create succeeded with images
+                  var imagesIncludedInCreate = true;
                 } catch (eCreate) {
                   console.error(`[Product Create] REST create failed: ${eCreate?.message}`);
                   // Fallback 1: ultra-minimal REST create (title + variants)
+                  // NOTE: Images are NOT included in fallback paths, so we must upload them separately
+                  var imagesIncludedInCreate = false;
                   try {
                     console.log(`[Product Create] Trying minimal REST create...`);
                     const minimal = { title, variants: variantsForApi.length ? variantsForApi : [{ price: (Number(priceCentsRaw)||0)/100 }] };
@@ -11897,8 +12739,11 @@ const requestHandler = async (req, res) => {
                     try { await shopify.updateProduct(created.id, updateFields); } catch (_) {}
                   }
                 }
-                // If images specified, attach them after product creation to avoid strict validation on create
-                if (created && created.id && imageUrls.length && !(String(process.env.SHOPIFY_API_VERSION||'') === '2024-10' || String(process.env.SHOPIFY_API_VERSION||'').startsWith('2024-'))) {
+                // If images specified, attach them after product creation
+                // Skip only if using 2024+ API AND images were successfully included in the initial create payload
+                const shouldUploadImagesSeparately = !imagesIncludedInCreate || !(String(process.env.SHOPIFY_API_VERSION||'') === '2024-10' || String(process.env.SHOPIFY_API_VERSION||'').startsWith('2024-'));
+                console.log(`[Image Upload] imagesIncludedInCreate=${imagesIncludedInCreate}, shouldUploadImagesSeparately=${shouldUploadImagesSeparately}, imageUrls.length=${imageUrls.length}`);
+                if (created && created.id && imageUrls.length && shouldUploadImagesSeparately) {
                   let imageSuccess = 0;
                   let imageFailed = 0;
                   for (const url of imageUrls) {
@@ -14425,6 +15270,40 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Serve kiosk promotion images
+  if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname.startsWith('/kiosk-promotions/')) {
+    const fileName = parsedUrl.pathname.replace('/kiosk-promotions/', '');
+    const promosDir = kioskManager.getPromotionsDir();
+    const filePath = path.join(promosDir, fileName);
+
+    // Security: prevent path traversal
+    if (!filePath.startsWith(promosDir)) {
+      sendJson(res, 403, { error: 'Invalid path' });
+      return;
+    }
+
+    if (fs.existsSync(filePath)) {
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm'
+      };
+      res.writeHead(200, {
+        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+        'Cache-Control': 'public, max-age=86400'
+      });
+      fs.createReadStream(filePath).pipe(res);
+    } else {
+      sendJson(res, 404, { error: 'File not found' });
+    }
+    return;
+  }
+
   if (req.method === 'GET' || req.method === 'HEAD') {
     let decodedSegments;
     try {
@@ -16290,9 +17169,31 @@ Return ONLY valid JSON, no markdown or explanation.`;
             }
           }
 
-          // Build variants if product has variants, otherwise single variant
+          // Build variants - for metal prints, use ALL sizes from pricing.json
           const variants = [];
-          if (product.hasVariants && product.variants?.length) {
+          const isMetal = product.materialId === 'mat_metal' || product.material?.id === 'mat_metal';
+
+          if (isMetal) {
+            // Metal prints: Use ALL sizes from pricing.json for consistent variant offerings
+            const pricingData = require('./data/pricing.json');
+            const metalPricing = pricingData['metal-print']?.sizes || {};
+
+            for (const [sizeName, sizeData] of Object.entries(metalPricing)) {
+              // Parse size like "8x10" into width/height
+              const [w, h] = sizeName.split('x').map(Number);
+              variants.push({
+                title: sizeName,
+                price: (sizeData.priceCents / 100).toFixed(2),
+                sku: sizeData.sku || `METAL-${sizeName.replace('x', '')}`,
+                option1: sizeName,
+                inventory_management: 'shopify',
+                inventory_policy: 'continue',
+                requires_shipping: true,
+                taxable: true
+              });
+            }
+            console.log(`[CustomArt Shopify] Metal print: using ${variants.length} sizes from pricing.json`);
+          } else if (product.hasVariants && product.variants?.length) {
             for (const v of product.variants) {
               variants.push({
                 title: `${v.sizeWidth}×${v.sizeHeight}${v.sizeUnit === 'inches' ? '"' : 'cm'}`,
@@ -16327,7 +17228,11 @@ Return ONLY valid JSON, no markdown or explanation.`;
           const sizeInfo = product.singleSize || {};
           const hasVariants = product.hasVariants && product.variants?.length > 0;
 
-          if (hasVariants) {
+          if (isMetal) {
+            // Metal prints have multiple sizes from pricing.json
+            description = `<p>Available in ${variants.length} sizes, from 5x7" to 40x60".</p>`;
+            description += `<p>Printed on premium HD aluminum for stunning vibrancy and durability.</p>`;
+          } else if (hasVariants) {
             // Multiple size variants
             const sizes = product.variants.map(v => `${v.sizeWidth}×${v.sizeHeight}${v.sizeUnit === 'inches' ? '"' : 'cm'}`).join(', ');
             description = `<p>Available in ${sizes}.</p>`;
@@ -16376,8 +17281,8 @@ Return ONLY valid JSON, no markdown or explanation.`;
           // Only include variants for new products (updating variants requires different API)
           if (!isUpdate) {
             shopifyPayload.variants = variants;
-            // Add size option if variants
-            if (product.hasVariants && product.variants?.length) {
+            // Add size option if variants (metal prints always have multiple sizes)
+            if (isMetal || (product.hasVariants && product.variants?.length)) {
               shopifyPayload.options = [{ name: 'Size' }];
             }
           }
@@ -16396,7 +17301,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
                 db.updateCustomArtProduct(productId, { shopifyProductId: null, shopifyHandle: null });
                 // Add variants for new product creation
                 shopifyPayload.variants = variants;
-                if (product.hasVariants && product.variants?.length) {
+                if (isMetal || (product.hasVariants && product.variants?.length)) {
                   shopifyPayload.options = [{ name: 'Size' }];
                 }
                 resultProduct = await shopify.createProduct(shopifyPayload);
@@ -16635,6 +17540,23 @@ if (require.main === module) {
     if (httpsOptions) {
       console.log('HTTPS enabled using provided certificate paths.');
     }
+
+    // Initialize Kiosk Display Manager WebSocket server
+    try {
+      kioskManager.init(server);
+      console.log('[Server] Kiosk display manager initialized');
+    } catch (error) {
+      console.error('[Server] Failed to initialize kiosk manager:', error.message);
+    }
+
+    // Start Facebook post scheduler daemon
+    try {
+      const { startSchedulerDaemon } = require('./lib/facebook-post-scheduler');
+      startSchedulerDaemon(db, { intervalMinutes: 5 });
+      console.log('[Server] Facebook post scheduler started');
+    } catch (error) {
+      console.error('[Server] Failed to start Facebook scheduler:', error.message);
+    }
   });
 }
 
@@ -16776,9 +17698,9 @@ async function handleStickerSheetsList(req, res) {
 
         return {
           sheetNumber: parseInt(sheetNum, 10),
-          printUrl: `/api/library/${relativePrint.split('/').map(p => encodeURIComponent(p)).join('/')}`,
-          cutUrl: relativeCut ? `/api/library/${relativeCut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
-          cricutUrl: relativeCricut ? `/api/library/${relativeCricut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+          printUrl: `/library/${relativePrint.split('/').map(p => encodeURIComponent(p)).join('/')}`,
+          cutUrl: relativeCut ? `/library/${relativeCut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+          cricutUrl: relativeCricut ? `/library/${relativeCricut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
           printFile: pf,
           printFilename: pf,
           cutFile: cutFile || null,
@@ -16807,11 +17729,229 @@ async function handleStickerSheetsList(req, res) {
 }
 
 /**
+ * Delete a sticker sheet batch by name
+ */
+async function handleDeleteStickerSheetBatch(req, res, batchName) {
+  try {
+    if (!batchName || batchName.includes('..') || batchName.includes('/') || batchName.includes('\\')) {
+      return sendJson(res, 400, { success: false, error: 'Invalid batch name' });
+    }
+
+    const batchDir = path.join(STICKER_OUTPUT_DIR, batchName);
+
+    // Check if directory exists
+    try {
+      const stats = await fs.promises.stat(batchDir);
+      if (!stats.isDirectory()) {
+        return sendJson(res, 404, { success: false, error: 'Batch not found' });
+      }
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        return sendJson(res, 404, { success: false, error: 'Batch not found' });
+      }
+      throw err;
+    }
+
+    // Delete all files in the directory first
+    const files = await fs.promises.readdir(batchDir);
+    for (const file of files) {
+      await fs.promises.unlink(path.join(batchDir, file));
+    }
+
+    // Then delete the directory
+    await fs.promises.rmdir(batchDir);
+
+    console.log(`[Sticker Sheets] Deleted batch: ${batchName}`);
+    sendJson(res, 200, { success: true, message: `Batch '${batchName}' deleted successfully` });
+  } catch (err) {
+    console.error('[Delete Sticker Sheet Batch Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+// Orders output folder
+const STICKER_ORDERS_DIR = path.join(STICKER_OUTPUT_DIR, 'orders');
+
+/**
+ * List saved order sticker sheets (organized by order number)
+ */
+async function handleStickerSheetsSavedOrders(req, res) {
+  try {
+    await fs.promises.mkdir(STICKER_ORDERS_DIR, { recursive: true });
+
+    const entries = await fs.promises.readdir(STICKER_ORDERS_DIR, { withFileTypes: true });
+    const orders = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+
+      const orderDir = path.join(STICKER_ORDERS_DIR, entry.name);
+      const files = await fs.promises.readdir(orderDir);
+      const stats = await fs.promises.stat(orderDir);
+
+      const printFiles = files.filter(f => f.endsWith('_PRINT.png') || f.endsWith('-print.png'));
+
+      orders.push({
+        orderNumber: entry.name,
+        createdAt: (stats.birthtime || stats.mtime).toISOString().split('T')[0],
+        sheetCount: printFiles.length
+      });
+    }
+
+    // Sort by creation date (newest first)
+    orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    sendJson(res, 200, { success: true, orders, count: orders.length });
+  } catch (err) {
+    console.error('[Sticker Sheets Saved Orders Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Get sheets for a specific order
+ */
+async function handleStickerSheetsGetOrder(req, res, orderNumber) {
+  try {
+    const orderDir = path.join(STICKER_ORDERS_DIR, orderNumber);
+
+    if (!await fs.promises.access(orderDir).then(() => true).catch(() => false)) {
+      return sendJson(res, 404, { success: false, error: 'Order not found' });
+    }
+
+    const files = await fs.promises.readdir(orderDir);
+    const printFiles = files.filter(f => f.endsWith('_PRINT.png') || f.endsWith('-print.png'));
+    const cutFiles = files.filter(f => f.endsWith('_CUT.svg') || f.endsWith('-cut.svg'));
+    const cricutFiles = files.filter(f => f.endsWith('_CRICUT.svg') || f.endsWith('_CRICUT.png'));
+
+    const sheets = printFiles.map((pf, idx) => {
+      const oldMatch = pf.match(/-(\d+)-print\.png$/);
+      const newMatch = pf.match(/_Sheet(\d+)_PRINT\.png$/);
+      const sheetNum = oldMatch?.[1] || newMatch?.[1] || String(idx + 1);
+
+      const cutFile = cutFiles.find(cf =>
+        cf.includes(`-${sheetNum}-cut.svg`) || cf.includes(`_Sheet${sheetNum}_CUT.svg`)
+      ) || cutFiles[idx];
+
+      const cricutFile = cricutFiles.find(cf =>
+        cf.includes(`_Sheet${sheetNum}_CRICUT`)
+      ) || cricutFiles[idx];
+
+      const relativePrint = path.relative(LIBRARY_ROOT, path.join(orderDir, pf)).replace(/\\/g, '/');
+      const relativeCut = cutFile ? path.relative(LIBRARY_ROOT, path.join(orderDir, cutFile)).replace(/\\/g, '/') : null;
+      const relativeCricut = cricutFile ? path.relative(LIBRARY_ROOT, path.join(orderDir, cricutFile)).replace(/\\/g, '/') : null;
+
+      return {
+        sheetNumber: parseInt(sheetNum, 10),
+        printUrl: `/library/${relativePrint.split('/').map(p => encodeURIComponent(p)).join('/')}`,
+        cutUrl: relativeCut ? `/library/${relativeCut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+        cricutUrl: relativeCricut ? `/library/${relativeCricut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+        printFilename: pf,
+        cutFilename: cutFile || null,
+        cricutFilename: cricutFile || null
+      };
+    });
+
+    sendJson(res, 200, {
+      success: true,
+      orderNumber,
+      sheets,
+      totalSheets: sheets.length,
+      totalStickers: 0  // We don't track this after the fact
+    });
+  } catch (err) {
+    console.error('[Sticker Sheets Get Order Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Send sticker sheets to Silhouette Cameo
+ */
+async function handleStickerSheetsSendToCameo(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { sheets, cutSettings = {} } = body;
+
+    if (!sheets || sheets.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'No sheets provided' });
+    }
+
+    const { depth = 5, speed = 5, offset = 3 } = cutSettings;
+
+    // For now, just return success - actual Cameo integration would happen here
+    // The sendto_silhouette.py script would be called with the cut files
+    console.log('[Cameo] Would send to Cameo:', { sheetCount: sheets.length, depth, speed, offset });
+
+    // TODO: Integrate with StickerSheets/sendto_silhouette.py
+    // const { exec } = require('child_process');
+    // for (const sheet of sheets) {
+    //   const cutFilePath = ... // Convert URL to local path
+    //   exec(`python sendto_silhouette.py "${cutFilePath}" --depth=${depth} --speed=${speed}`);
+    // }
+
+    sendJson(res, 200, {
+      success: true,
+      message: `Sent ${sheets.length} sheet(s) to Cameo`,
+      cutSettings: { depth, speed, offset }
+    });
+  } catch (err) {
+    console.error('[Sticker Sheets Send to Cameo Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
  * List available sticker categories
  */
+// Cache for catalog.json data
+let catalogCache = null;
+let catalogCacheTime = 0;
+const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Load and cache catalog.json
+ */
+async function loadCatalogJson() {
+  const now = Date.now();
+  if (catalogCache && (now - catalogCacheTime) < CATALOG_CACHE_TTL) {
+    return catalogCache;
+  }
+
+  // Try multiple locations for catalog.json
+  const catalogPaths = [
+    path.join(WEB_DIR, 'catalog.json'),
+    path.join(LIBRARY_WEB_DIR, 'catalog.json'),
+    path.join(APP_ROOT, 'web', 'catalog.json')
+  ];
+
+  for (const catalogPath of catalogPaths) {
+    try {
+      if (fs.existsSync(catalogPath)) {
+        const data = await fs.promises.readFile(catalogPath, 'utf8');
+        catalogCache = JSON.parse(data);
+        catalogCacheTime = now;
+        console.log('[Catalog] Loaded from:', catalogPath);
+        return catalogCache;
+      }
+    } catch (err) {
+      console.error('[Catalog Load Error]', catalogPath, err.message);
+    }
+  }
+
+  console.error('[Catalog] catalog.json not found in any location');
+  return null;
+}
+
 async function handleStickerSheetCategories(req, res) {
   try {
-    const categories = await stickerSheets.listStickerCategories(STICKER_CATALOG_ROOT);
+    const catalog = await loadCatalogJson();
+    if (!catalog || !catalog.categories) {
+      sendJson(res, 500, { success: false, error: 'Catalog not available' });
+      return;
+    }
+
+    const categories = catalog.categories.map(c => c.name).sort();
     sendJson(res, 200, { success: true, categories });
   } catch (err) {
     console.error('[Sticker Categories Error]', err);
@@ -16821,27 +17961,234 @@ async function handleStickerSheetCategories(req, res) {
 
 /**
  * List stickers in a category or all stickers
+ * Uses catalog.json for the design list
  */
 async function handleStickerSheetCatalog(req, res, parsedUrl) {
   try {
     const category = parsedUrl.searchParams?.get('category') || parsedUrl.query?.category || null;
-    const stickers = await stickerSheets.scanStickerCatalog(STICKER_CATALOG_ROOT, category);
+    const catalog = await loadCatalogJson();
 
-    // Add thumbnail URL for each sticker
-    const stickersWithUrls = stickers.map(s => {
-      // Convert absolute path to API URL
-      const relativePath = path.relative(LIBRARY_ROOT, s.imagePath).replace(/\\/g, '/');
-      const encodedPath = relativePath.split('/').map(p => encodeURIComponent(p)).join('/');
-      return {
-        ...s,
-        thumbnailUrl: `/api/library/${encodedPath}`
-      };
-    });
+    if (!catalog || !catalog.categories) {
+      sendJson(res, 500, { success: false, error: 'Catalog not available' });
+      return;
+    }
 
-    sendJson(res, 200, { success: true, stickers: stickersWithUrls, count: stickersWithUrls.length });
+    // Filter categories if specified
+    let categories = catalog.categories;
+    if (category) {
+      categories = categories.filter(c =>
+        c.name.toLowerCase() === category.toLowerCase() ||
+        c.slug.toLowerCase() === category.toLowerCase()
+      );
+    }
+
+    // Flatten designs from all matching categories
+    const stickers = [];
+    for (const cat of categories) {
+      if (!cat.designs) continue;
+      for (const design of cat.designs) {
+        // Convert URL to local file path for processing
+        // URL: https://blueridgecustomco.com/library/Category/uploads/previews/file.png
+        // Local: /home/ubuntu/vinylApp/web/library/Category/uploads/previews/file.png
+        let localPath = design.image;
+        if (design.image && design.image.startsWith('http')) {
+          try {
+            const imageUrl = new URL(design.image);
+            // Extract path after domain (e.g., /library/Category/...)
+            const urlPath = imageUrl.pathname;
+            // Map to local WEB_DIR
+            localPath = path.join(WEB_DIR, urlPath);
+          } catch (e) {
+            console.warn('[Sticker Catalog] Could not parse image URL:', design.image);
+          }
+        }
+
+        stickers.push({
+          category: cat.name,
+          id: design.id,
+          filename: design.id,
+          title: design.name || design.id,
+          // Use the image URL directly from catalog for display
+          thumbnailUrl: design.image,
+          // Use local path for sticker sheet generation
+          imagePath: localPath,
+          sources: design.sources || {}
+        });
+      }
+    }
+
+    sendJson(res, 200, { success: true, stickers, count: stickers.length });
   } catch (err) {
     console.error('[Sticker Catalog Error]', err);
     sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Serve a sticker image from the catalog
+ * URL format: /api/sticker-catalog/image/{relativePath}
+ * The relativePath is the full path from STICKER_CATALOG_ROOT (e.g., category/uploads/previews/file.jpg)
+ */
+async function handleStickerCatalogImage(req, res, parsedUrl) {
+  // Parse relative path from URL
+  const relativePath = decodeURIComponent(parsedUrl.pathname.replace('/api/sticker-catalog/image/', ''));
+  if (!relativePath) {
+    res.statusCode = 400;
+    res.end('Invalid path');
+    return;
+  }
+
+  // Security: prevent path traversal
+  if (relativePath.includes('..') || path.isAbsolute(relativePath)) {
+    res.statusCode = 400;
+    res.end('Invalid path');
+    return;
+  }
+
+  // Construct the full path from STICKER_CATALOG_ROOT
+  const fullPath = path.join(STICKER_CATALOG_ROOT, relativePath);
+
+  // Verify the path is within STICKER_CATALOG_ROOT
+  const resolvedPath = path.resolve(fullPath);
+  const resolvedRoot = path.resolve(STICKER_CATALOG_ROOT);
+  if (!resolvedPath.startsWith(resolvedRoot)) {
+    res.statusCode = 400;
+    res.end('Invalid path');
+    return;
+  }
+
+  // Check if file exists
+  if (!fs.existsSync(fullPath)) {
+    res.statusCode = 404;
+    res.end('Sticker not found');
+    return;
+  }
+
+  // Serve the image file
+  const ext = path.extname(fullPath).toLowerCase();
+  const mimeTypes = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif'
+  };
+
+  const contentType = mimeTypes[ext] || 'application/octet-stream';
+  const fileBuffer = await fs.promises.readFile(fullPath);
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+  res.end(fileBuffer);
+}
+
+/**
+ * Get or generate contour for a sticker (lazy generation with caching)
+ * URL format: /api/stickers/contour/{base64EncodedImagePath}
+ * Query params: ?forceRegenerate=true to bypass cache
+ *
+ * Returns: { success: true, contourPath: "M 0,0 C ...", width: 800, height: 600, cached: true/false }
+ */
+async function handleStickerContour(req, res, parsedUrl) {
+  try {
+    // Extract base64-encoded image path from URL
+    const encodedPath = parsedUrl.pathname.replace('/api/stickers/contour/', '');
+    if (!encodedPath) {
+      return sendJson(res, 400, { success: false, error: 'Image path is required' });
+    }
+
+    // Decode the path (it's base64 encoded to handle special characters in paths)
+    let imagePath;
+    try {
+      imagePath = Buffer.from(encodedPath, 'base64').toString('utf-8');
+    } catch (e) {
+      // Fallback: try URL decoding
+      imagePath = decodeURIComponent(encodedPath);
+    }
+
+    console.log('[Sticker Contour] Request for:', imagePath);
+
+    // Check for force regenerate flag
+    const forceRegenerate = parsedUrl.searchParams?.get('forceRegenerate') === 'true';
+
+    // Check cache first (unless force regenerate)
+    if (!forceRegenerate) {
+      const cached = db.getStickerContour(imagePath);
+      if (cached) {
+        console.log('[Sticker Contour] Cache hit for:', imagePath);
+        return sendJson(res, 200, {
+          success: true,
+          contourPath: cached.contourSvgPath,
+          width: cached.width,
+          height: cached.height,
+          cached: true
+        });
+      }
+    }
+
+    console.log('[Sticker Contour] Cache miss, generating contour for:', imagePath);
+
+    // Resolve the actual file path
+    // Handle various path formats:
+    // - Full server paths: /home/ubuntu/vinylApp/web/library/...
+    // - Relative library paths: /library/...
+    // - Already resolved paths
+    let resolvedPath = imagePath;
+
+    if (imagePath.startsWith('/library/')) {
+      resolvedPath = path.join(WEB_DIR, imagePath);
+    } else if (imagePath.startsWith('http')) {
+      // Extract path from URL
+      try {
+        const url = new URL(imagePath);
+        const urlPath = url.pathname;
+        if (urlPath.startsWith('/library/')) {
+          resolvedPath = path.join(WEB_DIR, urlPath);
+        } else {
+          resolvedPath = path.join(WEB_DIR, urlPath);
+        }
+      } catch (e) {
+        console.warn('[Sticker Contour] Could not parse URL:', imagePath);
+      }
+    }
+
+    // Decode URL-encoded characters (e.g., %20 -> space)
+    resolvedPath = decodeURIComponent(resolvedPath);
+
+    // Verify file exists
+    if (!fs.existsSync(resolvedPath)) {
+      console.error('[Sticker Contour] File not found:', resolvedPath);
+      return sendJson(res, 404, { success: false, error: 'Image file not found' });
+    }
+
+    // Generate contour using the bezier pipeline from sticker-sheet-generator
+    const contourResult = await stickerSheets.extractContourBezier(resolvedPath);
+
+    if (!contourResult || !contourResult.svgPath) {
+      throw new Error('Failed to generate contour');
+    }
+
+    // Cache the result
+    db.saveStickerContour(
+      imagePath,
+      contourResult.svgPath,
+      contourResult.width,
+      contourResult.height
+    );
+
+    console.log('[Sticker Contour] Generated and cached contour for:', imagePath);
+
+    return sendJson(res, 200, {
+      success: true,
+      contourPath: contourResult.svgPath,
+      width: contourResult.width,
+      height: contourResult.height,
+      cached: false
+    });
+
+  } catch (err) {
+    console.error('[Sticker Contour Error]', err);
+    return sendJson(res, 500, { success: false, error: err.message });
   }
 }
 
@@ -16863,6 +18210,26 @@ async function handleStickerSheetGenerate(req, res) {
       return sendJson(res, 400, { success: false, error: 'designs array is required' });
     }
 
+    // Convert URL image paths to local file paths
+    console.log('[Sticker Generate] Input designs:', designs.slice(0, 2).map(d => ({ title: d.title, imagePath: d.imagePath })));
+    const resolvedDesigns = designs.map(design => {
+      let localPath = design.imagePath;
+      if (design.imagePath && design.imagePath.startsWith('http')) {
+        try {
+          const imageUrl = new URL(design.imagePath);
+          // Extract path after domain (e.g., /library/Category/...)
+          const urlPath = imageUrl.pathname;
+          // Map to local WEB_DIR
+          localPath = path.join(WEB_DIR, urlPath);
+          console.log(`[Sticker Generate] URL -> Local: ${localPath}`);
+        } catch (e) {
+          console.warn('[Sticker Generate] Could not parse image URL:', design.imagePath);
+        }
+      }
+      return { ...design, imagePath: localPath };
+    });
+    console.log('[Sticker Generate] Resolved designs:', resolvedDesigns.slice(0, 2).map(d => ({ title: d.title, imagePath: d.imagePath })));
+
     // Ensure output directory exists
     await fs.promises.mkdir(STICKER_OUTPUT_DIR, { recursive: true });
 
@@ -16870,9 +18237,9 @@ async function handleStickerSheetGenerate(req, res) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const outputDir = path.join(STICKER_OUTPUT_DIR, `${filenamePrefix}-${timestamp}`);
 
-    console.log(`[Sticker Sheets] Generating sheets for ${designs.length} designs to ${outputDir}`);
+    console.log(`[Sticker Sheets] Generating sheets for ${resolvedDesigns.length} designs to ${outputDir}`);
 
-    const result = await stickerSheets.generateStickerSheets(designs, {
+    const result = await stickerSheets.generateStickerSheets(resolvedDesigns, {
       stickerSizeInches,
       offsetMm,
       outputDir,
@@ -16994,29 +18361,129 @@ async function handleStickerSheetFromOrder(req, res) {
       });
     }
 
-    // Generate sheets
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const outputDir = path.join(STICKER_OUTPUT_DIR, `order-${orderId}-${timestamp}`);
+    // Generate sheets - save to orders folder by order number
+    const orderNum = String(order.order_number || order.name || orderId).replace('#', '');
+    const outputDir = path.join(STICKER_ORDERS_DIR, orderNum);
     await fs.promises.mkdir(outputDir, { recursive: true });
 
-    console.log(`[Sticker Sheets] Generating sheets for order ${orderId} with ${designs.length} designs`);
+    console.log(`[Sticker Sheets] Generating sheets for order #${orderNum} with ${designs.length} designs`);
 
     const result = await stickerSheets.generateStickerSheets(designs, {
       stickerSizeInches,
       offsetMm,
       outputDir,
-      filenamePrefix: `order-${orderId}`
+      filenamePrefix: `order-${orderNum}`
     });
 
     sendJson(res, 200, {
       success: true,
       orderId,
-      orderNumber: order.order_number || order.name,
+      orderNumber: orderNum,
       ...result,
       notFound: notFound.length > 0 ? notFound : undefined
     });
   } catch (err) {
     console.error('[Sticker Sheet From Order Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Generate sticker sheets from a manual visual layout
+ * Body: { pages: [{ stickers: [{imagePath, x, y, width, height, angle}] }], sheetConfig, stickerSizeInches, offsetMm }
+ */
+async function handleStickerSheetFromLayout(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const {
+      pages = [],
+      sheetConfig = {},
+      stickerSizeInches = 3,
+      offsetMm = 0.25
+    } = body;
+
+    if (!pages || !Array.isArray(pages) || pages.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'pages array is required' });
+    }
+
+    // Count total stickers
+    let totalStickers = 0;
+    for (const page of pages) {
+      totalStickers += (page.stickers || []).length;
+    }
+
+    if (totalStickers === 0) {
+      return sendJson(res, 400, { success: false, error: 'No stickers in layout' });
+    }
+
+    console.log(`[Sticker Layout] Processing ${pages.length} page(s) with ${totalStickers} total stickers`);
+
+    // Ensure output directory exists
+    await fs.promises.mkdir(STICKER_OUTPUT_DIR, { recursive: true });
+
+    // Generate timestamp-based subfolder
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const outputDir = path.join(STICKER_OUTPUT_DIR, `layout-${timestamp}`);
+    await fs.promises.mkdir(outputDir, { recursive: true });
+
+    // Process each page and generate the sheets
+    const results = {
+      sheets: [],
+      totalStickers,
+      totalSheets: pages.length,
+      outputDir
+    };
+
+    for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
+      const page = pages[pageIdx];
+      const sheetNum = String(pageIdx + 1).padStart(2, '0');
+
+      try {
+        // Generate sheet from manual placement
+        const sheetResult = await stickerSheets.generateSheetFromLayout(
+          page.stickers,
+          {
+            outputDir,
+            sheetNum,
+            stickerSizeInches,
+            offsetMm
+          }
+        );
+
+        if (sheetResult) {
+          // Calculate web URLs
+          const webBasePath = outputDir.includes('/web/')
+            ? outputDir.split('/web/')[1]
+            : outputDir.replace(/^.*[/\\]web[/\\]/, '');
+
+          results.sheets.push({
+            sheetNumber: pageIdx + 1,
+            sheetName: `Sheet ${sheetNum}`,
+            stickerCount: (page.stickers || []).length,
+            printFile: sheetResult.printPath,
+            cutFile: sheetResult.cutPath,
+            cricutFile: sheetResult.cricutPath,
+            printFilename: path.basename(sheetResult.printPath),
+            cutFilename: path.basename(sheetResult.cutPath),
+            cricutFilename: sheetResult.cricutPath ? path.basename(sheetResult.cricutPath) : null,
+            printUrl: `/${webBasePath}/${path.basename(sheetResult.printPath)}`.replace(/\\/g, '/'),
+            cutUrl: `/${webBasePath}/${path.basename(sheetResult.cutPath)}`.replace(/\\/g, '/'),
+            cricutUrl: sheetResult.cricutPath ? `/${webBasePath}/${path.basename(sheetResult.cricutPath)}`.replace(/\\/g, '/') : null
+          });
+        }
+      } catch (err) {
+        console.error(`[Sticker Layout] Error generating sheet ${pageIdx + 1}:`, err);
+      }
+    }
+
+    console.log(`[Sticker Layout] Generated ${results.sheets.length} sheet(s)`);
+
+    sendJson(res, 200, {
+      success: true,
+      ...results
+    });
+  } catch (err) {
+    console.error('[Sticker Sheet From Layout Error]', err);
     sendJson(res, 500, { success: false, error: err.message });
   }
 }
@@ -17053,6 +18520,8 @@ async function handleMetalPrintCampaignExport(req, res) {
     // Load pricing
     const pricing = readPricingSheet();
     const metalPrintPricing = pricing['metal-print'];
+    const sizeCount = Object.keys(metalPrintPricing?.sizes || {}).length;
+    console.log(`[Metal Print Campaign] Loaded pricing with ${sizeCount} sizes`);
     if (!metalPrintPricing || !metalPrintPricing.sizes) {
       return sendJson(res, 400, { success: false, error: 'Metal print pricing not configured' });
     }
@@ -17129,13 +18598,52 @@ async function handleMetalPrintCampaignExport(req, res) {
         jobStatus.collectionHandle = collectionHandle;
         jobStatus.status = 'processing';
 
+        // Publish collection to all sales channels
+        if (collectionId) {
+          try {
+            await shopify.publishCollectionEverywhere(collectionId);
+          } catch (pubErr) {
+            console.log(`[Metal Print Campaign] Could not publish collection to all channels: ${pubErr.message}`);
+          }
+        }
+
         const results = [];
         const rateLimitMs = Number(process.env.SHOPIFY_EXPORT_RATE_LIMIT_MS || 500);
         const sizes = metalPrintPricing.sizes;
+        console.log(`[Metal Print Campaign] Using ${Object.keys(sizes || {}).length} sizes for variants: ${Object.keys(sizes || {}).join(', ')}`);
+
+        // Track artwork IDs we've processed this session to skip exact duplicates
+        const processedArtworkIds = new Set();
 
         // Process each artwork
         for (const artwork of artworkData) {
           const artworkId = artwork.id;
+
+          // Skip duplicates within this export session (by ID)
+          if (processedArtworkIds.has(artworkId)) {
+            console.log(`[Metal Print Campaign] Skipping duplicate artwork ID: ${artwork.title || artworkId}`);
+            continue;
+          }
+
+          // Clean the title early so we can check for title duplicates too
+          let cleanTitle = (artwork.title || '')
+            .replace(/^Lucid\s*Origin\s*/i, '')
+            // Remove various AI-generated prefixes
+            .replace(/^(gen_|generated_|ai_|flux_|leonardo_)/i, '')
+            .replace(/^a\s+(highly\s+detailed\s+)?(cinematic\s+)?(photo|image|picture|photograph)\s+(of\s+)?/i, '')
+            // Remove UUIDs
+            .replace(/[a-f0-9]{8}[-\s][a-f0-9]{4}[-\s][a-f0-9]{4}[-\s][a-f0-9]{4}[-\s][a-f0-9]{12}/gi, '')
+            .replace(/\s+[a-f0-9]{8,}$/i, '')
+            .replace(/_/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (!cleanTitle) cleanTitle = `Metal Print ${artworkId}`;
+
+          // DON'T skip duplicates by title - each artwork is unique even if names are similar
+          // Only skip by artwork ID to prevent double-processing the exact same item
+
+          processedArtworkIds.add(artworkId);
+
           try {
             console.log(`[Metal Print Campaign] Processing artwork: ${artwork.title || artworkId}`);
 
@@ -17166,8 +18674,24 @@ async function handleMetalPrintCampaignExport(req, res) {
               continue;
             }
 
-            // Apply sublimation filter
-            const filteredBuffer = await sharp(inputBuffer)
+            // Apply sublimation filter and resize for Shopify (max 20 megapixels)
+            // First get metadata to check dimensions
+            const metadata = await sharp(inputBuffer).metadata();
+            const currentPixels = (metadata.width || 0) * (metadata.height || 0);
+            const maxPixels = 20000000; // 20 megapixels Shopify limit
+
+            let sharpPipeline = sharp(inputBuffer);
+
+            // Resize if over 20MP (with some margin)
+            if (currentPixels > maxPixels * 0.95) {
+              const scaleFactor = Math.sqrt(maxPixels * 0.9 / currentPixels);
+              const newWidth = Math.floor((metadata.width || 4000) * scaleFactor);
+              const newHeight = Math.floor((metadata.height || 4000) * scaleFactor);
+              console.log(`[Metal Print Campaign] Resizing image from ${metadata.width}x${metadata.height} (${(currentPixels/1000000).toFixed(1)}MP) to ${newWidth}x${newHeight} for Shopify`);
+              sharpPipeline = sharpPipeline.resize(newWidth, newHeight, { fit: 'inside', withoutEnlargement: true });
+            }
+
+            const filteredBuffer = await sharpPipeline
               .modulate({ brightness: 1.05, saturation: 1.4 })
               .linear(1.3, -(128 * 0.3))
               .recomb([
@@ -17180,17 +18704,8 @@ async function handleMetalPrintCampaignExport(req, res) {
 
             const imageBase64 = filteredBuffer.toString('base64');
 
-            // Clean title
-            let productTitle = artwork.title || 'Metal Print';
-            productTitle = productTitle
-              .replace(/^Lucid\s*Origin\s*/i, '')
-              .replace(/^(gen_|generated_|ai_|flux_|leonardo_|a cinematic photo of\s*)/i, '')
-              .replace(/[a-f0-9]{8}[-\s][a-f0-9]{4}[-\s][a-f0-9]{4}[-\s][a-f0-9]{4}[-\s][a-f0-9]{12}/gi, '')
-              .replace(/\s+[a-f0-9]{8,}$/i, '')
-              .replace(/_/g, ' ')
-              .replace(/\s+/g, ' ')
-              .trim();
-            if (!productTitle) productTitle = `Metal Print ${artworkId}`;
+            // Use the cleanTitle we computed earlier for duplicate checking
+            const productTitle = cleanTitle;
 
             // Create variants
             const variants = [];
@@ -17205,6 +18720,7 @@ async function handleMetalPrintCampaignExport(req, res) {
                 taxable: true
               });
             }
+            console.log(`[Metal Print Campaign] Created ${variants.length} variants for ${productTitle}`);
 
             // Check for existing product
             let existingProduct = null;
@@ -17238,29 +18754,72 @@ async function handleMetalPrintCampaignExport(req, res) {
             let shopifyProduct;
             if (existingProduct && existingProduct.id) {
               const existingVariantCount = existingProduct.variants ? existingProduct.variants.length : 0;
-              if (existingVariantCount !== variants.length) {
-                console.log(`[Metal Print Campaign] Variant count mismatch - deleting and recreating...`);
+              const expectedVariantCount = variants.length;
+              console.log(`[Metal Print Campaign] Found existing product ${existingProduct.id} with ${existingVariantCount} variants, expected ${expectedVariantCount}`);
+
+              // If 0 variants returned, Shopify API may be lagging - fetch full product to verify
+              let actualVariantCount = existingVariantCount;
+              if (existingVariantCount === 0) {
+                try {
+                  const fullProduct = await shopify.getProduct(existingProduct.id);
+                  actualVariantCount = fullProduct?.variants?.length || 0;
+                  console.log(`[Metal Print Campaign] Re-fetched product, actual variant count: ${actualVariantCount}`);
+                } catch (fetchErr) {
+                  console.log(`[Metal Print Campaign] Could not re-fetch product: ${fetchErr.message}`);
+                }
+              }
+
+              // Only delete/recreate if variant count truly doesn't match AND is not 0 (timing issue)
+              // Products with wrong variant counts (e.g., old 3-variant products) should be recreated
+              if (actualVariantCount > 0 && actualVariantCount !== expectedVariantCount) {
+                console.log(`[Metal Print Campaign] Variant count mismatch (${actualVariantCount} vs ${expectedVariantCount}) - deleting and recreating...`);
                 try {
                   await shopify.deleteProduct(existingProduct.id);
-                  await new Promise(r => setTimeout(r, 500));
+                  await new Promise(r => setTimeout(r, 1000)); // Wait for deletion to propagate
+                  existingProduct = null; // Clear so we create fresh
                 } catch (delErr) {
-                  console.log(`[Metal Print Campaign] Delete failed: ${delErr.message}`);
+                  console.log(`[Metal Print Campaign] Delete failed: ${delErr.message}, will try creating anyway`);
                 }
-                shopifyProduct = await shopify.createProduct(productData);
-                console.log(`[Metal Print Campaign] Recreated product: ${shopifyProduct.id}`);
-              } else {
+              } else if (actualVariantCount === expectedVariantCount) {
+                // Product exists with correct variant count - skip creation
+                console.log(`[Metal Print Campaign] Product already exists with correct variants, skipping creation`);
+              }
+
+              if (existingProduct) {
+                // Same variant count - just update title/description/tags
                 shopifyProduct = await shopify.updateProduct(existingProduct.id, {
                   title: productTitle,
                   body_html: productData.body_html,
-                  tags: productData.tags.join(', '),
-                  variants: variants,
-                  options: [{ name: 'Size', values: Object.keys(sizes) }]
+                  tags: productData.tags.join(', ')
                 });
                 shopifyProduct = { id: existingProduct.id, ...shopifyProduct };
+                console.log(`[Metal Print Campaign] Updated existing product: ${existingProduct.id}`);
+
+                // Check if product has images, if not add the image
+                try {
+                  const fullProd = await shopify.getProduct(existingProduct.id);
+                  const existingImages = fullProd?.images || [];
+                  if (existingImages.length === 0) {
+                    console.log(`[Metal Print Campaign] Product has no images, adding image...`);
+                    await shopify.addProductImage(existingProduct.id, {
+                      attachment: imageBase64,
+                      filename: `${productTitle.replace(/\s+/g, '-')}.png`
+                    });
+                    console.log(`[Metal Print Campaign] Added image to existing product`);
+                  } else {
+                    console.log(`[Metal Print Campaign] Product already has ${existingImages.length} image(s)`);
+                  }
+                } catch (imgErr) {
+                  console.log(`[Metal Print Campaign] Could not add image to existing product:`, imgErr.message || imgErr.detail || imgErr);
+                }
+              } else {
+                // Create new product after deletion
+                shopifyProduct = await shopify.createProduct(productData);
+                console.log(`[Metal Print Campaign] Created new product after deletion: ${shopifyProduct.id}`);
               }
             } else {
               shopifyProduct = await shopify.createProduct(productData);
-              console.log(`[Metal Print Campaign] Created product: ${shopifyProduct.id}`);
+              console.log(`[Metal Print Campaign] Created new product: ${shopifyProduct.id} with ${variants.length} variants`);
             }
 
             // Add to collection
@@ -17270,6 +18829,47 @@ async function handleMetalPrintCampaignExport(req, res) {
               } catch (colErr) {
                 console.log(`[Metal Print Campaign] Failed to add to collection: ${colErr.message}`);
               }
+            }
+
+            // Set inventory for all variants (POD items get high stock for TikTok/Facebook channels)
+            const DEFAULT_POD_INVENTORY = 999;
+            try {
+              // Get the full product to access variant inventory_item_ids
+              const fullProduct = await shopify.getProduct(shopifyProduct.id);
+              const productVariants = fullProduct?.variants || shopifyProduct?.variants || [];
+
+              if (productVariants.length > 0) {
+                // Get location ID (use first/default location)
+                const locations = await shopify.listLocations();
+                const locationId = locations[0]?.id;
+
+                if (locationId) {
+                  let inventorySetCount = 0;
+                  for (const variant of productVariants) {
+                    if (variant.inventory_item_id) {
+                      try {
+                        await shopify.setInventoryLevel(variant.inventory_item_id, locationId, DEFAULT_POD_INVENTORY);
+                        inventorySetCount++;
+                      } catch (invErr) {
+                        // Continue on individual variant errors
+                        console.log(`[Metal Print Campaign] Could not set inventory for variant ${variant.id}: ${invErr.message}`);
+                      }
+                    }
+                  }
+                  console.log(`[Metal Print Campaign] Set inventory (${DEFAULT_POD_INVENTORY}) for ${inventorySetCount}/${productVariants.length} variants`);
+                } else {
+                  console.log(`[Metal Print Campaign] No location found, skipping inventory`);
+                }
+              }
+            } catch (invErr) {
+              console.log(`[Metal Print Campaign] Could not set inventory: ${invErr.message}`);
+            }
+
+            // Publish product to all sales channels (TikTok, Facebook, etc.)
+            try {
+              await shopify.publishEverywhere(shopifyProduct.id);
+            } catch (pubErr) {
+              console.log(`[Metal Print Campaign] Could not publish product to all channels: ${pubErr.message}`);
             }
 
             results.push({ artworkId, success: true, shopifyProductId: shopifyProduct.id, title: productTitle });
@@ -17450,8 +19050,23 @@ async function handleMetalPrintCampaignExportSync(req, res) {
           continue;
         }
 
-        // Apply sublimation filter to inputBuffer
-        const filteredBuffer = await sharp(inputBuffer)
+        // Apply sublimation filter and resize for Shopify (max 20 megapixels)
+        const metadata = await sharp(inputBuffer).metadata();
+        const currentPixels = (metadata.width || 0) * (metadata.height || 0);
+        const maxPixels = 20000000; // 20 megapixels Shopify limit
+
+        let sharpPipeline = sharp(inputBuffer);
+
+        // Resize if over 20MP (with some margin)
+        if (currentPixels > maxPixels * 0.95) {
+          const scaleFactor = Math.sqrt(maxPixels * 0.9 / currentPixels);
+          const newWidth = Math.floor((metadata.width || 4000) * scaleFactor);
+          const newHeight = Math.floor((metadata.height || 4000) * scaleFactor);
+          console.log(`[Metal Print Campaign] Resizing image from ${metadata.width}x${metadata.height} (${(currentPixels/1000000).toFixed(1)}MP) to ${newWidth}x${newHeight} for Shopify`);
+          sharpPipeline = sharpPipeline.resize(newWidth, newHeight, { fit: 'inside', withoutEnlargement: true });
+        }
+
+        const filteredBuffer = await sharpPipeline
           .modulate({ brightness: 1.05, saturation: 1.4 })
           .linear(1.3, -(128 * 0.3))
           .recomb([
@@ -17570,6 +19185,24 @@ async function handleMetalPrintCampaignExportSync(req, res) {
             });
             console.log(`[Metal Print Campaign] Updated product: ${existingProduct.id} - ${productTitle}`);
             shopifyProduct = { id: existingProduct.id, ...shopifyProduct };
+
+            // Check if product has images, if not add the image
+            try {
+              const fullProd = await shopify.getProduct(existingProduct.id);
+              const existingImages = fullProd?.images || [];
+              if (existingImages.length === 0) {
+                console.log(`[Metal Print Campaign] Product has no images, adding image...`);
+                await shopify.addProductImage(existingProduct.id, {
+                  attachment: imageBase64,
+                  filename: `${productTitle.replace(/\s+/g, '-')}.png`
+                });
+                console.log(`[Metal Print Campaign] Added image to existing product`);
+              } else {
+                console.log(`[Metal Print Campaign] Product already has ${existingImages.length} image(s)`);
+              }
+            } catch (imgErr) {
+              console.log(`[Metal Print Campaign] Could not add image to existing product:`, imgErr.message || imgErr.detail || imgErr);
+            }
           }
         } else {
           // Create new product
@@ -18333,4 +19966,583 @@ function normalizeMoneyInput(value) {
     return Math.round(numeric * 100);
   }
   return undefined;
+}
+
+// ============================================================================
+// VINYL CUTTER API HANDLERS
+// ============================================================================
+
+const VINYL_OUTPUT_DIR = path.join(LIBRARY_ROOT, 'vinyl-cuts');
+
+// Vectorization cache - stores results keyed by file path + mtime
+const vinylVectorizeCache = new Map();
+const VINYL_CACHE_MAX_SIZE = 100; // Max cached items
+const VINYL_CACHE_TTL = 30 * 60 * 1000; // 30 minutes TTL
+
+// Request queue for sequential processing
+let vinylVectorizeQueue = Promise.resolve();
+let vinylQueueLength = 0;
+
+/**
+ * Get cache key for an image (path + modification time)
+ */
+async function getVinylCacheKey(fullPath) {
+  try {
+    const stats = await fs.promises.stat(fullPath);
+    return `${fullPath}:${stats.mtimeMs}`;
+  } catch (err) {
+    return fullPath;
+  }
+}
+
+/**
+ * Clean up old cache entries
+ */
+function cleanVinylCache() {
+  const now = Date.now();
+  for (const [key, entry] of vinylVectorizeCache.entries()) {
+    if (now - entry.timestamp > VINYL_CACHE_TTL) {
+      vinylVectorizeCache.delete(key);
+    }
+  }
+  // If still over max size, remove oldest entries
+  if (vinylVectorizeCache.size > VINYL_CACHE_MAX_SIZE) {
+    const entries = Array.from(vinylVectorizeCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toRemove = entries.slice(0, entries.length - VINYL_CACHE_MAX_SIZE);
+    for (const [key] of toRemove) {
+      vinylVectorizeCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Core vectorization logic (called sequentially from queue)
+ * Uses per-color contour extraction for proper vinyl cutting
+ */
+async function doVinylVectorize(fullPath) {
+  const { extractColorContours } = require('./sticker-sheet-generator');
+
+  // Get image dimensions
+  const metadata = await sharp(fullPath).metadata();
+  const width = metadata.width;
+  const height = metadata.height;
+
+  // For vinyl cutting, we work directly with the original image
+  // Background removal is DISABLED - it can alter colors and remove parts of the design
+  // The color detection will skip white/near-white pixels anyway
+  console.log('[Vinyl Cutter] Using original image (background removal disabled)');
+  const imagePath = fullPath;
+  const isTemp = false;
+
+  // Extract per-color contours - this is how vinyl cutting actually works!
+  // Each color gets its own cut path that traces only that color's areas
+  console.log('[Vinyl Cutter] Extracting per-color contours...');
+  const colorContoursResult = await extractColorContours(imagePath);
+
+  // Clean up temp file if created
+  if (isTemp) {
+    try { await fs.promises.unlink(imagePath); } catch (e) { /* ignore */ }
+  }
+
+  // Return colors with their individual contour paths
+  // Each color now has: { hex, contourPath, count, percentage }
+  return {
+    colors: colorContoursResult.colors,
+    width: colorContoursResult.width || width,
+    height: colorContoursResult.height || height
+  };
+}
+
+/**
+ * Vectorize an image for vinyl cutting with color detection
+ * Uses request queuing (sequential processing) and caching
+ */
+async function handleVinylVectorize(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { imagePath } = body;
+
+    if (!imagePath) {
+      return sendJson(res, 400, { success: false, error: 'imagePath is required' });
+    }
+
+    // Get full path
+    let fullPath = imagePath;
+    if (!path.isAbsolute(imagePath)) {
+      fullPath = path.join(LIBRARY_ROOT, imagePath);
+    }
+
+    // Check if file exists
+    try {
+      await fs.promises.access(fullPath);
+    } catch (err) {
+      return sendJson(res, 404, { success: false, error: 'Image file not found' });
+    }
+
+    // Check cache first
+    const cacheKey = await getVinylCacheKey(fullPath);
+    const cached = vinylVectorizeCache.get(cacheKey);
+    if (cached) {
+      console.log('[Vinyl Cutter] Cache hit for:', path.basename(fullPath));
+      return sendJson(res, 200, {
+        success: true,
+        ...cached.data,
+        fromCache: true
+      });
+    }
+
+    // Queue the request for sequential processing
+    vinylQueueLength++;
+    console.log(`[Vinyl Cutter] Queuing vectorization (queue length: ${vinylQueueLength}):`, path.basename(fullPath));
+
+    // Add to queue - each request waits for previous ones to complete
+    const resultPromise = vinylVectorizeQueue.then(async () => {
+      console.log('[Vinyl Cutter] Processing:', path.basename(fullPath));
+      const result = await doVinylVectorize(fullPath);
+
+      // Cache the result
+      cleanVinylCache();
+      vinylVectorizeCache.set(cacheKey, {
+        data: result,
+        timestamp: Date.now()
+      });
+      console.log(`[Vinyl Cutter] Cached result (cache size: ${vinylVectorizeCache.size})`);
+
+      return result;
+    }).finally(() => {
+      vinylQueueLength--;
+    });
+
+    // Update the queue tail
+    vinylVectorizeQueue = resultPromise.catch(() => {}); // Prevent unhandled rejection
+
+    // Wait for our turn and get the result
+    const result = await resultPromise;
+
+    sendJson(res, 200, {
+      success: true,
+      ...result
+    });
+
+  } catch (err) {
+    console.error('[Vinyl Vectorize Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Generate vinyl cut files with color separation
+ */
+async function handleVinylGenerate(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { items, canvasSize, addWeedingLines, addRegistrationMarks } = body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'Items array is required' });
+    }
+
+    console.log('[Vinyl Cutter] Generating cut files for', items.length, 'items');
+    console.log('[Vinyl Cutter] Canvas size:', canvasSize);
+
+    // Debug: Log item data to understand coordinate system
+    for (const item of items) {
+      console.log('[Vinyl Cutter] Item:', {
+        left: item.left,
+        top: item.top,
+        width: item.width,
+        height: item.height,
+        scaleX: item.scaleX,
+        scaleY: item.scaleY,
+        angle: item.angle,
+        colorCount: item.colors?.length,
+        hasContours: item.colors?.some(c => c.contourPath)
+      });
+      if (item.colors) {
+        for (const c of item.colors) {
+          console.log(`[Vinyl Cutter]   Color ${c.hex}: contourPath ${c.contourPath ? c.contourPath.length + ' chars' : 'MISSING'}`);
+        }
+      }
+    }
+
+    // Create output directory
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const batchName = `cut-${timestamp}`;
+    const batchDir = path.join(VINYL_OUTPUT_DIR, batchName);
+    await fs.promises.mkdir(batchDir, { recursive: true });
+
+    // Import functions
+    const { createRegistrationMarks, createWeedingLines } = require('./sticker-sheet-generator');
+
+    // Canvas dimensions in mm (for SVG)
+    const widthMm = (canvasSize?.widthInches || 12) * 25.4;
+    const heightMm = (canvasSize?.heightInches || 12) * 25.4;
+    const dpi = canvasSize?.dpi || 300;
+
+    // Collect all unique colors
+    const colorSet = new Set();
+    items.forEach(item => {
+      if (item.colors && Array.isArray(item.colors)) {
+        item.colors.forEach(c => colorSet.add(c.hex || c));
+      }
+    });
+    const allColors = Array.from(colorSet);
+
+    const generatedFiles = [];
+
+    // Generate an SVG for each color layer
+    for (const color of allColors) {
+      const colorName = color.replace('#', '').toUpperCase();
+      const fileName = `cut_${colorName}.svg`;
+      const filePath = path.join(batchDir, fileName);
+
+      // Start SVG
+      let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="${widthMm}mm" height="${heightMm}mm"
+     viewBox="0 0 ${widthMm} ${heightMm}">
+  <title>Vinyl Cut - ${colorName}</title>
+  <desc>Color layer: ${color}</desc>
+`;
+
+      // Add paths for items that contain this color
+      // NEW: Each color now has its OWN contourPaths array - SEPARATE <path> elements per contour
+      // This ensures the cutter LIFTS between shapes instead of cutting travel lines
+      // Stroke width 1.5mm for better visibility in previews (cutters ignore stroke width)
+      svgContent += `  <g id="cut-paths" stroke="${color}" stroke-width="1.5" fill="none">\n`;
+
+      // Collect item bounds for per-item registration marks
+      const itemBounds = [];
+
+      let itemIndex = 0;
+      for (const item of items) {
+        if (item.colors && Array.isArray(item.colors)) {
+          // Find the color entry that matches - it contains the specific contour for this color
+          const colorEntry = item.colors.find(c => (c.hex || c) === color);
+
+          if (colorEntry && (colorEntry.contourPaths || colorEntry.contourPath)) {
+            // Convert canvas position (pixels at screen DPI) to mm
+            // The canvas uses 96 DPI for display, export uses 300 DPI
+            const displayDpi = 96;
+            const displayToMm = 25.4 / displayDpi;
+
+            // Position on canvas (convert from display pixels to mm)
+            const left = (item.left || 0) * displayToMm;
+            const top = (item.top || 0) * displayToMm;
+
+            // The contour path coordinates are in ORIGINAL image pixels
+            // item.origWidth/Height are passed from client (original image dimensions)
+            const origWidth = item.origWidth || 1000;
+            const origHeight = item.origHeight || 1000;
+
+            // item.width/height from client already includes scaleX/scaleY multiplication
+            // These are the DISPLAY dimensions (canvas pixels at 96 DPI)
+            const displayWidth = item.width || origWidth;
+            const displayHeight = item.height || origHeight;
+
+            // Calculate item dimensions in mm for registration marks
+            const itemWidthMm = displayWidth * displayToMm;
+            const itemHeightMm = displayHeight * displayToMm;
+
+            // Store bounds for registration marks (added after cut paths)
+            itemBounds.push({ left, top, width: itemWidthMm, height: itemHeightMm, index: itemIndex });
+
+            console.log(`[Vinyl Generate] Item: orig=${origWidth}x${origHeight}, display=${displayWidth}x${displayHeight}`);
+            const scaleX = (displayWidth / origWidth) * displayToMm;
+            const scaleY = (displayHeight / origHeight) * displayToMm;
+            const angle = item.angle || 0;
+
+            console.log(`[Vinyl Generate] Path transform: translate(${left.toFixed(2)}, ${top.toFixed(2)}) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`);
+
+            // Use contourPaths array if available (preferred - separate paths ensure blade lifts)
+            // Fall back to contourPath string for backward compatibility
+            const pathsToRender = colorEntry.contourPaths || [colorEntry.contourPath];
+
+            svgContent += `    <g transform="translate(${left}, ${top}) rotate(${angle}) scale(${scaleX}, ${scaleY})">\n`;
+
+            // Create SEPARATE <path> element for each contour
+            // This is CRITICAL - ensures cutter lifts blade between shapes
+            for (let i = 0; i < pathsToRender.length; i++) {
+              const pathData = pathsToRender[i];
+              if (pathData) {
+                svgContent += `      <path d="${pathData}" />\n`;
+              }
+            }
+
+            svgContent += `    </g>\n`;
+
+            console.log(`[Vinyl Generate] Added ${pathsToRender.length} separate path elements for ${color} (item ${itemIndex})`);
+            itemIndex++;
+          }
+        }
+      }
+
+      svgContent += `  </g>\n`;
+
+      // Add per-item registration marks (close to each decal)
+      if (addRegistrationMarks !== false && itemBounds.length > 0) {
+        svgContent += `  <g id="registration-marks">\n`;
+        for (const bounds of itemBounds) {
+          svgContent += createItemRegistrationMarks(bounds.left, bounds.top, bounds.width, bounds.height, bounds.index);
+        }
+        svgContent += `  </g>\n`;
+      }
+
+      // Add weeding lines if enabled
+      if (addWeedingLines) {
+        svgContent += createVinylWeedingLines(widthMm, heightMm);
+      }
+
+      svgContent += `</svg>`;
+
+      // Write file
+      await fs.promises.writeFile(filePath, svgContent, 'utf8');
+      generatedFiles.push({ name: fileName, color, path: filePath });
+
+      console.log('[Vinyl Cutter] Generated:', fileName);
+    }
+
+    // Create manifest file
+    const manifest = {
+      batchName,
+      created: new Date().toISOString(),
+      canvasSize,
+      itemCount: items.length,
+      colors: allColors,
+      files: generatedFiles.map(f => f.name),
+      options: { addWeedingLines, addRegistrationMarks }
+    };
+    await fs.promises.writeFile(
+      path.join(batchDir, 'manifest.json'),
+      JSON.stringify(manifest, null, 2),
+      'utf8'
+    );
+
+    sendJson(res, 200, {
+      success: true,
+      batchName,
+      files: generatedFiles,
+      colors: allColors
+    });
+
+  } catch (err) {
+    console.error('[Vinyl Generate Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Create registration marks SVG for a specific item's bounding box
+ * Places marks at the corners of the item with a small offset
+ * @param {number} leftMm - Item left position in mm
+ * @param {number} topMm - Item top position in mm
+ * @param {number} widthMm - Item width in mm
+ * @param {number} heightMm - Item height in mm
+ * @param {number} itemIndex - Item index for unique IDs
+ * @returns {string} SVG group with registration marks
+ */
+function createItemRegistrationMarks(leftMm, topMm, widthMm, heightMm, itemIndex = 0) {
+  const offset = 5; // mm outside the item bounding box
+  const markSize = 6; // mm - slightly smaller for per-item marks
+  const strokeWidth = 0.5;
+
+  // Calculate mark positions (outside the item bounds)
+  const x1 = leftMm - offset;           // Left edge
+  const x2 = leftMm + widthMm + offset; // Right edge
+  const y1 = topMm - offset;            // Top edge
+  const y2 = topMm + heightMm + offset; // Bottom edge
+
+  return `    <!-- Registration marks for item ${itemIndex} -->
+    <g id="regmarks-item-${itemIndex}" stroke="#000000" stroke-width="${strokeWidth}" fill="none">
+      <!-- Top-left -->
+      <circle cx="${x1}" cy="${y1}" r="${markSize/2}" />
+      <line x1="${x1 - markSize/2}" y1="${y1}" x2="${x1 + markSize/2}" y2="${y1}" />
+      <line x1="${x1}" y1="${y1 - markSize/2}" x2="${x1}" y2="${y1 + markSize/2}" />
+      <!-- Top-right -->
+      <circle cx="${x2}" cy="${y1}" r="${markSize/2}" />
+      <line x1="${x2 - markSize/2}" y1="${y1}" x2="${x2 + markSize/2}" y2="${y1}" />
+      <line x1="${x2}" y1="${y1 - markSize/2}" x2="${x2}" y2="${y1 + markSize/2}" />
+      <!-- Bottom-left -->
+      <circle cx="${x1}" cy="${y2}" r="${markSize/2}" />
+      <line x1="${x1 - markSize/2}" y1="${y2}" x2="${x1 + markSize/2}" y2="${y2}" />
+      <line x1="${x1}" y1="${y2 - markSize/2}" x2="${x1}" y2="${y2 + markSize/2}" />
+      <!-- Bottom-right -->
+      <circle cx="${x2}" cy="${y2}" r="${markSize/2}" />
+      <line x1="${x2 - markSize/2}" y1="${y2}" x2="${x2 + markSize/2}" y2="${y2}" />
+      <line x1="${x2}" y1="${y2 - markSize/2}" x2="${x2}" y2="${y2 + markSize/2}" />
+    </g>
+`;
+}
+
+/**
+ * Create registration marks SVG for vinyl cutting (canvas-level - legacy)
+ */
+function createVinylRegistrationMarks(widthMm, heightMm) {
+  const offset = 10; // mm from edge
+  const markSize = 8; // mm
+  const strokeWidth = 0.5;
+
+  return `  <g id="registration-marks" stroke="#000000" stroke-width="${strokeWidth}" fill="none">
+    <!-- Top-left -->
+    <circle cx="${offset}" cy="${offset}" r="${markSize/2}" />
+    <line x1="${offset - markSize}" y1="${offset}" x2="${offset + markSize}" y2="${offset}" />
+    <line x1="${offset}" y1="${offset - markSize}" x2="${offset}" y2="${offset + markSize}" />
+    <!-- Top-right -->
+    <circle cx="${widthMm - offset}" cy="${offset}" r="${markSize/2}" />
+    <line x1="${widthMm - offset - markSize}" y1="${offset}" x2="${widthMm - offset + markSize}" y2="${offset}" />
+    <line x1="${widthMm - offset}" y1="${offset - markSize}" x2="${widthMm - offset}" y2="${offset + markSize}" />
+    <!-- Bottom-left -->
+    <circle cx="${offset}" cy="${heightMm - offset}" r="${markSize/2}" />
+    <line x1="${offset - markSize}" y1="${heightMm - offset}" x2="${offset + markSize}" y2="${heightMm - offset}" />
+    <line x1="${offset}" y1="${heightMm - offset - markSize}" x2="${offset}" y2="${heightMm - offset + markSize}" />
+    <!-- Bottom-right -->
+    <circle cx="${widthMm - offset}" cy="${heightMm - offset}" r="${markSize/2}" />
+    <line x1="${widthMm - offset - markSize}" y1="${heightMm - offset}" x2="${widthMm - offset + markSize}" y2="${heightMm - offset}" />
+    <line x1="${widthMm - offset}" y1="${heightMm - offset - markSize}" x2="${widthMm - offset}" y2="${heightMm - offset + markSize}" />
+  </g>
+`;
+}
+
+/**
+ * Create weeding lines SVG for vinyl cutting
+ */
+function createVinylWeedingLines(widthMm, heightMm) {
+  const margin = 15; // mm from edge
+  return `  <g id="weeding-lines" stroke="#CCCCCC" stroke-width="0.25" stroke-dasharray="5,5" fill="none">
+    <rect x="${margin}" y="${margin}" width="${widthMm - margin*2}" height="${heightMm - margin*2}" />
+  </g>
+`;
+}
+
+/**
+ * List generated vinyl cut batches
+ */
+async function handleVinylList(req, res) {
+  try {
+    await fs.promises.mkdir(VINYL_OUTPUT_DIR, { recursive: true });
+
+    const entries = await fs.promises.readdir(VINYL_OUTPUT_DIR, { withFileTypes: true });
+    const batches = [];
+
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith('cut-')) {
+        const batchDir = path.join(VINYL_OUTPUT_DIR, entry.name);
+        try {
+          const files = await fs.promises.readdir(batchDir);
+          const svgFiles = files.filter(f => f.endsWith('.svg'));
+
+          // Try to read manifest
+          let manifest = null;
+          try {
+            const manifestPath = path.join(batchDir, 'manifest.json');
+            manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf8'));
+          } catch (e) {}
+
+          batches.push({
+            name: entry.name,
+            files: svgFiles,
+            created: manifest?.created || null,
+            colors: manifest?.colors || [],
+            itemCount: manifest?.itemCount || 0
+          });
+        } catch (e) {
+          console.warn('[Vinyl List] Error reading batch:', entry.name, e.message);
+        }
+      }
+    }
+
+    // Sort by name (timestamp) descending
+    batches.sort((a, b) => b.name.localeCompare(a.name));
+
+    sendJson(res, 200, batches);
+
+  } catch (err) {
+    console.error('[Vinyl List Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Delete a vinyl cut batch
+ */
+async function handleVinylDeleteBatch(req, res, batchName) {
+  try {
+    if (!batchName || batchName.includes('..') || batchName.includes('/') || batchName.includes('\\')) {
+      return sendJson(res, 400, { success: false, error: 'Invalid batch name' });
+    }
+
+    const batchDir = path.join(VINYL_OUTPUT_DIR, batchName);
+
+    // Check if directory exists
+    try {
+      const stats = await fs.promises.stat(batchDir);
+      if (!stats.isDirectory()) {
+        return sendJson(res, 404, { success: false, error: 'Batch not found' });
+      }
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        return sendJson(res, 404, { success: false, error: 'Batch not found' });
+      }
+      throw err;
+    }
+
+    // Delete all files in the directory first
+    const files = await fs.promises.readdir(batchDir);
+    for (const file of files) {
+      await fs.promises.unlink(path.join(batchDir, file));
+    }
+
+    // Then delete the directory
+    await fs.promises.rmdir(batchDir);
+
+    console.log('[Vinyl Cutter] Deleted batch:', batchName);
+    sendJson(res, 200, { success: true, message: `Batch '${batchName}' deleted successfully` });
+
+  } catch (err) {
+    console.error('[Vinyl Delete Batch Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Send vinyl cut file to Silhouette
+ * Note: Since the Silhouette cutter is USB-connected to the local machine (not the server),
+ * this returns a download URL for the SVG file. The user can open it in Silhouette Studio.
+ */
+async function handleVinylSendToSilhouette(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { batchName, fileName } = body;
+
+    if (!batchName || !fileName) {
+      return sendJson(res, 400, { success: false, error: 'batchName and fileName are required' });
+    }
+
+    const filePath = path.join(VINYL_OUTPUT_DIR, batchName, fileName);
+
+    // Check if file exists
+    try {
+      await fs.promises.access(filePath);
+    } catch (err) {
+      return sendJson(res, 404, { success: false, error: 'Cut file not found' });
+    }
+
+    // Return the download URL for the SVG file
+    // The Silhouette is USB-connected to the user's local machine, so they need to
+    // download the file and open it in Silhouette Studio
+    const downloadUrl = `/library/vinyl-cuts/${batchName}/${fileName}`;
+
+    console.log('[Vinyl Cutter] Providing download URL for:', fileName);
+    sendJson(res, 200, {
+      success: true,
+      message: 'Download the SVG file and open it in Silhouette Studio',
+      downloadUrl: downloadUrl,
+      fileName: fileName
+    });
+
+  } catch (err) {
+    console.error('[Vinyl Send to Silhouette Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
 }

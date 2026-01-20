@@ -1,6 +1,10 @@
 console.log('===== RENDERER INDEX.JS LOADED - VERSION 2.0 =====');
 const printStation = window.printStation;
 
+// Track intentionally open modals to prevent auto-cleanup from closing them
+// Declared early so showPrompt() can use it
+const intentionallyOpenModals = new Set();
+
 (() => {
   const MAX_LIBRARY_IMG_RETRIES = 3;
   const PARAM_KEY = 'libraryRetry';
@@ -41,6 +45,7 @@ const printStation = window.printStation;
  * @returns {Promise<string|null>} - The entered value or null if cancelled
  */
 function showPrompt(message, defaultValue = '') {
+  console.log('[showPrompt] Called with message:', message);
   return new Promise((resolve) => {
     const modal = document.getElementById('customPromptModal');
     const title = document.getElementById('customPromptTitle');
@@ -48,22 +53,32 @@ function showPrompt(message, defaultValue = '') {
     const okBtn = document.getElementById('customPromptOk');
     const cancelBtn = document.getElementById('customPromptCancel');
 
+    console.log('[showPrompt] Modal element:', modal);
+    console.log('[showPrompt] Modal current display:', modal?.style?.display);
+
     if (!modal || !input || !okBtn || !cancelBtn) {
-      console.error('Custom prompt modal elements not found');
+      console.error('Custom prompt modal elements not found', { modal, input, okBtn, cancelBtn });
       resolve(null);
       return;
     }
+
+    // Mark as intentionally open to prevent auto-cleanup from closing it
+    intentionallyOpenModals.add('customPromptModal');
 
     title.textContent = message;
     input.value = defaultValue;
     modal.style.display = 'flex';
     modal.style.pointerEvents = 'auto';
+    modal.style.visibility = 'visible';
+    modal.removeAttribute('hidden');
+    console.log('[showPrompt] Modal display set to flex, now:', modal.style.display);
     input.focus();
     input.select();
 
     const cleanup = () => {
       modal.style.display = 'none';
       modal.style.pointerEvents = 'none';
+      intentionallyOpenModals.delete('customPromptModal');
       okBtn.removeEventListener('click', handleOk);
       cancelBtn.removeEventListener('click', handleCancel);
       input.removeEventListener('keydown', handleKeydown);
@@ -727,6 +742,10 @@ const elements = {
   catalogAddSelectedBtn: document.getElementById('catalogAddSelectedBtn'),
   catalogAddAllToCampaignButton: document.getElementById('catalogAddAllToCampaignButton'),
   catalogToFacebookBtn: document.getElementById('catalogToFacebookBtn'),
+  catalogSyncToGDriveBtn: document.getElementById('catalogSyncToGDriveBtn'),
+  catalogPullFromGDriveBtn: document.getElementById('catalogPullFromGDriveBtn'),
+  catalogSelectAllBtn: document.getElementById('catalogSelectAllBtn'),
+  catalogSendToVinylCutterBtn: document.getElementById('catalogSendToVinylCutterBtn'),
   // Social Marketing elements
   socialSelectedGrid: document.getElementById('socialSelectedGrid'),
   socialSelectedCount: document.getElementById('socialSelectedCount'),
@@ -1197,6 +1216,7 @@ const elements = {
   socialArtworkCancel: document.getElementById('socialArtworkCancel'),
   socialArtworkAddSelected: document.getElementById('socialArtworkAddSelected'),
   socialAddFromArtworkButton: document.getElementById('socialAddFromArtworkButton'),
+  socialAddFromCampaignButton: document.getElementById('socialAddFromCampaignButton'),
   socialClearItemsButton: document.getElementById('socialClearItemsButton'),
   // Mockup settings modal
   campaignMockupSettingsModal: document.getElementById('campaignMockupSettingsModal'),
@@ -1275,8 +1295,16 @@ const elements = {
   adminStatus: document.getElementById('adminStatus'),
   adminOrphansBody: document.getElementById('adminOrphansBody'),
   adminDeleteId: document.getElementById('adminDeleteId'),
-  adminDeleteButton: document.getElementById('adminDeleteButton')
-  ,
+  adminDeleteButton: document.getElementById('adminDeleteButton'),
+  // Google Drive Export
+  exportMockupsButton: document.getElementById('exportMockupsButton'),
+  openExportFolderButton: document.getElementById('openExportFolderButton'),
+  exportMockupsStatus: document.getElementById('exportMockupsStatus'),
+  exportMockupsStats: document.getElementById('exportMockupsStats'),
+  exportStatCampaigns: document.getElementById('exportStatCampaigns'),
+  exportStatOrders: document.getElementById('exportStatOrders'),
+  exportStatFiles: document.getElementById('exportStatFiles'),
+  exportPath: document.getElementById('exportPath'),
   // Inbound SMS
   inboundFromFilter: document.getElementById('inboundFromFilter'),
   inboundRefreshButton: document.getElementById('inboundRefreshButton'),
@@ -1439,6 +1467,10 @@ const elements = {
   fbScheduleInterval: document.getElementById('fbScheduleInterval'),
   fbScheduleCreateBtn: document.getElementById('fbScheduleCreateBtn'),
   fbScheduleGenerateAIBtn: document.getElementById('fbScheduleGenerateAIBtn'),
+  fbScheduleAiPerItem: document.getElementById('fbScheduleAiPerItem'),
+  fbScheduleAiStyle: document.getElementById('fbScheduleAiStyle'),
+  fbScheduleAiStyleGroup: document.getElementById('fbScheduleAiStyleGroup'),
+  fbSchedulePostTextHint: document.getElementById('fbSchedulePostTextHint'),
   fbScheduleTemplateSection: document.getElementById('fbScheduleTemplateSection'),
   fbScheduleCreateTemplateBtn: document.getElementById('fbScheduleCreateTemplateBtn'),
   fbScheduleCampaignInfo: document.getElementById('fbScheduleCampaignInfo'),
@@ -1528,6 +1560,8 @@ function showToast(message, variant = 'info', timeout = 4000) {
     }, 300);
   }, timeout);
 }
+// Export showToast globally for use in other scripts
+window.showToast = showToast;
 
 function setConnectionStatus(connected, message) {
   elements.connectionStatus.textContent = message;
@@ -1604,6 +1638,15 @@ function initNavDropdowns() {
 function switchView(viewId) {
   // Force close any blocking modals when switching views
   try { forceCloseAllBlockingModals(); } catch (_) {}
+
+  // Memory cleanup when leaving certain views
+  const previousView = document.querySelector('.view.active')?.id;
+  if (previousView && previousView !== viewId) {
+    // Clear preview cache when leaving catalog-heavy views to free memory
+    if (['catalogView', 'customArtView', 'fbScheduleManagerView'].includes(previousView)) {
+      clearPreviewCache();
+    }
+  }
 
   elements.views.forEach((view) => {
     view.classList.toggle('active', view.id === viewId);
@@ -1753,6 +1796,18 @@ function switchView(viewId) {
   // Sticker Sheets view
   if (viewId === 'stickerSheetsView') {
     initStickerSheetsView();
+  }
+
+  // New Stickers view
+  if (viewId === 'stickersView') {
+    initStickersView();
+  }
+
+  // Vinyl Cutter view
+  if (viewId === 'vinylCutterView') {
+    if (typeof initVinylCutterEditor === 'function') {
+      initVinylCutterEditor();
+    }
   }
 
   // Dashboard view
@@ -3493,10 +3548,42 @@ function ensureTrailingSlash(value) {
   return value.endsWith('/') ? value : `${value}/`;
 }
 
-function applyImageOptions(urlString, { width, quality } = {}) {
-  if (!urlString || (!width && !quality)) return urlString;
+function encodeUrlPath(urlString) {
+  if (!urlString) return urlString;
   try {
     const url = new URL(urlString);
+    // Encode each path segment separately to handle spaces and special characters
+    const pathSegments = url.pathname.split('/').map(seg => encodeURIComponent(decodeURIComponent(seg)));
+    url.pathname = pathSegments.join('/');
+    return url.toString();
+  } catch {
+    // If URL parsing fails, fall back to simple space encoding
+    return urlString.replace(/ /g, '%20');
+  }
+}
+
+function applyImageOptions(urlString, { width, quality } = {}) {
+  if (!urlString) return urlString;
+
+  // First, encode the URL path to handle spaces and special characters
+  let encoded = encodeUrlPath(urlString);
+
+  // If no resize options, return as-is
+  if (!width && !quality) return encoded;
+
+  try {
+    const url = new URL(encoded);
+
+    // For blueridgecustomco.com or store.swayzecustomvinyl.com URLs with /library/ path,
+    // route through /api/library/ on blueridgecustomco.com which processes resize params
+    // (nginx ignores query params when serving static files)
+    const isKnownHost = url.hostname === 'blueridgecustomco.com' || url.hostname === 'store.swayzecustomvinyl.com';
+    if (isKnownHost && url.pathname.startsWith('/library/')) {
+      // Convert /library/path to /api/library/path and use blueridgecustomco.com for API
+      url.hostname = 'blueridgecustomco.com';
+      url.pathname = '/api/library/' + url.pathname.slice('/library/'.length);
+    }
+
     if (width) {
       const clampedWidth = Math.min(Math.max(Math.round(width), 1), 2400);
       url.searchParams.set('w', String(clampedWidth));
@@ -3506,7 +3593,7 @@ function applyImageOptions(urlString, { width, quality } = {}) {
     }
     return url.toString();
   } catch {
-    return urlString;
+    return encoded;
   }
 }
 
@@ -3554,6 +3641,14 @@ function resolveAssetUrl(pathValue, options = {}) {
   if (/^data:/i.test(pathValue)) return pathValue;
   if (/^https?:/i.test(pathValue)) {
     return applyImageOptions(pathValue, options);
+  }
+  // Handle file:// URLs
+  if (/^file:/i.test(pathValue)) return pathValue;
+  // Handle local Windows absolute paths (C:/, D:/, etc.) - convert to file:// URL
+  if (/^[A-Za-z]:[\\/]/.test(pathValue)) {
+    // Normalize backslashes to forward slashes and encode properly
+    const normalizedPath = pathValue.replace(/\\/g, '/');
+    return 'file:///' + normalizedPath;
   }
 
   const bases = [
@@ -3607,42 +3702,99 @@ function withCacheBust(u) {
 }
 
 // In-memory map of URL -> cached file:// URL
+// Limited to prevent unbounded memory growth
 const previewCacheMap = new Map();
+const PREVIEW_CACHE_MAX_SIZE = 500; // Max entries to keep in memory
 let previewCachePending = new Set();
 
 /**
- * Prefetch and cache preview images for catalog items
- * Returns immediately, updates img elements in background as cache completes
+ * Add to preview cache with LRU-style eviction
  */
-async function prefetchCatalogPreviews(urls) {
+function addToPreviewCache(url, cachedUrl) {
+  // If at max size, remove oldest entries (first 100)
+  if (previewCacheMap.size >= PREVIEW_CACHE_MAX_SIZE) {
+    const keysToDelete = Array.from(previewCacheMap.keys()).slice(0, 100);
+    keysToDelete.forEach(key => previewCacheMap.delete(key));
+  }
+  previewCacheMap.set(url, cachedUrl);
+}
+
+/**
+ * Clear preview cache to free memory
+ */
+function clearPreviewCache() {
+  previewCacheMap.clear();
+  previewCachePending.clear();
+  prefetchQueue = [];
+  console.log('[PreviewCache] Memory cache cleared');
+}
+
+/**
+ * Prefetch and cache preview images for catalog items
+ * Runs in background with rate limiting to avoid overwhelming the system
+ */
+let prefetchQueue = [];
+let prefetchRunning = false;
+
+function prefetchCatalogPreviews(urls) {
   if (!urls || !urls.length) return;
   if (!window.printStation?.previewCache?.batch) return;
 
-  // Filter out already cached or pending URLs
+  // Filter and add to queue
   const toFetch = urls.filter(url => url && !previewCacheMap.has(url) && !previewCachePending.has(url));
   if (!toFetch.length) return;
 
-  // Mark as pending
-  toFetch.forEach(url => previewCachePending.add(url));
-
-  try {
-    const results = await window.printStation.previewCache.batch(toFetch);
-    if (results && typeof results === 'object') {
-      for (const [originalUrl, cachedUrl] of Object.entries(results)) {
-        if (cachedUrl) {
-          previewCacheMap.set(originalUrl, cachedUrl);
-          // Update any img elements currently showing this URL
-          document.querySelectorAll(`img[data-cache-url="${CSS.escape(originalUrl)}"]`).forEach(img => {
-            img.src = cachedUrl;
-          });
-        }
-        previewCachePending.delete(originalUrl);
-      }
+  // Add to queue (deduplicated)
+  for (const url of toFetch) {
+    if (!prefetchQueue.includes(url)) {
+      prefetchQueue.push(url);
     }
-  } catch (e) {
-    console.warn('[PreviewCache] Batch prefetch failed:', e.message);
-    toFetch.forEach(url => previewCachePending.delete(url));
   }
+
+  // Start processing if not already running
+  if (!prefetchRunning) {
+    processPrefetchQueue();
+  }
+}
+
+async function processPrefetchQueue() {
+  if (prefetchRunning || prefetchQueue.length === 0) return;
+  prefetchRunning = true;
+
+  // Process in small batches with delays to avoid blocking
+  const BATCH_SIZE = 5;
+  const BATCH_DELAY = 500; // ms between batches
+
+  while (prefetchQueue.length > 0) {
+    const batch = prefetchQueue.splice(0, BATCH_SIZE);
+    batch.forEach(url => previewCachePending.add(url));
+
+    try {
+      const results = await window.printStation.previewCache.batch(batch);
+      if (results && typeof results === 'object') {
+        for (const [originalUrl, cachedUrl] of Object.entries(results)) {
+          if (cachedUrl) {
+            addToPreviewCache(originalUrl, cachedUrl);
+            // Update any img elements currently showing this URL
+            document.querySelectorAll(`img[data-cache-url="${CSS.escape(originalUrl)}"]`).forEach(img => {
+              img.src = cachedUrl;
+            });
+          }
+          previewCachePending.delete(originalUrl);
+        }
+      }
+    } catch (e) {
+      console.warn('[PreviewCache] Batch prefetch failed:', e.message);
+      batch.forEach(url => previewCachePending.delete(url));
+    }
+
+    // Yield to main thread between batches
+    if (prefetchQueue.length > 0) {
+      await new Promise(r => setTimeout(r, BATCH_DELAY));
+    }
+  }
+
+  prefetchRunning = false;
 }
 
 /**
@@ -3946,7 +4098,8 @@ async function handleCampaignSaveSilently() {
     const result = await printStation.updateCampaign(state.campaign.slug, {
       items: itemsPayload,
       apparel: state.campaign.apparel || null,
-      mockupStrategy: { ...strategy }
+      mockupStrategy: { ...strategy },
+      mockupImage: state.campaign.mockupImage || null
     });
     console.log('[handleCampaignSaveSilently] Save completed, result:', result);
   } catch (err) {
@@ -6182,6 +6335,7 @@ async function handleCampaignSave() {
   payload.mockupStrategy = { ...ensureCampaignMockupStrategy() };
   payload.productType = state.campaign.productType || '';
   payload.decalBackground = state.campaign.decalBackground || null;
+  payload.mockupImage = state.campaign.mockupImage || null;
   payload.socialProof = meta.socialProof;
   payload.endDate = meta.endDate;
   payload.benefits = meta.benefits;
@@ -8573,9 +8727,6 @@ document.addEventListener('click', (e) => {
   }
 }, true); // capture phase
 
-// Track intentionally open modals to prevent auto-cleanup from closing them
-const intentionallyOpenModals = new Set();
-
 // Force close all modals that might be blocking
 // PROTECTED_MODALS are NEVER force-closed - they have their own lifecycle
 function forceCloseAllBlockingModals() {
@@ -8626,70 +8777,12 @@ function forceCloseAllBlockingModals() {
   });
 }
 
-// Periodic cleanup of blocking modals - runs every 2 seconds
+// Periodic cleanup of blocking modals - DISABLED to debug lockups
 // These modals should NEVER be auto-cleaned - they have their own lifecycle management
 const PROTECTED_MODALS = ['customArtMockupModal', 'tiledProductModal', 'stickerSheetsBrowserModal'];
 
-setInterval(() => {
-  // Find ALL elements with computed position:fixed that might be blocking
-  document.querySelectorAll('*').forEach(el => {
-    const style = window.getComputedStyle(el);
-    if (style.position !== 'fixed') return;
-
-    // CRITICAL: Skip protected modals entirely - they manage their own visibility
-    if (el.id && PROTECTED_MODALS.includes(el.id)) {
-      return;
-    }
-
-    const display = style.display;
-    const visibility = style.visibility;
-    const pointerEvents = style.pointerEvents;
-
-    // Skip elements that are properly visible (active modals)
-    if (display !== 'none' && visibility !== 'hidden') {
-      // Check if this is a known modal that should be hidden
-      const isModal = el.classList.contains('modal') ||
-                      el.classList.contains('modal-overlay') ||
-                      el.classList.contains('ssaw-modal') ||
-                      el.id.includes('Modal');
-
-      // Skip modals that are intentionally open
-      if (intentionallyOpenModals.has(el.id)) {
-        // console.log('[Auto-cleanup] Skipping intentionally open modal:', el.id);
-        return;
-      }
-
-      if (isModal && el.hasAttribute('hidden')) {
-        // It's marked hidden but computed display isn't none - force it
-        el.style.display = 'none';
-        el.style.pointerEvents = 'none';
-        console.log('[Auto-cleanup] Force-hidden modal:', el.id || el.className, 'intentionallyOpen:', intentionallyOpenModals.has(el.id), 'setContents:', [...intentionallyOpenModals]);
-      }
-      return;
-    }
-
-    // If display is none but pointer-events isn't, fix it
-    if (display === 'none' && pointerEvents !== 'none') {
-      el.style.pointerEvents = 'none';
-      console.log('[Auto-cleanup] Fixed pointer-events on hidden element:', el.id || el.className);
-    }
-  });
-
-  // Also check modal classes specifically
-  document.querySelectorAll('.modal, .modal-overlay, .ssaw-modal').forEach(el => {
-    // Skip protected modals
-    if (el.id && PROTECTED_MODALS.includes(el.id)) {
-      return;
-    }
-    const style = window.getComputedStyle(el);
-    if (style.display === 'none' || el.hasAttribute('hidden')) {
-      if (style.pointerEvents !== 'none') {
-        el.style.pointerEvents = 'none';
-        console.log('[Auto-cleanup] Fixed modal pointer-events:', el.id || el.className);
-      }
-    }
-  });
-}, 2000);
+// Modal cleanup disabled - was causing performance issues
+// If modals get stuck, use Ctrl+Shift+B to force close them
 
 function renderInventoryUsage(list = []) {
   if (!Array.isArray(list) || !list.length) {
@@ -12095,8 +12188,23 @@ function renderCatalog() {
     elements.catalogGrid.innerHTML =
       '<p class="hint">No catalog data found. Generate catalog on the server first.</p>';
     return;
-
   }
+
+  // If no category selected and no search, show prompt to select category
+  if (!state.catalogFilter.category && !state.catalogFilter.search) {
+    const categoryCount = categories.length;
+    const totalDesigns = categories.reduce((sum, cat) => sum + (cat.designs?.length || 0), 0);
+    elements.catalogGrid.innerHTML = `
+      <div class="catalog-select-prompt" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
+        <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">📁</div>
+        <h3 style="margin: 0 0 8px 0; font-size: 18px;">Select a Category</h3>
+        <p class="hint" style="margin: 0;">Choose a category from the dropdown above to view designs.<br/>
+        ${categoryCount} categories • ${totalDesigns.toLocaleString()} total designs</p>
+      </div>
+    `;
+    return;
+  }
+
   let designs = categories.flatMap((category) =>
     (category.designs || []).map((design) => ({
       ...design,
@@ -12265,6 +12373,12 @@ function updateCatalogSelectionUI() {
   if (fbBtn) {
     fbBtn.textContent = count > 0 ? `Use checked (${Math.min(count, 6)}) in Facebook Post` : 'Use checked in Facebook Post';
     fbBtn.disabled = count === 0;
+  }
+  // Also update Vinyl Cutter button
+  const vinylBtn = document.getElementById('catalogSendToVinylCutterBtn');
+  if (vinylBtn) {
+    vinylBtn.textContent = count > 0 ? `Send to Vinyl Cutter (${count})` : 'Send to Vinyl Cutter';
+    vinylBtn.disabled = count === 0;
   }
 }
 
@@ -12691,31 +12805,78 @@ async function handleBulkUpload() {
       return;
     }
 
+    // Allow selecting ZIP files (or images directly)
     const selection = await printStation.selectFiles({
-      title: 'Select folder of preview images',
-      properties: ['openDirectory']
+      title: 'Select ZIP file(s) containing images',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'ZIP Archives', extensions: ['zip'] },
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }
+      ]
     });
-    if (!selection || !selection.length) {
-      return;
+
+    let files = [];
+    let hadZipOrImages = false;
+
+    if (selection && selection.length) {
+      // Process selected files - could be ZIPs or images
+      for (const selectedPath of selection) {
+        const ext = selectedPath.toLowerCase().split('.').pop();
+
+        if (ext === 'zip') {
+          hadZipOrImages = true;
+          // Extract ZIP file
+          elements.uploadStatus.textContent = `Extracting ZIP file...`;
+          elements.uploadStatus.className = 'status-bar muted';
+
+          try {
+            const extractResult = await printStation.catalogExtractZip(selectedPath);
+            if (extractResult.success && extractResult.filePaths) {
+              files.push(...extractResult.filePaths);
+              elements.uploadStatus.textContent = `Extracted ${extractResult.filePaths.length} images from ZIP`;
+            } else {
+              showToast(extractResult.error || 'Failed to extract ZIP', 'error', 6000);
+            }
+          } catch (error) {
+            console.error('ZIP extraction failed:', error);
+            showToast(error?.message || 'Failed to extract ZIP', 'error', 6000);
+          }
+        } else if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+          hadZipOrImages = true;
+          files.push(selectedPath);
+        }
+      }
     }
 
-    const directory = selection[0];
-    let files = [];
-    try {
-      files = await printStation.listImageFiles({ directory });
-    } catch (error) {
-      elements.uploadStatus.textContent = error?.message || 'Unable to read folder.';
-      elements.uploadStatus.className = 'status-bar error';
-      showToast(error?.message || 'Unable to read folder.', 'error', 6000);
-      return;
+    // If user cancelled or selected nothing, offer folder selection instead
+    if (!hadZipOrImages) {
+      const folderSelection = await printStation.selectFiles({
+        title: 'Or select a folder of preview images',
+        properties: ['openDirectory']
+      });
+
+      if (!folderSelection || !folderSelection.length) {
+        return; // User cancelled both dialogs
+      }
+
+      const directory = folderSelection[0];
+      try {
+        const dirFiles = await printStation.listImageFiles({ directory });
+        files.push(...(dirFiles || []));
+      } catch (error) {
+        elements.uploadStatus.textContent = error?.message || 'Unable to read folder.';
+        elements.uploadStatus.className = 'status-bar error';
+        showToast(error?.message || 'Unable to read folder.', 'error', 6000);
+        return;
+      }
     }
 
     files = (files || []).filter((filePath) => BULK_IMAGE_EXTENSIONS.has(getBulkFileExtension(filePath)));
 
     if (!files.length) {
-      elements.uploadStatus.textContent = 'No images found in that folder.';
+      elements.uploadStatus.textContent = 'No images found in the selection.';
       elements.uploadStatus.className = 'status-bar error';
-      showToast('No PNG/JPG/GIF/WEBP images found in the selected folder.', 'error', 6000);
+      showToast('No PNG/JPG/GIF/WEBP images found in the selected folder or ZIP.', 'error', 6000);
       return;
     }
 
@@ -12745,6 +12906,11 @@ async function handleBulkUpload() {
         successCount += 1;
         elements.uploadStatus.textContent = `Uploaded ${displayName} (${successCount}/${files.length})`;
         elements.uploadStatus.className = 'status-bar muted';
+
+        // Small delay between uploads to prevent connection overload
+        if (index < files.length - 1) {
+          await new Promise(r => setTimeout(r, 100));
+        }
       } catch (error) {
         const message = error?.message || `Unable to upload ${displayName}.`;
         elements.uploadStatus.textContent = message;
@@ -13330,6 +13496,11 @@ async function init() {
   });
 
   elements.reloadCatalogButton.addEventListener('click', () => loadCatalog({ forceRefresh: true }));
+
+  // Catalog Select All button
+  if (elements.catalogSelectAllBtn) {
+    elements.catalogSelectAllBtn.addEventListener('click', handleCatalogSelectAll);
+  }
 
   // Catalog type tabs
   const catalogTabApparel = document.getElementById('catalogTabApparel');
@@ -14003,6 +14174,21 @@ async function init() {
       updateSocialPreview();
       showToast(`Added ${selectedItems.length} item${selectedItems.length === 1 ? '' : 's'} to Facebook post.`, 'success');
     });
+  }
+
+  // Catalog: Sync to Google Drive
+  if (elements.catalogSyncToGDriveBtn) {
+    elements.catalogSyncToGDriveBtn.addEventListener('click', handleSyncCatalogToGDrive);
+  }
+
+  // Catalog: Pull from Google Drive
+  if (elements.catalogPullFromGDriveBtn) {
+    elements.catalogPullFromGDriveBtn.addEventListener('click', handlePullCollectionFromGDrive);
+  }
+
+  // Catalog: Send to Vinyl Cutter
+  if (elements.catalogSendToVinylCutterBtn) {
+    elements.catalogSendToVinylCutterBtn.addEventListener('click', handleSendToVinylCutter);
   }
 
   // Social Marketing event handlers
@@ -15654,6 +15840,74 @@ ${targeting.psychographics.lifestyle}
   elements.adminListOrphansButton?.addEventListener('click', handleAdminListOrphans);
   elements.adminCleanupForm?.addEventListener('submit', handleAdminCleanupSubmit);
   elements.adminDeleteButton?.addEventListener('click', () => handleAdminDelete());
+
+  // Google Drive Export handlers
+  elements.exportMockupsButton?.addEventListener('click', handleExportMockups);
+  elements.openExportFolderButton?.addEventListener('click', handleOpenExportFolder);
+
+  async function handleExportMockups() {
+    if (!elements.exportMockupsStatus) return;
+    elements.exportMockupsButton.disabled = true;
+    elements.exportMockupsStatus.textContent = 'Exporting mockups...';
+    elements.exportMockupsStatus.className = 'status-bar';
+    elements.exportMockupsStats.style.display = 'none';
+
+    try {
+      const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
+      const response = await fetch(`${serverUrl}/api/admin/export-mockups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        elements.exportMockupsStatus.textContent = 'Export completed successfully!';
+        elements.exportMockupsStatus.className = 'status-bar success';
+
+        if (data.stats) {
+          elements.exportStatCampaigns.textContent = data.stats.campaigns || 0;
+          elements.exportStatOrders.textContent = data.stats.customerOrders || 0;
+          elements.exportStatFiles.textContent = data.stats.totalFiles || 0;
+          elements.exportMockupsStats.style.display = 'block';
+        }
+
+        if (data.exportPath) {
+          elements.exportPath.textContent = `Export folder: ${data.exportPath}`;
+        }
+      } else {
+        elements.exportMockupsStatus.textContent = `Export failed: ${data.error || 'Unknown error'}`;
+        elements.exportMockupsStatus.className = 'status-bar error';
+      }
+    } catch (err) {
+      elements.exportMockupsStatus.textContent = `Export error: ${err.message}`;
+      elements.exportMockupsStatus.className = 'status-bar error';
+    } finally {
+      elements.exportMockupsButton.disabled = false;
+    }
+  }
+
+  async function handleOpenExportFolder() {
+    try {
+      // Use Electron's shell to open the folder
+      if (window.printStation?.openFolder) {
+        await window.printStation.openFolder('exports/google-drive-mockups');
+      } else if (window.electron?.shell?.openPath) {
+        await window.electron.shell.openPath('exports/google-drive-mockups');
+      } else {
+        // Fallback: show the path
+        const exportPath = elements.exportPath?.textContent;
+        if (exportPath) {
+          alert(`Export folder location:\n${exportPath.replace('Export folder: ', '')}`);
+        } else {
+          elements.exportMockupsStatus.textContent = 'Run export first to see folder location';
+        }
+      }
+    } catch (err) {
+      elements.exportMockupsStatus.textContent = `Could not open folder: ${err.message}`;
+    }
+  }
+
   // Inbound SMS list
   async function loadInboundMessages() {
     try {
@@ -16005,7 +16259,6 @@ ${targeting.psychographics.lifestyle}
     populateLocalCategoriesOptions();
     renderCatalogManager();
     await loadInventory(state.inventoryMaterial, { silent: true });
-    // Prepare campaign posts UI
     refreshCampaignList();
     setConnectionStatus(true, `Connected to ${state.config.serverBaseUrl}`);
   } catch (error) {
@@ -17430,6 +17683,25 @@ function updateSocialPreview() {
   const collectionUrl = elements.socialCollectionUrl?.value || '';
   const imageFormat = elements.socialImageFormat?.value || 'carousel';
 
+  // Determine which Facebook page this will post to based on item categories
+  const SWAYZE_CATEGORIES = ['apparel', 'stickers', 'sticker', 'bumper', 'clothing', 't-shirt', 'tshirt', 'shirt', 'hoodie', 'decal', 'decals', 'vinyl'];
+  const items = state.socialMarketing?.selectedItems || [];
+  let pageName = 'Blue Ridge Custom Co';
+
+  for (const item of items) {
+    const itemCat = (item.category || '').toLowerCase();
+    if (SWAYZE_CATEGORIES.some(cat => itemCat.includes(cat))) {
+      pageName = "Swayze's Custom Vinyl";
+      break;
+    }
+  }
+
+  // Update the page name in preview
+  const pageNameEl = document.querySelector('.fb-page-name');
+  if (pageNameEl) {
+    pageNameEl.textContent = pageName;
+  }
+
   // Update preview text
   if (elements.fbPreviewText) {
     let fullText = text;
@@ -17576,6 +17848,22 @@ async function handlePostToFacebook() {
     return;
   }
 
+  // Determine category from selected items for page routing
+  // Check if any item has a category that should go to Swayze's Custom Vinyl
+  const SWAYZE_CATEGORIES = ['apparel', 'stickers', 'sticker', 'bumper', 'clothing', 't-shirt', 'tshirt', 'shirt', 'hoodie', 'decal', 'decals', 'vinyl'];
+  let category = '';
+  for (const item of items) {
+    const itemCat = (item.category || '').toLowerCase();
+    if (SWAYZE_CATEGORIES.some(cat => itemCat.includes(cat))) {
+      category = item.category;
+      break;
+    }
+  }
+  // If no Swayze category found, use first item's category (will default to Blue Ridge)
+  if (!category && items[0]?.category) {
+    category = items[0].category;
+  }
+
   // Build full text
   let fullText = text;
   if (hashtags) fullText += `\n\n${hashtags}`;
@@ -17604,14 +17892,16 @@ async function handlePostToFacebook() {
         images: items,
         collectionUrl,
         imageFormat,
-        scheduledTime: scheduledTime.toISOString()
+        scheduledTime: scheduledTime.toISOString(),
+        category
       });
     } else {
       result = await printStation.publishFacebookPost({
         text: fullText,
         images: items,
         collectionUrl,
-        imageFormat
+        imageFormat,
+        category
       });
     }
 
@@ -17656,10 +17946,250 @@ if (originalUpdateCatalogToolbar) {
   const _origUpdateCatalogToolbar = updateCatalogToolbar;
   window.updateCatalogToolbar = function() {
     _origUpdateCatalogToolbar();
+    const hasSelection = state.catalogSelection && state.catalogSelection.size > 0;
     if (elements.catalogToFacebookBtn) {
-      elements.catalogToFacebookBtn.disabled = !state.catalogSelection || state.catalogSelection.size === 0;
+      elements.catalogToFacebookBtn.disabled = !hasSelection;
+    }
+    if (elements.catalogSyncToGDriveBtn) {
+      elements.catalogSyncToGDriveBtn.disabled = !hasSelection;
+    }
+    // Update Select All button text
+    if (elements.catalogSelectAllBtn) {
+      const allSelected = state.catalogDesignMap && state.catalogDesignMap.size > 0 &&
+        state.catalogSelection && state.catalogSelection.size === state.catalogDesignMap.size;
+      elements.catalogSelectAllBtn.textContent = allSelected ? 'Deselect All' : 'Select All';
     }
   };
+}
+
+/**
+ * Handle Select All / Deselect All for catalog
+ */
+function handleCatalogSelectAll() {
+  if (!state.catalogDesignMap || state.catalogDesignMap.size === 0) {
+    showToast('No catalog items to select', 'warning');
+    return;
+  }
+
+  // Check if all are currently selected
+  const allSelected = state.catalogSelection &&
+    state.catalogSelection.size === state.catalogDesignMap.size;
+
+  if (allSelected) {
+    // Deselect all
+    state.catalogSelection.clear();
+    showToast('Deselected all items', 'info');
+  } else {
+    // Select all
+    if (!(state.catalogSelection instanceof Set)) {
+      state.catalogSelection = new Set();
+    }
+    state.catalogDesignMap.forEach((design, id) => {
+      state.catalogSelection.add(id);
+    });
+    showToast(`Selected ${state.catalogSelection.size} items`, 'success');
+  }
+
+  // Re-render to update checkboxes
+  renderCatalog();
+  // Update toolbar button states
+  if (typeof updateCatalogToolbar === 'function') {
+    updateCatalogToolbar();
+  }
+}
+
+/**
+ * Send selected catalog items to Vinyl Cutter
+ */
+async function handleSendToVinylCutter() {
+  try {
+    console.log('[VinylCutter] handleSendToVinylCutter called');
+
+    if (!state.catalogSelection || state.catalogSelection.size === 0) {
+      showToast('No designs selected. Check some items first.', 'warning');
+      return;
+    }
+
+    // Collect selected designs
+    const designs = [];
+    state.catalogSelection.forEach((designId) => {
+      const design = state.catalogDesignMap.get(designId);
+      console.log('[VinylCutter] Processing design:', designId, design);
+
+      if (design) {
+        // Extract server path from image URL
+        // URL format: https://server.com/library/Category/uploads/previews/file.png
+        // We need: /home/ubuntu/vinylApp/web/library/Category/uploads/previews/file.png
+        const imageUrl = design.image || design.thumbnail || '';
+        let imagePath = design.imagePath;
+
+        // If no imagePath, try to extract from URL
+        if (!imagePath && imageUrl) {
+          const libraryMatch = imageUrl.match(/\/library\/(.+)$/);
+          if (libraryMatch) {
+            // Decode the path and construct server path
+            imagePath = '/home/ubuntu/vinylApp/web/library/' + decodeURIComponent(libraryMatch[1]);
+          }
+        }
+
+        console.log('[VinylCutter] Design data:', { imageUrl, imagePath });
+
+        designs.push({
+          id: design.id,
+          title: design.name || design.fileName || 'Design',
+          imagePath: imagePath,
+          thumbnailUrl: imageUrl,
+          category: design.categoryName || design.category || ''
+        });
+      }
+    });
+
+    if (designs.length === 0) {
+      showToast('No valid designs found.', 'warning');
+      return;
+    }
+
+    console.log('[VinylCutter] Collected', designs.length, 'designs');
+
+    // Switch to vinyl cutter view
+    switchView('vinylCutterView');
+
+    // Initialize vinyl cutter editor if needed
+    if (typeof initVinylCutterEditor === 'function') {
+      console.log('[VinylCutter] Initializing editor');
+      initVinylCutterEditor();
+    } else {
+      console.error('[VinylCutter] initVinylCutterEditor not found!');
+    }
+
+    // Add each design to vinyl cutter canvas
+    showToast(`Adding ${designs.length} item(s) to Vinyl Cutter...`, 'info');
+
+    for (const design of designs) {
+      if (typeof addItemToVinylCanvas === 'function') {
+        console.log('[VinylCutter] Adding design to canvas:', design.title);
+        try {
+          await addItemToVinylCanvas(design);
+        } catch (err) {
+          console.error('[VinylCutter] Error adding design:', design.title, err);
+          showToast(`Failed to add ${design.title}: ${err.message}`, 'error');
+        }
+      } else {
+        console.error('[VinylCutter] addItemToVinylCanvas not found!');
+      }
+    }
+
+    showToast(`Added ${designs.length} item(s) to Vinyl Cutter`, 'success');
+  } catch (err) {
+    console.error('[VinylCutter] handleSendToVinylCutter error:', err);
+    showToast('Error adding items to Vinyl Cutter: ' + err.message, 'error');
+  }
+}
+
+/**
+ * Sync selected catalog items to Google Drive
+ */
+async function handleSyncCatalogToGDrive() {
+  if (!state.catalogSelection || state.catalogSelection.size === 0) {
+    showToast('No designs selected. Check some items first.', 'warning');
+    return;
+  }
+
+  // Collect selected items with full relative path from library folder or dbFiles
+  const items = [];
+  state.catalogSelection.forEach((designId) => {
+    const design = state.catalogDesignMap.get(designId);
+    if (design) {
+      const fullPath = design.image || design.thumbnail || '';
+
+      // Try /library/ path first (apparel catalog)
+      // URL format: https://blueridgecustomco.com/library/Category/uploads/previews/filename.png
+      const libraryMatch = fullPath.match(/\/library\/(.+)$/);
+      if (libraryMatch) {
+        const relativePath = decodeURIComponent(libraryMatch[1]);
+        const pathParts = relativePath.split('/');
+        const category = pathParts[0];
+        const subPath = pathParts.slice(1).join('/');
+
+        if (category && subPath) {
+          items.push({ category, subPath, source: 'library' });
+        }
+        return;
+      }
+
+      // Try /dbFiles/DecalCreatorIcons/ path (decal icons catalog)
+      // URL format: https://blueridgecustomco.com/dbFiles/DecalCreatorIcons/CATEGORY/SUBFOLDER/filename.jpg
+      const decalMatch = fullPath.match(/\/dbFiles\/DecalCreatorIcons\/(.+)$/);
+      if (decalMatch) {
+        const relativePath = decodeURIComponent(decalMatch[1]);
+        const pathParts = relativePath.split('/');
+        const category = pathParts[0]; // e.g., "BUTTERFLIES"
+        const subPath = pathParts.slice(1).join('/'); // e.g., "BUTTERFLIES JPGS/btr.jpg"
+
+        if (category && subPath) {
+          items.push({ category, subPath, source: 'decal-icons' });
+        }
+      }
+    }
+  });
+
+  if (items.length === 0) {
+    showToast('No valid catalog items found', 'warning');
+    return;
+  }
+
+  showToast(`Syncing ${items.length} item(s) to Google Drive...`, 'info');
+
+  try {
+    const result = await printStation.gdrive.syncCatalog(items);
+    if (result?.success) {
+      showToast(`Synced ${result.synced} file(s) to Google Drive Canva/Collection folder`, 'success');
+    } else {
+      showToast(`Sync completed: ${result.synced || 0} synced, ${result.failed || 0} failed`, result.failed ? 'warning' : 'success');
+      if (result.errors?.length) {
+        console.error('[GDrive Sync] Errors:', result.errors);
+      }
+    }
+  } catch (err) {
+    console.error('[GDrive Sync] Error:', err);
+    showToast('Failed to sync to Google Drive: ' + (err.message || err), 'error');
+  }
+}
+
+/**
+ * Pull Collection items from Google Drive back to server
+ * Will sync all categories that exist in GDrive Collection folder
+ */
+async function handlePullCollectionFromGDrive() {
+  // Get currently selected category if any, otherwise pull all
+  const selectedCategory = state.catalogCategory || '';
+
+  const categories = selectedCategory ? [selectedCategory] : [];
+  const message = categories.length > 0
+    ? `Pulling "${selectedCategory}" from Google Drive...`
+    : 'Pulling all Collection items from Google Drive...';
+
+  showToast(message, 'info');
+
+  try {
+    const result = await printStation.gdrive.pullCollection(categories);
+    if (result?.success) {
+      const count = result.synced || (categories.length || 'all');
+      showToast(`Pulled ${count} category/categories from Google Drive`, 'success');
+      // Reload the catalog to show updated items
+      if (typeof loadCatalog === 'function') {
+        loadCatalog();
+      }
+    } else {
+      showToast(`Pull completed: ${result.synced || 0} synced, ${result.failed || 0} failed`, result.failed ? 'warning' : 'success');
+      if (result.errors?.length) {
+        console.error('[GDrive Pull] Errors:', result.errors);
+      }
+    }
+  } catch (err) {
+    console.error('[GDrive Pull] Error:', err);
+    showToast('Failed to pull from Google Drive: ' + (err.message || err), 'error');
+  }
 }
 
 // ============================================================================
@@ -17751,6 +18281,24 @@ function initFbScheduleManagerHandlers() {
   // Generate with AI button for post text
   if (elements.fbScheduleGenerateAIBtn) {
     elements.fbScheduleGenerateAIBtn.addEventListener('click', handleFbScheduleGenerateAI);
+  }
+
+  // AI per-item checkbox toggle
+  if (elements.fbScheduleAiPerItem) {
+    elements.fbScheduleAiPerItem.addEventListener('change', () => {
+      const checked = elements.fbScheduleAiPerItem.checked;
+      // Update hint text
+      if (elements.fbSchedulePostTextHint) {
+        elements.fbSchedulePostTextHint.textContent = checked ? '(optional - AI will generate)' : '(applies to all)';
+      }
+      // Disable/enable post text when AI is enabled
+      if (elements.fbSchedulePostText) {
+        elements.fbSchedulePostText.disabled = checked;
+        elements.fbSchedulePostText.placeholder = checked
+          ? 'AI will generate unique text for each item'
+          : 'Leave empty for AI generation per item, or enter text for all posts';
+      }
+    });
   }
 }
 
@@ -18151,14 +18699,32 @@ function renderScheduledPosts() {
   // Helper to resolve image URLs for display
   const resolveImageUrl = (imagePath) => {
     if (!imagePath) return '';
+
+    let finalUrl;
     // Already a full URL
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-      return imagePath;
+      finalUrl = imagePath;
+    } else {
+      // Server-relative path - prepend server URL
+      const serverUrl = state.config?.serverBaseUrl || 'https://blueridgecustomco.com';
+      const cleanPath = imagePath.replace(/^\//, '');
+      finalUrl = `${serverUrl}/${cleanPath}`;
     }
-    // Server-relative path - prepend server URL
-    const serverUrl = state.config?.serverBaseUrl || 'https://blueridgecustomco.com';
-    const cleanPath = imagePath.replace(/^\//, '');
-    return `${serverUrl}/${cleanPath}`;
+
+    // URL-encode spaces and special characters in the path
+    try {
+      const urlObj = new URL(finalUrl);
+      // Encode each path segment separately to avoid double-encoding
+      const pathSegments = urlObj.pathname.split('/').map(seg => encodeURIComponent(decodeURIComponent(seg)));
+      urlObj.pathname = pathSegments.join('/');
+      // Add width/quality parameters for smaller preview images
+      urlObj.searchParams.set('w', '300');
+      urlObj.searchParams.set('q', '80');
+      return urlObj.toString();
+    } catch (e) {
+      // If URL parsing fails, fall back to simple space encoding
+      return finalUrl.replace(/ /g, '%20');
+    }
   };
 
   container.innerHTML = posts.map(post => {
@@ -18405,9 +18971,12 @@ async function handleCreateSchedule() {
   const startDate = elements.fbScheduleStartDate?.value || '';
   const startTime = elements.fbScheduleStartTime?.value || '10:00';
   const intervalHours = parseInt(elements.fbScheduleInterval?.value || '24', 10);
+  const generateAiPerItem = elements.fbScheduleAiPerItem?.checked || false;
+  const aiStyle = elements.fbScheduleAiStyle?.value || 'showcase';
 
-  if (!postText.trim()) {
-    showToast('Please enter post text', 'warning');
+  // Only require post text if NOT generating AI per item
+  if (!postText.trim() && !generateAiPerItem) {
+    showToast('Please enter post text or enable "Generate unique AI text for each item"', 'warning');
     return;
   }
 
@@ -18417,14 +18986,21 @@ async function handleCreateSchedule() {
     : new Date().toISOString();
 
   try {
+    // Show progress for AI generation
+    if (generateAiPerItem) {
+      showToast(`Scheduling ${campaign.items?.length || 0} posts with AI text generation...`, 'info', 5000);
+    }
+
     const result = await printStation.scheduleCampaignPosts({
       campaignSlug: campaign.slug,
       templateId: templateId || undefined,
-      postText,
+      postText: generateAiPerItem ? '' : postText,  // Empty text triggers AI generation on server
       postHashtags,
       collectionUrl,
       startDate: startDateTime,
-      intervalHours
+      intervalHours,
+      generateAiPerItem,
+      aiStyle
     });
 
     if (result?.success) {
@@ -19062,12 +19638,16 @@ function setCustomArtStatus(msg, isError = false) {
  * Resolve artwork image URL - handles server-relative paths and local paths
  * Server-relative paths (starting with /) need the server base URL prepended
  * Local Windows paths (C:\...) need to be converted to file:// URLs
+ * @param {string} path - The image path
+ * @param {Object} options - Optional sizing parameters
+ * @param {number} options.width - Desired width for resizing
+ * @param {number} options.quality - JPEG quality (1-100)
  */
-function resolveArtworkUrl(path) {
+function resolveArtworkUrl(path, options = {}) {
   if (!path) return '';
-  // If path starts with http, it's already a full URL
+  // If path starts with http, it's already a full URL - apply image options for resizing
   if (path.startsWith('http://') || path.startsWith('https://')) {
-    return path;
+    return applyImageOptions(path, options);
   }
   // If path starts with data:, it's a data URL
   if (path.startsWith('data:')) {
@@ -19087,11 +19667,14 @@ function resolveArtworkUrl(path) {
   }
   // For server-relative paths, prepend server base URL
   const serverBase = state.config?.serverBaseUrl?.trim() || '';
+  let fullUrl;
   if (path.startsWith('/')) {
-    return serverBase + path;
+    fullUrl = serverBase + path;
+  } else {
+    // Relative path - add leading slash and server base
+    fullUrl = serverBase + '/' + path;
   }
-  // Relative path - add leading slash and server base
-  return serverBase + '/' + path;
+  return applyImageOptions(fullUrl, options);
 }
 
 function switchCustomArtSubtab(subtab) {
@@ -19474,7 +20057,7 @@ async function loadCustomArtArtwork() {
   try {
     console.log('[Custom Art] Fetching artwork from API...');
     const [artworkResult, categoriesResult] = await Promise.all([
-      printStation.customArt.listArtwork({ activeOnly: false, limit: 1000 }),
+      printStation.customArt.listArtwork({ activeOnly: false, limit: 5000 }),
       printStation.customArt.getArtworkCategories()
     ]);
     console.log('[Custom Art] API returned:', artworkResult, categoriesResult);
@@ -19526,7 +20109,7 @@ function renderCustomArtArtwork() {
 
   customArtElements.artworkGrid.innerHTML = filtered.map(art => {
     const isSelected = customArtState.selectedArtworkIds.has(String(art.id));
-    const serverUrl = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath);
+    const serverUrl = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath, { width: 300, quality: 80 });
     // Use cached URL if available
     const imageSrc = getCachedPreviewUrl(serverUrl);
     // Track for background prefetch (only for http URLs, not file:// or data:)
@@ -19547,6 +20130,8 @@ function renderCustomArtArtwork() {
           <span class="custom-art-card-badge ${art.status}">${art.status}</span>
           <button class="secondary artwork-edit-btn" data-artwork-id="${art.id}" style="padding:4px 8px;font-size:11px;">Edit</button>
           <button class="secondary artwork-create-product-btn" data-artwork-id="${art.id}" style="padding:4px 8px;font-size:11px;">+ Product</button>
+          <button class="secondary artwork-print-btn" data-artwork-id="${art.id}" data-artwork-path="${escapeHtml(art.filePath || art.optimizedPath || '')}" style="padding:4px 8px;font-size:11px;">🖨️ Print</button>
+          <button class="secondary artwork-download-btn" data-artwork-id="${art.id}" data-artwork-path="${escapeHtml(art.filePath || art.optimizedPath || '')}" data-artwork-title="${escapeHtml(cleanedTitle)}" style="padding:4px 8px;font-size:11px;">⬇️ Download</button>
         </div>
       </div>
     </div>
@@ -19698,6 +20283,101 @@ function initArtworkBulkActions() {
       bulkStatusSelect.value = '';
     });
   }
+
+  // Sync to Google Drive button
+  const syncToGDriveBtn = document.getElementById('customArtSyncToGDriveBtn');
+  if (syncToGDriveBtn) {
+    syncToGDriveBtn.addEventListener('click', handleSyncCustomArtToGDrive);
+  }
+}
+
+/**
+ * Sync selected custom art items to Google Drive
+ */
+async function handleSyncCustomArtToGDrive() {
+  const selectedIds = Array.from(customArtState.selectedArtworkIds);
+  if (selectedIds.length === 0) {
+    showToast('No artwork selected', 'warning');
+    return;
+  }
+
+  // Get the file paths/names for selected artwork
+  const fileIds = [];
+  for (const id of selectedIds) {
+    const artwork = customArtState.artwork.find(a => String(a.id) === String(id));
+    if (artwork?.filePath) {
+      // Extract just the filename from the path
+      const filename = artwork.filePath.split('/').pop();
+      if (filename) fileIds.push(filename);
+    }
+  }
+
+  if (fileIds.length === 0) {
+    showToast('No valid artwork files found', 'warning');
+    return;
+  }
+
+  showToast(`Syncing ${fileIds.length} file(s) to Google Drive...`, 'info');
+
+  try {
+    const result = await printStation.gdrive.syncCustomArt(fileIds);
+    if (result?.success) {
+      showToast(`Synced ${result.synced} file(s) to Google Drive Canva/Custom Art folder`, 'success');
+    } else {
+      showToast(`Sync completed: ${result.synced || 0} synced, ${result.failed || 0} failed`, result.failed ? 'warning' : 'success');
+      if (result.errors?.length) {
+        console.error('[GDrive Sync] Errors:', result.errors);
+      }
+    }
+  } catch (err) {
+    console.error('[GDrive Sync] Error:', err);
+    showToast('Failed to sync to Google Drive: ' + (err.message || err), 'error');
+  }
+}
+
+/**
+ * Sync selected room backgrounds to Google Drive
+ */
+async function handleSyncRoomsToGDrive() {
+  const selectedIds = Array.from(customArtState.selectedRoomIds);
+  if (selectedIds.length === 0) {
+    showToast('No rooms selected', 'warning');
+    return;
+  }
+
+  // Get the file paths/names for selected rooms
+  const filenames = [];
+  for (const id of selectedIds) {
+    const room = customArtState.rooms.find(r => String(r.id) === String(id));
+    if (room?.image_path || room?.imagePath) {
+      // Extract just the filename from the path (e.g., "library/uploads/custom-art/1766017169757-ejgh5a3y.jpg" -> "1766017169757-ejgh5a3y.jpg")
+      const imagePath = room.image_path || room.imagePath;
+      const filename = imagePath.split('/').pop();
+      if (filename) filenames.push(filename);
+    }
+  }
+
+  if (filenames.length === 0) {
+    showToast('No valid room images found', 'warning');
+    return;
+  }
+
+  showToast(`Syncing ${filenames.length} room(s) to Google Drive...`, 'info');
+
+  try {
+    const result = await printStation.gdrive.syncRooms(filenames);
+    if (result?.success) {
+      showToast(`Synced ${result.synced} room(s) to Google Drive Canva/Rooms folder`, 'success');
+    } else {
+      showToast(`Sync completed: ${result.synced || 0} synced, ${result.failed || 0} failed`, result.failed ? 'warning' : 'success');
+      if (result.errors?.length) {
+        console.error('[GDrive Sync] Errors:', result.errors);
+      }
+    }
+  } catch (err) {
+    console.error('[GDrive Sync] Error:', err);
+    showToast('Failed to sync to Google Drive: ' + (err.message || err), 'error');
+  }
 }
 
 // --- ROOM SELECTION & BULK ACTIONS ---
@@ -19777,14 +20457,18 @@ function initRoomBulkActions() {
 
   // Bulk Type change
   const bulkTypeSelect = document.getElementById('customArtRoomBulkTypeSelect');
+  console.log('[initRoomBulkActions] bulkTypeSelect element:', bulkTypeSelect);
   if (bulkTypeSelect) {
     bulkTypeSelect.addEventListener('change', async () => {
       let roomType = bulkTypeSelect.value;
+      console.log('[BulkTypeSelect] Changed to:', roomType);
       if (!roomType) return;
 
       // Handle "Add New" option
       if (roomType === '__add_new__') {
+        console.log('[BulkTypeSelect] Add New selected, calling showPrompt...');
         const newType = await showPrompt('Enter new room type (e.g. "Game Room"):');
+        console.log('[BulkTypeSelect] showPrompt returned:', newType);
         if (!newType || !newType.trim()) {
           bulkTypeSelect.value = '';
           return;
@@ -19816,6 +20500,12 @@ function initRoomBulkActions() {
       await bulkUpdateRoomStatus(status);
       bulkStatusSelect.value = '';
     });
+  }
+
+  // Sync Rooms to Google Drive button
+  const syncRoomsToGDriveBtn = document.getElementById('customArtRoomSyncToGDriveBtn');
+  if (syncRoomsToGDriveBtn) {
+    syncRoomsToGDriveBtn.addEventListener('click', handleSyncRoomsToGDrive);
   }
 
   // Search and filter handlers
@@ -20105,14 +20795,15 @@ async function populateTiledArtworkInfo(artwork) {
   // Set title (clean AI-generated prefixes/suffixes)
   if (titleEl) titleEl.textContent = cleanAiGeneratedName(artwork.title) || artwork.fileName || 'Unknown Artwork';
 
-  // Build image URL for thumbnail
+  // Build image URL for thumbnail - prefer preview path for faster loading
   const serverUrl = state.config?.serverBaseUrl || 'https://blueridgecustomco.com';
   let imgUrl = '';
-  if (artwork.filePath) {
-    if (artwork.filePath.startsWith('http')) {
-      imgUrl = artwork.filePath;
+  const displayPath = artwork.previewPath || artwork.thumbnailPath || artwork.optimizedPath || artwork.filePath;
+  if (displayPath) {
+    if (displayPath.startsWith('http')) {
+      imgUrl = displayPath;
     } else {
-      imgUrl = `${serverUrl}/${artwork.filePath.replace(/^\//, '')}`;
+      imgUrl = `${serverUrl}/${displayPath.replace(/^\//, '')}`;
     }
   }
 
@@ -20954,7 +21645,7 @@ async function loadCustomArtProducts() {
     const [productsResult, materialsResult, artworkResult] = await Promise.all([
       printStation.customArt.listProducts({ activeOnly: false }),
       printStation.customArt.listMaterials({ activeOnly: true }),
-      printStation.customArt.listArtwork({ activeOnly: true, limit: 1000 })
+      printStation.customArt.listArtwork({ activeOnly: true, limit: 5000 })
     ]);
     customArtState.products = productsResult?.products || [];
     customArtState.materials = materialsResult?.materials || [];
@@ -21055,6 +21746,101 @@ function createProductFromArtwork(artworkId) {
       showProductFormWithArtwork(artwork);
     }
   }, 100);
+}
+
+// Print artwork directly from the artwork card
+async function printArtworkFromCard(artworkId, artworkPath) {
+  const artwork = customArtState.artwork.find(a => String(a.id) === artworkId);
+  if (!artwork) {
+    showToast('Artwork not found', 'error');
+    return;
+  }
+
+  // Get the full file path - prefer original file, fall back to optimized
+  let filePath = artwork.filePath || artwork.optimizedPath || artworkPath;
+
+  if (!filePath) {
+    showToast('No image file available for this artwork', 'error');
+    return;
+  }
+
+  // If it's a server URL, we need to download it first or use the local path
+  // The artwork database stores paths like /uploads/custom-art/artwork/...
+  // We need to resolve this to a local file path on the server
+
+  try {
+    showToast('Opening print dialog...', 'info');
+
+    // Use print with dialog so user can select printer and settings
+    const result = await printStation.printer.printWithDialog({
+      imagePath: filePath
+    });
+
+    if (result.success) {
+      showToast('Print job sent successfully', 'success');
+    } else if (result.error && !result.error.includes('cancel')) {
+      showToast(`Print failed: ${result.error}`, 'error');
+    }
+  } catch (error) {
+    console.error('[Custom Art] Print error:', error);
+    showToast('Print failed: ' + error.message, 'error');
+  }
+}
+
+// Download artwork directly from the artwork card
+async function downloadArtworkFromCard(artworkId, artworkPath, artworkTitle) {
+  const artwork = customArtState.artwork.find(a => String(a.id) === artworkId);
+  if (!artwork) {
+    showToast('Artwork not found', 'error');
+    return;
+  }
+
+  // Get the full file path - prefer original file for best quality
+  let filePath = artwork.filePath || artwork.optimizedPath || artworkPath;
+
+  if (!filePath) {
+    showToast('No image file available for this artwork', 'error');
+    return;
+  }
+
+  // Build full URL if it's a relative path
+  let downloadUrl = filePath;
+  if (!filePath.startsWith('http://') && !filePath.startsWith('https://') && !filePath.startsWith('file://')) {
+    const serverBase = state.config?.serverBaseUrl?.trim() || '';
+    downloadUrl = filePath.startsWith('/') ? serverBase + filePath : serverBase + '/' + filePath;
+  }
+
+  // Generate a clean filename
+  const cleanTitle = (artworkTitle || artwork.title || 'artwork').replace(/[^a-zA-Z0-9-_]/g, '-').replace(/-+/g, '-');
+  const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+  const filename = `${cleanTitle}.${ext}`;
+
+  try {
+    // Use the downloadFile IPC - shows save dialog
+    if (window.printStation?.downloadFile) {
+      const result = await window.printStation.downloadFile({ url: downloadUrl, filename });
+      if (result.canceled) {
+        // User cancelled the save dialog
+        return;
+      }
+      if (result.filePath) {
+        showToast(`Downloaded: ${result.filePath.split(/[/\\]/).pop()}`, 'success');
+      }
+    } else {
+      // Fallback: open in new tab/trigger browser download
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast(`Download started: ${filename}`, 'success');
+    }
+  } catch (error) {
+    console.error('[Custom Art] Download error:', error);
+    showToast('Download failed: ' + error.message, 'error');
+  }
 }
 
 function showProductFormWithArtwork(artwork) {
@@ -21272,7 +22058,7 @@ function renderMockupArtworkGrid(artworkList, isFiltered = false) {
 
   grid.innerHTML = artworkList.map(art => {
     // Use thumbnailPath first, then optimizedPath, then filePath (API returns camelCase from db.js mapCustomArtArtwork)
-    const serverUrl = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath);
+    const serverUrl = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath, { width: 200, quality: 80 });
     // Use cached URL if available
     const imageSrc = getCachedPreviewUrl(serverUrl);
     // Track for background prefetch (only for http URLs)
@@ -21355,7 +22141,7 @@ async function populateMockupDropdowns() {
   try {
     const [roomsResult, artworkResult, materialsResult] = await Promise.all([
       printStation.customArt.listRooms({ activeOnly: true, limit: 500 }),
-      printStation.customArt.listArtwork({ activeOnly: true, limit: 1000 }),
+      printStation.customArt.listArtwork({ activeOnly: true, limit: 5000 }),
       printStation.customArt.listMaterials({ activeOnly: true })
     ]);
 
@@ -21381,7 +22167,11 @@ async function loadSavedMockups() {
   setCustomArtStatus('Loading saved mockups...');
   try {
     const mockups = await printStation.customArt.listMockups({ activeOnly: true });
+    console.log('[Saved Mockups] Raw response:', mockups);
     customArtState.savedMockups = mockups || [];
+    if (customArtState.savedMockups.length > 0) {
+      console.log('[Saved Mockups] First mockup:', JSON.stringify(customArtState.savedMockups[0], null, 2));
+    }
     renderSavedMockups();
     setCustomArtStatus(`${customArtState.savedMockups.length} mockup(s) loaded`);
   } catch (e) {
@@ -21424,10 +22214,8 @@ function renderSavedMockups() {
     return;
   }
 
-  const serverBase = state.config?.serverBaseUrl || 'https://blueridgecustomco.com';
-
   grid.innerHTML = filtered.map(m => {
-    const imgSrc = m.url || (m.filePath ? `${serverBase}/${m.filePath}` : '');
+    const imgSrc = getMockupImageUrl(m);
     const title = m.title || m.filename || 'Untitled';
     const date = m.createdAt ? new Date(m.createdAt).toLocaleDateString() : '';
     const sourceLabel = m.source === 'filesystem' ? '<span style="background:#666;padding:2px 6px;border-radius:3px;font-size:10px;">File</span>' : '';
@@ -21447,12 +22235,57 @@ function renderSavedMockups() {
   }).join('');
 }
 
+// Helper to convert server file paths to proper URLs
+function getMockupImageUrl(mockup) {
+  const serverBase = state.config?.serverBaseUrl || 'https://blueridgecustomco.com';
+
+  // If url is a full http URL, use it directly
+  if (mockup.url && (mockup.url.startsWith('http://') || mockup.url.startsWith('https://'))) {
+    return mockup.url;
+  }
+
+  // For campaign mockups, extract filename and use the API route
+  // Check filePath first since it has the full server path
+  const filePath = mockup.filePath || mockup.file_path || '';
+  if (filePath && filePath.includes('/campaigns/mockups/') || filePath.includes('\\campaigns\\mockups\\')) {
+    // Extract just the filename from the full path
+    const filename = filePath.split('/').pop().split('\\').pop();
+    return `${serverBase}/api/uploads/campaigns/mockups/${filename}`;
+  }
+
+  // If we have a filename for campaign mockups, use it directly
+  if (mockup.filename && mockup.filename.startsWith('campaign-mockup-')) {
+    return `${serverBase}/api/uploads/campaigns/mockups/${mockup.filename}`;
+  }
+
+  // If url looks like a campaign mockup path, convert it
+  if (mockup.url && mockup.url.includes('/campaigns/mockups/')) {
+    const filename = mockup.url.split('/').pop();
+    return `${serverBase}/api/uploads/campaigns/mockups/${filename}`;
+  }
+
+  // For other mockups with full http URLs in url field
+  if (mockup.url && !mockup.url.startsWith('file:')) {
+    // If it's a relative path starting with /, prepend server base
+    if (mockup.url.startsWith('/')) {
+      return `${serverBase}${mockup.url}`;
+    }
+    return mockup.url;
+  }
+
+  // Fallback: use filename if available
+  if (mockup.filename) {
+    return `${serverBase}/api/uploads/campaigns/mockups/${mockup.filename}`;
+  }
+
+  return '';
+}
+
 function selectSavedMockup(id) {
   const mockup = customArtState.savedMockups.find(m => m.id === id);
   if (!mockup) return;
 
   customArtState.selectedMockup = mockup;
-  const serverBase = state.config?.serverBaseUrl || 'https://blueridgecustomco.com';
 
   // Show detail card
   const detailCard = document.getElementById('savedMockupsDetailCard');
@@ -21460,7 +22293,7 @@ function selectSavedMockup(id) {
 
   // Populate detail fields
   const img = document.getElementById('savedMockupsDetailImage');
-  if (img) img.src = mockup.url || (mockup.filePath ? `${serverBase}/${mockup.filePath}` : '');
+  if (img) img.src = getMockupImageUrl(mockup);
 
   const titleInput = document.getElementById('savedMockupsDetailTitle');
   if (titleInput) titleInput.value = mockup.title || '';
@@ -21881,6 +22714,27 @@ function initCustomArtEventListeners() {
         e.stopPropagation();
         const artworkId = productBtn.dataset.artworkId;
         createProductFromArtwork(artworkId);
+        return;
+      }
+
+      // Handle Print button clicks
+      const printBtn = e.target.closest('.artwork-print-btn');
+      if (printBtn) {
+        e.stopPropagation();
+        const artworkId = printBtn.dataset.artworkId;
+        const artworkPath = printBtn.dataset.artworkPath;
+        printArtworkFromCard(artworkId, artworkPath);
+        return;
+      }
+
+      // Handle Download button clicks
+      const downloadBtn = e.target.closest('.artwork-download-btn');
+      if (downloadBtn) {
+        e.stopPropagation();
+        const artworkId = downloadBtn.dataset.artworkId;
+        const artworkPath = downloadBtn.dataset.artworkPath;
+        const artworkTitle = downloadBtn.dataset.artworkTitle;
+        downloadArtworkFromCard(artworkId, artworkPath, artworkTitle);
         return;
       }
 
@@ -22904,11 +23758,14 @@ window.addEventListener('message', async (event) => {
           const campaignId = pendingMockupSave.campaignId;
 
           // Save campaign mockup to server
+          console.log('[Campaign Mockup] Saving mockup for campaign:', campaignId);
+          console.log('[Campaign Mockup] Base64 length:', base64Data?.length || 0);
           const result = await printStation.campaign.saveCampaignMockup({
             campaignId,
             mockupBase64: base64Data,
             filename: `campaign-mockup-${campaignId}-${Date.now()}.${ext}`
           });
+          console.log('[Campaign Mockup] Server response:', JSON.stringify(result, null, 2));
 
           if (result?.success) {
             setCustomArtStatus('Campaign mockup saved successfully!');
@@ -22919,6 +23776,16 @@ window.addEventListener('message', async (event) => {
               if (state.campaign && (state.campaign.slug === campaignId || state.campaign.id === campaignId)) {
                 state.campaign.mockupImage = result.mockupPath;
                 console.log('[Campaign Mockup] Updated state.campaign.mockupImage:', result.mockupPath);
+
+                // IMPORTANT: Save the campaign to persist the mockupImage to the server
+                try {
+                  await printStation.updateCampaign(state.campaign.slug, {
+                    mockupImage: result.mockupPath
+                  });
+                  console.log('[Campaign Mockup] Saved mockupImage to server');
+                } catch (saveErr) {
+                  console.error('[Campaign Mockup] Failed to save mockupImage to server:', saveErr);
+                }
               }
             }
 
@@ -23122,17 +23989,12 @@ window.addEventListener('message', async (event) => {
   if (event.data?.type === 'GET_ARTWORK_LIST') {
     console.log('[Custom Art] Received GET_ARTWORK_LIST from mockup iframe');
     try {
-      // Get artwork from the database
-      // IMPORTANT: Must use HTTP URLs for iframe (file:// won't work due to cross-origin)
-      const serverBase = (state.config?.serverBaseUrl || 'https://blueridgecustomco.com').replace(/\/$/, '');
-
-      // If artwork hasn't been loaded yet, fetch it from the server
+      // If artwork hasnt been loaded yet, fetch it from the server
       let artworkList = customArtState.artwork || [];
       if (artworkList.length === 0) {
         console.log('[Custom Art] No artwork in state, fetching from server...');
         try {
-          // Use string 'false' to ensure server parses it correctly
-          const artworkResult = await printStation.customArt.listArtwork({ activeOnly: 'false', limit: 1000 });
+          const artworkResult = await printStation.customArt.listArtwork({ activeOnly: 'false', limit: 5000 });
           console.log('[Custom Art] Server returned:', artworkResult);
           artworkList = artworkResult?.artwork || [];
           customArtState.artwork = artworkList;
@@ -23143,51 +24005,26 @@ window.addEventListener('message', async (event) => {
       }
 
       const artworksForModal = artworkList.map(art => {
-        // Helper to build HTTP URL from path
-        const toHttpUrl = (path) => {
-          if (!path) return '';
-          // Already an HTTP URL
-          if (path.startsWith('http://') || path.startsWith('https://')) return path;
-          // Data URL - pass through
-          if (path.startsWith('data:')) return path;
-          // Server-relative path starting with /library/ - use as-is
-          if (path.startsWith('/library/')) return serverBase + path;
-          // Server-relative path with /uploads/ - needs /library prefix since files are in LIBRARY_ROOT
-          if (path.startsWith('/uploads/')) return serverBase + '/library' + path;
-          // Other server-relative paths (e.g., /api/...)
-          if (path.startsWith('/')) return serverBase + path;
-          // Extract server path from local file path if present
-          // e.g., /home/ubuntu/vinylApp/library/uploads/... -> /library/uploads/...
-          const libraryMatch = path.match(/\/library\/.*$/);
-          if (libraryMatch) return serverBase + libraryMatch[0];
-          // Check for uploads path without library prefix - need to add /library prefix
-          const uploadsMatch = path.match(/\/uploads\/.*$/);
-          if (uploadsMatch) return serverBase + '/library' + uploadsMatch[0];
-          // Relative path starting with library/
-          if (path.startsWith('library/')) return serverBase + '/' + path;
-          // Relative path starting with uploads/ - needs library prefix since files are in LIBRARY_ROOT
-          if (path.startsWith('uploads/')) return serverBase + '/library/' + path;
-          // Other relative path
-          return serverBase + '/' + path;
-        };
+        // Use resolveArtworkUrl with same options as artwork tab for consistent caching
+        const serverUrl = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath, { width: 300, quality: 80 });
+        const fullUrl = resolveArtworkUrl(art.optimizedPath || art.filePath || art.serverPath);
 
-        const url = toHttpUrl(art.optimizedPath || art.filePath || art.serverPath);
-        const thumbnail = toHttpUrl(art.thumbnailPath || art.optimizedPath || art.filePath || art.serverPath);
+        // Check if we have a cached blob URL for the thumbnail (from artwork tab)
+        const cachedThumb = getCachedPreviewUrl(serverUrl);
+        const cachedFull = getCachedPreviewUrl(fullUrl);
 
         console.log('[Custom Art] Art item:', art.id, {
-          thumbnailPath: art.thumbnailPath,
-          optimizedPath: art.optimizedPath,
-          filePath: art.filePath,
-          serverPath: art.serverPath,
-          resolvedUrl: url,
-          resolvedThumb: thumbnail
+          serverUrl,
+          fullUrl,
+          hasCachedThumb: cachedThumb !== serverUrl,
+          hasCachedFull: cachedFull !== fullUrl
         });
 
         return {
           id: art.id,
           name: art.title || art.filename || 'Untitled',
-          url,
-          thumbnail
+          url: cachedFull,
+          thumbnail: cachedThumb
         };
       });
       console.log('[Custom Art] Sending ARTWORK_LIST with', artworksForModal.length, 'items');
@@ -23429,8 +24266,8 @@ async function generateFbAdsFromMockup() {
       }]
     };
 
-    // Use artwork image path
-    const imagePath = artwork.filePath || artwork.thumbnailPath;
+    // Use artwork image path - prefer preview for faster loading
+    const imagePath = artwork.previewPath || artwork.thumbnailPath || artwork.optimizedPath || artwork.filePath;
 
     const result = await printStation.generateFacebookAds({
       campaign,
@@ -23473,10 +24310,11 @@ async function postToMarketplace() {
   setCustomArtStatus('Generating Facebook post...');
   try {
     // Build items array matching what social-marketing.js expects
+    const displayPath = artwork.previewPath || artwork.thumbnailPath || artwork.optimizedPath || artwork.filePath;
     const items = [{
       name: artwork.title,
-      image: artwork.filePath || artwork.thumbnailPath,
-      imagePath: artwork.filePath || artwork.thumbnailPath,
+      image: displayPath,
+      imagePath: displayPath,
       price: price,
       category: artwork.category || 'Wall Art',
       description: artwork.description || ''
@@ -24517,7 +25355,7 @@ async function loadMetalPrintArtwork() {
     state.metalPrintArt.loading = true;
 
     const [artworkResult, categoriesResult] = await Promise.all([
-      printStation.customArt.listArtwork({ activeOnly: true, limit: 1000 }),
+      printStation.customArt.listArtwork({ activeOnly: true, limit: 5000 }),
       printStation.customArt.getArtworkCategories()
     ]);
 
@@ -24585,7 +25423,7 @@ function renderMetalPrintArtGrid() {
 
   grid.innerHTML = filtered.map(art => {
     const isSelected = state.metalPrintArt.selected.has(String(art.id));
-    const imageSrc = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath);
+    const imageSrc = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath, { width: 300, quality: 80 });
     const cleanedTitle = cleanAiGeneratedName(art.title) || art.title || 'Untitled';
     return `
       <div class="custom-art-card ${isSelected ? 'selected' : ''}" data-artwork-id="${art.id}" style="cursor:pointer;position:relative;">
@@ -24698,7 +25536,7 @@ async function loadSocialArtwork() {
     state.socialArtwork.loading = true;
 
     const [artworkResult, categoriesResult] = await Promise.all([
-      printStation.customArt.listArtwork({ activeOnly: true, limit: 1000 }),
+      printStation.customArt.listArtwork({ activeOnly: true, limit: 5000 }),
       printStation.customArt.getArtworkCategories()
     ]);
 
@@ -24756,7 +25594,7 @@ function renderSocialArtworkGrid() {
 
   grid.innerHTML = filtered.map(art => {
     const isSelected = state.socialArtwork.selected.has(String(art.id));
-    const imageSrc = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath);
+    const imageSrc = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath, { width: 300, quality: 80 });
     const cleanedTitle = cleanAiGeneratedName(art.title) || art.title || 'Untitled';
     console.log('[Social Artwork] Art:', art.id, 'imageSrc:', imageSrc, 'paths:', { thumb: art.thumbnailPath, opt: art.optimizedPath, file: art.filePath });
     return `
@@ -24851,7 +25689,7 @@ function addSocialArtworkToPost() {
       name: art.title || 'Artwork',
       artworkId: String(art.id),
       image: imageSrc,
-      thumbnail: resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath),
+      thumbnail: resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath, { width: 200, quality: 80 }),
       category: art.category || '',
       tags: art.tags || '',
       description: art.description || ''
@@ -24882,10 +25720,110 @@ function clearSocialItems() {
 }
 
 /**
+ * Add items from the currently selected campaign to the Facebook post
+ */
+async function handleAddFromCampaign() {
+  const campaign = state.socialMarketing?.selectedCampaign;
+
+  if (!campaign) {
+    showToast('Please select a campaign first from the Campaign dropdown.', 'warning');
+    return;
+  }
+
+  const items = campaign.items || [];
+  if (items.length === 0) {
+    showToast('Selected campaign has no items.', 'warning');
+    return;
+  }
+
+  // Initialize selectedItems if needed
+  if (!state.socialMarketing) state.socialMarketing = {};
+  if (!state.socialMarketing.selectedItems) state.socialMarketing.selectedItems = [];
+
+  const maxAllowed = 6;
+  let added = 0;
+  let skipped = 0;
+
+  // Determine category from campaign for page routing
+  let category = '';
+  if (campaign.apparel && campaign.apparel.source) {
+    category = 'apparel';
+  } else if (campaign.mockupStrategy) {
+    const desc = (campaign.mockupStrategy.description || '').toLowerCase();
+    if (desc.includes('sticker') || desc.includes('decal') || desc.includes('bumper')) {
+      category = 'stickers';
+    } else if (desc.includes('tumbler') || desc.includes('cup') || desc.includes('mug')) {
+      category = 'tumblers';
+    }
+  }
+  // Check campaign title/subtitle for hints
+  if (!category) {
+    const combined = ((campaign.title || '') + ' ' + (campaign.subtitle || '')).toLowerCase();
+    if (combined.includes('sticker') || combined.includes('decal') || combined.includes('bumper')) {
+      category = 'stickers';
+    } else if (combined.includes('tumbler') || combined.includes('cup') || combined.includes('mug')) {
+      category = 'tumblers';
+    } else if (combined.includes('shirt') || combined.includes('hoodie') || combined.includes('apparel')) {
+      category = 'apparel';
+    } else if (combined.includes('metal') || combined.includes('print') || combined.includes('wall art')) {
+      category = 'metal prints';
+    }
+  }
+
+  for (const item of items) {
+    // Check max limit
+    if (state.socialMarketing.selectedItems.length >= maxAllowed) {
+      skipped++;
+      continue;
+    }
+
+    // Use mockup image if available, otherwise fall back to thumbnail or design
+    const imageSrc = item.mockupImage || item.mockup || item.thumbnail || item.image || '';
+
+    if (!imageSrc) {
+      skipped++;
+      continue;
+    }
+
+    // Check if already added (by image URL)
+    const exists = state.socialMarketing.selectedItems.some(it =>
+      it.image === imageSrc || it.campaignItemId === item.id
+    );
+    if (exists) {
+      skipped++;
+      continue;
+    }
+
+    const newItem = {
+      name: item.name || item.title || campaign.title || 'Campaign Item',
+      campaignItemId: item.id,
+      image: imageSrc,
+      thumbnail: item.thumbnail || imageSrc,
+      category: category || campaign.productType || '',
+      campaignSlug: campaign.slug,
+      description: item.description || ''
+    };
+
+    state.socialMarketing.selectedItems.push(newItem);
+    added++;
+  }
+
+  // Re-render the social selected items grid
+  renderSocialSelectedItems();
+  updateSocialPreview();
+
+  if (added > 0) {
+    showToast(`Added ${added} item(s) from campaign "${campaign.title}".${skipped ? ` Skipped ${skipped} (duplicate or limit reached).` : ''}`, skipped ? 'warning' : 'success');
+  } else {
+    showToast(`No new items added. ${skipped} skipped (duplicate, no image, or limit reached).`, 'warning');
+  }
+}
+
+/**
  * Export metal print campaign to Shopify
  * This uses the specialized metal print export endpoint that:
  * 1. Applies sublimation filter to each artwork
- * 2. Creates products with 5x7, 8x10, 11x14 variants
+ * 2. Creates products with all metal print size variants from pricing.json
  * 3. Creates/uses collection based on campaign name
  * 4. Attaches campaign mockup if available
  */
@@ -24896,19 +25834,46 @@ async function exportMetalPrintCampaign() {
 
   console.log('[Metal Print Export] Campaign name:', campaignName);
   console.log('[Metal Print Export] Mockup path from state:', mockupPath);
+  console.log('[Metal Print Export] Full campaign state:', JSON.stringify({
+    slug: state.campaign?.slug,
+    name: state.campaign?.name,
+    mockupImage: state.campaign?.mockupImage,
+    itemCount: state.campaign?.items?.length
+  }, null, 2));
 
   if (!state.campaign?.items?.length) {
     showToast('Add some artwork to the campaign first.', 'warning');
     return;
   }
 
+  // Check if force export is enabled (re-export already exported items)
+  const forceExport = !!elements.campaignForceExportCheckbox?.checked;
+
   // Get metal print items with their source artwork info
-  const metalPrintItems = state.campaign.items.filter(it =>
+  const allMetalPrintItems = state.campaign.items.filter(it =>
     it.productType === 'metal-print' && it.sourceArtwork?.id
   );
 
-  if (!metalPrintItems.length) {
+  if (!allMetalPrintItems.length) {
     showToast('No metal print artwork found in campaign.', 'warning');
+    return;
+  }
+
+  // Filter to only new items unless force is checked
+  let metalPrintItems;
+  if (forceExport) {
+    metalPrintItems = allMetalPrintItems;
+    console.log(`[Metal Print Export] Force export enabled - exporting all ${metalPrintItems.length} items`);
+  } else {
+    metalPrintItems = allMetalPrintItems.filter(it => !it.shopifyProductId);
+    const skippedCount = allMetalPrintItems.length - metalPrintItems.length;
+    if (skippedCount > 0) {
+      console.log(`[Metal Print Export] Skipping ${skippedCount} already exported items (uncheck 'Force' to re-export)`);
+    }
+  }
+
+  if (!metalPrintItems.length) {
+    showToast('All items have already been exported. Check "Force" to re-export.', 'info');
     return;
   }
 
@@ -25218,6 +26183,11 @@ function initSocialArtworkModal() {
   // Open modal button
   if (elements.socialAddFromArtworkButton) {
     elements.socialAddFromArtworkButton.addEventListener('click', openSocialArtworkModal);
+  }
+
+  // Add from campaign button
+  if (elements.socialAddFromCampaignButton) {
+    elements.socialAddFromCampaignButton.addEventListener('click', handleAddFromCampaign);
   }
 
   // Clear all items button
@@ -27089,7 +28059,15 @@ async function openStickerSheetsBrowser() {
       return;
     }
 
-    const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
+    // Use blueridgecustomco.com with /api/library/ route to avoid HTTP/2 issues
+    const serverUrl = 'https://blueridgecustomco.com';
+
+    // Convert /library/ URLs to /api/library/ to go through Node.js instead of nginx
+    // This avoids HTTP/2 protocol errors with large files
+    const toApiUrl = (url) => {
+      if (!url) return '';
+      return serverUrl + url.replace(/^\/library\//, '/api/library/');
+    };
 
     content.innerHTML = result.batches.map(batch => {
       const createdDate = new Date(batch.createdAt);
@@ -27098,6 +28076,12 @@ async function openStickerSheetsBrowser() {
         hour: '2-digit', minute: '2-digit'
       });
 
+      // Build JSON-safe sheet data for onclick handlers
+      const batchSheetData = JSON.stringify(batch.sheets.map(s => ({
+        printUrl: s.printUrl,
+        cutUrl: s.cutUrl
+      }))).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
       return `
         <div class="sticker-sheet-batch" style="border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden;">
           <div style="background:var(--card);padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
@@ -27105,28 +28089,45 @@ async function openStickerSheetsBrowser() {
               <strong style="font-size:14px;">${batch.name}</strong>
               <span style="color:#888;font-size:12px;margin-left:12px;">${batch.sheetCount} sheet${batch.sheetCount !== 1 ? 's' : ''}</span>
             </div>
-            <span style="color:#888;font-size:12px;">${dateStr}</span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn primary" style="font-size:12px;padding:6px 14px;" onclick="printBatchSheets('${batchSheetData}')">Print</button>
+              <button class="btn secondary" style="font-size:12px;padding:6px 14px;" onclick="sendBatchToCameo('${batchSheetData}')">Cut</button>
+              <button class="btn" style="font-size:12px;padding:6px 14px;background:#dc2626;color:white;" onclick="deleteStickerSheetBatch('${batch.name.replace(/'/g, "\\'")}')">🗑️ Delete</button>
+              <span style="color:#888;font-size:12px;margin-left:8px;">${dateStr}</span>
+            </div>
           </div>
           <div style="padding:12px;display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:12px;">
-            ${batch.sheets.map(sheet => `
+            ${batch.sheets.map((sheet, idx) => `
               <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#1a1a2e;">
-                <img src="${serverUrl}${sheet.printUrl}" alt="Sheet ${sheet.sheetNumber}"
+                <div style="background:#0d1117;padding:6px 10px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">
+                  <span style="font-weight:600;color:#38bdf8;">Sheet ${idx + 1}</span>
+                  <span style="font-size:11px;color:#888;">${sheet.stickerCount || '?'} stickers</span>
+                </div>
+                <img src="${toApiUrl(sheet.printUrl)}" alt="Sheet ${sheet.sheetNumber}"
                      style="width:100%;aspect-ratio:8.5/11;object-fit:contain;background:#111;"
-                     onclick="window.open('${serverUrl}${sheet.printUrl}', '_blank')"
+                     onclick="window.open('${toApiUrl(sheet.printUrl)}', '_blank')"
                      title="Click to open full size" />
                 <div style="padding:8px;display:flex;flex-direction:column;gap:6px;align-items:center;">
-                  <button class="btn primary" style="font-size:11px;padding:4px 12px;width:100%;"
-                          onclick="downloadCricutFile('${sheet.cricutUrl ? serverUrl + sheet.cricutUrl : ''}', '${sheet.cricutFilename || 'cricut.svg'}')">
-                    🎯 Download Cricut SVG
+                  <button class="btn primary" style="font-size:11px;padding:4px 12px;width:100%;background:#22c55e;"
+                          onclick="sendSingleSheetToCameo('${toApiUrl(sheet.cutUrl)}', ${idx + 1})">
+                    ✂️ Send to Cameo
+                  </button>
+                  <button class="btn secondary" style="font-size:11px;padding:4px 12px;width:100%;"
+                          onclick="printSingleSheet('${toApiUrl(sheet.printUrl)}')">
+                    🖨️ Print This Sheet
                   </button>
                   <div style="display:flex;gap:6px;width:100%;">
                     <button class="btn secondary" style="font-size:10px;padding:3px 8px;flex:1;"
-                            onclick="downloadSingleFile('${serverUrl}${sheet.printUrl}', '${sheet.printFilename || 'print.png'}')">
-                      Print PNG
+                            onclick="downloadSingleFile('${toApiUrl(sheet.printUrl)}', '${sheet.printFilename || 'print.png'}')">
+                      PNG
                     </button>
                     <button class="btn secondary" style="font-size:10px;padding:3px 8px;flex:1;"
-                            onclick="downloadSingleFile('${sheet.cutUrl ? serverUrl + sheet.cutUrl : ''}', '${sheet.cutFilename || 'cut.svg'}')">
-                      Cut SVG
+                            onclick="downloadSingleFile('${toApiUrl(sheet.cutUrl)}', '${sheet.cutFilename || 'cut.svg'}')">
+                      SVG
+                    </button>
+                    <button class="btn secondary" style="font-size:10px;padding:3px 8px;flex:1;"
+                            onclick="downloadCricutFile('${toApiUrl(sheet.cricutUrl)}', '${sheet.cricutFilename || 'cricut.svg'}')">
+                      Cricut
                     </button>
                   </div>
                 </div>
@@ -27146,6 +28147,33 @@ async function openStickerSheetsBrowser() {
 function closeStickerSheetsBrowser() {
   const modal = document.getElementById('stickerSheetsBrowserModal');
   if (modal) modal.style.display = 'none';
+}
+
+/**
+ * Delete a sticker sheet batch
+ */
+async function deleteStickerSheetBatch(batchName) {
+  if (!confirm(`Are you sure you want to delete the batch "${batchName}"?\n\nThis will permanently remove all sheets in this batch.`)) {
+    return;
+  }
+
+  try {
+    console.log('[StickerSheets] Deleting batch:', batchName);
+    const result = await printStation.stickerSheets.deleteBatch(batchName);
+
+    if (result?.success) {
+      console.log('[StickerSheets] Batch deleted successfully');
+      showToast(`Deleted batch: ${batchName}`, 'success');
+      // Refresh the browser view
+      openStickerSheetsBrowser();
+    } else {
+      console.error('[StickerSheets] Delete failed:', result?.error);
+      alert('Failed to delete batch: ' + (result?.error || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error('[StickerSheets] Error deleting batch:', err);
+    alert('Error deleting batch: ' + err.message);
+  }
 }
 
 /**
@@ -27200,6 +28228,174 @@ function downloadStickerSheetFiles(printUrl, cutUrl, printFilename, cutFilename)
   }
 }
 
+/**
+ * Print all sheets in a batch using native Electron print dialog
+ */
+async function printBatchSheets(sheetDataStr) {
+  try {
+    // Parse the sheet data from the HTML-escaped JSON string
+    const sheets = JSON.parse(sheetDataStr.replace(/&quot;/g, '"'));
+    const serverUrl = 'https://blueridgecustomco.com';
+
+    // Build array of print URLs - use /api/library/ to avoid HTTP/2 issues
+    const imageUrls = sheets.map(s => `${serverUrl}${s.printUrl.replace(/^\/library\//, '/api/library/')}`);
+
+    if (imageUrls.length === 0) {
+      alert('No sheets to print');
+      return;
+    }
+
+    console.log('[StickerSheets] Printing batch sheets:', imageUrls);
+
+    const result = await printStation.printer.printWithDialog({ imageUrls });
+
+    if (result?.success) {
+      console.log('[StickerSheets] Print dialog opened successfully');
+    } else {
+      console.error('[StickerSheets] Print failed:', result?.error);
+      alert('Print failed: ' + (result?.error || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error('[StickerSheets] Error printing batch:', err);
+    alert('Error printing: ' + err.message);
+  }
+}
+
+/**
+ * Send all sheets in a batch to Silhouette Cameo for cutting
+ */
+async function sendBatchToCameo(sheetDataStr) {
+  try {
+    // Parse the sheet data from the HTML-escaped JSON string
+    const sheetsData = JSON.parse(sheetDataStr.replace(/&quot;/g, '"'));
+
+    // Filter to only sheets with cut URLs
+    const sheetsWithCut = sheetsData.filter(s => s.cutUrl);
+
+    if (sheetsWithCut.length === 0) {
+      alert('No cut files available for this batch');
+      return;
+    }
+
+    console.log('[StickerSheets] Sending to Cameo:', sheetsWithCut.length, 'sheets');
+
+    // Get cut settings from the UI (if available) or use defaults
+    const cutSettings = {
+      depth: parseInt(document.getElementById('stickersCutDepth')?.value) || 6,
+      speed: parseInt(document.getElementById('stickersCutSpeed')?.value) || 4,
+      pressure: parseInt(document.getElementById('stickersCutPressure')?.value) || 15,
+      offset: parseFloat(document.getElementById('stickersCutOffset')?.value) || 8.5
+    };
+
+    // Get server URL for constructing full cut file URLs
+    const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
+
+    // Open each cut file locally in Silhouette Studio
+    let successCount = 0;
+    let errors = [];
+
+    for (let i = 0; i < sheetsWithCut.length; i++) {
+      const sheet = sheetsWithCut[i];
+      // Use /api/library/ to avoid HTTP/2 issues
+      const cutPath = sheet.cutUrl.replace(/^\/library\//, '/api/library/');
+      const cutUrl = cutPath.startsWith('http') ? cutPath : `${serverUrl}${cutPath}`;
+
+      console.log(`[StickerSheets] Opening cut file ${i + 1}/${sheetsWithCut.length}:`, cutUrl);
+
+      try {
+        const result = await printStation.cameo.openCutFile({
+          url: cutUrl,
+          cutSettings
+        });
+
+        if (result?.success) {
+          successCount++;
+        } else {
+          errors.push(`Sheet ${i + 1}: ${result?.error || 'Unknown error'}`);
+        }
+      } catch (err) {
+        errors.push(`Sheet ${i + 1}: ${err.message}`);
+      }
+    }
+
+    // Show result
+    if (successCount === sheetsWithCut.length) {
+      console.log('[StickerSheets] All cut files opened successfully');
+      alert(`Opened ${successCount} cut file(s) in Silhouette Studio!`);
+    } else if (successCount > 0) {
+      console.warn('[StickerSheets] Some cut files failed:', errors);
+      alert(`Opened ${successCount}/${sheetsWithCut.length} cut files.\n\nErrors:\n${errors.join('\n')}`);
+    } else {
+      console.error('[StickerSheets] All cut files failed:', errors);
+      alert(`Failed to open cut files:\n${errors.join('\n')}`);
+    }
+  } catch (err) {
+    console.error('[StickerSheets] Error sending to Cameo:', err);
+    alert('Error sending to Cameo: ' + err.message);
+  }
+}
+
+/**
+ * Send a single sheet to Silhouette Cameo
+ */
+async function sendSingleSheetToCameo(cutUrl, sheetNumber) {
+  if (!cutUrl) {
+    alert('No cut file available for this sheet.');
+    return;
+  }
+
+  console.log(`[StickerSheets] Sending sheet ${sheetNumber} to Cameo:`, cutUrl);
+
+  try {
+    // Get cut settings from the UI (if available) or use defaults
+    const cutSettings = {
+      depth: parseInt(document.getElementById('stickersCutDepth')?.value) || 6,
+      speed: parseInt(document.getElementById('stickersCutSpeed')?.value) || 4,
+      pressure: parseInt(document.getElementById('stickersCutPressure')?.value) || 15,
+      offset: parseFloat(document.getElementById('stickersCutOffset')?.value) || 8.5
+    };
+
+    const result = await printStation.cameo.openCutFile({
+      url: cutUrl,
+      cutSettings
+    });
+
+    if (result?.success) {
+      alert(`Sheet ${sheetNumber} sent to Silhouette Cameo!\n\nMake sure the correct printed sheet is loaded in the cutter.`);
+    } else {
+      alert(`Failed to send sheet ${sheetNumber} to Cameo: ${result?.error || 'Unknown error'}`);
+    }
+  } catch (err) {
+    console.error('[StickerSheets] Error sending single sheet to Cameo:', err);
+    alert('Error sending to Cameo: ' + err.message);
+  }
+}
+
+/**
+ * Print a single sheet
+ */
+async function printSingleSheet(printUrl) {
+  if (!printUrl) {
+    alert('No print file available for this sheet.');
+    return;
+  }
+
+  console.log('[StickerSheets] Printing single sheet:', printUrl);
+
+  try {
+    const result = await printStation.printer.printWithDialog({ imageUrls: [printUrl] });
+
+    if (result?.success) {
+      console.log('[StickerSheets] Print sent successfully');
+    } else {
+      console.log('[StickerSheets] Print cancelled or failed:', result?.error);
+    }
+  } catch (err) {
+    console.error('[StickerSheets] Error printing single sheet:', err);
+    alert('Error printing: ' + err.message);
+  }
+}
+
 // Make sticker sheet browser functions available globally for onclick handlers
 window.toggleStickerSelection = toggleStickerSelection;
 window.removeFromSelection = removeFromSelection;
@@ -27209,6 +28405,11 @@ window.closeStickerSheetsBrowser = closeStickerSheetsBrowser;
 window.downloadStickerSheetFiles = downloadStickerSheetFiles;
 window.downloadCricutFile = downloadCricutFile;
 window.downloadSingleFile = downloadSingleFile;
+window.printBatchSheets = printBatchSheets;
+window.sendBatchToCameo = sendBatchToCameo;
+window.sendSingleSheetToCameo = sendSingleSheetToCameo;
+window.printSingleSheet = printSingleSheet;
+window.deleteStickerSheetBatch = deleteStickerSheetBatch;
 
 // =============== Shopify Manager ===============
 const shopifyManagerState = {
@@ -28556,4 +29757,824 @@ async function initAutoUpdateUI() {
 setTimeout(initAutoUpdateUI, 2000);
 
 init();
-  
+
+// =============== NEW Stickers View (Redesigned) ===============
+const stickersState = {
+  mode: 'order', // 'order' or 'manual'
+  categories: [],
+  stickers: [],
+  filteredStickers: [],
+  selection: new Map(), // Map of imagePath -> { ...sticker, quantity }
+  gridInfo: null,
+  currentOrderNumber: null,
+  savedOrders: [],
+  generatedSheets: null, // Last generated sheets info for print/cut
+  cutSettings: {
+    depth: 5,
+    speed: 5,
+    pressure: 10,
+    offset: 3
+  },
+  initialized: false
+};
+
+async function initStickersView() {
+  if (!stickersState.initialized) {
+    stickersState.initialized = true;
+    setupStickersEventListeners();
+    await loadStickersCutSettings();
+  }
+
+  // Load categories for manual mode
+  await loadStickersCategories();
+  await updateStickersGridInfo();
+
+  // Load saved orders for order mode
+  await loadSavedOrders();
+}
+
+function setupStickersEventListeners() {
+  // Mode toggle buttons
+  const modeOrderBtn = document.getElementById('stickersModeOrder');
+  const modeManualBtn = document.getElementById('stickersModeManual');
+  const modeLayoutBtn = document.getElementById('stickersModeLayout');
+
+  if (modeOrderBtn) {
+    modeOrderBtn.addEventListener('click', () => switchStickersMode('order'));
+  }
+  if (modeManualBtn) {
+    modeManualBtn.addEventListener('click', () => switchStickersMode('manual'));
+  }
+  if (modeLayoutBtn) {
+    modeLayoutBtn.addEventListener('click', () => switchStickersMode('layout'));
+  }
+
+  // Order Mode: Import order
+  const importOrderBtn = document.getElementById('stickersImportOrderBtn');
+  if (importOrderBtn) {
+    importOrderBtn.addEventListener('click', importStickersOrder);
+  }
+
+  // Order Mode: Refresh saved orders
+  const refreshSavedBtn = document.getElementById('stickersRefreshSavedBtn');
+  if (refreshSavedBtn) {
+    refreshSavedBtn.addEventListener('click', loadSavedOrders);
+  }
+
+  // Order Mode: Search saved orders
+  const savedSearch = document.getElementById('stickersSavedSearch');
+  if (savedSearch) {
+    savedSearch.addEventListener('input', debounce(filterSavedOrders, 300));
+  }
+
+  // Manual Mode: Category filter
+  const categorySelect = document.getElementById('stickersCategorySelect');
+  if (categorySelect) {
+    categorySelect.addEventListener('change', () => loadStickersCatalog(categorySelect.value));
+  }
+
+  // Manual Mode: Search
+  const searchInput = document.getElementById('stickersSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', debounce(filterStickersCatalog, 300));
+  }
+
+  // Manual Mode: Size change
+  const sizeInput = document.getElementById('stickersManualSize');
+  if (sizeInput) {
+    sizeInput.addEventListener('change', updateStickersGridInfo);
+  }
+
+  // Manual Mode: Select all
+  const selectAllBtn = document.getElementById('stickersSelectAllBtn');
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', selectAllVisibleStickersNew);
+  }
+
+  // Clear selection
+  const clearBtn = document.getElementById('stickersClearBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', clearStickersSelection);
+  }
+
+  // Generate sheets
+  const generateBtn = document.getElementById('stickersGenerateBtn');
+  if (generateBtn) {
+    generateBtn.addEventListener('click', generateStickersSheets);
+  }
+
+  // View sheets
+  const viewSheetsBtn = document.getElementById('stickersViewSheetsBtn');
+  if (viewSheetsBtn) {
+    viewSheetsBtn.addEventListener('click', openStickerSheetsBrowser);
+  }
+
+  // Print button
+  const printBtn = document.getElementById('stickersPrintBtn');
+  if (printBtn) {
+    printBtn.addEventListener('click', printStickersSheet);
+  }
+
+  // Send to Cameo button
+  const sendCameoBtn = document.getElementById('stickersSendCameoBtn');
+  if (sendCameoBtn) {
+    sendCameoBtn.addEventListener('click', sendStickersToCameo);
+  }
+
+  // Cut settings save
+  const saveCutSettingsBtn = document.getElementById('stickersSaveCutSettings');
+  if (saveCutSettingsBtn) {
+    saveCutSettingsBtn.addEventListener('click', saveStickersCutSettings);
+  }
+}
+
+function switchStickersMode(mode) {
+  stickersState.mode = mode;
+
+  // Update toggle buttons
+  const orderBtn = document.getElementById('stickersModeOrder');
+  const manualBtn = document.getElementById('stickersModeManual');
+  const layoutBtn = document.getElementById('stickersModeLayout');
+  const orderPanel = document.getElementById('stickersOrderPanel');
+  const manualPanel = document.getElementById('stickersManualPanel');
+  const layoutPanel = document.getElementById('layoutEditorPanel');
+  const currentOrderCard = document.getElementById('stickersCurrentOrder');
+
+  // Layout mode side panels
+  const layoutAvailablePanel = document.getElementById('layoutAvailableStickerPanel');
+  const layoutGeneratePanel = document.getElementById('layoutGeneratePanel');
+
+  // Reset all buttons
+  [orderBtn, manualBtn, layoutBtn].forEach(btn => {
+    if (btn) {
+      btn.classList.remove('active');
+      btn.style.background = 'var(--card)';
+      btn.style.color = 'var(--text)';
+    }
+  });
+
+  // Hide all panels
+  if (orderPanel) orderPanel.style.display = 'none';
+  if (manualPanel) manualPanel.style.display = 'none';
+  if (layoutPanel) layoutPanel.style.display = 'none';
+  if (currentOrderCard) currentOrderCard.style.display = 'none';
+  if (layoutAvailablePanel) layoutAvailablePanel.style.display = 'none';
+  if (layoutGeneratePanel) layoutGeneratePanel.style.display = 'none';
+
+  // Helper to show/hide standard side panels
+  function showStandardSidePanels(show) {
+    const panels = document.querySelectorAll('.stickers-side-panel > .inventory-card');
+    panels.forEach((panel) => {
+      if (panel.id === 'layoutAvailableStickerPanel' || panel.id === 'layoutGeneratePanel') {
+        return;
+      }
+      if (panel.id !== 'stickersOutputInfo' && panel.id !== 'stickersCurrentOrder') {
+        panel.style.display = show ? '' : 'none';
+      }
+    });
+  }
+
+  if (mode === 'order') {
+    if (orderBtn) {
+      orderBtn.classList.add('active');
+      orderBtn.style.background = 'var(--primary)';
+      orderBtn.style.color = 'white';
+    }
+    if (orderPanel) orderPanel.style.display = 'flex';
+    if (currentOrderCard && stickersState.currentOrderNumber) {
+      currentOrderCard.style.display = 'block';
+    }
+    showStandardSidePanels(true);
+  } else if (mode === 'manual') {
+    if (manualBtn) {
+      manualBtn.classList.add('active');
+      manualBtn.style.background = 'var(--primary)';
+      manualBtn.style.color = 'white';
+    }
+    if (manualPanel) manualPanel.style.display = 'flex';
+    showStandardSidePanels(true);
+    // Load catalog if not already loaded
+    if (stickersState.stickers.length === 0) {
+      loadStickersCatalog();
+    }
+  } else if (mode === 'layout') {
+    if (layoutBtn) {
+      layoutBtn.classList.add('active');
+      layoutBtn.style.background = 'var(--primary)';
+      layoutBtn.style.color = 'white';
+    }
+    if (layoutPanel) layoutPanel.style.display = 'flex';
+    if (layoutAvailablePanel) layoutAvailablePanel.style.display = 'flex';
+    if (layoutGeneratePanel) layoutGeneratePanel.style.display = 'block';
+    showStandardSidePanels(false);
+
+    // Initialize layout editor and populate available stickers
+    if (typeof initLayoutEditor === 'function') {
+      initLayoutEditor();
+    }
+    if (typeof populateLayoutAvailableStickers === 'function') {
+      const stickersArray = Array.from(stickersState.selection.values());
+      populateLayoutAvailableStickers(stickersArray);
+    }
+    // Don't clear selection when entering layout mode
+    return;
+  }
+
+  // Clear selection when switching modes (except layout)
+  clearStickersSelection();
+}
+
+async function loadStickersCategories() {
+  try {
+    const result = await printStation.stickerSheets.getCategories();
+    if (result?.success && result.categories) {
+      stickersState.categories = result.categories;
+
+      const select = document.getElementById('stickersCategorySelect');
+      if (select) {
+        select.innerHTML = '<option value="">All Categories</option>' +
+          result.categories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load sticker categories:', err);
+  }
+}
+
+async function loadStickersCatalog(category = null) {
+  const grid = document.getElementById('stickersCatalogGrid');
+  if (grid) {
+    grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:40px;">Loading stickers...</div>';
+  }
+
+  try {
+    const result = await printStation.stickerSheets.getCatalog(category || undefined);
+    if (result?.success && result.stickers) {
+      stickersState.stickers = result.stickers;
+      stickersState.filteredStickers = result.stickers;
+      renderStickersCatalog();
+    }
+  } catch (err) {
+    console.error('Failed to load sticker catalog:', err);
+    if (grid) {
+      grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:40px;color:#f44;">Error loading stickers</div>';
+    }
+  }
+}
+
+function filterStickersCatalog() {
+  const searchInput = document.getElementById('stickersSearch');
+  const query = (searchInput?.value || '').toLowerCase().trim();
+
+  if (!query) {
+    stickersState.filteredStickers = stickersState.stickers;
+  } else {
+    stickersState.filteredStickers = stickersState.stickers.filter(s =>
+      s.title.toLowerCase().includes(query) ||
+      s.category.toLowerCase().includes(query) ||
+      s.filename.toLowerCase().includes(query)
+    );
+  }
+
+  renderStickersCatalog();
+}
+
+function renderStickersCatalog() {
+  const grid = document.getElementById('stickersCatalogGrid');
+  if (!grid) return;
+
+  if (stickersState.filteredStickers.length === 0) {
+    grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:40px;">No stickers found</div>';
+    return;
+  }
+
+  grid.innerHTML = stickersState.filteredStickers.map(sticker => {
+    const isSelected = stickersState.selection.has(sticker.imagePath);
+    const selectedClass = isSelected ? 'selected' : '';
+    // Use resolveAssetUrl which handles absolute URLs, relative URLs, and file paths
+    const thumbnailSrc = sticker.thumbnailUrl
+      ? resolveAssetUrl(sticker.thumbnailUrl)
+      : resolveAssetUrl(sticker.imagePath);
+
+    return `
+      <div class="sticker-card ${selectedClass}"
+           data-path="${sticker.imagePath}"
+           onclick="toggleStickersSelection('${sticker.imagePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')"
+           title="${sticker.title}\n${sticker.category}">
+        <div class="sticker-thumb" style="background-image:url('${thumbnailSrc}');background-size:contain;background-position:center;background-repeat:no-repeat;aspect-ratio:1;"></div>
+        <div class="sticker-title" style="font-size:10px;padding:4px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          ${sticker.title}
+        </div>
+        ${isSelected ? `<div class="sticker-selected-badge" style="position:absolute;top:4px;right:4px;background:#4ade80;color:#000;font-size:10px;padding:2px 6px;border-radius:10px;">x${stickersState.selection.get(sticker.imagePath).quantity}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleStickersSelection(imagePath) {
+  if (stickersState.selection.has(imagePath)) {
+    const item = stickersState.selection.get(imagePath);
+    item.quantity++;
+  } else {
+    const sticker = stickersState.stickers.find(s => s.imagePath === imagePath);
+    if (sticker) {
+      stickersState.selection.set(imagePath, { ...sticker, quantity: 1 });
+    }
+  }
+
+  updateStickersSelectionUI();
+  renderStickersCatalog();
+}
+
+function removeStickersItem(imagePath) {
+  stickersState.selection.delete(imagePath);
+  updateStickersSelectionUI();
+  renderStickersCatalog();
+}
+
+function updateStickersQuantity(imagePath, delta) {
+  const item = stickersState.selection.get(imagePath);
+  if (!item) return;
+
+  item.quantity = Math.max(1, item.quantity + delta);
+  updateStickersSelectionUI();
+  renderStickersCatalog();
+}
+
+function selectAllVisibleStickersNew() {
+  for (const sticker of stickersState.filteredStickers) {
+    if (!stickersState.selection.has(sticker.imagePath)) {
+      stickersState.selection.set(sticker.imagePath, { ...sticker, quantity: 1 });
+    }
+  }
+  updateStickersSelectionUI();
+  renderStickersCatalog();
+}
+
+function clearStickersSelection() {
+  stickersState.selection.clear();
+  stickersState.currentOrderNumber = null;
+  stickersState.generatedSheets = null;
+
+  const currentOrderCard = document.getElementById('stickersCurrentOrder');
+  if (currentOrderCard) currentOrderCard.style.display = 'none';
+
+  const outputInfo = document.getElementById('stickersOutputInfo');
+  if (outputInfo) outputInfo.style.display = 'none';
+
+  const printBtn = document.getElementById('stickersPrintBtn');
+  const cameoBtn = document.getElementById('stickersSendCameoBtn');
+  if (printBtn) printBtn.disabled = true;
+  if (cameoBtn) cameoBtn.disabled = true;
+
+  updateStickersSelectionUI();
+  renderStickersCatalog();
+}
+
+function updateStickersSelectionUI() {
+  const countEl = document.getElementById('stickersSelectionCount');
+  const sheetsEl = document.getElementById('stickersSheetsNeeded');
+  const perSheetEl = document.getElementById('stickersPerSheet');
+  const generateBtn = document.getElementById('stickersGenerateBtn');
+  const listEl = document.getElementById('stickersSelectionList');
+
+  // Count total stickers
+  let totalCount = 0;
+  for (const item of stickersState.selection.values()) {
+    totalCount += item.quantity;
+  }
+
+  // Calculate sheets needed
+  const capacity = stickersState.gridInfo?.capacity || 6;
+  const sheetsNeeded = Math.ceil(totalCount / capacity);
+
+  if (countEl) countEl.textContent = totalCount;
+  if (sheetsEl) sheetsEl.textContent = sheetsNeeded;
+  if (perSheetEl) perSheetEl.textContent = `~${capacity}`;
+
+  if (generateBtn) {
+    generateBtn.disabled = totalCount === 0;
+    generateBtn.textContent = `Generate Sheets (${totalCount})`;
+  }
+
+  // Render selection list
+  if (listEl) {
+    if (stickersState.selection.size === 0) {
+      listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:20px;color:#888;">No stickers selected</div>';
+    } else {
+      listEl.innerHTML = Array.from(stickersState.selection.values()).map(item => {
+        // Use resolveAssetUrl which handles absolute URLs, relative URLs, and file paths
+        const thumbSrc = item.thumbnailUrl ? resolveAssetUrl(item.thumbnailUrl) : resolveAssetUrl(item.imagePath);
+        return `
+        <div class="selection-item" style="display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">
+          <div style="width:40px;height:40px;background-image:url('${thumbSrc}');background-size:contain;background-position:center;background-repeat:no-repeat;flex-shrink:0;"></div>
+          <div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">${item.title}</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <button onclick="updateStickersQuantity('${item.imagePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', -1)" style="width:24px;height:24px;padding:0;font-size:14px;">-</button>
+            <span style="min-width:20px;text-align:center;">${item.quantity}</span>
+            <button onclick="updateStickersQuantity('${item.imagePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', 1)" style="width:24px;height:24px;padding:0;font-size:14px;">+</button>
+            <button onclick="removeStickersItem('${item.imagePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" style="width:24px;height:24px;padding:0;font-size:12px;color:#f44;">&times;</button>
+          </div>
+        </div>
+      `}).join('');
+    }
+  }
+}
+
+async function updateStickersGridInfo() {
+  // For order mode, always use 3 inches
+  // For manual mode, use the input value
+  let size = 3;
+  if (stickersState.mode === 'manual') {
+    const sizeInput = document.getElementById('stickersManualSize');
+    size = parseFloat(sizeInput?.value || 3);
+  }
+
+  try {
+    const result = await printStation.stickerSheets.getGridInfo(size);
+    if (result?.success && result.grid) {
+      stickersState.gridInfo = result.grid;
+
+      const infoEl = document.getElementById('stickersGridInfo');
+      if (infoEl) {
+        infoEl.textContent = `Grid: ${result.grid.cols}x${result.grid.rows} (${result.grid.capacity} stickers per sheet) | Sheet: ${result.grid.sheetWidthInches}" x ${result.grid.sheetHeightInches}"`;
+      }
+
+      updateStickersSelectionUI();
+    }
+  } catch (err) {
+    console.error('Failed to get grid info:', err);
+  }
+}
+
+async function importStickersOrder() {
+  const orderIdInput = document.getElementById('stickersOrderId');
+  const infoEl = document.getElementById('stickersOrderInfo');
+  const importBtn = document.getElementById('stickersImportOrderBtn');
+
+  const orderId = orderIdInput?.value?.trim();
+  if (!orderId) {
+    if (infoEl) infoEl.textContent = 'Please enter an order #';
+    return;
+  }
+
+  if (importBtn) {
+    importBtn.disabled = true;
+    importBtn.textContent = 'Importing...';
+  }
+  if (infoEl) infoEl.textContent = 'Fetching order from Shopify...';
+
+  try {
+    const result = await printStation.stickerSheets.fromOrder({
+      orderId,
+      stickerSizeInches: 3, // Always 3 for orders
+      offsetMm: stickersState.cutSettings.offset,
+      saveByOrder: true // Save to order folder
+    });
+
+    if (result?.success) {
+      stickersState.generatedSheets = result;
+      stickersState.currentOrderNumber = result.orderNumber || orderId.replace('#', '');
+
+      // Show current order card
+      const currentOrderCard = document.getElementById('stickersCurrentOrder');
+      const orderNumberEl = document.getElementById('stickersOrderNumber');
+      if (currentOrderCard) currentOrderCard.style.display = 'block';
+      if (orderNumberEl) orderNumberEl.textContent = stickersState.currentOrderNumber;
+
+      if (infoEl) {
+        infoEl.innerHTML = `<span style="color:#4ade80;">Order #${stickersState.currentOrderNumber}: Generated ${result.totalSheets} sheet(s) with ${result.totalStickers} stickers</span>`;
+        if (result.notFound?.length) {
+          infoEl.innerHTML += `<br><span style="color:#f90;">Warning: ${result.notFound.length} items not found in catalog</span>`;
+        }
+      }
+
+      // Show output info
+      showStickersOutput(result);
+
+      // Enable print/cut buttons
+      const printBtn = document.getElementById('stickersPrintBtn');
+      const cameoBtn = document.getElementById('stickersSendCameoBtn');
+      if (printBtn) printBtn.disabled = false;
+      if (cameoBtn) cameoBtn.disabled = false;
+
+      // Refresh saved orders list
+      await loadSavedOrders();
+    } else {
+      if (infoEl) infoEl.innerHTML = `<span style="color:#f44;">Error: ${result?.error || 'Unknown error'}</span>`;
+    }
+  } catch (err) {
+    console.error('Failed to import order:', err);
+    if (infoEl) infoEl.innerHTML = `<span style="color:#f44;">Error: ${err.message}</span>`;
+  } finally {
+    if (importBtn) {
+      importBtn.disabled = false;
+      importBtn.textContent = 'Import Order';
+    }
+  }
+}
+
+async function generateStickersSheets() {
+  const generateBtn = document.getElementById('stickersGenerateBtn');
+  const statusEl = document.getElementById('stickersStatus');
+
+  if (stickersState.selection.size === 0) return;
+
+  // Get size based on mode
+  let size = 3;
+  if (stickersState.mode === 'manual') {
+    const sizeInput = document.getElementById('stickersManualSize');
+    size = parseFloat(sizeInput?.value || 3);
+  }
+
+  // Prepare designs array
+  const designs = Array.from(stickersState.selection.values()).map(item => ({
+    imagePath: item.imagePath,
+    quantity: item.quantity,
+    title: item.title
+  }));
+
+  if (generateBtn) {
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Generating...';
+  }
+  if (statusEl) statusEl.textContent = 'Generating sheets...';
+
+  try {
+    const payload = {
+      designs,
+      stickerSizeInches: size,
+      offsetMm: stickersState.cutSettings.offset,
+      filenamePrefix: stickersState.mode === 'order' && stickersState.currentOrderNumber
+        ? `order-${stickersState.currentOrderNumber}`
+        : 'sticker-sheet',
+      scaleByLargestDimension: stickersState.mode === 'manual', // New flag
+      useRotationPacking: true // Enable rotation-aware packing
+    };
+
+    // If order mode with order number, save to order folder
+    if (stickersState.mode === 'order' && stickersState.currentOrderNumber) {
+      payload.orderNumber = stickersState.currentOrderNumber;
+    }
+
+    const result = await printStation.stickerSheets.generate(payload);
+
+    if (result?.success) {
+      stickersState.generatedSheets = result;
+
+      if (statusEl) statusEl.textContent = `Generated ${result.totalSheets} sheet(s)`;
+
+      showStickersOutput(result);
+
+      // Enable print/cut buttons
+      const printBtn = document.getElementById('stickersPrintBtn');
+      const cameoBtn = document.getElementById('stickersSendCameoBtn');
+      if (printBtn) printBtn.disabled = false;
+      if (cameoBtn) cameoBtn.disabled = false;
+    } else {
+      if (statusEl) statusEl.textContent = `Error: ${result?.error || 'Unknown error'}`;
+    }
+  } catch (err) {
+    console.error('Failed to generate sheets:', err);
+    if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+  } finally {
+    if (generateBtn) {
+      generateBtn.disabled = false;
+      let count = 0;
+      for (const item of stickersState.selection.values()) count += item.quantity;
+      generateBtn.textContent = `Generate Sheets (${count})`;
+    }
+  }
+}
+
+function showStickersOutput(result) {
+  const outputInfo = document.getElementById('stickersOutputInfo');
+  const outputDetails = document.getElementById('stickersOutputDetails');
+
+  if (outputInfo) outputInfo.style.display = 'block';
+  if (outputDetails) {
+    outputDetails.innerHTML = `
+      <div>Total Stickers: <strong>${result.totalStickers}</strong></div>
+      <div>Sheets Generated: <strong>${result.totalSheets}</strong></div>
+      ${result.orderNumber ? `<div>Saved to: Order #${result.orderNumber}</div>` : ''}
+      <div style="margin-top:8px;font-size:10px;color:#888;">${result.outputDir || ''}</div>
+    `;
+  }
+}
+
+async function loadSavedOrders() {
+  const listEl = document.getElementById('stickersSavedOrdersList');
+  if (!listEl) return;
+
+  listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:20px;color:#888;">Loading...</div>';
+
+  try {
+    const result = await printStation.stickerSheets.listSavedOrders();
+
+    if (result?.success && result.orders?.length > 0) {
+      stickersState.savedOrders = result.orders;
+      renderSavedOrders();
+    } else {
+      stickersState.savedOrders = [];
+      listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:30px;color:#888;">No saved order sheets yet</div>';
+    }
+  } catch (err) {
+    console.error('Failed to load saved orders:', err);
+    listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:30px;color:#f44;">Error loading saved orders</div>';
+  }
+}
+
+function filterSavedOrders() {
+  renderSavedOrders();
+}
+
+function renderSavedOrders() {
+  const listEl = document.getElementById('stickersSavedOrdersList');
+  const searchInput = document.getElementById('stickersSavedSearch');
+  if (!listEl) return;
+
+  const query = (searchInput?.value || '').toLowerCase().trim();
+  const filtered = query
+    ? stickersState.savedOrders.filter(o => o.orderNumber.toLowerCase().includes(query))
+    : stickersState.savedOrders;
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:30px;color:#888;">No matching orders found</div>';
+    return;
+  }
+
+  const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
+
+  listEl.innerHTML = filtered.map(order => `
+    <div class="saved-order-item" style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden;">
+      <div style="padding:10px;background:var(--card);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <strong style="color:#38bdf8;">Order #${order.orderNumber}</strong>
+          <div style="font-size:11px;color:#888;">${order.sheetCount} sheet(s) - ${order.createdAt}</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="secondary" style="font-size:11px;padding:4px 8px;" onclick="loadSavedOrderSheets('${order.orderNumber}')">View</button>
+          <button class="primary" style="font-size:11px;padding:4px 8px;" onclick="reprintSavedOrder('${order.orderNumber}')">Print</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadSavedOrderSheets(orderNumber) {
+  try {
+    const result = await printStation.stickerSheets.getOrderSheets(orderNumber);
+    if (result?.success && result.sheets) {
+      stickersState.generatedSheets = result;
+      stickersState.currentOrderNumber = orderNumber;
+
+      // Show current order card
+      const currentOrderCard = document.getElementById('stickersCurrentOrder');
+      const orderNumberEl = document.getElementById('stickersOrderNumber');
+      if (currentOrderCard) currentOrderCard.style.display = 'block';
+      if (orderNumberEl) orderNumberEl.textContent = orderNumber;
+
+      showStickersOutput(result);
+
+      // Enable print/cut buttons
+      const printBtn = document.getElementById('stickersPrintBtn');
+      const cameoBtn = document.getElementById('stickersSendCameoBtn');
+      if (printBtn) printBtn.disabled = false;
+      if (cameoBtn) cameoBtn.disabled = false;
+
+      showToast(`Loaded sheets for Order #${orderNumber}`, 'success');
+    }
+  } catch (err) {
+    console.error('Failed to load order sheets:', err);
+    showToast('Failed to load order sheets', 'error');
+  }
+}
+
+async function reprintSavedOrder(orderNumber) {
+  await loadSavedOrderSheets(orderNumber);
+  printStickersSheet();
+}
+
+// Cut Settings
+function toggleCutSettings() {
+  const panel = document.getElementById('stickersCutSettingsPanel');
+  const toggle = document.getElementById('stickersCutSettingsToggle');
+
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    toggle.textContent = '- Collapse';
+  } else {
+    panel.style.display = 'none';
+    toggle.textContent = '+ Expand';
+  }
+}
+
+async function loadStickersCutSettings() {
+  try {
+    const config = await printStation.getConfig();
+    if (config?.stickersCutSettings) {
+      stickersState.cutSettings = { ...stickersState.cutSettings, ...config.stickersCutSettings };
+
+      // Update UI
+      const depthInput = document.getElementById('stickersCutDepth');
+      const speedInput = document.getElementById('stickersCutSpeed');
+      const pressureInput = document.getElementById('stickersCutPressure');
+      const offsetInput = document.getElementById('stickersCutOffset');
+
+      if (depthInput) depthInput.value = stickersState.cutSettings.depth;
+      if (speedInput) speedInput.value = stickersState.cutSettings.speed;
+      if (pressureInput) pressureInput.value = stickersState.cutSettings.pressure;
+      if (offsetInput) offsetInput.value = stickersState.cutSettings.offset;
+    }
+  } catch (err) {
+    console.error('Failed to load cut settings:', err);
+  }
+}
+
+async function saveStickersCutSettings() {
+  const depthInput = document.getElementById('stickersCutDepth');
+  const speedInput = document.getElementById('stickersCutSpeed');
+  const pressureInput = document.getElementById('stickersCutPressure');
+  const offsetInput = document.getElementById('stickersCutOffset');
+
+  stickersState.cutSettings = {
+    depth: parseInt(depthInput?.value || 5),
+    speed: parseInt(speedInput?.value || 5),
+    pressure: parseInt(pressureInput?.value || 10),
+    offset: parseFloat(offsetInput?.value || 3)
+  };
+
+  try {
+    await printStation.saveConfig({ stickersCutSettings: stickersState.cutSettings });
+    showToast('Cut settings saved', 'success');
+  } catch (err) {
+    console.error('Failed to save cut settings:', err);
+    showToast('Failed to save settings', 'error');
+  }
+}
+
+// Print and Cameo functions
+async function printStickersSheet() {
+  if (!stickersState.generatedSheets?.sheets?.length) {
+    showToast('No sheets to print. Generate sheets first.', 'error');
+    return;
+  }
+
+  const statusEl = document.getElementById('stickersStatus');
+  if (statusEl) statusEl.textContent = 'Sending to printer...';
+
+  try {
+    // Open each print file in the default system viewer/printer
+    // Use blueridgecustomco.com for static library assets (served directly by nginx)
+    const serverUrl = 'https://blueridgecustomco.com';
+
+    for (const sheet of stickersState.generatedSheets.sheets) {
+      const printUrl = `${serverUrl}${sheet.printUrl}`;
+      window.open(printUrl, '_blank');
+    }
+
+    if (statusEl) statusEl.textContent = `Opened ${stickersState.generatedSheets.sheets.length} sheet(s) for printing`;
+    showToast('Sheets opened for printing', 'success');
+  } catch (err) {
+    console.error('Failed to print:', err);
+    if (statusEl) statusEl.textContent = 'Print error';
+    showToast('Failed to print: ' + err.message, 'error');
+  }
+}
+
+async function sendStickersToCameo() {
+  if (!stickersState.generatedSheets?.sheets?.length) {
+    showToast('No sheets to cut. Generate sheets first.', 'error');
+    return;
+  }
+
+  const statusEl = document.getElementById('stickersStatus');
+  if (statusEl) statusEl.textContent = 'Sending to Cameo...';
+
+  try {
+    const result = await printStation.stickerSheets.sendToCameo({
+      sheets: stickersState.generatedSheets.sheets,
+      cutSettings: stickersState.cutSettings
+    });
+
+    if (result?.success) {
+      if (statusEl) statusEl.textContent = 'Sent to Cameo successfully';
+      showToast('Sent to Cameo!', 'success');
+    } else {
+      throw new Error(result?.error || 'Failed to send to Cameo');
+    }
+  } catch (err) {
+    console.error('Failed to send to Cameo:', err);
+    if (statusEl) statusEl.textContent = 'Cameo error';
+    showToast('Cameo error: ' + err.message, 'error');
+  }
+}
+
+// Global exports for onclick handlers
+window.toggleStickersSelection = toggleStickersSelection;
+window.removeStickersItem = removeStickersItem;
+window.updateStickersQuantity = updateStickersQuantity;
+window.toggleCutSettings = toggleCutSettings;
+window.loadSavedOrderSheets = loadSavedOrderSheets;
+window.reprintSavedOrder = reprintSavedOrder;
+window.resolveAssetUrl = resolveAssetUrl;

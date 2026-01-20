@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Decal Designer | BlueRidgeCustomCo</title>
+  <meta name="description" content="AI-powered decal designer - create custom vinyl stickers with drag-and-drop ease">
+
+  <!-- Fabric.js for canvas manipulation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Google Fonts - Popular design fonts -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;900&family=Bebas+Neue&family=Montserrat:wght@400;600;700;900&family=Oswald:wght@400;600;700&family=Pacifico&family=Playfair+Display:wght@400;700;900&family=Raleway:wght@400;600;700&family=Roboto:wght@400;700;900&family=Lobster&family=Anton&family=Righteous&family=Permanent+Marker&family=Bangers&family=Racing+Sans+One&family=Rubik+Mono+One&display=swap">
+
+  <link rel="stylesheet" href="./designer.css">
+  <link rel="stylesheet" href="./shared-modern.css">
+</head>
+<body>
+  <header class="modern-header">
+    <div class="header-container">
+      <a href="./" class="logo">
+        <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo">
+        <div class="logo-text">
+          <span class="logo-name">BlueRidgeCustomCo</span>
+          <span class="logo-tagline">Premium Custom Designs</span>
+        </div>
+      </a>
+      <nav class="nav-menu">
+        <a href="./designer.html" class="nav-link">Designer</a>
+        <a href="./racing.html" class="nav-link">Racing</a>
+        <a href="https://store.swayzecustomvinyl.com/apparel.html" class="nav-link">Apparel</a>
+        <a href="./customer.html" class="cta-button">Account</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main App Container -->
+  <div class="designer-app">
+
+    <!-- Top Navigation Bar -->
+    <header class="designer-header">
+      <div class="header-left">
+        <a href="./catalog.html" class="back-button">
+          <i class="fas fa-arrow-left"></i>
+          <span>Back to Catalog</span>
+        </a>
+        <h1 class="designer-title">Decal Designer</h1>
+      </div>
+      <div class="header-center">
+        <span class="canvas-size-indicator" id="canvasSizeIndicator">4" × 4"</span>
+      </div>
+      <div class="header-right">
+        <button class="header-button" id="saveButton" type="button">
+          <i class="fas fa-save"></i>
+          <span>Save Design</span>
+        </button>
+        <button class="header-button primary" id="addToOrderButton" type="button">
+          <i class="fas fa-cart-plus"></i>
+          <span>Add to Order</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <div class="designer-main">
+
+      <!-- Left Sidebar - Tools & Library -->
+      <aside class="designer-sidebar left">
+
+        <!-- AI Assistant Panel -->
+        <div class="panel ai-panel">
+          <div class="panel-header">
+            <i class="fas fa-magic"></i>
+            <h2>AI Assistant</h2>
+          </div>
+          <div class="panel-content">
+            <div class="ai-suggestions" id="aiSuggestions">
+              <p class="ai-intro">I'll help you design your decal! Select items from the catalog or add text to get started.</p>
+            </div>
+            <button class="btn-ai" id="getAiSuggestion" type="button">
+              <i class="fas fa-wand-magic-sparkles"></i>
+              Get AI Suggestion
+            </button>
+          </div>
+        </div>
+
+        <!-- Catalog Browser -->
+        <div class="panel catalog-panel">
+          <div class="panel-header">
+            <i class="fas fa-images"></i>
+            <h2>Catalog Library</h2>
+          </div>
+          <div class="panel-content">
+            <div class="search-box">
+              <i class="fas fa-search"></i>
+              <input
+                type="search"
+                id="catalogSearch"
+                placeholder="Search 50,000+ designs..."
+                class="search-input"
+              >
+            </div>
+
+            <div class="category-filter">
+              <select id="categoryFilter" class="category-select">
+                <option value="">All Categories</option>
+              </select>
+            </div>
+
+            <div class="catalog-grid" id="catalogGrid">
+              <div class="loading-state">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Loading catalog...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="panel actions-panel">
+          <div class="panel-header">
+            <i class="fas fa-bolt"></i>
+            <h2>Quick Add</h2>
+          </div>
+          <div class="panel-content">
+            <button class="quick-action-btn" id="addTextButton" type="button">
+              <i class="fas fa-font"></i>
+              <span>Add Text</span>
+            </button>
+            <button class="quick-action-btn" id="uploadImageButton" type="button">
+              <i class="fas fa-upload"></i>
+              <span>Upload Image</span>
+            </button>
+            <input type="file" id="imageUploadInput" accept="image/*" hidden>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- Center Canvas Area -->
+      <main class="designer-canvas-area">
+
+        <!-- Canvas Controls -->
+        <div class="canvas-controls">
+          <div class="control-group">
+            <label for="canvasSizeSelect">Canvas Size:</label>
+            <select id="canvasSizeSelect" class="control-select">
+              <option value="3">3" × 3"</option>
+              <option value="4" selected>4" × 4"</option>
+              <option value="6">6" × 6"</option>
+              <option value="8">8" × 8"</option>
+              <option value="12">12" × 12"</option>
+              <option value="custom">Custom Size...</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <button class="icon-btn" id="zoomInButton" type="button" title="Zoom In">
+              <i class="fas fa-search-plus"></i>
+            </button>
+            <button class="icon-btn" id="zoomOutButton" type="button" title="Zoom Out">
+              <i class="fas fa-search-minus"></i>
+            </button>
+            <button class="icon-btn" id="zoomResetButton" type="button" title="Reset Zoom">
+              <i class="fas fa-expand"></i>
+            </button>
+          </div>
+
+          <div class="control-group">
+            <button class="icon-btn" id="undoButton" type="button" title="Undo">
+              <i class="fas fa-undo"></i>
+            </button>
+            <button class="icon-btn" id="redoButton" type="button" title="Redo">
+              <i class="fas fa-redo"></i>
+            </button>
+          </div>
+
+          <div class="control-group">
+            <button class="icon-btn danger" id="clearCanvasButton" type="button" title="Clear All">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Canvas Container -->
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="designCanvas"></canvas>
+        </div>
+
+        <!-- Canvas Info Bar -->
+        <div class="canvas-info-bar">
+          <div class="info-item">
+            <i class="fas fa-layer-group"></i>
+            <span id="layerCount">0 objects</span>
+          </div>
+          <div class="info-item">
+            <i class="fas fa-ruler"></i>
+            <span id="canvasDimensions">4" × 4"</span>
+          </div>
+          <div class="info-item">
+            <i class="fas fa-palette"></i>
+            <span id="vinylColorInfo">Select vinyl color</span>
+          </div>
+        </div>
+
+      </main>
+
+      <!-- Right Sidebar - Properties & Settings -->
+      <aside class="designer-sidebar right">
+
+        <!-- Object Properties (shown when object is selected) -->
+        <div class="panel properties-panel" id="propertiesPanel">
+          <div class="panel-header">
+            <i class="fas fa-sliders-h"></i>
+            <h2>Properties</h2>
+          </div>
+          <div class="panel-content" id="propertiesContent">
+            <p class="no-selection">Select an object to edit its properties</p>
+          </div>
+        </div>
+
+        <!-- Layers Panel -->
+        <div class="panel layers-panel">
+          <div class="panel-header">
+            <i class="fas fa-layer-group"></i>
+            <h2>Layers</h2>
+          </div>
+          <div class="panel-content">
+            <div class="layers-list" id="layersList">
+              <p class="empty-state">No layers yet. Add items to get started!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vinyl Color Selection -->
+        <div class="panel vinyl-panel">
+          <div class="panel-header">
+            <i class="fas fa-palette"></i>
+            <h2>Vinyl Color</h2>
+          </div>
+          <div class="panel-content">
+            <div class="palette-selector">
+              <select id="vinylPaletteSelect" class="control-select">
+                <option value="regular-vinyl">Regular Vinyl</option>
+                <option value="heat-transfer">Heat Transfer</option>
+              </select>
+            </div>
+            <div class="color-swatches" id="vinylColorSwatches">
+              <!-- Colors will be populated by JavaScript -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Templates -->
+        <div class="panel templates-panel">
+          <div class="panel-header">
+            <i class="fas fa-clone"></i>
+            <h2>Templates</h2>
+          </div>
+          <div class="panel-content">
+            <div class="template-grid" id="templateGrid">
+              <button class="template-card" data-template="single-centered">
+                <div class="template-preview">
+                  <div class="template-box centered"></div>
+                </div>
+                <span>Single Centered</span>
+              </button>
+              <button class="template-card" data-template="text-over-image">
+                <div class="template-preview">
+                  <div class="template-box image"></div>
+                  <div class="template-box text"></div>
+                </div>
+                <span>Text Over Image</span>
+              </button>
+              <button class="template-card" data-template="three-stacked">
+                <div class="template-preview">
+                  <div class="template-box small"></div>
+                  <div class="template-box small"></div>
+                  <div class="template-box small"></div>
+                </div>
+                <span>Three Stacked</span>
+              </button>
+              <button class="template-card" data-template="grid-four">
+                <div class="template-preview grid">
+                  <div class="template-box tiny"></div>
+                  <div class="template-box tiny"></div>
+                  <div class="template-box tiny"></div>
+                  <div class="template-box tiny"></div>
+                </div>
+                <span>Grid (2×2)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+
+  </div>
+
+  <!-- Text Editor Modal -->
+  <div class="modal" id="textEditorModal" hidden>
+    <div class="modal-backdrop" data-close="textEditor"></div>
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>Add Text</h3>
+        <button class="icon-btn" data-close="textEditor" type="button">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="textInput">Text Content</label>
+          <textarea id="textInput" rows="3" placeholder="Enter your text..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="fontFamilySelect">Font Family</label>
+          <select id="fontFamilySelect" class="control-select">
+            <!-- Font options will be populated by JavaScript -->
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="fontSizeInput">Font Size</label>
+            <input type="number" id="fontSizeInput" value="48" min="8" max="500">
+          </div>
+          <div class="form-group">
+            <label>Font Weight</label>
+            <select id="fontWeightSelect" class="control-select">
+              <option value="400">Regular</option>
+              <option value="600">Semi Bold</option>
+              <option value="700">Bold</option>
+              <option value="900">Black</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Text Style</label>
+          <div class="button-group">
+            <button type="button" class="toggle-btn" id="boldToggle" data-style="bold">
+              <i class="fas fa-bold"></i>
+            </button>
+            <button type="button" class="toggle-btn" id="italicToggle" data-style="italic">
+              <i class="fas fa-italic"></i>
+            </button>
+            <button type="button" class="toggle-btn" id="underlineToggle" data-style="underline">
+              <i class="fas fa-underline"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Text Alignment</label>
+          <div class="button-group">
+            <button type="button" class="toggle-btn active" id="alignLeft" data-align="left">
+              <i class="fas fa-align-left"></i>
+            </button>
+            <button type="button" class="toggle-btn" id="alignCenter" data-align="center">
+              <i class="fas fa-align-center"></i>
+            </button>
+            <button type="button" class="toggle-btn" id="alignRight" data-align="right">
+              <i class="fas fa-align-right"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn secondary" data-close="textEditor">Cancel</button>
+        <button type="button" class="btn primary" id="addTextConfirm">Add Text</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay" hidden>
+    <div class="loading-spinner">
+      <i class="fas fa-spinner fa-spin"></i>
+      <p>Loading...</p>
+    </div>
+  </div>
+
+  <footer class="modern-footer">
+    <div class="footer-container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3>Products</h3>
+          <ul>
+            <li><a href="./designer.html">Custom Designer</a></li>
+            <li><a href="./racing.html">Racing Decals</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Resources</h3>
+          <ul>
+            <li><a href="./price-list.html">Pricing</a></li>
+            <li><a href="./terms.html">Terms & Conditions</a></li>
+            <li><a href="./customer.html">My Account</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Contact</h3>
+          <ul>
+            <li><a href="tel:+12027408240">(202) 740-8240</a></li>
+            <li><a href="mailto:info@blueridgecustomco.com">info@blueridgecustomco.com</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2024 BlueRidgeCustomCo. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="./designer.js"></script>
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Price List (Internal)</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #111827;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      line-height: 1.3;
+    }
+    header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+    h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: 0.2px; }
+    .subtitle { color: var(--muted); font-size: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+    section { border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    section > h2 { font-size: 18px; margin: 0 0 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--border); text-align: right; padding: 8px 10px; font-variant-numeric: tabular-nums; }
+    th:first-child, td:first-child { text-align: left; }
+    thead th { color: var(--muted); font-weight: 600; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .list { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .item { display: flex; align-items: center; justify-content: space-between; border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; }
+    .item .label { font-weight: 600; }
+    .controls { display: flex; gap: 8px; align-items: center; }
+    .btn { appearance: none; border: 1px solid var(--border); background: #fff; color: var(--fg); padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+    .btn:hover { background: #f9fafb; }
+    .brand { font-weight: 700; letter-spacing: .2px; }
+    .watermark { position: fixed; right: 12px; bottom: 12px; color: var(--muted); font-size: 11px; }
+    @media print {
+      body { padding: 0.5in; }
+      header .controls { display: none; }
+      section { break-inside: avoid; }
+      .watermark { display: none; }
+    }
+  </style>
+  <script>
+    // Sticker price table (cents) – mirrors kiosk and rounds up to .00/.50 for display
+    const STICKER_PRICE_TABLE = {
+      2: { 1: 325, 2: 350, 3: 375 },
+      3: { 1: 350, 2: 375, 3: 400, 4: 425 },
+      4: { 1: 375, 2: 425, 3: 450, 4: 500 },
+      6: { 1: 425, 2: 500, 3: 575, 4: 700 },
+      8: { 1: 500, 2: 575, 3: 650, 4: 750 },
+      10: { 1: 575, 2: 650, 3: 750, 4: 850 },
+      12: { 1: 650, 2: 750, 3: 850, 4: 950 }
+    };
+
+    // Custom apparel pricing constants (match web/script.js)
+    const GARMENT_COST_CENTS = { tshirt: 350, hoodie: 1500, hat: 300, beanie: 375, headband: 200, accessory: 400, drinkware: 850 };
+    const VINYL_COST_PER_SQFT_DOLLARS = 4 / 1200; // $4 per 1200 sqft roll
+    const APPAREL_VINYL_USAGE_SQFT = { tshirt: 1, hoodie: 1.2, hat: 0.5, beanie: 0.45, headband: 0.25, accessory: 0.35, drinkware: 0.6 };
+    const LABOR_RATE_PER_HOUR = 50;
+    const LABOR_MINUTES_PER_ITEM = 10;
+    const LABOR_COST_PER_ITEM_CENTS = Math.round((LABOR_RATE_PER_HOUR / 60) * LABOR_MINUTES_PER_ITEM * 100);
+    const PROFIT_MARGIN = 0.3;
+    const COLOR_ADDON_CENTS = 100; // per extra color
+
+    // Pre-made apparel (fixed prices)
+    const PREMADE_APPAREL = [
+      { label: 'T-shirt', priceCents: 1500 },
+      { label: 'Hoodie', priceCents: 2000 },
+      { label: 'Hat', priceCents: 1000 }
+    ];
+
+    // Money formatting and rounding to .00/.50
+    const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+    function roundUpToQuarterDollar(cents) {
+      const value = Math.max(0, Math.round(Number(cents) || 0));
+      return Math.ceil(value / 25) * 25;
+    }
+    function formatUSD(cents) { return USD.format((Number(cents)||0)/100); }
+
+    function calculateApparelUnitPriceCents(productType, colorCount = 1) {
+      const type = String(productType || 'tshirt').toLowerCase();
+      const garmentCost = GARMENT_COST_CENTS[type] ?? 0;
+      const vinylUsage = APPAREL_VINYL_USAGE_SQFT[type] ?? 0;
+      const vinylCostCents = Math.round(vinylUsage * VINYL_COST_PER_SQFT_DOLLARS * 100);
+      const baseCostCents = garmentCost + vinylCostCents + LABOR_COST_PER_ITEM_CENTS;
+      const profitAdjustedCents = Math.round(baseCostCents * (1 + PROFIT_MARGIN));
+      const extraColors = Math.max(0, Number(colorCount || 1) - 1);
+      return roundUpToQuarterDollar(profitAdjustedCents + extraColors * COLOR_ADDON_CENTS);
+    }
+
+    function renderStickerTable() {
+      const container = document.getElementById('stickerTable');
+      const colors = [1,2,3,4];
+      const sizes = Object.keys(STICKER_PRICE_TABLE).map(Number).sort((a,b)=>a-b);
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const thr = document.createElement('tr');
+      const thSize = document.createElement('th'); thSize.textContent = 'Sticker Size'; thr.appendChild(thSize);
+      colors.forEach(c => { const th = document.createElement('th'); th.textContent = `${c} color${c===1?'':'s'}`; thr.appendChild(th); });
+      thead.appendChild(thr);
+      table.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      sizes.forEach(size => {
+        const row = document.createElement('tr');
+        const tdSize = document.createElement('td'); tdSize.textContent = `${size}\"`; row.appendChild(tdSize);
+        colors.forEach(c => {
+          const td = document.createElement('td');
+          const raw = STICKER_PRICE_TABLE[size]?.[c];
+          const rounded = Number.isFinite(raw) ? roundUpToQuarterDollar(raw) : null;
+          td.textContent = rounded != null ? formatUSD(rounded) : '—';
+          row.appendChild(td);
+        });
+        tbody.appendChild(row);
+      });
+      table.appendChild(tbody);
+      container.innerHTML = '';
+      container.appendChild(table);
+    }
+
+    function renderApparelList() {
+      const container = document.getElementById('apparelList');
+      const list = document.createElement('div');
+      list.className = 'list';
+      PREMADE_APPAREL.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'item';
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = item.label;
+        const price = document.createElement('div');
+        price.className = 'price';
+        price.textContent = formatUSD(roundUpToQuarterDollar(item.priceCents));
+        row.appendChild(label);
+        row.appendChild(price);
+        list.appendChild(row);
+      });
+      container.innerHTML = '';
+      container.appendChild(list);
+    }
+
+    function renderCustomApparelTable() {
+      const container = document.getElementById('customApparelTable');
+      if (!container) return;
+      const colors = [1,2,3,4];
+      const items = [
+        { key: 'tshirt', label: 'T-shirt' },
+        { key: 'hoodie', label: 'Hoodie' },
+        { key: 'hat', label: 'Hat' },
+        { key: 'beanie', label: 'Beanie' },
+        { key: 'headband', label: 'Headband' },
+        { key: 'accessory', label: 'Accessory' },
+        { key: 'drinkware', label: 'Drinkware' }
+      ];
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const thr = document.createElement('tr');
+      const thType = document.createElement('th'); thType.textContent = 'Style'; thr.appendChild(thType);
+      colors.forEach(c => { const th = document.createElement('th'); th.textContent = `${c} color${c===1?'':'s'}`; thr.appendChild(th); });
+      thead.appendChild(thr);
+      table.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      items.forEach(it => {
+        const tr = document.createElement('tr');
+        const tdLabel = document.createElement('td'); tdLabel.textContent = it.label; tr.appendChild(tdLabel);
+        colors.forEach(c => {
+          const price = calculateApparelUnitPriceCents(it.key, c);
+          const td = document.createElement('td'); td.textContent = formatUSD(price); tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      container.innerHTML = '';
+      container.appendChild(table);
+    }
+
+    function setGeneratedAt() {
+      const el = document.getElementById('generatedAt');
+      try {
+        el.textContent = new Date().toLocaleString();
+      } catch { el.textContent = ''; }
+    }
+
+    function init() {
+      renderStickerTable();
+      renderApparelList();
+      renderCustomApparelTable();
+      setGeneratedAt();
+      document.getElementById('printBtn')?.addEventListener('click', () => window.print());
+    }
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+  <!-- No nav import on purpose (internal page) -->
+  <!-- Do not add to navigation. -->
+  <meta name="description" content="Internal price list for stickers and apparel. Print-friendly for events." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Price List (Internal)" />
+  <meta property="og:description" content="Print-friendly prices for stickers and apparel." />
+  <meta property="og:image" content="./images/race-crew-shirt.jpg" />
+  <meta name="format-detection" content="telephone=no" />
+  <link rel="icon" href="data:," />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <style>
+    /* Optional: quick dark-on-white toggle if needed someday
+    .dark { --bg:#0b1220; --fg:#f9fafb; --muted:#9ca3af; --border:#1f2937; --accent:#f9fafb; }
+    */
+  </style>
+  <!--
+    How to use:
+    - Open this page directly (not linked in navigation)
+    - Click Print for a clean, large, menu-board friendly layout
+  -->
+</head>
+<body>
+  <header>
+    <div>
+      <div class="brand">Swayze's Custom Vinyl</div>
+      <h1>Price List</h1>
+      <div class="subtitle">Generated <span id="generatedAt"></span> · Internal / Events</div>
+    </div>
+    <div class="controls">
+      <button id="printBtn" class="btn" type="button">Print</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section>
+      <h2>Stickers · Unit Price</h2>
+      <div id="stickerTable" aria-live="polite"></div>
+      <p class="note">Prices are per sticker. Multi-color designs are priced by color count. Rounds up to .00, .25, .50, or .75. Bulk discounts apply at 10+ units.</p>
+    </section>
+    <section>
+      <h2>Pre-made Apparel</h2>
+      <div id="apparelList" aria-live="polite"></div>
+      <p class="note">Standard blanks with single-placement design. Rounds up to .00, .25, .50, or .75.</p>
+    </section>
+    <section>
+      <h2>Custom Apparel · Per Garment</h2>
+      <div id="customApparelTable" aria-live="polite"></div>
+      <p class="note">Prices include one placement. Each additional color adds $1.00. Rounds up to .00, .25, .50, or .75. Bulk discounts apply at 10+ units.</p>
+    </section>
+    <section>
+      <h2>Bulk Discounts</h2>
+      <div class="list">
+        <div class="item"><div class="label">10–20 items</div><div>10% off</div></div>
+        <div class="item"><div class="label">21–30 items</div><div>15% off</div></div>
+        <div class="item"><div class="label">30+ items</div><div>25% off</div></div>
+      </div>
+      <p class="note">Discount applied to unit price per line item and rounded to .00, .25, .50, or .75.</p>
+    </section>
+  </div>
+
+  <div class="watermark">For internal use and event display · Not listed in site navigation</div>
+</body>
+</html>

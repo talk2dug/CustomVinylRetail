@@ -1,178 +1,1656 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Custom Sticker Kiosk</title>
-    <link rel="stylesheet" href="./kiosk.css" />
-  </head>
-  <body>
-    <header class="kiosk-header">
-      <div class="brand">
-        <h1>Design Your Sticker</h1>
-        <p>Pick your size, add graphics and text, then send it to production.</p>
-      </div>
-      <div class="status" id="kioskStatus">Loading catalog…</div>
-    </header>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blue Ridge Custom Co - Display</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-    <div class="kiosk-layout">
-      <aside class="sidebar">
-        <section class="panel">
-          <h2>Sticker Setup</h2>
-          <div class="form-row">
-            <label for="widthInput">
-              Width (inches)
-              <input id="widthInput" type="number" min="2" max="36" step="0.5" value="8" />
-            </label>
-            <label for="heightInput">
-              Height (inches)
-              <input id="heightInput" type="number" min="2" max="36" step="0.5" value="4" />
-            </label>
-          </div>
-          <div class="form-row">
-            <label for="quantityInput">
-              Quantity
-              <input id="quantityInput" type="number" min="1" value="1" />
-            </label>
-            <label for="vinylColorInput">
-              Vinyl Color
-              <input id="vinylColorInput" type="color" value="#ffffff" />
-            </label>
-          </div>
-          <div class="form-row">
-            <label for="backgroundColorInput">
-              Background Color
-              <input id="backgroundColorInput" type="color" value="#f8fafc" />
-            </label>
-            <label class="checkbox">
-              <input id="transparentBackgroundToggle" type="checkbox" />
-              Transparent background
-            </label>
-          </div>
-          <div class="form-row" id="backgroundShapeRow">
-            <label for="backgroundShapeSelect">
-              Background Shape
-              <select id="backgroundShapeSelect">
-                <option value="rectangle">Rectangle</option>
-                <option value="rounded">Rounded rectangle</option>
-                <option value="ellipse">Ellipse</option>
-              </select>
-            </label>
-            <label id="backgroundRadiusLabel">
-              Corner radius (inches)
-              <input id="backgroundRadiusInput" type="number" min="0" step="0.25" value="0.5" />
-            </label>
-          </div>
-          <div class="pricing-summary">
-            <span class="label">Estimated total</span>
-            <span id="pricingTotal" class="value">$0.00</span>
-            <span id="pricingDetails" class="hint"></span>
-          </div>
-        </section>
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0a0a0a;
+            color: white;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            cursor: none;
+        }
 
-        <section class="panel">
-          <div class="panel-header">
-            <h2>Layers</h2>
-            <div class="layer-actions">
-              <button id="addTextLayerButton" class="ghost">Add Text</button>
-              <button id="clearDesignButton" class="ghost danger">Clear All</button>
-            </div>
-          </div>
-          <div id="layerList" class="layer-list empty">No layers yet. Add text or graphics.</div>
-        </section>
+        /* Connection Status */
+        #connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
 
-        <section class="panel">
-          <h2>Catalog Graphics</h2>
-          <div class="form-row">
-            <label>
-              Category
-              <select id="catalogCategorySelect"></select>
-            </label>
-          </div>
-          <div class="form-row">
-            <input
-              id="catalogSearchInput"
-              type="search"
-              placeholder="Search graphics…"
-              autocomplete="off"
-            />
-          </div>
-          <div id="catalogList" class="catalog-list empty">
-            Load the catalog to add graphics.
-          </div>
-        </section>
-      </aside>
+        #connection-status.connected {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+            border: 1px solid #22c55e;
+        }
 
-      <main class="workspace">
-        <div class="canvas-panel">
-          <div class="canvas-wrapper" id="canvasWrapper">
-            <canvas id="designCanvas" width="1920" height="1080"></canvas>
-          </div>
-          <div class="workspace-actions">
-            <button id="finishButton" class="primary">Finish &amp; Order</button>
-          </div>
+        #connection-status.disconnected {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid #ef4444;
+            opacity: 1;
+        }
+
+        #connection-status.connecting {
+            background: rgba(234, 179, 8, 0.2);
+            color: #eab308;
+            border: 1px solid #eab308;
+            opacity: 1;
+        }
+
+        /* Content Container */
+        #content {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Welcome Screen */
+        .welcome-screen {
+            text-align: center;
+            animation: fadeIn 1s ease;
+        }
+
+        .welcome-screen .logo {
+            font-size: 4rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .welcome-screen .tagline {
+            font-size: 1.5rem;
+            color: #888;
+            margin-bottom: 2rem;
+        }
+
+        .welcome-screen .services {
+            display: flex;
+            gap: 3rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .welcome-screen .service {
+            padding: 1.5rem 2rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .welcome-screen .service-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* QR Code Screen */
+        .qr-screen {
+            text-align: center;
+        }
+
+        .qr-screen h2 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .qr-screen .qr-code {
+            width: 300px;
+            height: 300px;
+            background: white;
+            padding: 20px;
+            border-radius: 20px;
+            margin: 0 auto 2rem;
+        }
+
+        .qr-screen .qr-code img {
+            width: 100%;
+            height: 100%;
+        }
+
+        .qr-screen .url {
+            font-size: 1.5rem;
+            color: #3b82f6;
+        }
+
+        /* Rally Team Screen */
+        .rally-screen {
+            text-align: center;
+            background: linear-gradient(135deg, #1e3a5f 0%, #0a1628 100%);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .rally-screen .car-number {
+            font-size: 12rem;
+            font-weight: 900;
+            color: #f59e0b;
+            text-shadow: 0 0 60px rgba(245, 158, 11, 0.5);
+            line-height: 1;
+        }
+
+        .rally-screen .team-name {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+
+        .rally-screen .series {
+            font-size: 1.5rem;
+            color: #888;
+            margin-top: 0.5rem;
+        }
+
+        /* Slideshow */
+        .slideshow {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .slideshow img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+
+        .slideshow img.active {
+            opacity: 1;
+        }
+
+        /* Now Printing */
+        .now-printing {
+            text-align: center;
+        }
+
+        .now-printing h2 {
+            font-size: 2rem;
+            color: #888;
+            margin-bottom: 1rem;
+        }
+
+        .now-printing .current-job {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 2rem;
+        }
+
+        .now-printing .preview {
+            max-width: 60%;
+            max-height: 60vh;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .now-printing .progress {
+            margin-top: 2rem;
+            width: 400px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .now-printing .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            animation: progress 3s ease infinite;
+        }
+
+        /* Social Screen */
+        .social-screen {
+            text-align: center;
+        }
+
+        .social-screen h2 {
+            font-size: 2.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .social-screen .handles {
+            display: flex;
+            gap: 4rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .social-screen .handle {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .social-screen .handle-icon {
+            font-size: 3rem;
+        }
+
+        .social-screen .handle-name {
+            font-size: 1.5rem;
+            color: #3b82f6;
+        }
+
+        /* Image Content */
+        .image-content {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .image-content img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        /* Video Content */
+        .video-content {
+            width: 100%;
+            height: 100%;
+        }
+
+        .video-content video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* Waiting Screen */
+        .waiting-screen {
+            text-align: center;
+            color: #444;
+        }
+
+        .waiting-screen .display-id {
+            font-size: 1.2rem;
+            font-family: monospace;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        /* Campaign Slideshow - Matches Shopify Showcase Style */
+        .campaign-showcase {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center top, rgba(139, 92, 246, 0.15) 0%, #0a0a0f 60%);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .showcase-brand {
+            position: absolute;
+            top: 2%;
+            right: 3%;
+            z-index: 20;
+            opacity: 0.7;
+        }
+
+        .showcase-brand span {
+            font-size: 1rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.5);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+        }
+
+        /* Artwork name badge */
+        .showcase-badge {
+            position: absolute;
+            top: 6%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            padding: 0.8rem 2rem;
+            border-radius: 50px;
+            z-index: 20;
+        }
+
+        .showcase-badge span {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: #fff;
+            letter-spacing: 0.05em;
+        }
+
+        /* Main artwork display - Large like Shopify */
+        .showcase-artwork {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3% 5% 0 5%;
+            max-height: 75%;
+        }
+
+        .showcase-artwork img {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            border-radius: 12px;
+            box-shadow:
+                0 0 80px rgba(139, 92, 246, 0.4),
+                0 0 160px rgba(59, 130, 246, 0.2),
+                0 30px 100px rgba(0, 0, 0, 0.7);
+            animation: campaignFloat 6s ease-in-out infinite;
+        }
+
+        @keyframes campaignFloat {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-8px) scale(1.01); }
+        }
+
+        /* Campaign title - Bottom info bar like Shopify */
+        .showcase-title {
+            padding: 2% 5% 3% 5%;
+            text-align: center;
+            background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
+        }
+
+        .showcase-title h1 {
+            font-size: clamp(1.5rem, 4vw, 3rem);
+            font-weight: 700;
+            margin: 0 0 0.5rem 0;
+            background: linear-gradient(135deg, #a78bfa 0%, #fff 50%, #818cf8 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: none;
+        }
+
+        .showcase-title .subtitle {
+            font-size: clamp(0.9rem, 1.5vw, 1.2rem);
+            color: rgba(255, 255, 255, 0.6);
+            margin: 0;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        /* Progress bar */
+        .showcase-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            z-index: 25;
+        }
+
+        .showcase-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #8b5cf6, #a78bfa, #c4b5fd);
+            width: 0%;
+            animation: progressFill 5s linear infinite;
+        }
+
+        @keyframes progressFill {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+
+        /* ============================================
+           Shopify Product Slideshow - Large Images
+           ============================================ */
+        .shopify-showcase {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center top, rgba(34, 197, 94, 0.15) 0%, #0a0a0f 60%);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .shopify-brand {
+            position: absolute;
+            top: 2%;
+            right: 3%;
+            z-index: 20;
+            opacity: 0.7;
+        }
+
+        .shopify-brand span {
+            font-size: 1rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.5);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+        }
+
+        .shopify-image-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3% 5% 0 5%;
+            max-height: 75%;
+        }
+
+        .shopify-image-container img {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            border-radius: 12px;
+            box-shadow:
+                0 0 80px rgba(34, 197, 94, 0.4),
+                0 0 160px rgba(34, 197, 94, 0.2),
+                0 30px 100px rgba(0, 0, 0, 0.7);
+            animation: shopifyFloat 6s ease-in-out infinite;
+        }
+
+        @keyframes shopifyFloat {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-8px) scale(1.01); }
+        }
+
+        .shopify-no-image {
+            font-size: 12rem;
+            color: #22c55e;
+            opacity: 0.5;
+        }
+
+        .shopify-info {
+            padding: 2% 5% 3% 5%;
+            text-align: center;
+            background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
+        }
+
+        .shopify-info h1 {
+            font-size: clamp(1.5rem, 4vw, 3rem);
+            font-weight: 700;
+            margin: 0 0 0.5rem 0;
+            background: linear-gradient(135deg, #22c55e 0%, #fff 50%, #22c55e 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: none;
+        }
+
+        .shopify-meta {
+            font-size: clamp(0.9rem, 1.5vw, 1.2rem);
+            color: rgba(255, 255, 255, 0.6);
+            margin: 0;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .shopify-showcase .showcase-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+
+        /* Brand watermark */
+        .showcase-brand {
+            position: absolute;
+            top: 6%;
+            right: 3%;
+            z-index: 20;
+            opacity: 0.7;
+        }
+
+        .showcase-brand span {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.5);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+        }
+
+        /* Slide transition */
+        .showcase-slide-enter {
+            animation: slideIn 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideIn {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .campaign-loading {
+            font-size: 1.5rem;
+            color: #666;
+            animation: pulse 1.5s infinite;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes progress {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        /* Service Slide Overlay (iframe) */
+        #service-slide-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+            background: #0a0a0a;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        #service-slide-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #service-slide-overlay iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* ============================================
+           Campaign Grid - 12 Random Images
+           ============================================ */
+        .campaign-grid {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #0a0a0f;
+            overflow: hidden;
+        }
+
+        .campaign-grid-brand {
+            position: absolute;
+            top: 1.5%;
+            right: 2%;
+            z-index: 20;
+            opacity: 0.8;
+        }
+
+        .campaign-grid-brand span {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.6);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+        }
+
+        .campaign-grid-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 12px;
+            padding: 12px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .campaign-grid-item {
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            animation: gridItemFadeIn 0.6s ease-out both;
+        }
+
+        .campaign-grid-item:nth-child(1) { animation-delay: 0.05s; }
+        .campaign-grid-item:nth-child(2) { animation-delay: 0.1s; }
+        .campaign-grid-item:nth-child(3) { animation-delay: 0.15s; }
+        .campaign-grid-item:nth-child(4) { animation-delay: 0.2s; }
+        .campaign-grid-item:nth-child(5) { animation-delay: 0.25s; }
+        .campaign-grid-item:nth-child(6) { animation-delay: 0.3s; }
+        .campaign-grid-item:nth-child(7) { animation-delay: 0.35s; }
+        .campaign-grid-item:nth-child(8) { animation-delay: 0.4s; }
+        .campaign-grid-item:nth-child(9) { animation-delay: 0.45s; }
+        .campaign-grid-item:nth-child(10) { animation-delay: 0.5s; }
+        .campaign-grid-item:nth-child(11) { animation-delay: 0.55s; }
+        .campaign-grid-item:nth-child(12) { animation-delay: 0.6s; }
+
+        @keyframes gridItemFadeIn {
+            0% { opacity: 0; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .campaign-grid-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 8s ease-out;
+        }
+
+        .campaign-grid-item:hover img {
+            transform: scale(1.05);
+        }
+
+        .campaign-grid-item .grid-item-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 8px 10px;
+            background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .campaign-grid-item:hover .grid-item-overlay {
+            opacity: 1;
+        }
+
+        .campaign-grid-item .grid-item-name {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .campaign-grid-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            z-index: 25;
+        }
+
+        .campaign-grid-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #8b5cf6, #a78bfa, #c4b5fd);
+            width: 0%;
+        }
+
+        /* Transition between grid batches */
+        .campaign-grid-container.fade-out {
+            animation: gridFadeOut 0.4s ease-out forwards;
+        }
+
+        @keyframes gridFadeOut {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="connection-status" class="connecting">Connecting...</div>
+    <div id="content">
+        <div class="waiting-screen">
+            <p>Waiting for connection...</p>
+            <div class="display-id" id="display-id"></div>
         </div>
-
-        <section class="panel inspector" id="layerInspector">
-          <h2>Layer Settings</h2>
-          <p class="placeholder">Select a layer to edit controls.</p>
-        </section>
-      </main>
     </div>
+    <!-- Service Slide Overlay - shows rotating service slides -->
+    <div id="service-slide-overlay"></div>
 
-    <div id="orderDialog" class="modal hidden" role="dialog" aria-modal="true">
-      <div class="modal-content">
-        <button id="closeOrderDialog" class="close-button" aria-label="Close">&times;</button>
-        <h2>Send to Production</h2>
-        <p class="hint">
-          Enter your contact details so we can reach you when the sticker is ready. Payment will be
-          collected by the booth attendant.
-        </p>
-        <form id="orderForm">
-          <label>
-            Full name
-            <input name="name" type="text" required />
-          </label>
-          <label>
-            Mobile number
-            <input name="phone" type="tel" required />
-          </label>
-          <label>
-            Email address
-            <input name="email" type="email" required />
-          </label>
-          <label>
-            Notes for the team (optional)
-            <textarea name="notes" rows="3" placeholder="Anything we should know?"></textarea>
-          </label>
-          <div class="modal-actions">
-            <button type="button" id="cancelOrderButton" class="ghost">Cancel</button>
-            <button type="submit" class="primary">Submit Order</button>
-          </div>
-        </form>
-        <div id="orderStatus" class="status-bar muted">Awaiting submission.</div>
-      </div>
-    </div>
+    <script>
+        // Extract API key from URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const API_KEY = urlParams.get('key') || '';
 
-    <template id="layerTemplate">
-      <article class="layer-card">
-        <div class="layer-card-header">
-          <span class="layer-title"></span>
-          <div class="layer-buttons">
-            <button class="ghost" data-action="duplicate">Duplicate</button>
-            <button class="ghost danger" data-action="delete">Remove</button>
-          </div>
-        </div>
-      </article>
-    </template>
+        class KioskClient {
+            constructor() {
+                this.displayId = null;
+                this.ws = null;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 100;
+                this.reconnectDelay = 3000;
+                this.currentContent = null;
+                this.slideshowInterval = null;
 
-    <template id="catalogItemTemplate">
-      <button class="catalog-item">
-        <img alt="" loading="lazy" />
-        <span class="name"></span>
-      </button>
-    </template>
+                this.connect();
+            }
 
-    <script src="./kiosk.js" type="module"></script>
-  </body>
+            connect() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                // Include API key in WebSocket URL for authentication
+                const wsUrl = `${protocol}//${window.location.host}/kiosk-ws?key=${encodeURIComponent(API_KEY)}`;
+
+                this.updateStatus('connecting');
+                console.log('Connecting to:', wsUrl.replace(API_KEY, '***'));
+
+                this.ws = new WebSocket(wsUrl);
+
+                this.ws.onopen = () => {
+                    console.log('Connected to kiosk server');
+                    this.reconnectAttempts = 0;
+                    this.updateStatus('connected');
+                };
+
+                this.ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.handleMessage(data);
+                    } catch (e) {
+                        console.error('Invalid message:', e);
+                    }
+                };
+
+                this.ws.onclose = () => {
+                    console.log('Disconnected from server');
+                    this.updateStatus('disconnected');
+                    this.scheduleReconnect();
+                };
+
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
+            }
+
+            scheduleReconnect() {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`Reconnecting in ${this.reconnectDelay/1000}s (attempt ${this.reconnectAttempts})`);
+                    setTimeout(() => this.connect(), this.reconnectDelay);
+                }
+            }
+
+            updateStatus(status) {
+                const el = document.getElementById('connection-status');
+                el.className = status;
+                el.textContent = status === 'connected' ? 'Connected' : 
+                                 status === 'connecting' ? 'Connecting...' : 'Disconnected';
+                
+                // Hide status after 3s if connected
+                if (status === 'connected') {
+                    setTimeout(() => el.style.opacity = '0', 3000);
+                }
+            }
+
+            handleMessage(data) {
+                console.log('Received:', data.type);
+
+                switch (data.type) {
+                    case 'registered':
+                        this.displayId = data.displayId;
+                        const displayIdEl = document.getElementById('display-id');
+                        if (displayIdEl) {
+                            displayIdEl.textContent = data.displayId;
+                        }
+                        // Request saved content state
+                        this.sendStatus();
+                        break;
+
+                    case 'show-content':
+                        this.showContent(data.content);
+                        break;
+
+                    case 'show-service-slide':
+                        this.showServiceSlide(data.slide, data.duration);
+                        break;
+
+                    case 'hide-service-slide':
+                        this.hideServiceSlide();
+                        break;
+
+                    case 'ping':
+                        this.ws.send(JSON.stringify({ type: 'pong' }));
+                        break;
+                }
+            }
+
+            sendStatus() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'status',
+                        content: this.currentContent
+                    }));
+                }
+            }
+
+            showContent(content) {
+                console.log('[Kiosk] showContent called:', content?.type, content?.id);
+                this.currentContent = content;
+                const container = document.getElementById('content');
+
+                // Clear any running slideshow or grid
+                if (this.slideshowInterval) {
+                    clearTimeout(this.slideshowInterval);
+                    clearInterval(this.slideshowInterval);
+                    this.slideshowInterval = null;
+                }
+                if (this.gridRotationTimeout) {
+                    clearTimeout(this.gridRotationTimeout);
+                    this.gridRotationTimeout = null;
+                }
+
+                // Handle content by type or id
+                if (content.type === 'promotion' || content.id?.startsWith('promo-')) {
+                    // Single promotion display
+                    container.innerHTML = this.renderPromotion(content.promotion || content);
+                } else if (content.type === 'campaign' || content.id?.startsWith('campaign-')) {
+                    // Single campaign display
+                    container.innerHTML = this.renderCampaign(content.campaign || content);
+                    // Start artwork rotation within this campaign
+                    this.startArtworkSlideshow(container);
+                } else if (content.type === 'campaigns' || content.id === 'campaigns') {
+                    // Campaigns slideshow - fetch and rotate through all campaigns
+                    this.startCampaignsSlideshow(container);
+                } else if (content.type === 'campaign-grid' || content.id === 'campaign-grid') {
+                    // Campaign grid - 12 random images in a grid
+                    this.startCampaignGrid(container);
+                } else if (content.type === 'shopify-slideshow' || content.id?.startsWith('shopify-slideshow-')) {
+                    // Shopify product slideshow
+                    this.startShopifySlideshow(container, content.slideshow || content);
+                } else {
+                    switch (content.id) {
+                        case 'welcome':
+                            container.innerHTML = this.renderWelcome();
+                            break;
+                        case 'qr-shop':
+                            container.innerHTML = this.renderQRShop();
+                            break;
+                        case 'rally':
+                            container.innerHTML = this.renderRally();
+                            break;
+                        case 'products':
+                            container.innerHTML = this.renderSlideshow(content.images || []);
+                            this.startSlideshow();
+                            break;
+                        case 'now-printing':
+                            container.innerHTML = this.renderNowPrinting(content);
+                            break;
+                        case 'social':
+                            container.innerHTML = this.renderSocial();
+                            break;
+                        case 'image':
+                            container.innerHTML = this.renderImage(content.url);
+                            break;
+                        case 'video':
+                            container.innerHTML = this.renderVideo(content.url);
+                            break;
+                        default:
+                            container.innerHTML = this.renderWelcome();
+                    }
+                }
+
+                this.sendStatus();
+            }
+
+            renderWelcome() {
+                return `
+                    <div class="welcome-screen">
+                        <div class="logo">Blue Ridge Custom Co</div>
+                        <div class="tagline">Custom Stickers • Metal Prints • Apparel</div>
+                        <div class="services">
+                            <div class="service">
+                                <div class="service-icon">🎨</div>
+                                <div>Vinyl Stickers</div>
+                            </div>
+                            <div class="service">
+                                <div class="service-icon">🖼️</div>
+                                <div>Metal Prints</div>
+                            </div>
+                            <div class="service">
+                                <div class="service-icon">👕</div>
+                                <div>Custom Apparel</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderQRShop() {
+                return `
+                    <div class="qr-screen">
+                        <h2>Shop Online!</h2>
+                        <div class="qr-code">
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=https://blueridgecustom.co" alt="QR Code">
+                        </div>
+                        <div class="url">blueridgecustom.co</div>
+                    </div>
+                `;
+            }
+
+            renderRally() {
+                return `
+                    <div class="rally-screen">
+                        <div class="car-number">656</div>
+                        <div class="team-name">SWAYZE RALLY TEAM</div>
+                        <div class="series">American Rally Association</div>
+                    </div>
+                `;
+            }
+
+            renderSlideshow(images) {
+                if (!images.length) {
+                    images = ['/ProductImages/sample1.jpg', '/ProductImages/sample2.jpg'];
+                }
+                return `
+                    <div class="slideshow">
+                        ${images.map((img, i) => `
+                            <img src="${img}" class="${i === 0 ? 'active' : ''}" data-index="${i}">
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            startSlideshow() {
+                let currentIndex = 0;
+                const images = document.querySelectorAll('.slideshow img');
+                if (images.length <= 1) return;
+
+                this.slideshowInterval = setInterval(() => {
+                    images[currentIndex].classList.remove('active');
+                    currentIndex = (currentIndex + 1) % images.length;
+                    images[currentIndex].classList.add('active');
+                }, 5000);
+            }
+
+            renderNowPrinting(content) {
+                return `
+                    <div class="now-printing">
+                        <h2>NOW PRINTING</h2>
+                        <div class="current-job">${content.jobName || 'Custom Order'}</div>
+                        ${content.preview ? `<img class="preview" src="${content.preview}">` : ''}
+                        <div class="progress">
+                            <div class="progress-bar"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderSocial() {
+                return `
+                    <div class="social-screen">
+                        <h2>Follow Us!</h2>
+                        <div class="handles">
+                            <div class="handle">
+                                <div class="handle-icon">📘</div>
+                                <div class="handle-name">@BlueRidgeCustomCo</div>
+                            </div>
+                            <div class="handle">
+                                <div class="handle-icon">📸</div>
+                                <div class="handle-name">@blueridgecustom</div>
+                            </div>
+                            <div class="handle">
+                                <div class="handle-icon">🎵</div>
+                                <div class="handle-name">@blueridgecustom</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderImage(url) {
+                return `
+                    <div class="image-content">
+                        <img src="${url}" alt="Display content">
+                    </div>
+                `;
+            }
+
+            renderVideo(url) {
+                return `
+                    <div class="video-content">
+                        <video src="${url}" autoplay loop muted></video>
+                    </div>
+                `;
+            }
+
+            // Render modern campaign showcase with artwork slideshow
+            renderCampaign(campaign) {
+                if (!campaign) {
+                    return this.renderWelcome();
+                }
+
+                const title = campaign.title || 'Campaign';
+                const items = campaign.items || [];
+
+                // Get ALL artwork items with images (no limit)
+                const artworks = items.filter(item => item.image);
+                if (artworks.length === 0) {
+                    return this.renderWelcome();
+                }
+
+                // Store for slideshow
+                this.currentCampaign = campaign;
+                this.artworks = artworks;
+                this.artworkIndex = 0;
+
+                return this.renderShowcase(campaign, artworks, 0);
+            }
+
+            // Render the showcase HTML
+            renderShowcase(campaign, artworks, index) {
+                const currentArt = artworks[index];
+                const title = campaign.title || 'Collection';
+                const artName = currentArt.name || 'Artwork';
+
+                return `
+                    <div class="campaign-showcase">
+                        <div class="showcase-brand">
+                            <span>Blue Ridge Custom Co</span>
+                        </div>
+
+                        <div class="showcase-artwork showcase-slide-enter">
+                            <img src="${currentArt.image}" alt="${this.escapeHtml(artName)}">
+                        </div>
+
+                        <div class="showcase-title">
+                            <h1>${this.escapeHtml(artName)}</h1>
+                            <p class="subtitle">${this.escapeHtml(title)} - ${index + 1} of ${artworks.length}</p>
+                        </div>
+
+                        <div class="showcase-progress">
+                            <div class="showcase-progress-bar"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Start artwork slideshow within a campaign (with periodic grid views)
+            async startArtworkSlideshow(container) {
+                if (!this.artworks || this.artworks.length <= 1) return;
+
+                // Use ONLY the current campaign's images for the grid
+                this.gridAllArtwork = this.artworks.map(art => ({
+                    image: art.image,
+                    name: art.name,
+                    campaignTitle: this.currentCampaign?.title || 'Custom Designs'
+                }));
+                console.log(`[Kiosk] Loaded ${this.gridAllArtwork.length} images for grid from current campaign: ${this.currentCampaign?.title || 'Unknown'}`);
+
+                // Create a shuffled order for the slideshow (no repeats until all shown)
+                this.shuffledArtworkOrder = [...Array(this.artworks.length).keys()]; // [0, 1, 2, ...]
+                this.shuffleArray(this.shuffledArtworkOrder);
+                this.shuffledIndex = 0;
+                console.log(`[Kiosk] Shuffled order for ${this.artworks.length} images`);
+
+                this.artworkLoopCount = 0;
+                this.showingGrid = false;
+                this.gridDuration = 10000; // 10 seconds for grid
+
+                const advanceSlideshow = () => {
+                    if (this.showingGrid) {
+                        // Grid was showing, go back to regular artwork
+                        this.showingGrid = false;
+                        const realIndex = this.shuffledArtworkOrder[this.shuffledIndex];
+                        container.innerHTML = this.renderShowcase(this.currentCampaign, this.artworks, realIndex);
+                        this.slideshowInterval = setTimeout(advanceSlideshow, 5000);
+                    } else {
+                        // Move to next shuffled position
+                        this.shuffledIndex = (this.shuffledIndex + 1) % this.shuffledArtworkOrder.length;
+
+                        // Show grid every full loop through artwork (if we have 4+ images)
+                        if (this.shuffledIndex === 0 && this.gridAllArtwork.length >= 4) {
+                            this.artworkLoopCount++;
+                            // Re-shuffle for the next loop
+                            this.shuffleArray(this.shuffledArtworkOrder);
+                            console.log(`[Kiosk] Completed loop ${this.artworkLoopCount}, re-shuffled order`);
+
+                            // Get fresh random batch for grid each time
+                            console.log(`[Kiosk] Showing campaign grid (loop ${this.artworkLoopCount}) - picking 12 random from ${this.gridAllArtwork.length} images`);
+                            this.showingGrid = true;
+                            this.gridCurrentBatch = this.getRandomGridBatch(12);
+                            console.log(`[Kiosk] Grid batch:`, this.gridCurrentBatch.map(a => a.name).join(', '));
+                            this.renderCampaignGrid(container);
+                            this.slideshowInterval = setTimeout(advanceSlideshow, this.gridDuration);
+                        } else {
+                            const realIndex = this.shuffledArtworkOrder[this.shuffledIndex];
+                            container.innerHTML = this.renderShowcase(this.currentCampaign, this.artworks, realIndex);
+                            this.slideshowInterval = setTimeout(advanceSlideshow, 5000);
+                        }
+                    }
+                };
+
+                // Start the slideshow
+                this.slideshowInterval = setTimeout(advanceSlideshow, 5000);
+            }
+
+            // Start campaigns slideshow - rotates through all campaigns, artwork, AND promotions
+            async startCampaignsSlideshow(container) {
+                console.log('[Kiosk] Starting campaigns slideshow...');
+                container.innerHTML = '<div class="campaign-loading">Loading artwork...</div>';
+
+                try {
+                    // Fetch campaigns and promotions in parallel
+                    const [campaignsRes, promosRes] = await Promise.all([
+                        fetch(`/api/kiosk/campaigns?key=${encodeURIComponent(API_KEY)}`),
+                        fetch(`/api/kiosk/promotions?key=${encodeURIComponent(API_KEY)}`)
+                    ]);
+
+                    const campaignsData = await campaignsRes.json();
+                    const promosData = await promosRes.json();
+
+                    // Collect ALL content for the slideshow
+                    this.slideshowItems = [];
+
+                    // Add artwork from campaigns
+                    if (campaignsData.campaigns) {
+                        campaignsData.campaigns.forEach(campaign => {
+                            const items = (campaign.items || []).filter(item => item.image);
+                            items.forEach(item => {
+                                this.slideshowItems.push({
+                                    type: 'artwork',
+                                    image: item.image,
+                                    name: item.name,
+                                    campaignTitle: campaign.title,
+                                    duration: 5000
+                                });
+                            });
+                        });
+                    }
+
+                    // Add active promotions (with showInSlideshow enabled)
+                    if (promosData.promotions) {
+                        const now = Date.now();
+                        promosData.promotions.forEach(promo => {
+                            // Check if promotion should be shown
+                            if (!promo.enabled) return;
+                            if (!promo.showInSlideshow) return;
+                            if (promo.expiresAt && now > promo.expiresAt) return;
+                            if (promo.startsAt && now < promo.startsAt) return;
+
+                            // Add promotion to slideshow (higher priority = more occurrences)
+                            const occurrences = Math.min(promo.priority || 1, 5); // Max 5 occurrences
+                            for (let i = 0; i < occurrences; i++) {
+                                this.slideshowItems.push({
+                                    type: 'promotion',
+                                    promotion: promo,
+                                    duration: (promo.duration || 8) * 1000
+                                });
+                            }
+                        });
+                    }
+
+                    // Collect all artwork for grid display and add grid items to rotation
+                    this.gridAllArtwork = [];
+                    if (campaignsData.campaigns) {
+                        campaignsData.campaigns.forEach(campaign => {
+                            const items = (campaign.items || []).filter(item => item.image);
+                            items.forEach(item => {
+                                this.gridAllArtwork.push({
+                                    image: item.image,
+                                    name: item.name,
+                                    campaignTitle: campaign.title
+                                });
+                            });
+                        });
+                    }
+
+                    // Add grid views to slideshow - show grid every 8-10 single items
+                    if (this.gridAllArtwork.length >= 4) {
+                        // Add at least 1 grid, or 1 per 8 items
+                        const gridCount = Math.max(1, Math.floor(this.slideshowItems.length / 8));
+                        console.log(`[Kiosk] Adding ${gridCount} grid views to slideshow (${this.slideshowItems.length} items, ${this.gridAllArtwork.length} artwork)`);
+                        for (let i = 0; i < gridCount; i++) {
+                            this.slideshowItems.push({
+                                type: 'grid',
+                                duration: 10000 // 10 seconds for grid display
+                            });
+                        }
+                    } else {
+                        console.log(`[Kiosk] Not enough artwork for grid: ${this.gridAllArtwork.length}`);
+                    }
+
+                    if (this.slideshowItems.length === 0) {
+                        container.innerHTML = this.renderWelcome();
+                        return;
+                    }
+
+                    // Log what we have before shuffle
+                    const gridItems = this.slideshowItems.filter(i => i.type === 'grid').length;
+                    const artworkItems = this.slideshowItems.filter(i => i.type === 'artwork').length;
+                    const promoItems = this.slideshowItems.filter(i => i.type === 'promotion').length;
+                    console.log(`[Kiosk] Slideshow ready: ${artworkItems} artwork, ${promoItems} promos, ${gridItems} grids = ${this.slideshowItems.length} total`);
+
+                    // Shuffle for variety
+                    this.shuffleArray(this.slideshowItems);
+                    this.slideshowIndex = 0;
+
+                    // Render first item
+                    this.renderSlideshowItem(container);
+
+                    // Start the rotation with variable duration
+                    this.scheduleSlideshowNext(container);
+
+                } catch (e) {
+                    console.error('Failed to load slideshow content:', e);
+                    container.innerHTML = this.renderWelcome();
+                }
+            }
+
+            // Schedule the next slideshow item
+            scheduleSlideshowNext(container) {
+                const currentItem = this.slideshowItems[this.slideshowIndex];
+                const duration = currentItem?.duration || 5000;
+
+                this.slideshowInterval = setTimeout(() => {
+                    this.slideshowIndex = (this.slideshowIndex + 1) % this.slideshowItems.length;
+                    this.renderSlideshowItem(container);
+                    this.scheduleSlideshowNext(container);
+                }, duration);
+            }
+
+            // Render current slideshow item (artwork, promotion, or grid)
+            renderSlideshowItem(container) {
+                const item = this.slideshowItems[this.slideshowIndex];
+                const total = this.slideshowItems.length;
+                const current = this.slideshowIndex + 1;
+
+                console.log(`[Kiosk] Rendering item ${current}/${total}: type=${item.type}`);
+
+                if (item.type === 'promotion') {
+                    // Render promotion
+                    container.innerHTML = this.renderPromotion(item.promotion);
+                    // Update progress bar duration
+                    const progressBar = container.querySelector('.showcase-progress-bar');
+                    if (progressBar) {
+                        progressBar.style.animation = `progressFill ${item.duration / 1000}s linear`;
+                    }
+                } else if (item.type === 'grid') {
+                    // Render 12-image grid with random artwork
+                    console.log(`[Kiosk] Rendering GRID with ${this.gridAllArtwork.length} available images`);
+                    this.gridDuration = item.duration || 10000;
+                    this.gridCurrentBatch = this.getRandomGridBatch(12);
+                    console.log(`[Kiosk] Grid batch has ${this.gridCurrentBatch.length} images`);
+                    this.renderCampaignGrid(container);
+                } else {
+                    // Render artwork
+                    container.innerHTML = this.renderGlobalShowcaseItem(item, current, total);
+                }
+            }
+
+            // Render a single artwork item in the global showcase style
+            renderGlobalShowcaseItem(art, current, total) {
+                return `
+                    <div class="campaign-showcase">
+                        <div class="showcase-brand">
+                            <span>Blue Ridge Custom Co</span>
+                        </div>
+
+                        <div class="showcase-artwork showcase-slide-enter">
+                            <img src="${art.image}" alt="${this.escapeHtml(art.name || '')}">
+                        </div>
+
+                        <div class="showcase-title">
+                            <h1>${this.escapeHtml(art.name || 'Artwork')}</h1>
+                            <p class="subtitle">${this.escapeHtml(art.campaignTitle || 'Custom Designs')} - ${current} of ${total}</p>
+                        </div>
+
+                        <div class="showcase-progress">
+                            <div class="showcase-progress-bar"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Render global showcase (all artwork from all campaigns)
+            renderGlobalShowcase(container) {
+                const art = this.allArtwork[this.globalArtIndex];
+                const total = this.allArtwork.length;
+                const current = this.globalArtIndex + 1;
+
+                container.innerHTML = `
+                    <div class="campaign-showcase">
+                        <div class="showcase-brand">
+                            <span>Blue Ridge Custom Co</span>
+                        </div>
+
+                        <div class="showcase-artwork showcase-slide-enter">
+                            <img src="${art.image}" alt="${this.escapeHtml(art.name || '')}">
+                        </div>
+
+                        <div class="showcase-title">
+                            <h1>${this.escapeHtml(art.name || 'Artwork')}</h1>
+                            <p class="subtitle">${this.escapeHtml(art.campaignTitle || 'Custom Designs')} - ${current} of ${total}</p>
+                        </div>
+
+                        <div class="showcase-progress">
+                            <div class="showcase-progress-bar"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Fisher-Yates shuffle
+            shuffleArray(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+            }
+
+            // ==================== CAMPAIGN GRID SLIDESHOW ====================
+            // Shows 12 random images in a grid, preloads next batch before current ends
+
+            async startCampaignGrid(container) {
+                container.innerHTML = '<div class="campaign-loading">Loading artwork...</div>';
+
+                try {
+                    // Fetch all campaigns
+                    const response = await fetch(`/api/kiosk/campaigns?key=${encodeURIComponent(API_KEY)}`);
+                    const data = await response.json();
+
+                    // Collect all artwork images
+                    this.gridAllArtwork = [];
+                    if (data.campaigns) {
+                        data.campaigns.forEach(campaign => {
+                            const items = (campaign.items || []).filter(item => item.image);
+                            items.forEach(item => {
+                                this.gridAllArtwork.push({
+                                    image: item.image,
+                                    name: item.name,
+                                    campaignTitle: campaign.title
+                                });
+                            });
+                        });
+                    }
+
+                    if (this.gridAllArtwork.length === 0) {
+                        container.innerHTML = this.renderWelcome();
+                        return;
+                    }
+
+                    // Initialize grid state
+                    this.gridCurrentBatch = [];
+                    this.gridNextBatch = [];
+                    this.gridDuration = 10000; // 10 seconds per grid
+                    this.gridPreloadTime = 3000; // Preload 3 seconds before end
+
+                    // Get first batch and render
+                    this.gridCurrentBatch = this.getRandomGridBatch(12);
+                    this.renderCampaignGrid(container);
+
+                    // Start the grid rotation
+                    this.scheduleGridRotation(container);
+
+                } catch (e) {
+                    console.error('Failed to load campaign grid:', e);
+                    container.innerHTML = this.renderWelcome();
+                }
+            }
+
+            // Get random batch of images for grid
+            getRandomGridBatch(count) {
+                const shuffled = [...this.gridAllArtwork];
+                this.shuffleArray(shuffled);
+                return shuffled.slice(0, Math.min(count, shuffled.length));
+            }
+
+            // Render the 12-image grid
+            renderCampaignGrid(container) {
+                const items = this.gridCurrentBatch.map(art => `
+                    <div class="campaign-grid-item">
+                        <img src="${art.image}" alt="${this.escapeHtml(art.name || '')}">
+                        <div class="grid-item-overlay">
+                            <div class="grid-item-name">${this.escapeHtml(art.name || 'Artwork')}</div>
+                        </div>
+                    </div>
+                `).join('');
+
+                container.innerHTML = `
+                    <div class="campaign-grid">
+                        <div class="campaign-grid-brand">
+                            <span>Blue Ridge Custom Co</span>
+                        </div>
+                        <div class="campaign-grid-container">
+                            ${items}
+                        </div>
+                        <div class="campaign-grid-progress">
+                            <div class="campaign-grid-progress-bar" style="animation: progressFill ${this.gridDuration / 1000}s linear;"></div>
+                        </div>
+                    </div>
+                `;
+
+                // Preload images for next batch
+                this.preloadNextGridBatch();
+            }
+
+            // Preload next batch of images
+            preloadNextGridBatch() {
+                this.gridNextBatch = this.getRandomGridBatch(12);
+
+                // Preload images in background
+                this.gridNextBatch.forEach(art => {
+                    const img = new Image();
+                    img.src = art.image;
+                });
+            }
+
+            // Schedule the next grid transition
+            scheduleGridRotation(container) {
+                // Clear any existing timeout
+                if (this.gridRotationTimeout) {
+                    clearTimeout(this.gridRotationTimeout);
+                }
+
+                this.gridRotationTimeout = setTimeout(() => {
+                    // Fade out current grid
+                    const gridContainer = container.querySelector('.campaign-grid-container');
+                    if (gridContainer) {
+                        gridContainer.classList.add('fade-out');
+                    }
+
+                    // After fade out, swap batches and render new grid
+                    setTimeout(() => {
+                        this.gridCurrentBatch = this.gridNextBatch.length > 0 ? this.gridNextBatch : this.getRandomGridBatch(12);
+                        this.renderCampaignGrid(container);
+                        this.scheduleGridRotation(container);
+                    }, 400); // Match fade-out animation duration
+
+                }, this.gridDuration);
+            }
+
+            // Stop grid rotation
+            stopCampaignGrid() {
+                if (this.gridRotationTimeout) {
+                    clearTimeout(this.gridRotationTimeout);
+                    this.gridRotationTimeout = null;
+                }
+            }
+
+            // Render a single promotion
+            renderPromotion(promo) {
+                if (!promo) return this.renderWelcome();
+
+                const typeColors = {
+                    sale: { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', text: '#ef4444' },
+                    special: { bg: 'rgba(234, 179, 8, 0.15)', border: '#eab308', text: '#eab308' },
+                    announcement: { bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6', text: '#3b82f6' }
+                };
+                const colors = typeColors[promo.type] || typeColors.announcement;
+
+                return `
+                    <div class="campaign-showcase" style="background: radial-gradient(ellipse at center, ${colors.bg} 0%, #0a0a0f 100%);">
+                        <div class="showcase-brand">
+                            <span>Blue Ridge Custom Co</span>
+                        </div>
+
+                        <div class="showcase-badge" style="border-color: ${colors.border};">
+                            <span style="color: ${colors.text}; text-transform: uppercase; font-weight: 700;">
+                                ${promo.type === 'sale' ? '🏷️ ' : promo.type === 'special' ? '⭐ ' : '📢 '}${promo.type}
+                            </span>
+                        </div>
+
+                        ${promo.imageUrl ? `
+                            <div class="showcase-artwork showcase-slide-enter">
+                                <img src="${promo.imageUrl}" alt="${this.escapeHtml(promo.title)}" style="border-color: ${colors.border};">
+                            </div>
+                        ` : `
+                            <div class="showcase-artwork" style="font-size: 8rem;">
+                                ${promo.type === 'sale' ? '🏷️' : promo.type === 'special' ? '⭐' : '📢'}
+                            </div>
+                        `}
+
+                        <div class="showcase-title">
+                            <h1 style="background: linear-gradient(135deg, ${colors.text} 0%, #fff 50%, ${colors.text} 100%); -webkit-background-clip: text; background-clip: text;">
+                                ${this.escapeHtml(promo.title)}
+                            </h1>
+                            ${promo.description ? `<p class="subtitle">${this.escapeHtml(promo.description)}</p>` : ''}
+                        </div>
+
+                        <div class="showcase-progress">
+                            <div class="showcase-progress-bar" style="background: linear-gradient(90deg, ${colors.border}, ${colors.text});"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Helper to escape HTML
+            escapeHtml(str) {
+                if (!str) return '';
+                return str.replace(/&/g, '&amp;')
+                          .replace(/</g, '&lt;')
+                          .replace(/>/g, '&gt;')
+                          .replace(/"/g, '&quot;');
+            }
+
+            // Start Shopify product slideshow
+            startShopifySlideshow(container, slideshow) {
+                if (!slideshow || !slideshow.products || slideshow.products.length === 0) {
+                    container.innerHTML = this.renderWelcome();
+                    return;
+                }
+
+                this.shopifySlideshow = slideshow;
+                this.shopifyIndex = 0;
+                const duration = (slideshow.duration || 6) * 1000;
+
+                // Render first product
+                this.renderShopifyProduct(container);
+
+                // Start rotation
+                if (slideshow.products.length > 1) {
+                    this.slideshowInterval = setInterval(() => {
+                        this.shopifyIndex = (this.shopifyIndex + 1) % this.shopifySlideshow.products.length;
+                        this.renderShopifyProduct(container);
+                    }, duration);
+                }
+            }
+
+            // Render a single Shopify product
+            renderShopifyProduct(container) {
+                const slideshow = this.shopifySlideshow;
+                const product = slideshow.products[this.shopifyIndex];
+                const current = this.shopifyIndex + 1;
+                const total = slideshow.products.length;
+
+                container.innerHTML = `
+                    <div class="shopify-showcase">
+                        <div class="shopify-brand">
+                            <span>Blue Ridge Custom Co</span>
+                        </div>
+
+                        <div class="shopify-image-container showcase-slide-enter">
+                            ${product.featuredImage ?
+                                `<img src="${product.featuredImage}" alt="${this.escapeHtml(product.title)}">` :
+                                `<div class="shopify-no-image">🛍️</div>`
+                            }
+                        </div>
+
+                        <div class="shopify-info">
+                            <h1>${this.escapeHtml(product.title)}</h1>
+                            <p class="shopify-meta">${this.escapeHtml(slideshow.name)} • ${current} of ${total}</p>
+                        </div>
+
+                        <div class="showcase-progress">
+                            <div class="showcase-progress-bar" style="background: linear-gradient(90deg, #22c55e, #16a34a); animation-duration: ${slideshow.duration || 6}s;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // ==================== SERVICE SLIDE OVERLAY ====================
+
+            /**
+             * Show a service slide in the overlay iframe
+             */
+            showServiceSlide(slide, duration) {
+                if (!slide || !slide.url) return;
+
+                const overlay = document.getElementById('service-slide-overlay');
+
+                // Load the slide in an iframe
+                overlay.innerHTML = `<iframe src="${slide.url}" allowfullscreen></iframe>`;
+
+                // Show the overlay with fade-in
+                requestAnimationFrame(() => {
+                    overlay.classList.add('visible');
+                });
+
+                console.log(`[Kiosk] Showing service slide: ${slide.name} for ${duration}s`);
+            }
+
+            /**
+             * Hide the service slide overlay
+             */
+            hideServiceSlide() {
+                const overlay = document.getElementById('service-slide-overlay');
+                overlay.classList.remove('visible');
+
+                // Clear iframe after fade-out
+                setTimeout(() => {
+                    if (!overlay.classList.contains('visible')) {
+                        overlay.innerHTML = '';
+                    }
+                }, 500);
+
+                console.log('[Kiosk] Hiding service slide');
+            }
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            window.kioskClient = new KioskClient();
+        });
+    </script>
+</body>
 </html>

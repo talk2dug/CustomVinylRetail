@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Decals • Swayze's Custom Vinyl</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Lobster&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600&family=Pacifico&family=Playfair+Display:wght@400;700&family=Raleway:wght@400;600;700&family=Roboto+Slab:wght@400;600;700&display=swap">
+  <script>/* route flag so nav highlights correctly */ window.__PAGE_KEY__ = 'decals';</script>
+</head>
+<body>
+  <div class="app">
+    <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="sidebar">
+      Browse &amp; filters
+    </button>
+    <div id="sidebarOverlay" class="sidebar-overlay" hidden></div>
+    <aside id="sidebar" class="sidebar" aria-label="Browse controls">
+      <button id="sidebarClose" class="sidebar-close" type="button">
+        Close
+      </button>
+      <header class="brand">
+        <h1>Swayze's Custom Vinyl</h1>
+        <p class="tagline">Browse designs, preview colors, build your order.</p>
+        <a class="login-button" href="./customer.html">Customer login</a>
+      </header>
+
+      <section class="control">
+        <label class="control-label" for="categorySelect">Category</label>
+        <select id="categorySelect" class="control-input"></select>
+      </section>
+
+      <section class="control">
+        <label class="control-label" for="searchInput">Search designs</label>
+        <input id="searchInput" class="control-input" type="search" placeholder="Search within category">
+      </section>
+
+      <section class="control info-card">
+        <h2>How to order</h2>
+        <ol>
+          <li>Pick a design & adjust the preview.</li>
+          <li>Add selections to your order list.</li>
+          <li>Send the order summary email.</li>
+        </ol>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <section class="catalog">
+        <header class="section-header">
+          <h2 id="catalogTitle">Designs</h2>
+          <div id="resultsCount" class="results-count"></div>
+        </header>
+        <div id="designGrid" class="design-grid" role="list"></div>
+        <button id="loadMoreButton" class="load-more-button" type="button" hidden>Load more designs</button>
+      </section>
+
+      <section class="preview-panel">
+        <header class="section-header">
+          <h2>Preview & Order</h2>
+        </header>
+
+        <div class="preview-meta">
+          <div><strong>Category:</strong> <span id="selectedCategoryLabel">None</span></div>
+          <div><strong>Design:</strong> <span id="selectedDesignLabel">Select a design</span></div>
+        </div>
+
+        <div id="previewStage" class="preview-stage">
+          <div class="preview-placeholder" id="previewPlaceholder">
+            <p>Select a design to start previewing.</p>
+          </div>
+          <canvas id="previewCanvas" aria-label="Sticker preview" role="img"></canvas>
+        </div>
+        <p class="preview-hint hint">Preview shows an approximate single-color cut made from the chosen vinyl color.</p>
+        <div class="designer-launch">
+          <button id="openDesignerButton" class="primary" type="button">Open sticker designer</button>
+          <p class="hint">Launch the full canvas to build a custom decal with our fonts and art library.</p>
+        </div>
+
+        <!-- Size control: use dropdown in decals page (slider removed) -->
+
+        <section class="control-group">
+          <span class="control-label">Vinyl color</span>
+          <div class="inline-info">
+            <label class="inline">
+              <input type="checkbox" id="enableVinylColorCheckbox">
+              Change decal color
+            </label>
+          </div>
+          <p id="vinylColorWarning" class="hint">This app only creates one color. Multi-color decals won't render correctly.</p>
+          <div id="colorSwatches" class="color-swatches"></div>
+          <div class="inline-info">
+            <label for="colorPaletteSelect">Palette</label>
+            <select id="colorPaletteSelect" class="control-input"></select>
+          </div>
+          <div class="inline-info">
+            <label for="customColorInput">Custom</label>
+            <input id="customColorInput" type="color" value="#ffffff">
+          </div>
+          <div class="inline-info">
+            <label for="backgroundPresetSelect">Background</label>
+            <select id="backgroundPresetSelect" class="control-input">
+              <option value="#f8fafc">Light</option>
+              <option value="#111827">Dark</option>
+              <option value="custom">Custom…</option>
+            </select>
+            <input id="backgroundColorInput" type="color" value="#f8fafc">
+          </div>
+        </section>
+
+        <form id="orderForm" class="order-form" autocomplete="on">
+          <div class="form-row">
+            <label class="control-label" for="customerNameInput">Your name</label>
+            <input id="customerNameInput" type="text" placeholder="First Last">
+          </div>
+          <div class="form-row inline">
+            <div>
+              <label class="control-label" for="customerEmailInput">Email</label>
+              <input id="customerEmailInput" type="email" placeholder="name@example.com">
+            </div>
+            <div>
+              <label class="control-label" for="customerPhoneInput">Phone</label>
+              <input id="customerPhoneInput" type="tel" placeholder="(555) 555-5555">
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="control-label" for="customerAddressInput">Shipping address</label>
+            <textarea id="customerAddressInput" rows="2" placeholder="Street, City, State, ZIP"></textarea>
+          </div>
+          <!-- Product fixed to sticker on decals page -->
+          <div class="form-row" id="stickerSizeRow">
+            <label class="control-label" for="stickerSizeSelect">Sticker size</label>
+            <select id="stickerSizeSelect" class="control-input">
+              <option value="3">3&quot; × 3&quot;</option>
+              <option value="4" selected>4&quot; × 4&quot;</option>
+              <option value="6">6&quot; × 6&quot;</option>
+            </select>
+          </div>
+          <!-- Auto-detected color count; no manual selector on decals page -->
+          <div class="price-summary" id="priceSummary">
+            <div><span>Unit price</span><strong id="unitPriceDisplay">$3.75</strong></div>
+            <div><span>Subtotal</span><strong id="subtotalDisplay">$3.75</strong></div>
+            <div><span>Shipping</span><strong id="shippingDisplay">$3.00</strong></div>
+            <div><span>Total</span><strong id="totalDisplay">$6.75</strong></div>
+          </div>
+          <p class="hint" id="colorCountNote">Estimated colors: 1. If the number of colors is incorrect, we will reach out to verify before proceeding.</p>
+          <p class="pricing-footnote">Pricing shown for 3&quot;, 4&quot;, and 6&quot; vinyl decals. Other sizes and color counts are available — add notes with your request.</p>
+          <div class="form-row">
+            <label class="control-label" for="quantityInput">Quantity</label>
+            <input id="quantityInput" type="number" min="1" value="1">
+          </div>
+          <div class="form-row">
+            <label class="control-label" for="notesInput">Notes</label>
+            <textarea id="notesInput" rows="3" placeholder="Add special instructions or alternate sizes."></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="primary">Add to order</button>
+          </div>
+        </form>
+
+        <section class="order-summary">
+          <header class="section-header">
+            <h3>Order summary</h3>
+          </header>
+          <div id="orderList" class="order-list">No items yet. Add designs to build your order.</div>
+          <div class="form-actions">
+            <button id="checkoutButton" type="button" class="secondary">Checkout</button>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <template id="designCardTemplate">
+    <button class="design-card" type="button">
+      <div class="thumb-wrapper">
+        <img alt="" loading="lazy" draggable="false">
+      </div>
+      <span class="label"></span>
+    </button>
+  </template>
+
+  <script>
+    // Enable auto color counting logic in script.js for decals page
+    window.__AUTO_COLOR_COUNT__ = true;
+  </script>
+  <script type="module" src="./script.js"></script>
+</body>
+</html>

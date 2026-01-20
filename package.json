@@ -5,16 +5,20 @@
   "scripts": {
     "generate-catalog": "node scripts/generate-catalog.js",
     "save-server": "node server/save-design-server.js",
-    "extract-colors": "node scripts/extract-colors.js"
+    "extract-colors": "node scripts/extract-colors.js",
+    "export-mockups": "node scripts/export-mockups-to-drive.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.70.1",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^9.4.3",
+    "csv-writer": "^1.6.0",
     "dotenv": "^16.4.5",
+    "facebook-nodejs-business-sdk": "^24.0.1",
     "formidable": "^3.3.0",
     "nodemailer": "^6.9.15",
-    "sharp": "^0.33.2",
+    "sharp": "^0.33.5",
     "square": "43.1.0",
-    "twilio": "^5.10.3"
+    "tesseract.js": "^5.1.0"
   }
 }

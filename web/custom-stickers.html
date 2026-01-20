@@ -3,25 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Custom Vinyl Stickers &amp; Apparel | Swayze's Custom Vinyl</title>
+  <title>Custom Vinyl Stickers &amp; Apparel | BlueRidgeCustomCo</title>
   <meta name="description" content="Design funny, bold, and personalized vinyl stickers for cars and trucks. Pick from 50,000+ graphics or upload your own. Bundle with custom hats, tees, beanies, and hoodies.">
-  <link rel="canonical" href="https://store.swayzecustomvinyl.com/custom-stickers.html">
-  <meta property="og:site_name" content="Swayze's Custom Vinyl">
+  <link rel="canonical" href="https://blueridgecustomco.com/custom-stickers.html">
+  <meta property="og:site_name" content="BlueRidgeCustomCo">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Custom Vinyl Stickers &amp; Apparel | Swayze's Custom Vinyl">
+  <meta property="og:title" content="Custom Vinyl Stickers &amp; Apparel | BlueRidgeCustomCo">
   <meta property="og:description" content="Create funny and bold decals for your ride, choose from 50,000+ designs, and add matching apparel bundles with fast turnaround.">
-  <meta property="og:url" content="https://store.swayzecustomvinyl.com/custom-stickers.html">
-  <meta property="og:image" content="https://store.swayzecustomvinyl.com/images/race-crew-shirt.jpg">
+  <meta property="og:url" content="https://blueridgecustomco.com/custom-stickers.html">
+  <meta property="og:image" content="https://blueridgecustomco.com/images/race-crew-shirt.jpg">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Custom Vinyl Stickers &amp; Apparel">
   <meta name="twitter:description" content="Choose from thousands of graphics or upload your own. We print weatherproof decals plus matching hats, tees, beanies, and hoodies.">
-  <meta name="twitter:image" content="https://store.swayzecustomvinyl.com/images/race-crew-shirt.jpg">
+  <meta name="twitter:image" content="https://blueridgecustomco.com/images/race-crew-shirt.jpg">
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "Product",
       "name": "Custom Vinyl Stickers",
-      "brand": "Swayze's Custom Vinyl",
+      "brand": "BlueRidgeCustomCo",
       "description": "Weatherproof custom vinyl stickers for cars and trucks with optional matching apparel bundles.",
       "offers": {
         "@type": "AggregateOffer",
@@ -34,8 +34,27 @@
   </script>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;700&family=Montserrat:wght@500;700&display=swap">
   <link rel="stylesheet" href="./custom-stickers.css">
+  <link rel="stylesheet" href="./shared-modern.css">
 </head>
 <body>
+  <header class="modern-header">
+    <div class="header-container">
+      <a href="./" class="logo">
+        <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo">
+        <div class="logo-text">
+          <span class="logo-name">BlueRidgeCustomCo</span>
+          <span class="logo-tagline">Premium Custom Designs</span>
+        </div>
+      </a>
+      <nav class="nav-menu">
+        <a href="./designer.html" class="nav-link">Designer</a>
+        <a href="./racing.html" class="nav-link">Racing</a>
+        <a href="https://store.swayzecustomvinyl.com/apparel.html" class="nav-link">Apparel</a>
+        <a href="./customer.html" class="cta-button">Account</a>
+      </nav>
+    </div>
+  </header>
+
   <header class="hero">
     <div class="hero__content">
       <span class="badge">50,000+ graphics ready to cut</span>
@@ -74,6 +93,48 @@
       </div>
     </section>
 
+    <section class="apparel-carousel" id="latest-apparel">
+      <header>
+        <h2>Latest custom T-shirts</h2>
+        <p>Fresh threads straight from the shop. Every design matches a decal so your ride and your fit stay in sync.</p>
+      </header>
+      <div class="apparel-carousel__card">
+        <div
+          class="apparel-carousel__carousel"
+          id="apparelCarousel"
+          role="region"
+          aria-label="Latest custom T-shirts"
+        >
+          <p class="apparel-carousel__placeholder" id="apparelCarouselPlaceholder">
+            Loading the latest custom T-shirts…
+          </p>
+        </div>
+        <button
+          class="apparel-carousel__nav apparel-carousel__nav--prev"
+          id="apparelPrev"
+          type="button"
+          aria-label="Previous T-shirt"
+        >
+          <span aria-hidden="true">‹</span>
+        </button>
+        <button
+          class="apparel-carousel__nav apparel-carousel__nav--next"
+          id="apparelNext"
+          type="button"
+          aria-label="Next T-shirt"
+        >
+          <span aria-hidden="true">›</span>
+        </button>
+        <div
+          class="apparel-carousel__status apparel-carousel__status--loading"
+          id="apparelStatus"
+          aria-live="polite"
+        >
+          Loading…
+        </div>
+      </div>
+    </section>
+
     <section class="trust">
       <h2>Why customers pick Swayze's Custom Vinyl</h2>
       <div class="trust__grid">
@@ -98,41 +159,41 @@
         <p>A taste of what’s inside the library. DM us for the full catalog or jump into the customer portal to browse everything.</p>
       </header>
       <div class="catalog__grid">
-        <article class="category-card">
-          <img src="images/catalog/garage-humor-preview-1.jpg" alt="Garage Humor Preview sticker example">
-          <h3>Garage Humor</h3>
-          <p>Garage Humor Preview</p>
-          <a class="category-card__link" href="./catalog.html?category=garage-humor">See designs</a>
+        <article class="category-card" data-category-slug="adult-humor">
+          <img src="images/catalog/garage-humor-preview-1.jpg" alt="Adult humor category preview">
+          <h3>Adult Humor</h3>
+          <p>Funny and spicy decals</p>
+          <a class="category-card__link" href="./catalog.html?category=adult-humor">See designs</a>
         </article>
-        <article class="category-card">
-          <img src="images/catalog/retro-stripes-preview-1.jpg" alt="Retro Stripes & Shapes Preview sticker example">
-          <h3>Retro Stripes & Shapes</h3>
-          <p>Retro Stripes & Shapes Preview</p>
-          <a class="category-card__link" href="./catalog.html?category=retro-stripes">See designs</a>
+        <article class="category-card" data-category-slug="custom-stickers">
+          <img src="images/catalog/retro-stripes-preview-1.jpg" alt="Custom Stickers category preview">
+          <h3>Custom Stickers</h3>
+          <p>Your ideas, our cutters</p>
+          <a class="category-card__link" href="./catalog.html?category=custom-stickers">See designs</a>
         </article>
-        <article class="category-card">
-          <img src="images/catalog/camping-overland-preview-1.jpg" alt="Camping & Overland Preview sticker example">
-          <h3>Camping & Overland</h3>
-          <p>Camping & Overland Preview</p>
-          <a class="category-card__link" href="./catalog.html?category=camping-overland">See designs</a>
+        <article class="category-card" data-category-slug="car-related">
+          <img src="images/catalog/camping-overland-preview-1.jpg" alt="Car Related category preview">
+          <h3>Car Related</h3>
+          <p>Decals for gearheads</p>
+          <a class="category-card__link" href="./catalog.html?category=car-related">See designs</a>
         </article>
-        <article class="category-card">
-          <img src="images/catalog/anime-preview-1.jpg" alt="Anime & Character Slaps Preview sticker example">
-          <h3>Anime & Character Slaps</h3>
-          <p>Anime & Character Slaps Preview</p>
-          <a class="category-card__link" href="./catalog.html?category=anime">See designs</a>
+        <article class="category-card" data-category-slug="bands">
+          <img src="images/catalog/club-logos-preview-1.jpg" alt="Bands category preview">
+          <h3>Bands</h3>
+          <p>Music-inspired stickers</p>
+          <a class="category-card__link" href="./catalog.html?category=bands">See designs</a>
         </article>
-        <article class="category-card">
-          <img src="images/catalog/skulls-pinup-preview-1.jpg" alt="Skulls & Pin-Up Preview sticker example">
-          <h3>Skulls & Pin-Up</h3>
-          <p>Skulls & Pin-Up Preview</p>
-          <a class="category-card__link" href="./catalog.html?category=skulls-pinup">See designs</a>
+        <article class="category-card" data-category-slug="animals">
+          <img src="images/catalog/anime-preview-1.jpg" alt="Animals category preview">
+          <h3>Animals</h3>
+          <p>Wild and cute creatures</p>
+          <a class="category-card__link" href="./catalog.html?category=animals">See designs</a>
         </article>
-        <article class="category-card">
-          <img src="images/catalog/club-logos-preview-1.jpg" alt="Club & Crew Logos Preview sticker example">
-          <h3>Club & Crew Logos</h3>
-          <p>Club & Crew Logos Preview</p>
-          <a class="category-card__link" href="./catalog.html?category=club-logos">See designs</a>
+        <article class="category-card" data-category-slug="hearts">
+          <img src="images/catalog/skulls-pinup-preview-1.jpg" alt="Hearts category preview">
+          <h3>Hearts</h3>
+          <p>Love-themed graphics</p>
+          <a class="category-card__link" href="./catalog.html?category=hearts">See designs</a>
         </article>
       </div>
     </section>
@@ -241,6 +302,13 @@
         details: document.getElementById('storeDetails'),
         addButton: document.getElementById('storeAddToOrder')
       };
+      const apparelElements = {
+        carousel: document.getElementById('apparelCarousel'),
+        placeholder: document.getElementById('apparelCarouselPlaceholder'),
+        prev: document.getElementById('apparelPrev'),
+        next: document.getElementById('apparelNext'),
+        status: document.getElementById('apparelStatus')
+      };
 
       const AUTOPLAY_INTERVAL = 5000;
       const PREFERRED_SLUGS = [
@@ -317,6 +385,12 @@
         index: 0,
         timer: null
       };
+      const apparelState = {
+        items: [],
+        slides: [],
+        index: 0,
+        timer: null
+      };
 
       function resolveImage(path) {
         if (!path) return '';
@@ -334,6 +408,11 @@
         statusEl.className = `showcase__status${modifier ? ` ${modifier}` : ''}`;
       }
 
+      function roundUpToQuarterDollar(cents) {
+        const value = Math.max(0, Math.round(Number(cents) || 0));
+        return Math.ceil(value / 25) * 25;
+      }
+
       function calculateApparelUnitPriceCents(productType, colorCount = 1) {
         const garmentCost = GARMENT_COST_CENTS[productType] ?? GARMENT_COST_CENTS.tshirt;
         const vinylUsage = APPAREL_VINYL_USAGE_SQFT[productType] ?? APPAREL_VINYL_USAGE_SQFT.tshirt;
@@ -341,7 +420,7 @@
         const baseCostCents = garmentCost + vinylCostCents + LABOR_COST_PER_ITEM_CENTS;
         const profitAdjusted = Math.round(baseCostCents * (1 + PROFIT_MARGIN));
         const extraColors = Math.max(0, Number(colorCount || 1) - 1);
-        return profitAdjusted + extraColors * COLOR_ADDON_CENTS;
+        return roundUpToQuarterDollar(profitAdjusted + extraColors * COLOR_ADDON_CENTS);
       }
 
       function getStorePriceCents(productType) {
@@ -392,6 +471,227 @@
         stopTimer();
         showSlide(showcaseState.index + offset);
         startTimer();
+      }
+
+      function formatCategoryName(value) {
+        if (!value) return 'Custom Apparel';
+        return value.charAt(0).toUpperCase() + value.slice(1);
+      }
+
+      function createApparelSlide(item) {
+        const slide = document.createElement('article');
+        slide.className = 'apparel-carousel__slide';
+        slide.setAttribute('role', 'group');
+        slide.setAttribute('aria-label', item.name || 'Custom T-shirt');
+
+        const media = document.createElement('div');
+        media.className = 'apparel-carousel__media';
+        const img = document.createElement('img');
+        img.src = resolveImage(item.preview || item.image);
+        img.alt = item.name || 'T-shirt mockup';
+        img.loading = 'lazy';
+        media.appendChild(img);
+
+        const caption = document.createElement('div');
+        caption.className = 'apparel-carousel__caption';
+        const categoryBadge = document.createElement('span');
+        categoryBadge.className = 'apparel-carousel__category';
+        categoryBadge.textContent = formatCategoryName(item.categoryName || item.categorySlug);
+        caption.appendChild(categoryBadge);
+
+        const title = document.createElement('h3');
+        title.textContent = item.name || 'Custom T-shirt';
+        caption.appendChild(title);
+
+        if (item.description) {
+          const paragraph = document.createElement('p');
+          paragraph.textContent = item.description;
+          caption.appendChild(paragraph);
+        } else {
+          const paragraph = document.createElement('p');
+          paragraph.textContent =
+            'Press-on vinyl, bold color pops, and a soft tee that keeps up with late-night wrenching.';
+          caption.appendChild(paragraph);
+        }
+
+        const link = document.createElement('a');
+        link.className = 'apparel-carousel__link';
+        const categorySlug = item.categorySlug ? encodeURIComponent(item.categorySlug) : '';
+        link.href = categorySlug ? `./custom-stickers.html#apparel` : './catalog.html';
+        link.textContent = 'Shop matching apparel';
+        caption.appendChild(link);
+
+        slide.appendChild(media);
+        slide.appendChild(caption);
+        return slide;
+      }
+
+      function setApparelStatus(message, modifier = 'apparel-carousel__status--loading') {
+        if (!apparelElements.status) return;
+        apparelElements.status.textContent = message;
+        apparelElements.status.className = `apparel-carousel__status ${modifier}`;
+      }
+
+      function showApparelSlide(nextIndex) {
+        if (!apparelState.slides.length) return;
+        apparelState.slides.forEach((slide, idx) => {
+          const isActive = idx === nextIndex;
+          slide.classList.toggle('active', isActive);
+          slide.style.display = isActive ? 'grid' : 'none';
+          slide.style.position = isActive ? 'relative' : 'absolute';
+        });
+        apparelState.index = nextIndex;
+        setApparelStatus(`${nextIndex + 1} of ${apparelState.slides.length}`, 'apparel-carousel__status');
+      }
+
+      function handleApparelNav(direction) {
+        if (!apparelState.slides.length) return;
+        const nextIndex =
+          (apparelState.index + direction + apparelState.slides.length) % apparelState.slides.length;
+        showApparelSlide(nextIndex);
+        restartApparelTimer();
+      }
+
+      function startApparelTimer() {
+        stopApparelTimer();
+        if (apparelState.slides.length <= 1) return;
+        apparelState.timer = setInterval(() => {
+          handleApparelNav(1);
+        }, AUTOPLAY_INTERVAL);
+      }
+
+      function stopApparelTimer() {
+        if (apparelState.timer) {
+          clearInterval(apparelState.timer);
+          apparelState.timer = null;
+        }
+      }
+
+      function restartApparelTimer() {
+        stopApparelTimer();
+        startApparelTimer();
+      }
+
+      function renderApparelCarousel(items) {
+        if (!apparelElements.carousel) return;
+        apparelElements.carousel.innerHTML = '';
+        apparelState.slides = [];
+        apparelState.index = 0;
+
+        if (!items.length) {
+          setApparelStatus('No custom tees yet—check back soon.', 'apparel-carousel__status--empty');
+          if (apparelElements.placeholder) {
+            apparelElements.placeholder.textContent = 'Come back soon for fresh Swayze tees.';
+          }
+          if (apparelElements.prev) apparelElements.prev.disabled = true;
+          if (apparelElements.next) apparelElements.next.disabled = true;
+          return;
+        }
+
+        apparelElements.placeholder?.remove();
+        apparelState.slides = items.map((item) => {
+          const slide = createApparelSlide(item);
+          apparelElements.carousel.appendChild(slide);
+          return slide;
+        });
+
+        if (apparelState.slides.length <= 1) {
+          if (apparelElements.prev) apparelElements.prev.disabled = true;
+          if (apparelElements.next) apparelElements.next.disabled = true;
+        } else {
+          if (apparelElements.prev) apparelElements.prev.disabled = false;
+          if (apparelElements.next) apparelElements.next.disabled = false;
+        }
+
+        showApparelSlide(0);
+        startApparelTimer();
+      }
+
+      function mapApparelStoreItems(payload) {
+        if (!payload || !Array.isArray(payload.items)) return [];
+        return payload.items
+          .filter((item) => (item.productType || '').toLowerCase() === 'tshirt')
+          .slice(0, 6)
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            categoryName: item.categoryName || '',
+            categorySlug: item.categorySlug || '',
+            preview: item.preview || item.previewPath || '',
+            image: item.preview || item.previewPath || '',
+            description: item.description || ''
+          }));
+      }
+
+      function deriveApparelFromCatalog(data) {
+        if (!data || !Array.isArray(data.categories)) return [];
+        const teeKeywords = ['tee', 'tshirt', 'shirt'];
+        const items = [];
+        data.categories.forEach((category) => {
+          (category.designs || []).forEach((design) => {
+            const name = String(design.name || '').toLowerCase();
+            if (teeKeywords.some((keyword) => name.includes(keyword))) {
+              items.push({
+                id: design.id || `${category.slug || 'tee'}-${items.length}`,
+                name: design.name || 'Custom T-shirt',
+                categoryName: category.name || 'Custom Apparel',
+                categorySlug: category.slug || '',
+                preview: design.image || '',
+                image: design.image || '',
+                description: design.description || ''
+              });
+            }
+          });
+        });
+        return items.slice(0, 6);
+      }
+
+      function bindApparelControls() {
+        if (apparelElements.prev) {
+          apparelElements.prev.addEventListener('click', () => handleApparelNav(-1));
+        }
+        if (apparelElements.next) {
+          apparelElements.next.addEventListener('click', () => handleApparelNav(1));
+        }
+        if (apparelElements.carousel) {
+          apparelElements.carousel.addEventListener('mouseenter', stopApparelTimer);
+          apparelElements.carousel.addEventListener('mouseleave', startApparelTimer);
+          apparelElements.carousel.addEventListener('focusin', stopApparelTimer);
+          apparelElements.carousel.addEventListener('focusout', startApparelTimer);
+        }
+      }
+
+      function loadApparelCarouselFallback(data) {
+        const fallbackItems = deriveApparelFromCatalog(data);
+        if (!fallbackItems.length) {
+          setApparelStatus('No custom tees yet—check back soon.', 'apparel-carousel__status--empty');
+          return;
+        }
+        apparelState.items = fallbackItems;
+        renderApparelCarousel(apparelState.items);
+      }
+
+      function loadApparelCarousel(data) {
+        fetch('/api/apparel/store', { cache: 'no-cache' })
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+          })
+          .then((payload) => {
+            const mapped = mapApparelStoreItems(payload);
+            apparelState.items = mapped.length ? mapped : deriveApparelFromCatalog(data);
+            if (!apparelState.items.length) {
+              setApparelStatus('No custom tees yet—check back soon.', 'apparel-carousel__status--empty');
+              return;
+            }
+            renderApparelCarousel(apparelState.items);
+          })
+          .catch((error) => {
+            console.error('Unable to load apparel store:', error);
+            loadApparelCarouselFallback(data);
+          });
       }
 
       function createSlide(design, categoryName, categorySlug) {
@@ -881,14 +1181,101 @@
         );
       }
 
-      function loadShowcase() {
-        fetch('./catalog.json', { cache: 'no-cache' })
+      function fetchCatalogData(sources = ['/api/catalog', './catalog.json']) {
+        if (!Array.isArray(sources) || !sources.length) {
+          return Promise.reject(new Error('No catalog sources provided.'));
+        }
+        const [source, ...rest] = sources;
+        return fetch(source, { cache: 'no-cache' })
           .then((response) => {
             if (!response.ok) {
+              if (rest.length) return fetchCatalogData(rest);
               throw new Error(`HTTP ${response.status}`);
             }
-            return response.json();
+            return response.text();
           })
+          .then((text) => {
+            try {
+              return JSON.parse(text);
+            } catch (error) {
+              console.warn(`Catalog parse failed for ${source}:`, error);
+              if (rest.length) {
+                return fetchCatalogData(rest);
+              }
+              throw error;
+            }
+          })
+          .catch((error) => {
+            if (rest.length) {
+              return fetchCatalogData(rest);
+            }
+            throw error;
+          });
+      }
+
+      const CATEGORY_ROTATE_INTERVAL_MS = 5000;
+      const CATEGORY_ROTATE_MAX_IMAGES = 10;
+      const categoryRotators = new Map();
+
+      function stopCategoryRotator(slug) {
+        const rot = categoryRotators.get(slug);
+        if (rot && rot.timer) {
+          clearInterval(rot.timer);
+        }
+        categoryRotators.delete(slug);
+      }
+
+      function startCategoryRotator(card, cat) {
+        const slug = String(cat.slug || '').toLowerCase();
+        const img = card.querySelector('img');
+        if (!img) return;
+        const designs = Array.isArray(cat.designs) ? cat.designs.filter((d) => d && d.image) : [];
+        if (!designs.length) return;
+        // Build list of image URLs (limit to reduce memory / requests)
+        const urls = designs.slice(0, CATEGORY_ROTATE_MAX_IMAGES).map((d) => String(d.image));
+        if (!urls.length) return;
+
+        // Initial random image
+        let index = Math.floor(Math.random() * urls.length);
+        const setImage = (i) => {
+          const url = urls[i % urls.length];
+          if (url) {
+            img.src = url;
+            img.alt = `${cat.name} category preview`;
+          }
+        };
+        setImage(index);
+
+        // Clear any existing rotator for this slug
+        stopCategoryRotator(slug);
+
+        const timer = setInterval(() => {
+          index = (index + 1) % urls.length;
+          setImage(index);
+        }, CATEGORY_ROTATE_INTERVAL_MS);
+
+        categoryRotators.set(slug, { timer, urls });
+      }
+
+      function updateFanFavoriteCategories(data) {
+        try {
+          if (!data || !Array.isArray(data.categories)) return;
+          const bySlug = new Map();
+          data.categories.forEach((cat) => bySlug.set(String(cat.slug || '').toLowerCase(), cat));
+          const cards = document.querySelectorAll('.catalog .category-card');
+          cards.forEach((card) => {
+            const slug = (card?.dataset?.categorySlug || '').toLowerCase();
+            const cat = bySlug.get(slug);
+            if (!cat) return;
+            startCategoryRotator(card, cat);
+          });
+        } catch (_) {
+          // no-op: keep static placeholders on error
+        }
+      }
+
+      function loadShowcase() {
+        fetchCatalogData()
           .then((data) => {
             const preferredCategory = findShowcaseCategory(data);
             const fallbackCategory = preferredCategory ||
@@ -897,6 +1284,8 @@
                 : null);
 
             initializeStore(data);
+            loadApparelCarousel(data);
+            updateFanFavoriteCategories(data);
 
             const designs = sanitizeDesigns(fallbackCategory?.designs).slice(0, 6);
 
@@ -915,10 +1304,43 @@
       }
 
       bindShowcaseControls();
+      bindApparelControls();
       bindStoreControls();
       renderStoreInventory();
       loadShowcase();
     })();
   </script>
+
+  <footer class="modern-footer">
+    <div class="footer-container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3>Products</h3>
+          <ul>
+            <li><a href="./designer.html">Custom Designer</a></li>
+            <li><a href="./racing.html">Racing Decals</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Resources</h3>
+          <ul>
+            <li><a href="./price-list.html">Pricing</a></li>
+            <li><a href="./terms.html">Terms & Conditions</a></li>
+            <li><a href="./customer.html">My Account</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Contact</h3>
+          <ul>
+            <li><a href="tel:+12027408240">(202) 740-8240</a></li>
+            <li><a href="mailto:info@blueridgecustomco.com">info@blueridgecustomco.com</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2024 BlueRidgeCustomCo. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

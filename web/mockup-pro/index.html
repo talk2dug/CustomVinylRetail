@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup Pro - Advanced Mockup Generator</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="mockup-pro.css" />
+  <!-- Google Fonts for text tool -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Black+Ops+One&family=Bungee&family=Caveat&family=Dancing+Script&family=Great+Vibes&family=Lobster&family=Montserrat:wght@400;700;900&family=Oswald:wght@400;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@400;700&family=Press+Start+2P&family=Roboto:wght@400;700;900&family=Satisfy&family=Staatliches&display=swap" rel="stylesheet">
+</head>
+<body>
+  <main class="mockup-pro">
+    <!-- Top Toolbar -->
+    <header class="mockup-pro__toolbar">
+      <div class="toolbar__left">
+        <h1 class="toolbar__title">Mockup Pro</h1>
+        <div class="toolbar__divider"></div>
+
+        <!-- Apparel Color Picker -->
+        <div class="toolbar__group">
+          <label class="toolbar__label">Apparel Color</label>
+          <div class="color-picker">
+            <input type="color" id="apparelColorPicker" value="#ffffff" title="Pick apparel color" />
+            <div class="color-presets" id="colorPresets">
+              <button type="button" class="color-preset" data-color="#ffffff" style="background:#ffffff" title="White"></button>
+              <button type="button" class="color-preset" data-color="#000000" style="background:#000000" title="Black"></button>
+              <button type="button" class="color-preset" data-color="#1f2937" style="background:#1f2937" title="Charcoal"></button>
+              <button type="button" class="color-preset" data-color="#991b1b" style="background:#991b1b" title="Red"></button>
+              <button type="button" class="color-preset" data-color="#1e40af" style="background:#1e40af" title="Royal Blue"></button>
+              <button type="button" class="color-preset" data-color="#166534" style="background:#166534" title="Forest Green"></button>
+              <button type="button" class="color-preset" data-color="#7c2d12" style="background:#7c2d12" title="Brown"></button>
+              <button type="button" class="color-preset" data-color="#581c87" style="background:#581c87" title="Purple"></button>
+              <button type="button" class="color-preset" data-color="#f472b6" style="background:#f472b6" title="Pink"></button>
+              <button type="button" class="color-preset" data-color="#fbbf24" style="background:#fbbf24" title="Gold"></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="toolbar__divider"></div>
+
+        <!-- Garment Type -->
+        <div class="toolbar__group">
+          <label class="toolbar__label">Garment</label>
+          <select id="garmentType" class="toolbar__select">
+            <option value="tshirt">T-Shirt</option>
+            <option value="longsleeve">Long Sleeve</option>
+            <option value="hoodie">Hoodie</option>
+            <option value="tanktop">Tank Top</option>
+          </select>
+        </div>
+
+        <!-- Model Type -->
+        <div class="toolbar__group">
+          <label class="toolbar__label">Model</label>
+          <select id="modelType" class="toolbar__select">
+            <option value="ghost">Ghost (No Model)</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="child">Child</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="toolbar__right">
+        <!-- Export Options -->
+        <div class="toolbar__group">
+          <button type="button" id="exportPngBtn" class="btn" title="Export as PNG">
+            <span class="btn__icon">📷</span> PNG
+          </button>
+          <button type="button" id="exportGifBtn" class="btn" title="Export as animated GIF (360° spin)">
+            <span class="btn__icon">🎬</span> GIF
+          </button>
+          <button type="button" id="exportVideoBtn" class="btn" title="Export as MP4 video">
+            <span class="btn__icon">🎥</span> Video
+          </button>
+        </div>
+        <div class="toolbar__divider"></div>
+        <button type="button" id="saveToLibraryBtn" class="btn btn--primary">
+          Save to Library
+        </button>
+      </div>
+    </header>
+
+    <div class="mockup-pro__body">
+      <!-- Left Sidebar: Catalog & Text Tool -->
+      <aside class="mockup-pro__sidebar">
+        <!-- Tabs -->
+        <div class="sidebar__tabs">
+          <button type="button" class="sidebar__tab sidebar__tab--active" data-tab="catalog">Designs</button>
+          <button type="button" class="sidebar__tab" data-tab="apparel">Apparel</button>
+          <button type="button" class="sidebar__tab" data-tab="text">Text</button>
+          <button type="button" class="sidebar__tab" data-tab="layers">Layers</button>
+        </div>
+
+        <!-- Catalog Tab -->
+        <div class="sidebar__panel" id="catalogPanel" data-panel="catalog">
+          <div class="sidebar__filters">
+            <input type="search" id="catalogSearch" class="sidebar__search" placeholder="Search designs..." />
+            <select id="catalogCategory" class="sidebar__select">
+              <option value="">All Categories</option>
+            </select>
+          </div>
+          <div class="sidebar__scroll">
+            <div id="catalogGrid" class="catalog-grid"></div>
+            <button type="button" id="loadMoreBtn" class="btn btn--block">Load More</button>
+          </div>
+        </div>
+
+        <!-- Apparel/Inventory Tab -->
+        <div class="sidebar__panel" id="apparelPanel" data-panel="apparel" hidden>
+          <div class="sidebar__filters">
+            <div class="apparel-tabs">
+              <button type="button" class="apparel-tab apparel-tab--active" data-source="inventory">In Stock</button>
+              <button type="button" class="apparel-tab" data-source="ssaw">Premium (S&S)</button>
+            </div>
+          </div>
+          <div class="sidebar__scroll">
+            <div id="apparelBrowser" class="apparel-browser">
+              <!-- Categories column -->
+              <div class="apparel-column" id="apparelCategories">
+                <h4>Categories</h4>
+                <div class="apparel-list"></div>
+              </div>
+              <!-- Brands column -->
+              <div class="apparel-column" id="apparelBrands">
+                <h4>Brands</h4>
+                <div class="apparel-list"></div>
+              </div>
+              <!-- Items column -->
+              <div class="apparel-column" id="apparelItems">
+                <h4>Items</h4>
+                <div class="apparel-list"></div>
+              </div>
+            </div>
+            <div id="apparelLoading" class="apparel-loading" hidden>
+              <div class="spinner"></div>
+              <span>Loading apparel...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Text Tool Tab -->
+        <div class="sidebar__panel" id="textPanel" data-panel="text" hidden>
+          <div class="text-tool">
+            <div class="text-tool__group">
+              <label class="text-tool__label">Add Text</label>
+              <input type="text" id="textInput" class="text-tool__input" placeholder="Enter your text..." />
+              <button type="button" id="addTextBtn" class="btn btn--primary btn--block">Add Text</button>
+            </div>
+
+            <div class="text-tool__group">
+              <label class="text-tool__label">Font Family</label>
+              <select id="fontFamily" class="text-tool__select">
+                <option value="Arial" style="font-family: Arial">Arial</option>
+                <option value="Roboto" style="font-family: Roboto">Roboto</option>
+                <option value="Montserrat" style="font-family: Montserrat">Montserrat</option>
+                <option value="Oswald" style="font-family: Oswald">Oswald</option>
+                <option value="Bebas Neue" style="font-family: 'Bebas Neue'">Bebas Neue</option>
+                <option value="Anton" style="font-family: Anton">Anton</option>
+                <option value="Staatliches" style="font-family: Staatliches">Staatliches</option>
+                <option value="Bungee" style="font-family: Bungee">Bungee</option>
+                <option value="Black Ops One" style="font-family: 'Black Ops One'">Black Ops One</option>
+                <option value="Press Start 2P" style="font-family: 'Press Start 2P'">Press Start 2P</option>
+                <option value="Lobster" style="font-family: Lobster">Lobster</option>
+                <option value="Pacifico" style="font-family: Pacifico">Pacifico</option>
+                <option value="Dancing Script" style="font-family: 'Dancing Script'">Dancing Script</option>
+                <option value="Great Vibes" style="font-family: 'Great Vibes'">Great Vibes</option>
+                <option value="Satisfy" style="font-family: Satisfy">Satisfy</option>
+                <option value="Caveat" style="font-family: Caveat">Caveat</option>
+                <option value="Permanent Marker" style="font-family: 'Permanent Marker'">Permanent Marker</option>
+                <option value="Playfair Display" style="font-family: 'Playfair Display'">Playfair Display</option>
+              </select>
+            </div>
+
+            <div class="text-tool__row">
+              <div class="text-tool__group text-tool__group--half">
+                <label class="text-tool__label">Size</label>
+                <input type="number" id="fontSize" class="text-tool__input" value="48" min="8" max="200" />
+              </div>
+              <div class="text-tool__group text-tool__group--half">
+                <label class="text-tool__label">Color</label>
+                <input type="color" id="textColor" class="text-tool__color" value="#ffffff" />
+              </div>
+            </div>
+
+            <div class="text-tool__group">
+              <label class="text-tool__label">Style</label>
+              <div class="text-tool__buttons">
+                <button type="button" id="textBold" class="text-tool__btn" title="Bold">B</button>
+                <button type="button" id="textItalic" class="text-tool__btn" title="Italic"><i>I</i></button>
+                <button type="button" id="textUnderline" class="text-tool__btn" title="Underline"><u>U</u></button>
+              </div>
+            </div>
+
+            <div class="text-tool__group">
+              <label class="text-tool__label">Rotation</label>
+              <input type="range" id="textRotation" class="text-tool__range" min="-180" max="180" value="0" />
+              <span id="textRotationValue" class="text-tool__value">0°</span>
+            </div>
+
+            <div class="text-tool__group">
+              <label class="text-tool__label">Outline</label>
+              <div class="text-tool__row">
+                <input type="number" id="textStrokeWidth" class="text-tool__input" value="0" min="0" max="20" style="width:60px" />
+                <input type="color" id="textStrokeColor" class="text-tool__color" value="#000000" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Layers Tab -->
+        <div class="sidebar__panel" id="layersPanel" data-panel="layers" hidden>
+          <div class="layers-list" id="layersList">
+            <p class="layers__empty">No layers yet. Add designs or text to get started.</p>
+          </div>
+          <div class="layers__actions">
+            <button type="button" id="deleteLayerBtn" class="btn btn--danger btn--block" disabled>Delete Selected</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Workspace -->
+      <div class="mockup-pro__workspace">
+        <!-- Zone Selector -->
+        <div class="workspace__zones">
+          <button type="button" class="zone-btn zone-btn--active" data-zone="front">Front</button>
+          <button type="button" class="zone-btn" data-zone="back">Back</button>
+          <button type="button" class="zone-btn" data-zone="left-sleeve">Left Sleeve</button>
+          <button type="button" class="zone-btn" data-zone="right-sleeve">Right Sleeve</button>
+        </div>
+
+        <!-- Split View Container -->
+        <div class="workspace__split">
+          <!-- 2D Editor -->
+          <div class="workspace__editor">
+            <div class="editor__header">
+              <span class="editor__title">2D Editor</span>
+              <div class="editor__tools">
+                <button type="button" id="centerDesignBtn" class="editor__tool" title="Center selected">⊕</button>
+                <button type="button" id="flipHorizontalBtn" class="editor__tool" title="Flip horizontal">↔</button>
+                <button type="button" id="flipVerticalBtn" class="editor__tool" title="Flip vertical">↕</button>
+                <button type="button" id="bringForwardBtn" class="editor__tool" title="Bring forward">▲</button>
+                <button type="button" id="sendBackwardBtn" class="editor__tool" title="Send backward">▼</button>
+                <div class="editor__divider"></div>
+                <button type="button" id="vectorizeBtn" class="editor__tool editor__tool--vectorize" title="Convert selected image to vector (SVG)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  </svg>
+                  Vectorize
+                </button>
+                <label class="editor__checkbox" title="Remove background when vectorizing">
+                  <input type="checkbox" id="vectorizeRemoveBg" checked />
+                  <span>Remove BG</span>
+                </label>
+              </div>
+            </div>
+            <div class="editor__canvas-wrap" id="editorCanvasWrap">
+              <!-- Color overlay for tinting -->
+              <div class="editor__color-overlay" id="colorOverlay"></div>
+              <!-- Design zone indicator -->
+              <div class="editor__zone-guide" id="zoneGuide">
+                <div class="zone-guide__area" id="zoneGuideArea"></div>
+              </div>
+              <canvas id="editorCanvas" width="800" height="800"></canvas>
+              <!-- Vectorize loading overlay -->
+              <div class="editor__loading" id="vectorizeLoading" hidden>
+                <div class="spinner"></div>
+                <div class="editor__loading-text">
+                  <span id="vectorizeStepText">Vectorizing...</span>
+                </div>
+                <div class="editor__progress">
+                  <div id="vectorizeProgressBar" class="editor__progress-bar" style="width:0%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3D Preview -->
+          <div class="workspace__preview">
+            <div class="preview__header">
+              <span class="preview__title">3D Preview</span>
+              <div class="preview__controls">
+                <button type="button" id="resetViewBtn" class="preview__tool" title="Reset view">↺</button>
+                <button type="button" id="toggleRotateBtn" class="preview__tool" title="Auto-rotate">⟳</button>
+              </div>
+            </div>
+            <div class="preview__canvas-wrap" id="previewCanvasWrap">
+              <canvas id="previewCanvas"></canvas>
+              <div class="preview__loading" id="previewLoading" hidden>
+                <div class="spinner"></div>
+                <span>Loading 3D model...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="workspace__status">
+          <span id="statusText">Ready</span>
+          <span id="zoomLevel">100%</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Variant Picker Modal -->
+  <div class="modal" id="variantModal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__dialog modal__dialog--wide">
+      <header class="modal__header">
+        <h2 id="variantModalTitle">Choose Color & Size</h2>
+        <button type="button" class="modal__close" data-close>&times;</button>
+      </header>
+      <div class="modal__body">
+        <div class="variant-picker">
+          <div class="variant-colors" id="variantColors">
+            <h4>Colors</h4>
+            <div class="variant-grid" id="variantColorGrid"></div>
+          </div>
+          <div class="variant-sizes" id="variantSizes">
+            <h4>Sizes</h4>
+            <div class="variant-grid variant-grid--sizes" id="variantSizeGrid"></div>
+          </div>
+        </div>
+        <div class="variant-preview">
+          <img id="variantPreviewImg" src="" alt="Preview" />
+          <div class="variant-info">
+            <p id="variantSelectedInfo">Select a color and size</p>
+            <p id="variantPrice" class="variant-price"></p>
+          </div>
+        </div>
+      </div>
+      <footer class="modal__footer">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="button" class="btn btn--primary" id="variantConfirmBtn" disabled>Use This Apparel</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Export Modal -->
+  <div class="modal" id="exportModal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__dialog">
+      <header class="modal__header">
+        <h2 id="exportModalTitle">Export Mockup</h2>
+        <button type="button" class="modal__close" data-close>&times;</button>
+      </header>
+      <div class="modal__body">
+        <div class="export-preview" id="exportPreview"></div>
+        <div class="export-options" id="exportOptions">
+          <div class="export-option">
+            <label>Resolution</label>
+            <select id="exportResolution">
+              <option value="1">Standard (1x)</option>
+              <option value="2" selected>High (2x)</option>
+              <option value="4">Ultra (4x)</option>
+            </select>
+          </div>
+        </div>
+        <div class="export-progress" id="exportProgress" hidden>
+          <div class="progress-bar">
+            <div class="progress-bar__fill" id="exportProgressBar"></div>
+          </div>
+          <span id="exportProgressText">Generating...</span>
+        </div>
+      </div>
+      <footer class="modal__footer">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="button" class="btn btn--primary" id="exportConfirmBtn">Export</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+  <script type="module" src="mockup-pro.js"></script>
+</body>
+</html>

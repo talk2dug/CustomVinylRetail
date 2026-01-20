@@ -202,6 +202,12 @@ main.dashboard {
   gap: 1rem;
 }
 
+/* Settings */
+.settings-form { display: block; }
+.settings-grid { display: grid; grid-template-columns: 1fr; gap: 12px; max-width: 520px; }
+.settings-actions { margin-top: 12px; display: flex; gap: 12px; align-items: center; }
+.status-message { font-size: 12px; opacity: 0.85; }
+
 .race-quote-admin__amounts {
   display: grid;
   gap: 0.75rem;
@@ -290,6 +296,126 @@ main.dashboard {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.specials-browse-button {
+  margin-top: 0.35rem;
+}
+
+/* Visual Picker Modal */
+.picker-modal[hidden] {
+  display: none;
+}
+.picker-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 120;
+}
+.picker-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+}
+.picker-modal__dialog {
+  position: relative;
+  width: min(1200px, 96vw);
+  max-height: min(90vh, 860px);
+  background: #ffffff;
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  box-shadow: 0 30px 50px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.picker-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(120deg, rgba(29, 78, 216, 0.06), transparent 55%);
+}
+.picker-modal__subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+.picker-modal__body {
+  padding: 1rem 1.25rem 1.25rem;
+  overflow: auto;
+  display: grid;
+  gap: 0.75rem;
+}
+.picker-crumbs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.picker-crumbs button {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+.picker-crumbs button.current {
+  color: #111827;
+  cursor: default;
+}
+.picker-status {
+  color: var(--muted);
+}
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+.picker-card {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: #ffffff;
+  overflow: hidden;
+}
+.picker-card__media {
+  background: var(--surface-alt);
+  min-height: 140px;
+  display: grid;
+  place-items: center;
+}
+.picker-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.picker-card__body {
+  padding: 0.5rem 0.6rem 0.7rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.picker-card__title {
+  font-weight: 600;
+}
+.picker-card__meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 560px) {
+  .picker-modal {
+    padding: 1rem;
+  }
+  .picker-modal__dialog {
+    width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+  }
 }
 
 .specials-form label {
@@ -784,4 +910,78 @@ main.dashboard {
   .order-card__content {
     grid-template-columns: minmax(220px, 1fr) minmax(0, 1.2fr);
   }
+}
+
+/* =====================================================
+   Shopify Sync Card
+   ===================================================== */
+.shopify-sync-card .sync-options {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.shopify-sync-card .sync-options label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.shopify-sync-card .sync-options input[type="number"] {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-size: 1rem;
+}
+
+.sync-progress-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sync-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.sync-progress-text {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.sync-log {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  line-height: 1.6;
+}
+
+.sync-log-entry {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sync-log-entry:last-child {
+  border-bottom: none;
+}
+
+.status-message.success {
+  color: var(--success);
+}
+
+.status-message.error {
+  color: var(--danger);
+}
+
+.status-message.warning {
+  color: #f59e0b;
+}
+
+.status-message.info {
+  color: var(--accent);
 }

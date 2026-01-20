@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blue Ridge Custom Co - Farmer Markets</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Nunito', sans-serif;
+            background: linear-gradient(180deg, #fef3c7 0%, #fde68a 50%, #fbbf24 100%);
+            color: #1c1917;
+            min-height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Sun rays */
+        .sun {
+            position: absolute;
+            top: -100px;
+            right: 100px;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, #fff9c4 0%, #fef08a 30%, transparent 70%);
+            border-radius: 50%;
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+        }
+
+        /* Rolling hills */
+        .hills {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 35%;
+        }
+
+        .hill {
+            position: absolute;
+            bottom: 0;
+            border-radius: 50% 50% 0 0;
+        }
+
+        .hill-1 {
+            left: -10%;
+            width: 60%;
+            height: 100%;
+            background: #86efac;
+        }
+
+        .hill-2 {
+            left: 30%;
+            width: 50%;
+            height: 80%;
+            background: #4ade80;
+        }
+
+        .hill-3 {
+            right: -10%;
+            width: 55%;
+            height: 90%;
+            background: #22c55e;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+            padding: 60px 80px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            max-width: 55%;
+        }
+
+        .wave-hello {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            animation: wave 1.5s ease-in-out infinite;
+            display: inline-block;
+            width: fit-content;
+        }
+
+        @keyframes wave {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(20deg); }
+            75% { transform: rotate(-10deg); }
+        }
+
+        h1 {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 4.5rem;
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 25px;
+            color: #292524;
+        }
+
+        h1 span {
+            display: block;
+            animation: bounceIn 0.6s ease-out both;
+        }
+
+        h1 span:nth-child(1) { animation-delay: 0.1s; }
+        h1 span:nth-child(2) { animation-delay: 0.2s; color: #16a34a; }
+        h1 span:nth-child(3) { animation-delay: 0.3s; }
+
+        @keyframes bounceIn {
+            0% { transform: translateY(-30px); opacity: 0; }
+            60% { transform: translateY(10px); }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+
+        .intro {
+            font-size: 1.4rem;
+            line-height: 1.8;
+            color: #44403c;
+            margin-bottom: 40px;
+            animation: fadeIn 0.8s ease-out 0.5s both;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .intro strong {
+            color: #166534;
+            font-weight: 700;
+        }
+
+        .why-us {
+            display: flex;
+            gap: 25px;
+            flex-wrap: wrap;
+            animation: fadeIn 0.8s ease-out 0.7s both;
+        }
+
+        .why-item {
+            background: white;
+            padding: 20px 25px;
+            border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: transform 0.3s ease;
+        }
+
+        .why-item:hover {
+            transform: translateY(-5px) rotate(-1deg);
+        }
+
+        .why-icon {
+            font-size: 2rem;
+        }
+
+        .why-text {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #292524;
+        }
+
+        .side-content {
+            width: 40%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding-left: 60px;
+        }
+
+        .profile-card {
+            background: white;
+            border-radius: 30px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            animation: popIn 0.8s ease-out 0.6s both;
+            max-width: 350px;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.8) rotate(-5deg); opacity: 0; }
+            100% { transform: scale(1) rotate(0); opacity: 1; }
+        }
+
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            margin: 0 auto 20px;
+        }
+
+        .profile-name {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .profile-title {
+            font-size: 1rem;
+            color: #16a34a;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .profile-bio {
+            font-size: 1rem;
+            color: #57534e;
+            line-height: 1.7;
+            margin-bottom: 25px;
+        }
+
+        .fun-fact {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            padding: 15px 20px;
+            border-radius: 15px;
+            font-size: 0.95rem;
+        }
+
+        .fun-fact-label {
+            font-weight: 700;
+            color: #b45309;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .fun-fact-text {
+            color: #78350f;
+        }
+
+        .products-banner {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            animation: fadeIn 0.8s ease-out 1s both;
+        }
+
+        .product-bubble {
+            background: white;
+            padding: 15px 25px;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            transition: transform 0.3s ease;
+        }
+
+        .product-bubble:hover {
+            transform: scale(1.05);
+        }
+
+        .product-bubble-icon {
+            font-size: 1.3rem;
+        }
+
+        .support-local {
+            position: absolute;
+            top: 40px;
+            left: 80px;
+            background: #16a34a;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            letter-spacing: 1px;
+            animation: fadeIn 0.8s ease-out;
+            box-shadow: 0 4px 15px rgba(22, 163, 74, 0.3);
+        }
+
+        .branding {
+            position: absolute;
+            top: 40px;
+            right: 80px;
+            text-align: right;
+            animation: fadeIn 0.8s ease-out 0.3s both;
+        }
+
+        .branding-name {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #292524;
+        }
+
+        .branding-sub {
+            font-size: 0.9rem;
+            color: #78716c;
+        }
+    </style>
+</head>
+<body>
+    <div class="sun"></div>
+    <div class="hills">
+        <div class="hill hill-1"></div>
+        <div class="hill hill-2"></div>
+        <div class="hill hill-3"></div>
+    </div>
+
+    <div class="support-local">🌿 SUPPORT LOCAL</div>
+
+    <div class="branding">
+        <div class="branding-name">Blue Ridge Custom Co</div>
+        <div class="branding-sub">Asheville, NC</div>
+    </div>
+
+    <div class="container">
+        <div class="main-content">
+            <div class="wave-hello">👋</div>
+            
+            <h1>
+                <span>Hey Neighbor!</span>
+                <span>We Make Cool Stuff</span>
+                <span>Right Here in AVL</span>
+            </h1>
+
+            <p class="intro">
+                We're <strong>Jack & the Blue Ridge crew</strong> — your local custom print shop. 
+                Whether it's a sticker for your water bottle, a metal print for your wall, 
+                or matching shirts for the family reunion, we've got you covered. 
+                <strong>No order too small!</strong>
+            </p>
+
+            <div class="why-us">
+                <div class="why-item">
+                    <span class="why-icon">🏠</span>
+                    <span class="why-text">100% Local</span>
+                </div>
+                <div class="why-item">
+                    <span class="why-icon">💚</span>
+                    <span class="why-text">Small Batch</span>
+                </div>
+                <div class="why-item">
+                    <span class="why-icon">⚡</span>
+                    <span class="why-text">Fast Turnaround</span>
+                </div>
+                <div class="why-item">
+                    <span class="why-icon">🎨</span>
+                    <span class="why-text">Custom Designs</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="side-content">
+            <div class="profile-card">
+                <div class="profile-avatar">🧔</div>
+                <div class="profile-name">Jack Swayze</div>
+                <div class="profile-title">Owner & Maker</div>
+                <p class="profile-bio">
+                    I make everything myself right here in Asheville. 
+                    Come say hi — I love talking shop and helping 
+                    folks bring their ideas to life!
+                </p>
+                <div class="fun-fact">
+                    <div class="fun-fact-label">Fun Fact 🏎️</div>
+                    <div class="fun-fact-text">
+                        I'm also a rally car driver (#656)!
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="products-banner">
+        <div class="product-bubble">
+            <span class="product-bubble-icon">🎨</span>
+            <span>Stickers</span>
+        </div>
+        <div class="product-bubble">
+            <span class="product-bubble-icon">🖼️</span>
+            <span>Metal Prints</span>
+        </div>
+        <div class="product-bubble">
+            <span class="product-bubble-icon">👕</span>
+            <span>T-Shirts</span>
+        </div>
+        <div class="product-bubble">
+            <span class="product-bubble-icon">✨</span>
+            <span>Engraving</span>
+        </div>
+        <div class="product-bubble">
+            <span class="product-bubble-icon">🎁</span>
+            <span>Custom Gifts</span>
+        </div>
+    </div>
+</body>
+</html>

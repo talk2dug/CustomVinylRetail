@@ -1,0 +1,173 @@
+// ========================================
+// Facebook AI Generator - Add to index.js
+// Insert this near the end of index.js, before the closing of the main initialization
+// ========================================
+
+  // Facebook AI Generator
+  let fbAiGeneratedData = null;
+
+  const fbAiGenerateButton = document.getElementById('fbAiGenerateButton');
+  const fbAiExportJsonButton = document.getElementById('fbAiExportJsonButton');
+  const fbAiCopyTargetingButton = document.getElementById('fbAiCopyTargetingButton');
+  const fbAiStatus = document.getElementById('fbAiStatus');
+  const fbAiProgress = document.getElementById('fbAiProgress');
+  const fbAiResults = document.getElementById('fbAiResults');
+  const fbAiBudgetInput = document.getElementById('fbAiBudget');
+
+  if (fbAiGenerateButton) {
+    fbAiGenerateButton.addEventListener('click', async () => {
+      try {
+        // Get current campaign data
+        const campaign = {
+          title: document.getElementById('campaignTitleInput')?.value || 'Untitled Campaign',
+          subtitle: document.getElementById('campaignSubtitleInput')?.value || '',
+          items: state.campaignItems || []
+        };
+
+        if (!campaign.title || campaign.items.length === 0) {
+          fbAiStatus.textContent = 'Please create a campaign with items first.';
+          return;
+        }
+
+        // Get mockup image path
+        const mockupImagePath = state.campaignSharedMockupPath || '';
+        if (!mockupImagePath) {
+          fbAiStatus.textContent = 'Please generate a campaign mockup first (use "Save Campaign").';
+          return;
+        }
+
+        const budget = Number(fbAiBudgetInput.value) || 20;
+
+        fbAiProgress.hidden = false;
+        fbAiResults.hidden = true;
+        fbAiStatus.textContent = 'Generating Facebook ads with AI...';
+        fbAiGenerateButton.disabled = true;
+
+        // Call IPC handler
+        const result = await window.api.invoke('facebook-ai:generate', {
+          campaign,
+          imagePath: mockupImagePath,
+          budget
+        });
+
+        fbAiProgress.hidden = true;
+        fbAiGenerateButton.disabled = false;
+
+        if (!result.success) {
+          fbAiStatus.textContent = `Error: ${result.error}`;
+          return;
+        }
+
+        fbAiGeneratedData = result.data;
+        fbAiStatus.textContent = 'Facebook ads generated successfully!';
+        fbAiResults.hidden = false;
+        fbAiExportJsonButton.disabled = false;
+        fbAiCopyTargetingButton.disabled = false;
+
+        // Display results
+        displayFacebookAiResults(fbAiGeneratedData);
+
+      } catch (error) {
+        console.error('[Facebook AI Error]', error);
+        fbAiProgress.hidden = true;
+        fbAiGenerateButton.disabled = false;
+        fbAiStatus.textContent = `Error: ${error.message}`;
+      }
+    });
+  }
+
+  if (fbAiExportJsonButton) {
+    fbAiExportJsonButton.addEventListener('click', () => {
+      if (!fbAiGeneratedData) return;
+
+      const json = JSON.stringify(fbAiGeneratedData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `facebook-ads-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      fbAiStatus.textContent = 'JSON exported successfully!';
+    });
+  }
+
+  if (fbAiCopyTargetingButton) {
+    fbAiCopyTargetingButton.addEventListener('click', () => {
+      if (!fbAiGeneratedData?.targeting) return;
+
+      const targeting = fbAiGeneratedData.targeting;
+      const text = `FACEBOOK ADS TARGETING
+
+Demographics:
+- Age: ${targeting.demographics.age_min}-${targeting.demographics.age_max}
+- Gender: ${targeting.demographics.genders.join(', ')}
+
+Interests:
+${targeting.interests.map(i => `  • ${i}`).join('\n')}
+
+Behaviors:
+${targeting.behaviors.map(b => `  • ${b}`).join('\n')}
+
+Locations:
+${targeting.locations.countries.join(', ')}
+
+Target Audience:
+${targeting.psychographics.lifestyle}
+`;
+
+      navigator.clipboard.writeText(text);
+      fbAiStatus.textContent = 'Targeting copied to clipboard!';
+      setTimeout(() => {
+        fbAiStatus.textContent = 'Ready to generate more ads.';
+      }, 2000);
+    });
+  }
+
+  function displayFacebookAiResults(data) {
+    // Display targeting
+    const targeting = data.targeting;
+    document.getElementById('fbAiTargeting').innerHTML = `
+      <p><strong>Demographics:</strong> ${targeting.demographics.genders.join(', ')}, ages ${targeting.demographics.age_min}-${targeting.demographics.age_max}</p>
+      <p>${targeting.demographics.description}</p>
+      <p><strong>Interests:</strong></p>
+      <ul>${targeting.interests.map(i => `<li>${i}</li>`).join('')}</ul>
+      <p><strong>Behaviors:</strong></p>
+      <ul>${targeting.behaviors.map(b => `<li>${b}</li>`).join('')}</ul>
+      <p><strong>Lifestyle:</strong> ${targeting.psychographics.lifestyle}</p>
+    `;
+
+    // Display creative
+    const creative = data.creative;
+    document.getElementById('fbAiCreative').innerHTML = `
+      <p><strong>Headlines:</strong></p>
+      <ol>${creative.headlines.map(h => `<li>${h}</li>`).join('')}</ol>
+      <p><strong>Body Copy (Medium):</strong></p>
+      <p style="font-style:italic;">"${creative.primaryText[1]?.text}"</p>
+      <p><strong>CTAs:</strong></p>
+      <ul>${creative.callsToAction.map(c => `<li>${c.text} (${c.type})</li>`).join('')}</ul>
+    `;
+
+    // Display budget
+    const budget = data.budget;
+    document.getElementById('fbAiBudgetDisplay').innerHTML = `
+      <p><strong>Daily Budget:</strong> $${budget.dailyBudget}</p>
+      <p><strong>Lifetime Budget (30 days):</strong> $${budget.lifetimeBudget}</p>
+      <p><strong>Bid Strategy:</strong> ${budget.bidStrategy}</p>
+      <p><strong>Expected Results:</strong></p>
+      <ul>
+        <li>Reach: ~${budget.expectedMetrics.estimatedReach} people</li>
+        <li>Clicks: ~${budget.expectedMetrics.estimatedClicks}</li>
+        <li>CPC: ~$${budget.expectedMetrics.estimatedCPC}</li>
+        <li>CTR: ${budget.expectedMetrics.estimatedCTR}</li>
+        <li>Conversions: ~${budget.expectedMetrics.estimatedConversions}</li>
+        <li>Target ROAS: ${budget.expectedMetrics.targetROAS}x</li>
+      </ul>
+      <p>${budget.reasoning}</p>
+    `;
+
+    // Display recommendations
+    const recommendations = data.recommendations || [];
+    document.getElementById('fbAiRecommendations').innerHTML =
+      recommendations.map(r => `<li>${r}</li>`).join('');
+  }

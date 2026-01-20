@@ -26,10 +26,12 @@ const CONFIRM_EMAIL_ENDPOINT = `${API_BASE}/api/auth/confirm-email`;
 const REQUEST_PASSWORD_RESET_ENDPOINT = `${API_BASE}/api/auth/request-password-reset`;
 const RESET_PASSWORD_ENDPOINT = `${API_BASE}/api/auth/reset-password`;
 const CUSTOMER_ORDERS_ENDPOINT = `${API_BASE}/api/customer/orders`;
+const CUSTOMER_PROFILE_ENDPOINT = `${API_BASE}/api/customer/profile`;
 const CUSTOMER_REORDER_ENDPOINT = (id) =>
   `${API_BASE}/api/customer/orders/${encodeURIComponent(id)}/reorder`;
+// Use general checkout endpoint for payment links
 const CREATE_PAYMENT_LINK_ENDPOINT = (id) =>
-  `${API_BASE}/api/customer/orders/${encodeURIComponent(id)}/pay`;
+  `${API_BASE}/api/orders/${encodeURIComponent(id)}/checkout`;
 const CUSTOMER_RACE_QUOTES_ENDPOINT = `${API_BASE}/api/customer/race-quotes`;
 const CUSTOMER_RACE_QUOTE_CHECKOUT_ENDPOINT = (id) =>
   `${API_BASE}/api/customer/race-quotes/${encodeURIComponent(id)}/checkout`;
@@ -43,6 +45,7 @@ const CUSTOMER_RACE_QUOTE_FILES_ENDPOINT = (id) =>
   `${API_BASE}/api/customer/race-quotes/${encodeURIComponent(id)}/files`;
 const SAVED_FILE_URL = (file) => `${API_BASE}/files/saved/${encodeURIComponent(file)}`;
 const REFRESH_ENDPOINT = `${API_BASE}/api/auth/refresh`;
+const PUBLIC_CONFIG_ENDPOINT = `${API_BASE}/api/public/config`;
 
 const USD_FORMATTER = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -375,8 +378,17 @@ const elements = {
   accountBar: document.getElementById('accountBar'),
   accountName: document.getElementById('accountName'),
   accountEmail: document.getElementById('accountEmail'),
+  // Preferences
+  prefsCard: document.getElementById('prefsCard'),
+  smsPrefCheckbox: document.getElementById('smsPrefCheckbox'),
+  savePrefsButton: document.getElementById('savePrefsButton'),
+  prefsStatus: document.getElementById('prefsStatus'),
   logoutButton: document.getElementById('logoutButton'),
   verifyBanner: document.getElementById('verifyBanner'),
+  openQuoteModal: document.getElementById('openQuoteModal'),
+  quoteModal: document.getElementById('quoteModal'),
+  closeQuoteModal: document.getElementById('closeQuoteModal'),
+  closeQuoteModalFooter: document.getElementById('closeQuoteModalFooter'),
   resendVerification: document.getElementById('resendVerification'),
   racePackagesCard: document.getElementById('racePackagesCard'),
   raceQuotesCard: document.getElementById('raceQuotesCard'),
@@ -643,6 +655,28 @@ function returnToLoginViews() {
   switchView('login');
 }
 
+async function handlePayAllUnpaid() {
+  if (!state.token) {
+    setStatus('Please sign in to pay for your orders.', 'error');
+    return;
+  }
+  setStatus('Preparing your combined invoice…');
+  try {
+    const response = await fetch(`${API_BASE}/api/customer/orders/pay-all`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${state.token}` }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.url) {
+      throw new Error(data.error || `Unable to create combined invoice (${response.status})`);
+    }
+    window.location.href = data.url;
+  } catch (error) {
+    console.error('Pay-all error:', error);
+    setStatus(error.message || 'Unable to create combined invoice.', 'error');
+  }
+}
+
 function setAuthenticated(customer, token) {
   const previousRemember = state.customer?.rememberToken || localStorage.getItem('stickerPortalRememberToken');
   state.token = token;
@@ -670,6 +704,10 @@ function setAuthenticated(customer, token) {
     elements.verifyBanner?.classList.remove('hidden');
   }
   loadRaceQuotes();
+  // Fetch orders immediately after login
+  fetchCustomerOrders();
+  // Load profile preferences
+  loadCustomerProfile();
 }
 
 function clearAuthentication() {
@@ -690,6 +728,27 @@ function clearAuthentication() {
   renderRaceQuotes([]);
   switchView('login');
   renderOrders([]);
+  hideElement(elements.prefsCard);
+}
+
+async function loadCustomerProfile() {
+  if (!state.token) return;
+  try {
+    const response = await fetch(CUSTOMER_PROFILE_ENDPOINT, {
+      headers: { Authorization: `Bearer ${state.token}` }
+    });
+    if (!response.ok) return;
+    const data = await response.json().catch(() => ({}));
+    const customer = data.customer || null;
+    if (customer) {
+      showElement(elements.prefsCard);
+      if (typeof customer.smsOptIn === 'boolean') {
+        elements.smsPrefCheckbox.checked = customer.smsOptIn;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
 }
 
 async function fetchCustomerOrders() {
@@ -727,7 +786,8 @@ async function fetchCustomerOrders() {
     if (state.orders.length) {
       setStatus(`Showing ${state.orders.length} order${state.orders.length === 1 ? '' : 's'}.`, 'success');
     } else {
-      setStatus('No orders yet. You can create one at the booth or online.', 'info');
+      // Do not show a status banner when there are no orders
+      setStatus('');
     }
   } catch (error) {
     console.error('fetchCustomerOrders error:', error);
@@ -1787,6 +1847,16 @@ function buildOrderCard(order) {
     footer.insertBefore(payButton, previewLink);
   }
 
+  // Allow deleting unpaid orders
+  if (!order.paid && order.paymentStatus !== 'PAID') {
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'secondary';
+    deleteButton.textContent = 'Delete';
+    deleteButton.addEventListener('click', () => handleDeleteOrder(order.id, deleteButton));
+    footer.insertBefore(deleteButton, previewLink);
+  }
+
   const reorderButton = template.querySelector('.reorder-button');
   reorderButton.addEventListener('click', () => handleReorder(order.id));
 
@@ -1822,6 +1892,34 @@ async function handleReorder(orderId) {
   } catch (error) {
     console.error('Reorder failed:', error);
     setStatus(error.message || 'Unable to duplicate order.', 'error');
+  }
+}
+
+// Delete an unpaid order for the signed-in customer
+async function handleDeleteOrder(orderId, button) {
+  if (!state.token) {
+    setStatus('Please sign in first.', 'error');
+    return;
+  }
+  const confirmed = window.confirm('Delete this order? This cannot be undone.');
+  if (!confirmed) return;
+  try {
+    if (button) button.disabled = true;
+    const response = await fetch(`${API_BASE}/api/customer/orders/${encodeURIComponent(orderId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${state.token}` }
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Delete failed (${response.status})`);
+    }
+    setStatus('Order deleted.', 'success');
+    await fetchCustomerOrders();
+  } catch (error) {
+    console.error('Delete order failed:', error);
+    setStatus(error.message || 'Unable to delete order.', 'error');
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -1978,6 +2076,9 @@ async function submitRaceQuote(event) {
     }
     elements.raceQuoteForm?.reset();
     presetRaceQuoteForm();
+    // Close modal after successful submit
+    const modal = document.getElementById('quoteModal');
+    if (modal) modal.classList.add('hidden');
     await loadRaceQuotes({ silent: true });
   } catch (error) {
     console.error('submitRaceQuote error:', error);
@@ -2046,12 +2147,58 @@ function handleQueryParams() {
   const verifyToken = params.get('verify');
   const resetToken = params.get('resetToken');
   const paidFlag = params.get('paid');
+  const sessionParam = params.get('session');
+  const emailParam = params.get('email');
+  const codeParam = params.get('code');
   if (verifyToken) {
     confirmEmailFromToken(verifyToken);
   }
   if (resetToken) {
     showResetPasswordView(resetToken);
     setStatus('Enter a new password to finish resetting your account.', 'info');
+  }
+  if (sessionParam) {
+    // Attempt session login using provided token
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/customer/profile`, { headers: { Authorization: `Bearer ${sessionParam}` } });
+        if (response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const customer = data?.customer || null;
+          if (customer) {
+            setAuthenticated(customer, sessionParam);
+            setStatus('Signed in via QR link.', 'success');
+            await fetchCustomerOrders();
+          }
+        } else {
+          setStatus('Session link invalid or expired. Please sign in.', 'error');
+        }
+      } catch (_) {
+        setStatus('Session link invalid or expired. Please sign in.', 'error');
+      }
+    })();
+  }
+  if (emailParam && codeParam) {
+    // Magic link from kiosk QR: verify code automatically
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/auth/login-code/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailParam, code: codeParam })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data?.token && data?.customer) {
+          setAuthenticated(data.customer, data.token);
+          setStatus('Signed in via code link.', 'success');
+          await fetchCustomerOrders();
+        } else {
+          setStatus('Code link invalid or expired. Please sign in.', 'error');
+        }
+      } catch (_) {
+        setStatus('Code link invalid or expired. Please sign in.', 'error');
+      }
+    })();
   }
   if (paidFlag === '1') {
     setStatus('Thanks! We will confirm your payment and update your order shortly.', 'success');
@@ -2060,6 +2207,11 @@ function handleQueryParams() {
     params.delete('verify');
     params.delete('resetToken');
     params.delete('paid');
+  }
+  if (sessionParam || (emailParam && codeParam)) {
+    params.delete('session');
+    params.delete('email');
+    params.delete('code');
     const newSearch = params.toString();
     const newUrl = `${window.location.pathname}${newSearch ? `?${newSearch}` : ''}`;
     window.history.replaceState({}, '', newUrl);
@@ -2099,6 +2251,25 @@ elements.raceQuoteAddSponsor?.addEventListener('click', (event) => {
   addSponsorEntry();
 });
 
+elements.openQuoteModal?.addEventListener('click', (event) => {
+  event.preventDefault();
+  if (!state.token) {
+    setStatus('Please sign in to request a quote.', 'error');
+    return;
+  }
+  presetRaceQuoteForm();
+  elements.quoteModal?.classList.remove('hidden');
+});
+
+elements.closeQuoteModal?.addEventListener('click', () => elements.quoteModal?.classList.add('hidden'));
+elements.closeQuoteModalFooter?.addEventListener('click', () => elements.quoteModal?.classList.add('hidden'));
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    elements.quoteModal?.classList.add('hidden');
+  }
+});
+
 elements.uploadButton?.addEventListener('click', () => {
   elements.uploadInput?.click();
 });
@@ -2110,7 +2281,49 @@ elements.uploadInput?.addEventListener('change', (event) => {
   event.target.value = '';
 });
 
+elements.savePrefsButton?.addEventListener('click', async () => {
+  if (!state.token) { setStatus('Please sign in first.', 'error'); return; }
+  if (elements.prefsStatus) {
+    elements.prefsStatus.textContent = 'Saving…';
+    elements.prefsStatus.className = 'status';
+  }
+  try {
+    const smsOptIn = Boolean(elements.smsPrefCheckbox?.checked);
+    const response = await fetch(CUSTOMER_PROFILE_ENDPOINT, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${state.token}` },
+      body: JSON.stringify({ smsOptIn })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Save failed (${response.status})`);
+    if (elements.prefsStatus) {
+      elements.prefsStatus.textContent = 'Preferences saved.';
+      elements.prefsStatus.className = 'status success';
+    }
+    setStatus('Preferences saved.', 'success');
+  } catch (error) {
+    if (elements.prefsStatus) {
+      elements.prefsStatus.textContent = error?.message || 'Unable to save preferences.';
+      elements.prefsStatus.className = 'status error';
+    }
+    setStatus(error?.message || 'Unable to save preferences.', 'error');
+  }
+});
+
 (async function bootstrap() {
+  // Load public config (e.g., SMS frequency) and update UI text
+  try {
+    const res = await fetch(PUBLIC_CONFIG_ENDPOINT, { cache: 'no-store' });
+    if (res.ok) {
+      const cfg = await res.json();
+      const freq = Number(cfg?.smsMsgsPerMonth);
+      if (Number.isFinite(freq) && freq > 0) {
+        const el = document.getElementById('smsMsgsPerMonth');
+        if (el) el.textContent = String(freq);
+      }
+    }
+  } catch (_) {}
+
   const storedToken = localStorage.getItem('stickerPortalToken');
   const storedCustomerRaw = localStorage.getItem('stickerPortalCustomer');
   const storedRememberToken = localStorage.getItem('stickerPortalRememberToken');
@@ -2142,4 +2355,8 @@ elements.uploadInput?.addEventListener('change', (event) => {
   }
 
   handleQueryParams();
+  const payAllButton = document.getElementById('payAllButton');
+  if (payAllButton) {
+    payAllButton.addEventListener('click', handlePayAllUnpaid);
+  }
 })();

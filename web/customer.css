@@ -233,6 +233,115 @@ body {
   display: none !important;
 }
 
+/* Compact card variant (used for Account preferences at bottom) */
+.card.compact {
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.6rem;
+}
+.card.compact h2 {
+  font-size: 1rem;
+  margin: 0 0 0.25rem;
+}
+.card.compact .inline { font-size: 0.95rem; }
+.card.compact .status { min-height: 1rem; font-size: 0.85rem; }
+
+/* Modal for quote form - Enhanced Racing Style */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 14, 26, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+  animation: modalFadeIn 0.3s ease;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal.hidden { display: none; }
+
+.modal-content {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
+  backdrop-filter: blur(30px);
+  border: 2px solid rgba(0, 212, 255, 0.3);
+  border-radius: 1.75rem;
+  width: min(1000px, 100%);
+  max-height: 92vh;
+  overflow: auto;
+  padding: 2.5rem;
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6), 0 0 60px rgba(0, 212, 255, 0.2);
+  position: relative;
+  animation: modalSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, #00d4ff 0%, #ff00ff 50%, #facc15 100%);
+  border-radius: 1.75rem 1.75rem 0 0;
+}
+
+.modal-content h2 {
+  font-size: 2.2rem;
+  font-weight: 900;
+  margin: 0 0 1rem;
+  background: linear-gradient(135deg, #0f172a 0%, #00a8cc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.close-button {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 212, 255, 0.4);
+  background: rgba(0, 212, 255, 0.1);
+  color: #00d4ff;
+  font-size: 1.5rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-button:hover {
+  background: rgba(0, 212, 255, 0.2);
+  border-color: #00d4ff;
+  transform: rotate(90deg) scale(1.1);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+}
+
 .status {
   min-height: 1.5rem;
   font-size: 0.95rem;
@@ -374,15 +483,14 @@ body {
 
 .race-quote-form {
   display: grid;
-  gap: 1.5rem;
-  border-top: 1px solid var(--border);
-  padding-top: 1.5rem;
+  gap: 2rem;
+  padding-top: 1rem;
 }
 
 .race-quote-grid {
   display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .race-quote-grid .full-width {
@@ -392,10 +500,12 @@ body {
 .race-body-note {
   grid-column: 1 / -1;
   font-size: 0.9rem;
-  padding: 0.65rem 0.8rem;
-  border-radius: 0.75rem;
-  background: rgba(37, 99, 235, 0.08);
-  color: var(--accent-dark);
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.12) 0%, rgba(37, 99, 235, 0.08) 100%);
+  color: #0f172a;
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  font-weight: 600;
 }
 
 .race-quote-form label,
@@ -407,22 +517,45 @@ body {
 
 .race-quote-form label {
   display: grid;
-  gap: 0.35rem;
-  color: var(--muted);
+  gap: 0.5rem;
+  color: rgba(15, 23, 42, 0.9);
   font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.race-quote-form label span {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.7);
 }
 
 .race-quote-form input,
 .race-quote-form textarea,
 .race-quote-form select {
-  padding: 0.65rem 0.75rem;
-  border-radius: 0.65rem;
-  border: 1px solid var(--border);
-  background: #f8fafc;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  border: 2px solid rgba(0, 212, 255, 0.2);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--text);
+  transition: all 0.3s ease;
+  font-size: 1rem;
+}
+
+.race-quote-form input:focus,
+.race-quote-form textarea:focus,
+.race-quote-form select:focus {
+  outline: none;
+  border-color: #00d4ff;
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.25);
+  transform: translateY(-1px);
 }
 
 .race-quote-form textarea {
   resize: vertical;
+  min-height: 120px;
+  line-height: 1.6;
 }
 
 .race-quote-sponsors {
@@ -487,38 +620,92 @@ body {
 }
 
 .race-package-options,
-.race-addons {
+.race-addons,
+.race-apparel-options {
   display: grid;
-  gap: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 0.85rem;
-  padding: 1rem 1.25rem;
-  background: #f9fbff;
+  gap: 1rem;
+  border: 2px solid rgba(0, 212, 255, 0.3);
+  border-radius: 1.25rem;
+  padding: 1.75rem 2rem;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.08) 0%, rgba(255, 0, 255, 0.05) 100%);
 }
 
 .race-package-options legend,
-.race-addons legend {
-  font-weight: 600;
+.race-addons legend,
+.race-apparel-options legend {
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: #0f172a;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0 0.75rem;
   margin-bottom: 0.5rem;
 }
 
 .race-package-options label,
-.race-addons label {
+.race-addons label,
+.race-apparel-options label {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  font-size: 0.95rem;
-  color: #1f2937;
+  gap: 0.85rem;
+  font-size: 1rem;
+  color: rgba(15, 23, 42, 0.9);
+  cursor: pointer;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.75rem;
+  transition: all 0.2s ease;
+  font-weight: 600;
 }
 
-.race-package-options input,
-.race-addons input {
-  width: 18px;
-  height: 18px;
+.race-package-options label:hover,
+.race-addons label:hover,
+.race-apparel-options label:hover {
+  background: rgba(0, 212, 255, 0.1);
+  transform: translateX(4px);
+}
+
+.race-package-options input[type="radio"],
+.race-package-options input[type="checkbox"],
+.race-addons input[type="checkbox"],
+.race-apparel-options input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #00d4ff;
 }
 
 .race-quote-form button.primary {
-  justify-self: flex-start;
+  justify-self: center;
+  font-size: 1.15rem;
+  padding: 1.1rem 3rem;
+  background: linear-gradient(135deg, #00d4ff 0%, #00a8cc 100%);
+  box-shadow: 0 0 40px rgba(0, 212, 255, 0.4);
+  transition: all 0.3s ease;
+}
+
+.race-quote-form button.primary:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 0 60px rgba(0, 212, 255, 0.6);
+}
+
+.race-notes {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.race-notes span {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.85rem;
+  color: rgba(15, 23, 42, 0.7);
+  font-weight: 600;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .race-quotes__list {

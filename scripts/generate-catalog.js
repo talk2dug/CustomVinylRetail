@@ -1,5 +1,5 @@
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
 const ENV_PATH = path.resolve(__dirname, '..', '.env');
 if (fs.existsSync(ENV_PATH)) {
@@ -9,18 +9,21 @@ if (fs.existsSync(ENV_PATH)) {
 const APP_ROOT = path.resolve(__dirname, '..');
 const LIBRARY_ROOT = process.env.LIBRARY_ROOT
   ? path.resolve(process.env.LIBRARY_ROOT)
-  : APP_ROOT;
-const LIBRARY_WEB_DIR = path.join(LIBRARY_ROOT, 'web');
-const WEB_DIR = fs.existsSync(LIBRARY_WEB_DIR) ? LIBRARY_WEB_DIR : path.join(APP_ROOT, 'web');
+  : path.join(APP_ROOT, 'web', 'library');
+// Decal Creator Icons library (non-apparel ready items)
+const DECAL_ICONS_ROOT = process.env.DECAL_ICONS_ROOT
+  ? path.resolve(process.env.DECAL_ICONS_ROOT)
+  : path.join(APP_ROOT, 'dbFiles', 'DecalCreatorIcons');
+const WEB_DIR = path.join(APP_ROOT, 'web');
 const ASSET_BASE_URL = (process.env.ASSET_BASE_URL || '').trim();
 const OUTPUT_FILE = path.join(WEB_DIR, 'catalog.json');
+const DECAL_ICONS_OUTPUT_FILE = path.join(WEB_DIR, 'catalog-decal-icons.json');
 
-function toApiLibraryPath(filePath) {
+function toFullAssetUrl(filePath, libraryRoot, webSubPath) {
   if (!filePath) return null;
-  const relative = path.relative(LIBRARY_ROOT, filePath);
-  const segments = relative.split(path.sep).filter(Boolean);
-  const encoded = segments.map((segment) => encodeURIComponent(segment));
-  return `/api/library/${encoded.join('/')}`;
+  const relative = path.relative(libraryRoot, filePath);
+  const webPath = relative.split(path.sep).join('/');
+  return `${ASSET_BASE_URL}/${webSubPath}/${webPath}`;
 }
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
@@ -72,45 +75,108 @@ function collectFilesRecursive(dirPath) {
   return collected;
 }
 
+function isJunkFile(filePath) {
+  const name = path.basename(filePath);
+  const lower = name.toLowerCase();
+  // Ignore macOS resource forks and common junk files
+  if (name.startsWith('._')) return true; // AppleDouble
+  if (name === '.ds_store' || lower === '.ds_store') return true;
+  if (lower === 'thumbs.db') return true;
+  return false;
+}
+
 function ensureWebDir() {
   fs.mkdirSync(WEB_DIR, { recursive: true });
 }
 
-function buildCatalog() {
+/**
+ * Build a catalog from a given library root directory
+ * @param {Object} options - Build options
+ * @param {string} options.libraryRoot - Root directory containing category folders
+ * @param {string} options.outputFile - Output JSON file path
+ * @param {string} options.webSubPath - Web-relative path for asset URLs (e.g., 'web/library' or 'dbFiles/DecalCreatorIcons')
+ * @param {string} options.catalogName - Display name for logging
+ */
+async function buildCatalogFromRoot({ libraryRoot, outputFile, webSubPath, catalogName }) {
   ensureWebDir();
+
+  // Check if library root exists
+  if (!fs.existsSync(libraryRoot)) {
+    console.warn(`${catalogName}: Library root does not exist: ${libraryRoot}`);
+    return { categories: [], count: 0 };
+  }
+
+  // Load existing catalog to preserve metadata (like autoDescription)
+  let existingCatalog = null;
+  try {
+    if (fs.existsSync(outputFile)) {
+      const existing = fs.readFileSync(outputFile, 'utf8');
+      existingCatalog = JSON.parse(existing);
+      console.log(`${catalogName}: Loaded existing catalog to preserve metadata...`);
+    }
+  } catch (err) {
+    console.warn(`${catalogName}: Could not load existing catalog, starting fresh:`, err.message);
+  }
+
   const categories = [];
-  const rootEntries = fs.readdirSync(LIBRARY_ROOT, { withFileTypes: true });
+  const rootEntries = fs.readdirSync(libraryRoot, { withFileTypes: true });
+  const designQueue = [];
 
   for (const entry of rootEntries) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith('.')) continue;
     if (SKIP_DIRS.has(entry.name)) continue;
 
-    const categoryPath = path.join(LIBRARY_ROOT, entry.name);
+    const categoryPath = path.join(libraryRoot, entry.name);
     if (!isDirectory(categoryPath)) continue;
 
     const files = collectFilesRecursive(categoryPath);
     const designsByKey = new Map();
 
     for (const filePath of files) {
+      if (isJunkFile(filePath)) continue;
       const ext = path.extname(filePath).toLowerCase();
       if (!IMAGE_EXTENSIONS.has(ext)) continue;
 
       const baseName = formatDisplayName(path.basename(filePath, ext));
       const key = slugify(baseName) || slugify(path.basename(filePath));
       const relativePath = ASSET_BASE_URL
-        ? toApiLibraryPath(filePath)
+        ? toFullAssetUrl(filePath, libraryRoot, webSubPath)
         : path
             .relative(WEB_DIR, filePath)
             .split(path.sep)
             .join('/');
 
       if (!designsByKey.has(key)) {
-        designsByKey.set(key, {
+        // Check if this design exists in the old catalog with metadata
+        let preservedAutoDescription = '';
+        if (existingCatalog && existingCatalog.categories) {
+          const existingCategory = existingCatalog.categories.find(
+            cat => cat.slug === slugify(entry.name)
+          );
+          if (existingCategory && existingCategory.designs) {
+            const existingDesign = existingCategory.designs.find(d => d.id === key);
+            if (existingDesign && existingDesign.autoDescription) {
+              preservedAutoDescription = existingDesign.autoDescription;
+            }
+          }
+        }
+
+        const designObj = {
           id: key,
           name: baseName,
           image: relativePath,
-          sources: {}
+          sources: {},
+          autoDescription: preservedAutoDescription,
+          __sourcePath: filePath,
+          __folderName: entry.name
+        };
+        designsByKey.set(key, designObj);
+        designQueue.push({
+          design: designObj,
+          imagePath: filePath,
+          folderName: entry.name,
+          fileName: path.basename(filePath, ext)
         });
       } else if (!designsByKey.get(key).image) {
         designsByKey.get(key).image = relativePath;
@@ -121,6 +187,7 @@ function buildCatalog() {
 
     // Attempt to attach matching source files (AI, EPS, etc.)
     for (const filePath of files) {
+      if (isJunkFile(filePath)) continue;
       const ext = path.extname(filePath).toLowerCase();
       if (!SOURCE_EXTENSION_MAP.has(ext)) continue;
 
@@ -130,7 +197,7 @@ function buildCatalog() {
       if (!design) continue;
 
       const relativePath = ASSET_BASE_URL
-        ? toApiLibraryPath(filePath)
+        ? toFullAssetUrl(filePath, libraryRoot, webSubPath)
         : path
             .relative(WEB_DIR, filePath)
             .split(path.sep)
@@ -154,12 +221,54 @@ function buildCatalog() {
 
   const catalog = {
     generatedAt: new Date().toISOString(),
-    assetRoot: ASSET_BASE_URL ? '/api/library' : '..',
+    assetRoot: ASSET_BASE_URL ? '' : '.',
     categories
   };
 
-  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(catalog, null, 2), 'utf8');
-  console.log(`Catalog generated with ${categories.length} categories.`);
+  // Clean up temporary fields
+  // Note: AI metadata generation is now done on-demand via print-station
+  // Existing autoDescription values are preserved during catalog rebuild
+  designQueue.forEach((item) => {
+    // Ensure autoDescription exists (empty string for new designs, preserved for existing)
+    if (item.design.autoDescription === undefined || item.design.autoDescription === null) {
+      item.design.autoDescription = '';
+    }
+    delete item.design.__sourcePath;
+    delete item.design.__folderName;
+  });
+
+
+  fs.writeFileSync(outputFile, JSON.stringify(catalog, null, 2), 'utf8');
+  const totalDesigns = categories.reduce((sum, cat) => sum + cat.designs.length, 0);
+  console.log(`${catalogName}: Generated with ${categories.length} categories, ${totalDesigns} designs.`);
+  return { categories: categories.length, designs: totalDesigns };
 }
 
-buildCatalog();
+async function buildAllCatalogs() {
+  console.log('=== Building Catalogs ===\n');
+
+  // Build Apparel Ready catalog (main library)
+  const apparelResult = await buildCatalogFromRoot({
+    libraryRoot: LIBRARY_ROOT,
+    outputFile: OUTPUT_FILE,
+    webSubPath: 'web/library',
+    catalogName: 'Apparel Ready'
+  });
+
+  // Build Decal Creator Icons catalog
+  const decalResult = await buildCatalogFromRoot({
+    libraryRoot: DECAL_ICONS_ROOT,
+    outputFile: DECAL_ICONS_OUTPUT_FILE,
+    webSubPath: 'dbFiles/DecalCreatorIcons',
+    catalogName: 'Decal Creator Icons'
+  });
+
+  console.log('\n=== Summary ===');
+  console.log(`Apparel Ready: ${apparelResult.categories} categories, ${apparelResult.designs} designs`);
+  console.log(`Decal Creator Icons: ${decalResult.categories} categories, ${decalResult.designs} designs`);
+}
+
+buildAllCatalogs().catch((error) => {
+  console.error('Catalog generation failed:', error);
+  process.exit(1);
+});

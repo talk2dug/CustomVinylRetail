@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Campaign</title>
+  <link rel="stylesheet" href="./landing.css">
+  <style>
+    .campaign-mockup {
+      margin-top: 24px;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      background: #f9fafb;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      align-items: center;
+    }
+    .campaign-mockup__label {
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      color: #6b7280;
+      margin-bottom: 0.25rem;
+    }
+    .campaign-mockup__name {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+    .campaign-mockup__description {
+      margin-top: 0.5rem;
+      font-size: 0.95rem;
+      color: #374151;
+    }
+    .campaign-mockup img {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <main style="max-width:960px;margin:0 auto;padding:20px;">
+    <header>
+      <h1 id="cTitle">Loading…</h1>
+      <p id="cSubtitle" class="muted"></p>
+    </header>
+    <section id="cHero"></section>
+    <section id="cMockup" class="campaign-mockup" hidden>
+      <div>
+        <p class="campaign-mockup__label">Featured decal</p>
+        <p class="campaign-mockup__name" id="cMockupName"></p>
+        <p class="campaign-mockup__description" id="cMockupDescription"></p>
+      </div>
+      <div>
+        <img id="cMockupImage" alt="Campaign mockup" />
+      </div>
+    </section>
+    <section>
+      <div id="cItems" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;"></div>
+    </section>
+    <div style="margin-top:16px;">
+      <button id="cShop" class="btn">Shop Now</button>
+    </div>
+  </main>
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const slug = qs.get('c') || qs.get('campaign');
+    const status = (t) => console.log('[campaign]', t);
+    async function fetchCampaign() {
+      if (!slug) { document.getElementById('cTitle').textContent = 'Campaign missing'; return; }
+      try {
+        await fetch(`/api/public/campaigns/${encodeURIComponent(slug)}/track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'impression' }) });
+      } catch(_){}
+      const res = await fetch(`/api/public/campaigns/${encodeURIComponent(slug)}`);
+      const data = await res.json();
+      if (!res.ok || !data?.campaign) { document.getElementById('cTitle').textContent = 'Campaign not found'; return; }
+      const c = data.campaign;
+      document.getElementById('cTitle').textContent = c.title || slug;
+      document.getElementById('cSubtitle').textContent = c.subtitle || '';
+      if (c.hero?.image) {
+        const hero = document.getElementById('cHero');
+        const img = new Image(); img.src = c.hero.image; img.alt = c.title || 'Hero'; img.style.maxWidth='100%'; img.style.borderRadius='12px';
+        hero.appendChild(img);
+      }
+      const mockup = c.sharedMockup;
+      const mockupSection = document.getElementById('cMockup');
+      if (mockup && mockup.image) {
+        const mockupImg = document.getElementById('cMockupImage');
+        const mockupName = document.getElementById('cMockupName');
+        const mockupDesc = document.getElementById('cMockupDescription');
+        mockupImg.src = mockup.image;
+        mockupImg.alt = mockup.name || 'Campaign mockup';
+        mockupName.textContent = mockup.name || 'Campaign mockup';
+        mockupDesc.textContent = mockup.description || '';
+        if (mockupSection) mockupSection.hidden = false;
+      } else if (mockupSection) {
+        mockupSection.hidden = true;
+      }
+      const grid = document.getElementById('cItems');
+      grid.innerHTML = (c.items||[]).map(it => `<figure style="background:rgba(15,23,42,.08);border:1px solid rgba(148,163,184,.2);border-radius:10px;padding:10px;">
+          <img src="${it.image}" alt="${it.name||''}" style="max-width:100%;border-radius:8px;"/>
+          <figcaption style="margin-top:6px;font-weight:600;">${it.name||''}</figcaption>
+        </figure>`).join('');
+      document.getElementById('cShop').addEventListener('click', async () => {
+        try { await fetch(`/api/public/campaigns/${encodeURIComponent(slug)}/track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'click' }) }); } catch(_){ }
+        location.href = './catalog.html';
+      });
+    }
+    fetchCampaign();
+  </script>
+</body>
+</html>

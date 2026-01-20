@@ -3,11 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Swayze's Custom Vinyl</title>
+  <title>BlueRidgeCustomCo - Product Catalog</title>
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./shared-modern.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Lobster&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600&family=Pacifico&family=Playfair+Display:wght@400;700&family=Raleway:wght@400;600;700&family=Roboto+Slab:wght@400;600;700&display=swap">
 </head>
 <body>
+  <header class="modern-header">
+    <div class="header-container">
+      <a href="./" class="logo">
+        <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo">
+        <div class="logo-text">
+          <span class="logo-name">BlueRidgeCustomCo</span>
+          <span class="logo-tagline">Premium Custom Designs</span>
+        </div>
+      </a>
+      <nav class="nav-menu">
+        <a href="./designer.html" class="nav-link">Designer</a>
+        <a href="./racing.html" class="nav-link">Racing</a>
+        <a href="https://store.swayzecustomvinyl.com/apparel.html" class="nav-link">Apparel</a>
+        <a href="./customer.html" class="cta-button">Account</a>
+      </nav>
+    </div>
+  </header>
+
   <div class="app">
     <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="sidebar">
       Browse &amp; filters
@@ -18,7 +37,7 @@
         Close
       </button>
       <header class="brand">
-        <h1>Swayze's Custom Vinyl</h1>
+        <h1>BlueRidgeCustomCo</h1>
         <p class="tagline">Browse designs, preview colors, build your order.</p>
         <a class="login-button" href="./customer.html">Customer login</a>
       </header>
@@ -69,10 +88,13 @@
           </div>
           <canvas id="previewCanvas" aria-label="Sticker preview" role="img"></canvas>
         </div>
-        <p class="preview-hint hint">Preview shows an approximate single-color cut made from the chosen vinyl color. Click the preview to download the original catalog image (PNG or JPG).</p>
+        <p class="preview-hint hint">Preview shows an approximate single-color cut made from the chosen vinyl color.</p>
         <div class="designer-launch">
-          <button id="openDesignerButton" class="primary" type="button">Open sticker designer</button>
-          <p class="hint">Launch the full canvas to build a custom decal with our fonts and art library.</p>
+          <a href="./designer.html" class="primary" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; text-decoration: none;">
+            <i class="fas fa-magic"></i>
+            Launch Modern Designer
+          </a>
+          <p class="hint">Create custom decals with our AI-powered designer, full catalog access, and professional tools.</p>
         </div>
 
         <section class="control-group">
@@ -86,6 +108,13 @@
 
         <section class="control-group">
           <span class="control-label">Vinyl color</span>
+          <div class="inline-info">
+            <label class="inline">
+              <input type="checkbox" id="enableVinylColorCheckbox">
+              Change decal color
+            </label>
+          </div>
+          <p id="vinylColorWarning" class="hint">This app only creates one color. Multi-color decals won't render correctly.</p>
           <div id="colorSwatches" class="color-swatches"></div>
           <div class="inline-info">
             <label for="colorPaletteSelect">Palette</label>
@@ -98,131 +127,13 @@
           <p id="colorPaletteHint" class="hint"></p>
         </section>
 
-        <section class="control-group">
-          <span class="control-label">Background color</span>
-          <div class="background-controls">
-            <div class="inline-info">
-              <label for="backgroundColorInput">Custom</label>
-              <input id="backgroundColorInput" type="color" value="#f8fafc">
-            </div>
-            <select id="backgroundPresetSelect" class="control-input">
-              <option value="custom">Custom color</option>
-              <option value="#f8fafc" selected>Light gray (default)</option>
-              <option value="#ffffff">Bright white</option>
-              <option value="#1f2933">Charcoal</option>
-              <option value="#374151">Graphite</option>
-              <option value="#111827">Gloss black</option>
-              <option value="#8b5cf6">Deep purple</option>
-              <option value="#2563eb">Ocean blue</option>
-              <option value="#16a34a">Forest green</option>
-              <option value="#d97706">Copper</option>
-              <option value="#facc15">Taxi yellow</option>
-              <option value="#f97316">Sunset orange</option>
-              <option value="#ef4444">Fire red</option>
-            </select>
-          </div>
-        </section>
+        
 
-        <section class="inventory-panel" id="inventorySection">
-          <div class="inventory-panel__header">
-            <span class="control-label">Inventory</span>
-            <button id="inventoryRefreshButton" type="button" class="secondary small">Refresh</button>
-          </div>
-          <div class="inventory-panel__controls">
-            <label class="control-label" for="inventoryMaterialSelect">Material</label>
-            <select id="inventoryMaterialSelect" class="control-input">
-              <option value="regular-vinyl" selected>Regular decal vinyl</option>
-              <option value="heat-transfer">Heat transfer vinyl</option>
-              <option value="all">All inventory</option>
-            </select>
-          </div>
-          <div id="inventoryList" class="inventory-list">
-            <p class="hint">Loading inventory…</p>
-          </div>
-          <details class="inventory-details">
-            <summary>Add inventory item</summary>
-            <form id="inventoryAddForm" class="inventory-form">
-              <div class="inventory-form-grid">
-                <label>
-                  <span class="control-label">Name</span>
-                  <input id="inventoryAddName" type="text" required placeholder="Color or product name">
-                </label>
-                <label>
-                  <span class="control-label">Color hex</span>
-                  <input id="inventoryAddColor" type="text" placeholder="#FFFFFF">
-                </label>
-                <label>
-                  <span class="control-label">Material</span>
-                  <select id="inventoryAddMaterial" required>
-                    <option value="regular-vinyl">Regular decal vinyl</option>
-                    <option value="heat-transfer">Heat transfer vinyl</option>
-                  </select>
-                </label>
-                <label>
-                  <span class="control-label">Quantity</span>
-                  <input id="inventoryAddQuantity" type="number" min="0" step="1" value="0">
-                </label>
-                <label>
-                  <span class="control-label">Unit</span>
-                  <input id="inventoryAddUnit" type="text" value="ft">
-                </label>
-                <label>
-                  <span class="control-label">Cost (per unit)</span>
-                  <input id="inventoryAddCost" type="text" placeholder="e.g. 4.25">
-                </label>
-                <label>
-                  <span class="control-label">Item URL</span>
-                  <input id="inventoryAddUrl" type="url" placeholder="https://">
-                </label>
-                <label class="inventory-form-notes">
-                  <span class="control-label">Notes</span>
-                  <textarea id="inventoryAddNotes" rows="2" placeholder="Notes (optional)"></textarea>
-                </label>
-              </div>
-              <div class="inventory-form-actions">
-                <button type="submit" class="secondary small">Save item</button>
-              </div>
-            </form>
-          </details>
-          <details class="inventory-details">
-            <summary>Adjust stock</summary>
-            <form id="inventoryAdjustForm" class="inventory-form">
-              <div class="inventory-form-grid inventory-adjust-grid">
-                <label>
-                  <span class="control-label">Item</span>
-                  <select id="inventoryAdjustItemSelect" required></select>
-                </label>
-                <label>
-                  <span class="control-label">Change amount</span>
-                  <input id="inventoryAdjustAmountInput" type="number" step="1" required placeholder="-5 to remove, 5 to add">
-                </label>
-                <label class="inventory-form-notes">
-                  <span class="control-label">Notes</span>
-                  <textarea id="inventoryAdjustNotesInput" rows="2" placeholder="Reason for adjustment (optional)"></textarea>
-                </label>
-              </div>
-              <div class="inventory-form-actions">
-                <button type="submit" class="secondary small">Apply adjustment</button>
-              </div>
-            </form>
-          </details>
-        </section>
+        
 
-        <section class="control-group text-overlays">
-          <div class="text-header">
-            <div>
-              <span class="control-label">Text overlays</span>
-              <p class="hint">Add custom lettering and drag it into place.</p>
-            </div>
-            <button id="addTextButton" type="button" class="secondary small">Add text</button>
-          </div>
-          <div id="textLayersList" class="text-layer-list">No text yet. Add your first line.</div>
-        </section>
+        
 
-        <section class="control-group">
-          <span class="control-label">Source formats</span>
-          <div id="sourceLinks" class="source-links">Select a design to view available formats.</div>
-        </section>
+        
 
         <form id="orderForm" class="order-form">
           <h3>Customer details</h3>
@@ -280,64 +191,11 @@
             <label class="control-label" for="quantityInput">Quantity</label>
             <input id="quantityInput" type="number" min="1" value="1">
           </div>
-          <fieldset class="apparel-fieldset" id="apparelFieldset">
-            <legend>Apparel add-ons</legend>
-            <p class="hint" id="apparelStockNote">Busy season heads-up: some apparel styles are limited in our on-hand stock. If we need to restock blanks we may add a couple extra days to your turnaround.</p>
-            <div class="apparel-controls">
-              <label>
-                <span class="control-label">Product</span>
-                <select id="apparelProductSelect" class="control-input" disabled>
-                  <option value="">Loading apparel catalog...</option>
-                </select>
-              </label>
-              <label>
-                <span class="control-label">Color</span>
-                <select id="apparelColorSelect" class="control-input" disabled>
-                  <option value="">Select a product first</option>
-                </select>
-              </label>
-              <label>
-                <span class="control-label">Size</span>
-                <select id="apparelSizeSelect" class="control-input" disabled>
-                  <option value="">Select a color first</option>
-                </select>
-              </label>
-              <label>
-                <span class="control-label">Quantity</span>
-                <input id="apparelQuantityInput" class="control-input" type="number" min="1" value="1" disabled>
-              </label>
-              <div class="apparel-add">
-                <button id="apparelAddButton" type="button" class="secondary" disabled>Add apparel item</button>
-              </div>
-            </div>
-            <div class="apparel-preview" id="apparelPreview">
-              <img id="apparelPreviewImage" alt="Selected apparel preview" hidden loading="lazy">
-              <p id="apparelPreviewPlaceholder" class="hint">Choose a product, color, and size to preview the blank garment.</p>
-            </div>
-            <div class="apparel-selected" id="apparelSelectedList">
-              <p class="hint">No apparel add-ons yet.</p>
-            </div>
-          </fieldset>
-          <fieldset class="inventory-usage-fieldset" id="inventoryUsageFieldset">
-            <legend>Inventory usage</legend>
-            <p class="hint">Track vinyl pulled from inventory so everyone knows what is still on the shelf.</p>
-            <div class="inventory-usage-controls">
-              <label>
-                <span class="control-label">Item</span>
-                <select id="inventoryUsageItemSelect" class="control-input"></select>
-              </label>
-              <label>
-                <span class="control-label">Amount</span>
-                <input id="inventoryUsageQuantityInput" class="control-input" type="number" min="1" value="1">
-              </label>
-              <div class="inventory-usage-actions">
-                <button id="inventoryUsageAddButton" type="button" class="secondary small">Add usage</button>
-              </div>
-            </div>
-            <div class="inventory-usage-list" id="inventoryUsageList">
-              <p class="hint">No inventory usage tracked yet.</p>
-            </div>
-          </fieldset>
+          <div class="form-row" style="display:flex;align-items:center;gap:10px;">
+            <button id="apparelOpenButton" type="button" class="secondary">Choose apparel add-ons…</button>
+            <span id="apparelButtonBadge" class="hint"></span>
+          </div>
+          
           <div class="form-row">
             <label class="control-label" for="notesInput">Notes</label>
             <textarea id="notesInput" rows="3" placeholder="Add special instructions or alternate sizes."></textarea>
@@ -420,6 +278,95 @@
       </footer>
     </div>
   </div>
+
+  <!-- Apparel add-ons modal -->
+  <div id="apparelModal" class="designer-modal" hidden>
+    <div class="designer-modal__backdrop" data-close="apparel"></div>
+    <div class="designer-modal__dialog apparel-dialog" role="dialog" aria-modal="true" aria-labelledby="apparelModalTitle">
+      <header class="designer-modal__header">
+        <div>
+          <h2 id="apparelModalTitle">Choose apparel add-ons</h2>
+          <p class="designer-modal__subtitle">Pick product, color, and size. Prices shown are per garment.</p>
+        </div>
+        <button id="apparelCloseButton" class="icon-button" type="button" aria-label="Close apparel chooser">&times;</button>
+      </header>
+      <div class="designer-modal__body">
+        <div class="designer-modal__stage" style="width:100%;">
+          <fieldset class="apparel-fieldset" id="apparelFieldset">
+            <p class="hint" id="apparelStockNote">Busy season heads-up: some apparel styles are limited in our on-hand stock. If we need to restock blanks we may add a couple extra days to your turnaround.</p>
+            <div class="apparel-controls">
+              <label>
+                <span class="control-label">Product</span>
+                <select id="apparelProductSelect" class="control-input" disabled>
+                  <option value="">Loading apparel catalog...</option>
+                </select>
+              </label>
+              <label>
+                <span class="control-label">Color</span>
+                <select id="apparelColorSelect" class="control-input" disabled>
+                  <option value="">Select a product first</option>
+                </select>
+              </label>
+              <label>
+                <span class="control-label">Size</span>
+                <select id="apparelSizeSelect" class="control-input" disabled>
+                  <option value="">Select a color first</option>
+                </select>
+              </label>
+              <label>
+                <span class="control-label">Quantity</span>
+                <input id="apparelQuantityInput" class="control-input" type="number" min="1" value="1" disabled>
+              </label>
+              <div class="apparel-add" style="display:flex;align-items:center;gap:10px;">
+                <button id="apparelAddButton" type="button" class="secondary" disabled>Add apparel item</button>
+                <span id="apparelVariantPrice" class="hint"></span>
+              </div>
+            </div>
+            <div class="apparel-preview" id="apparelPreview">
+              <img id="apparelPreviewImage" alt="Selected apparel preview" hidden loading="lazy">
+              <p id="apparelPreviewPlaceholder" class="hint">Choose a product, color, and size to preview the blank garment.</p>
+              <canvas id="apparelOverlayCanvas" aria-hidden="true"></canvas>
+            </div>
+            <div class="apparel-selected" id="apparelSelectedList">
+              <p class="hint">No apparel add-ons yet.</p>
+            </div>
+          </fieldset>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="modern-footer">
+    <div class="footer-container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3>Products</h3>
+          <ul>
+            <li><a href="./designer.html">Custom Designer</a></li>
+            <li><a href="./racing.html">Racing Decals</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Resources</h3>
+          <ul>
+            <li><a href="./price-list.html">Pricing</a></li>
+            <li><a href="./terms.html">Terms & Conditions</a></li>
+            <li><a href="./customer.html">My Account</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Contact</h3>
+          <ul>
+            <li><a href="tel:+12027408240">(202) 740-8240</a></li>
+            <li><a href="mailto:info@blueridgecustomco.com">info@blueridgecustomco.com</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2024 BlueRidgeCustomCo. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
 
   <script type="module" src="./script.js"></script>
 </body>

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinyl Stickers - Blue Ridge Custom Co</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #0d0d0d;
+            color: white;
+            min-height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Animated gradient background */
+        .gradient-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(255, 0, 128, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 255, 255, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(255, 255, 0, 0.1) 0%, transparent 50%);
+            animation: pulse 8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        /* Floating sticker shapes */
+        .floating-sticker {
+            position: absolute;
+            border-radius: 20px;
+            opacity: 0.8;
+            animation: floatAround 20s ease-in-out infinite;
+        }
+
+        .sticker1 {
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, #ff0080, #ff8c00);
+            top: 10%;
+            right: 15%;
+            animation-delay: 0s;
+            transform: rotate(15deg);
+        }
+
+        .sticker2 {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #00ffff, #0080ff);
+            top: 60%;
+            right: 8%;
+            animation-delay: -5s;
+            transform: rotate(-10deg);
+        }
+
+        .sticker3 {
+            width: 100px;
+            height: 100px;
+            background: linear-gradient(135deg, #ffff00, #00ff00);
+            top: 25%;
+            right: 5%;
+            animation-delay: -10s;
+            transform: rotate(25deg);
+        }
+
+        .sticker4 {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #ff00ff, #8000ff);
+            top: 75%;
+            right: 20%;
+            animation-delay: -15s;
+            transform: rotate(-20deg);
+        }
+
+        @keyframes floatAround {
+            0%, 100% { transform: translateY(0) rotate(var(--rot, 15deg)); }
+            25% { transform: translateY(-20px) rotate(calc(var(--rot, 15deg) + 5deg)); }
+            50% { transform: translateY(0) rotate(var(--rot, 15deg)); }
+            75% { transform: translateY(20px) rotate(calc(var(--rot, 15deg) - 5deg)); }
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+            padding: 60px 80px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            max-width: 60%;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: #00ffff;
+            margin-bottom: 20px;
+            animation: slideIn 0.6s ease-out;
+        }
+
+        .eyebrow::before {
+            content: '';
+            width: 40px;
+            height: 3px;
+            background: linear-gradient(90deg, #ff0080, #00ffff);
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-30px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        h1 {
+            font-family: 'Bangers', cursive;
+            font-size: 9rem;
+            line-height: 0.85;
+            letter-spacing: 6px;
+            margin-bottom: 30px;
+            animation: popIn 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.2s both;
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        h1 .word1 {
+            display: block;
+            background: linear-gradient(90deg, #ff0080, #ff8c00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        h1 .word2 {
+            display: block;
+            background: linear-gradient(90deg, #00ffff, #00ff80);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .tagline {
+            font-size: 1.6rem;
+            color: #888;
+            margin-bottom: 50px;
+            line-height: 1.5;
+            animation: slideIn 0.6s ease-out 0.4s both;
+        }
+
+        .tagline strong {
+            color: #fff;
+        }
+
+        .benefits {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 50px;
+            animation: slideIn 0.6s ease-out 0.6s both;
+        }
+
+        .benefit {
+            text-align: center;
+        }
+
+        .benefit-icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .benefit-text {
+            font-size: 0.95rem;
+            color: #aaa;
+            line-height: 1.4;
+        }
+
+        .benefit-text strong {
+            display: block;
+            color: #fff;
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+        }
+
+        .pricing-strip {
+            display: flex;
+            gap: 0;
+            animation: slideUp 0.8s ease-out 0.8s both;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .price-box {
+            padding: 25px 35px;
+            text-align: center;
+            position: relative;
+            flex: 1;
+        }
+
+        .price-box:nth-child(1) {
+            background: linear-gradient(135deg, rgba(255, 0, 128, 0.2), rgba(255, 140, 0, 0.2));
+            border: 2px solid rgba(255, 0, 128, 0.5);
+        }
+
+        .price-box:nth-child(2) {
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 128, 255, 0.2));
+            border: 2px solid rgba(0, 255, 255, 0.5);
+        }
+
+        .price-box:nth-child(3) {
+            background: linear-gradient(135deg, rgba(255, 255, 0, 0.2), rgba(0, 255, 0, 0.2));
+            border: 2px solid rgba(255, 255, 0, 0.5);
+        }
+
+        .price-box:nth-child(4) {
+            background: linear-gradient(135deg, rgba(255, 0, 255, 0.2), rgba(128, 0, 255, 0.2));
+            border: 2px solid rgba(255, 0, 255, 0.5);
+        }
+
+        .price-size {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .price-value {
+            font-family: 'Bangers', cursive;
+            font-size: 2.5rem;
+            letter-spacing: 2px;
+        }
+
+        .price-box:nth-child(1) .price-value { color: #ff0080; }
+        .price-box:nth-child(2) .price-value { color: #00ffff; }
+        .price-box:nth-child(3) .price-value { color: #ffff00; }
+        .price-box:nth-child(4) .price-value { color: #ff00ff; }
+
+        .price-note {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .cta {
+            margin-top: 40px;
+            display: inline-flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 1.2rem;
+            color: #00ffff;
+            animation: slideIn 0.6s ease-out 1s both;
+        }
+
+        .cta-arrow {
+            font-size: 1.5rem;
+            animation: bounce 1s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(10px); }
+        }
+
+        .branding {
+            position: absolute;
+            bottom: 50px;
+            right: 80px;
+            text-align: right;
+            animation: fadeIn 0.8s ease-out 1.2s both;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .branding-name {
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        .branding-location {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* Custom order callout */
+        .custom-callout {
+            position: absolute;
+            top: 50px;
+            right: 80px;
+            background: linear-gradient(135deg, #ff0080, #ff8c00);
+            padding: 15px 25px;
+            transform: rotate(3deg);
+            animation: wiggle 3s ease-in-out infinite;
+        }
+
+        @keyframes wiggle {
+            0%, 100% { transform: rotate(3deg); }
+            50% { transform: rotate(-3deg); }
+        }
+
+        .custom-callout-text {
+            font-family: 'Bangers', cursive;
+            font-size: 1.3rem;
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="gradient-bg"></div>
+    
+    <div class="floating-sticker sticker1"></div>
+    <div class="floating-sticker sticker2"></div>
+    <div class="floating-sticker sticker3"></div>
+    <div class="floating-sticker sticker4"></div>
+
+    <div class="custom-callout">
+        <div class="custom-callout-text">CUSTOM ORDERS WELCOME!</div>
+    </div>
+
+    <div class="container">
+        <div class="content">
+            <div class="eyebrow">Premium Die-Cut</div>
+            <h1>
+                <span class="word1">VINYL</span>
+                <span class="word2">STICKERS</span>
+            </h1>
+            <p class="tagline">
+                <strong>Weather-proof. Fade-resistant. Built to last.</strong><br>
+                Perfect for cars, laptops, water bottles, and more.
+            </p>
+
+            <div class="benefits">
+                <div class="benefit">
+                    <div class="benefit-icon">🌧️</div>
+                    <div class="benefit-text">
+                        <strong>Waterproof</strong>
+                        5+ year outdoor life
+                    </div>
+                </div>
+                <div class="benefit">
+                    <div class="benefit-icon">✂️</div>
+                    <div class="benefit-text">
+                        <strong>Die-Cut</strong>
+                        Precision cut to shape
+                    </div>
+                </div>
+                <div class="benefit">
+                    <div class="benefit-icon">🎨</div>
+                    <div class="benefit-text">
+                        <strong>Vibrant</strong>
+                        UV-resistant inks
+                    </div>
+                </div>
+                <div class="benefit">
+                    <div class="benefit-icon">⚡</div>
+                    <div class="benefit-text">
+                        <strong>Same Day</strong>
+                        Quick turnaround
+                    </div>
+                </div>
+            </div>
+
+            <div class="pricing-strip">
+                <div class="price-box">
+                    <div class="price-size">3" Sticker</div>
+                    <div class="price-value">$3</div>
+                    <div class="price-note">each</div>
+                </div>
+                <div class="price-box">
+                    <div class="price-size">4" Sticker</div>
+                    <div class="price-value">$5</div>
+                    <div class="price-note">each</div>
+                </div>
+                <div class="price-box">
+                    <div class="price-size">6" Sticker</div>
+                    <div class="price-value">$8</div>
+                    <div class="price-note">each</div>
+                </div>
+                <div class="price-box">
+                    <div class="price-size">Bulk 10+</div>
+                    <div class="price-value">20% OFF</div>
+                    <div class="price-note">any size</div>
+                </div>
+            </div>
+
+            <div class="cta">
+                <span>Come see our designs</span>
+                <span class="cta-arrow">→</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="branding">
+        <div class="branding-name">BLUE RIDGE CUSTOM CO</div>
+        <div class="branding-location">Asheville, NC</div>
+    </div>
+</body>
+</html>

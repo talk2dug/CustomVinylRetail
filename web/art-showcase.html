@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Art Showcase</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Main container */
+    .showcase-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
+    }
+
+    /* Background ambient glow */
+    .ambient-glow {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 150vmax;
+      height: 150vmax;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(ellipse at center,
+        rgba(100, 50, 150, 0.15) 0%,
+        rgba(50, 100, 150, 0.1) 30%,
+        transparent 70%);
+      animation: ambientPulse 10s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes ambientPulse {
+      0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+      50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.1); }
+    }
+
+    /* Artwork display layers */
+    .artwork-layer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .artwork-layer.active {
+      opacity: 1;
+      z-index: 10;
+    }
+
+    .artwork-layer.background {
+      opacity: 0.3;
+      filter: blur(30px) saturate(1.5);
+      transform: scale(1.2);
+      z-index: 0;
+    }
+
+    /* Artwork frame */
+    .artwork-frame {
+      position: relative;
+      max-width: 85vw;
+      max-height: 85vh;
+      transform: scale(0.8);
+      opacity: 0;
+      transition: all 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .artwork-layer.active .artwork-frame {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .artwork-frame::before {
+      content: '';
+      position: absolute;
+      inset: -20px;
+      background: linear-gradient(135deg,
+        rgba(255,255,255,0.1) 0%,
+        transparent 50%,
+        rgba(255,255,255,0.05) 100%);
+      border-radius: 8px;
+      opacity: 0;
+      transition: opacity 0.8s ease;
+    }
+
+    .artwork-layer.active .artwork-frame::before {
+      opacity: 1;
+    }
+
+    /* The actual image */
+    .artwork-image {
+      max-width: 85vw;
+      max-height: 80vh;
+      object-fit: contain;
+      border-radius: 4px;
+      box-shadow:
+        0 25px 80px rgba(0,0,0,0.5),
+        0 10px 30px rgba(0,0,0,0.3),
+        0 0 100px rgba(100, 100, 200, 0.1);
+      animation: kenBurns 8s ease-in-out infinite alternate;
+    }
+
+    @keyframes kenBurns {
+      0% { transform: scale(1) translate(0, 0); }
+      100% { transform: scale(1.05) translate(-1%, -1%); }
+    }
+
+    /* Title overlay */
+    .artwork-info {
+      position: absolute;
+      bottom: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      opacity: 0;
+      transition: all 0.8s ease 0.5s;
+    }
+
+    .artwork-layer.active .artwork-info {
+      opacity: 1;
+      bottom: -50px;
+    }
+
+    .artwork-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.2rem, 3vw, 2rem);
+      color: white;
+      text-shadow: 0 2px 20px rgba(0,0,0,0.8);
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    .artwork-category {
+      font-size: clamp(0.7rem, 1.5vw, 0.9rem);
+      color: rgba(255,255,255,0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      margin-top: 8px;
+    }
+
+    /* Category badge */
+    .category-badge {
+      position: fixed;
+      top: 30px;
+      left: 30px;
+      z-index: 100;
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1rem, 2vw, 1.5rem);
+      color: white;
+      text-transform: capitalize;
+      letter-spacing: 0.1em;
+      opacity: 0.8;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+
+    /* Progress indicator */
+    .progress-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(90deg,
+        rgba(150, 100, 255, 0.8),
+        rgba(100, 200, 255, 0.8));
+      width: 0%;
+      z-index: 100;
+      transition: width linear;
+    }
+
+    /* Thumbnail strip (optional) */
+    .thumbnail-strip {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 50;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .showcase-container:hover .thumbnail-strip {
+      opacity: 1;
+    }
+
+    .thumbnail {
+      width: 60px;
+      height: 60px;
+      border-radius: 4px;
+      object-fit: cover;
+      opacity: 0.4;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
+    }
+
+    .thumbnail:hover {
+      opacity: 0.8;
+      transform: scale(1.1);
+    }
+
+    .thumbnail.active {
+      opacity: 1;
+      border-color: rgba(150, 100, 255, 0.8);
+    }
+
+    /* Particle effects */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+      overflow: hidden;
+    }
+
+    .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: rgba(255,255,255,0.3);
+      border-radius: 50%;
+      animation: float 15s infinite;
+    }
+
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(100vh) rotate(0deg);
+        opacity: 0;
+      }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% {
+        transform: translateY(-100vh) rotate(720deg);
+        opacity: 0;
+      }
+    }
+
+    /* Loading state */
+    .loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 1.2rem;
+      letter-spacing: 0.2em;
+      z-index: 200;
+    }
+
+    .loading::after {
+      content: '';
+      animation: dots 1.5s infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: ''; }
+      40% { content: '.'; }
+      60% { content: '..'; }
+      80%, 100% { content: '...'; }
+    }
+
+    /* Transition effects */
+    .slide-in-right {
+      animation: slideInRight 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%) scale(0.8);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0) scale(1);
+        opacity: 1;
+      }
+    }
+
+    .slide-out-left {
+      animation: slideOutLeft 1s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+    }
+
+    @keyframes slideOutLeft {
+      from {
+        transform: translateX(0) scale(1);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(-30%) scale(0.6);
+        opacity: 0;
+        filter: blur(10px);
+      }
+    }
+
+    .zoom-in {
+      animation: zoomIn 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes zoomIn {
+      from {
+        transform: scale(0.3);
+        opacity: 0;
+      }
+      to {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .zoom-out {
+      animation: zoomOut 0.8s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+    }
+
+    @keyframes zoomOut {
+      from {
+        transform: scale(1);
+        opacity: 1;
+      }
+      to {
+        transform: scale(1.5);
+        opacity: 0;
+        filter: blur(20px);
+      }
+    }
+
+    /* Controls overlay */
+    .controls {
+      position: fixed;
+      top: 30px;
+      right: 30px;
+      z-index: 100;
+      display: flex;
+      gap: 15px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .showcase-container:hover .controls {
+      opacity: 1;
+    }
+
+    .control-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: rgba(255,255,255,0.1);
+      border-radius: 50%;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .control-btn:hover {
+      background: rgba(255,255,255,0.2);
+      transform: scale(1.1);
+    }
+
+    .control-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* No artwork message */
+    .no-artwork {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: white;
+      z-index: 100;
+    }
+
+    .no-artwork h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .no-artwork p {
+      opacity: 0.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="showcase-container">
+    <div class="ambient-glow"></div>
+    <div class="particles" id="particles"></div>
+
+    <div class="category-badge" id="categoryBadge"></div>
+
+    <div class="controls">
+      <button class="control-btn" id="prevBtn" title="Previous">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </button>
+      <button class="control-btn" id="playPauseBtn" title="Pause">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" id="pauseIcon">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6"/>
+        </svg>
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" id="playIcon" style="display:none">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+        </svg>
+      </button>
+      <button class="control-btn" id="nextBtn" title="Next">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </button>
+      <button class="control-btn" id="fullscreenBtn" title="Fullscreen">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="progress-bar" id="progressBar"></div>
+
+    <div class="thumbnail-strip" id="thumbnailStrip"></div>
+
+    <div class="loading" id="loading">Loading artwork</div>
+  </div>
+
+  <script>
+    // Configuration
+    const CONFIG = {
+      displayDuration: 6000,      // How long each image shows (ms)
+      transitionDuration: 1200,   // Animation duration (ms)
+      preloadAhead: 3,            // Number of images to preload
+      particleCount: 30,          // Number of floating particles
+      maxThumbnails: 10,          // Max thumbnails to show
+      transitions: ['slide', 'zoom', 'fade'],
+      apiBase: '',  // Will use relative URLs
+      apiKey: 'laZHEthV92qDq0adO07UnqoH3O4baZmV'
+    };
+
+    // State
+    let artworks = [];
+    let currentIndex = 0;
+    let isPlaying = true;
+    let timer = null;
+    let preloadedImages = new Map();
+
+    // Get category from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const category = urlParams.get('category') || '';
+
+    // DOM Elements
+    const container = document.querySelector('.showcase-container');
+    const categoryBadge = document.getElementById('categoryBadge');
+    const progressBar = document.getElementById('progressBar');
+    const thumbnailStrip = document.getElementById('thumbnailStrip');
+    const loading = document.getElementById('loading');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const pauseIcon = document.getElementById('pauseIcon');
+    const playIcon = document.getElementById('playIcon');
+
+    // Initialize
+    async function init() {
+      createParticles();
+      setupEventListeners();
+      await loadArtwork();
+
+      if (artworks.length > 0) {
+        loading.style.display = 'none';
+        categoryBadge.textContent = category || 'All Artwork';
+        showArtwork(0);
+        startAutoPlay();
+      } else {
+        showNoArtwork();
+      }
+    }
+
+    // Load artwork from API
+    async function loadArtwork() {
+      try {
+        let url = '/api/custom-art/artwork?limit=100&status=active';
+        if (category) {
+          url += `&category=${encodeURIComponent(category)}`;
+        }
+
+        const response = await fetch(url, {
+          headers: { 'x-api-key': CONFIG.apiKey }
+        });
+        if (!response.ok) throw new Error('Failed to load artwork');
+
+        const data = await response.json();
+        artworks = (data.artwork || data || []).filter(a => a.filePath || a.optimizedPath || a.thumbnailPath);
+
+        // Shuffle for variety
+        artworks = shuffleArray(artworks);
+
+        // Create thumbnails
+        createThumbnails();
+
+        // Preload first few images
+        for (let i = 0; i < Math.min(CONFIG.preloadAhead, artworks.length); i++) {
+          preloadImage(i);
+        }
+      } catch (error) {
+        console.error('Error loading artwork:', error);
+        artworks = [];
+      }
+    }
+
+    // Shuffle array (Fisher-Yates)
+    function shuffleArray(array) {
+      const arr = [...array];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    // Get image URL for artwork
+    function getImageUrl(artwork) {
+      // Use filePath only - previews may not exist for newer uploads
+      const path = artwork.filePath;
+      if (!path) return '';
+      // Ensure absolute path starting with /library/
+      if (path.startsWith('/')) return path;
+      if (path.startsWith('library/')) return '/' + path;
+      return '/library/' + path;
+    }
+
+    // Preload image
+    function preloadImage(index) {
+      if (preloadedImages.has(index)) return preloadedImages.get(index);
+
+      const artwork = artworks[index];
+      if (!artwork) return null;
+
+      const img = new Image();
+      img.src = getImageUrl(artwork);
+      preloadedImages.set(index, img);
+      return img;
+    }
+
+    // Show artwork at index
+    function showArtwork(index) {
+      // Remove existing layers
+      const existingLayers = document.querySelectorAll('.artwork-layer');
+      const transition = CONFIG.transitions[Math.floor(Math.random() * CONFIG.transitions.length)];
+
+      existingLayers.forEach(layer => {
+        layer.classList.remove('active');
+        if (transition === 'slide') layer.classList.add('slide-out-left');
+        else if (transition === 'zoom') layer.classList.add('zoom-out');
+        setTimeout(() => layer.remove(), 1000);
+      });
+
+      const artwork = artworks[index];
+      if (!artwork) return;
+
+      // Create new layer
+      const layer = document.createElement('div');
+      layer.className = 'artwork-layer';
+
+      const frame = document.createElement('div');
+      frame.className = 'artwork-frame';
+
+      const img = document.createElement('img');
+      img.className = 'artwork-image';
+      img.src = getImageUrl(artwork);
+      img.alt = artwork.title || 'Artwork';
+
+      frame.appendChild(img);
+      layer.appendChild(frame);
+      container.appendChild(layer);
+
+      // Trigger animation
+      requestAnimationFrame(() => {
+        layer.classList.add('active');
+        if (transition === 'slide') layer.classList.add('slide-in-right');
+        else if (transition === 'zoom') layer.classList.add('zoom-in');
+      });
+
+      // Update thumbnails
+      updateThumbnails(index);
+
+      // Preload next images
+      for (let i = 1; i <= CONFIG.preloadAhead; i++) {
+        const nextIndex = (index + i) % artworks.length;
+        preloadImage(nextIndex);
+      }
+
+      // Update progress bar
+      startProgress();
+    }
+
+    // Start progress bar animation
+    function startProgress() {
+      progressBar.style.transition = 'none';
+      progressBar.style.width = '0%';
+
+      requestAnimationFrame(() => {
+        progressBar.style.transition = `width ${CONFIG.displayDuration}ms linear`;
+        progressBar.style.width = '100%';
+      });
+    }
+
+    // Create thumbnail strip
+    function createThumbnails() {
+      thumbnailStrip.innerHTML = '';
+      const count = Math.min(CONFIG.maxThumbnails, artworks.length);
+
+      for (let i = 0; i < count; i++) {
+        const thumb = document.createElement('img');
+        thumb.className = 'thumbnail';
+        thumb.src = getImageUrl(artworks[i]);
+        thumb.dataset.index = i;
+        thumb.addEventListener('click', () => {
+          currentIndex = i;
+          showArtwork(i);
+          resetTimer();
+        });
+        thumbnailStrip.appendChild(thumb);
+      }
+    }
+
+    // Update active thumbnail
+    function updateThumbnails(index) {
+      const thumbs = thumbnailStrip.querySelectorAll('.thumbnail');
+      thumbs.forEach((thumb, i) => {
+        thumb.classList.toggle('active', i === index % CONFIG.maxThumbnails);
+      });
+    }
+
+    // Auto-play controls
+    function startAutoPlay() {
+      if (!isPlaying) return;
+
+      timer = setInterval(() => {
+        currentIndex = (currentIndex + 1) % artworks.length;
+        showArtwork(currentIndex);
+      }, CONFIG.displayDuration);
+    }
+
+    function stopAutoPlay() {
+      clearInterval(timer);
+      timer = null;
+    }
+
+    function resetTimer() {
+      stopAutoPlay();
+      if (isPlaying) startAutoPlay();
+    }
+
+    // Create floating particles
+    function createParticles() {
+      const container = document.getElementById('particles');
+      for (let i = 0; i < CONFIG.particleCount; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 15 + 's';
+        particle.style.animationDuration = (10 + Math.random() * 10) + 's';
+        particle.style.width = (2 + Math.random() * 4) + 'px';
+        particle.style.height = particle.style.width;
+        container.appendChild(particle);
+      }
+    }
+
+    // Show no artwork message
+    function showNoArtwork() {
+      loading.style.display = 'none';
+      const msg = document.createElement('div');
+      msg.className = 'no-artwork';
+      msg.innerHTML = `
+        <h2>No Artwork Found</h2>
+        <p>${category ? `No artwork in category "${category}"` : 'No artwork available'}</p>
+      `;
+      container.appendChild(msg);
+    }
+
+    // Event listeners
+    function setupEventListeners() {
+      prevBtn.addEventListener('click', () => {
+        currentIndex = (currentIndex - 1 + artworks.length) % artworks.length;
+        showArtwork(currentIndex);
+        resetTimer();
+      });
+
+      nextBtn.addEventListener('click', () => {
+        currentIndex = (currentIndex + 1) % artworks.length;
+        showArtwork(currentIndex);
+        resetTimer();
+      });
+
+      playPauseBtn.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        pauseIcon.style.display = isPlaying ? 'block' : 'none';
+        playIcon.style.display = isPlaying ? 'none' : 'block';
+
+        if (isPlaying) {
+          startAutoPlay();
+        } else {
+          stopAutoPlay();
+        }
+      });
+
+      fullscreenBtn.addEventListener('click', () => {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else {
+          document.documentElement.requestFullscreen();
+        }
+      });
+
+      // Keyboard controls
+      document.addEventListener('keydown', (e) => {
+        switch(e.key) {
+          case 'ArrowLeft':
+            prevBtn.click();
+            break;
+          case 'ArrowRight':
+            nextBtn.click();
+            break;
+          case ' ':
+            e.preventDefault();
+            playPauseBtn.click();
+            break;
+          case 'f':
+          case 'F':
+            fullscreenBtn.click();
+            break;
+          case 'Escape':
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            }
+            break;
+        }
+      });
+    }
+
+    // Start
+    init();
+  </script>
+</body>
+</html>

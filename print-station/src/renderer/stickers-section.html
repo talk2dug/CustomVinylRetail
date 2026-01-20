@@ -1,0 +1,274 @@
+      <!-- ================================================================== -->
+      <!-- STICKERS SECTION (Redesigned)                                       -->
+      <!-- ================================================================== -->
+      <section id="stickersView" class="view">
+        <div class="view-toolbar">
+          <div class="catalog-toolbar-group">
+            <h3 style="margin:0;">Sticker Sheet Generator</h3>
+            <span id="stickersStatus" class="catalog-status muted">Ready</span>
+          </div>
+          <div class="catalog-toolbar-actions" style="display:flex;gap:12px;align-items:center;">
+            <!-- Mode Toggle -->
+            <div class="stickers-mode-toggle" style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+              <button id="stickersModeOrder" class="mode-btn active" style="padding:6px 16px;border:none;background:var(--primary);color:white;cursor:pointer;font-size:13px;">Customer Order</button>
+              <button id="stickersModeManual" class="mode-btn" style="padding:6px 16px;border:none;background:var(--card);color:var(--text);cursor:pointer;font-size:13px;">Manual Selection</button>
+              <button id="stickersModeLayout" class="mode-btn" style="padding:6px 16px;border:none;background:var(--card);color:var(--text);cursor:pointer;font-size:13px;">Visual Layout</button>
+            </div>
+            <button id="stickersClearBtn" class="secondary">Clear</button>
+            <button id="stickersGenerateBtn" class="primary" disabled>Generate Sheets (0)</button>
+          </div>
+        </div>
+
+        <div class="stickers-layout" style="display:flex;gap:16px;height:calc(100% - 60px);padding:16px;">
+          <!-- Left Panel: Mode-specific content -->
+          <div class="stickers-main-panel" style="flex:2;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
+
+            <!-- ORDER MODE PANEL -->
+            <div id="stickersOrderPanel" class="stickers-panel" style="display:flex;flex-direction:column;flex:1;">
+              <div class="inventory-card" style="margin-bottom:12px;">
+                <h4 style="margin:0 0 12px 0;">Import from Shopify Order</h4>
+                <div style="display:flex;gap:8px;margin-bottom:8px;">
+                  <input type="text" id="stickersOrderId" placeholder="Order # (e.g., 1234 or #1234)" style="flex:1;" />
+                  <button id="stickersImportOrderBtn" class="primary">Import Order</button>
+                </div>
+                <div id="stickersOrderInfo" class="muted" style="font-size:12px;"></div>
+              </div>
+
+              <!-- Saved Orders Browser -->
+              <div class="inventory-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                  <h4 style="margin:0;">Saved Order Sheets</h4>
+                  <button id="stickersRefreshSavedBtn" class="secondary" style="font-size:11px;padding:4px 10px;">Refresh</button>
+                </div>
+                <input type="search" id="stickersSavedSearch" placeholder="Search by order #..." style="margin-bottom:8px;" />
+                <div id="stickersSavedOrdersList" style="flex:1;overflow-y:auto;">
+                  <div class="placeholder" style="text-align:center;padding:30px;color:#888;">
+                    No saved order sheets yet
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- VISUAL LAYOUT EDITOR PANEL -->
+            <div id="layoutEditorPanel" class="stickers-panel" style="display:none;flex:1;flex-direction:column;gap:12px;">
+              <!-- Layout Toolbar -->
+              <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                      Size:
+                      <input type="number" id="layoutStickerSize" value="3" min="1" max="6" step="0.25" style="width:60px;" onchange="updateLayoutStickerSize(this.value)" />
+                      <span>in</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                      Offset:
+                      <input type="number" id="layoutOffset" value="0.25" min="0" max="5" step="0.25" style="width:60px;" onchange="updateLayoutOffset(this.value)" />
+                      <span>mm</span>
+                    </label>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <button id="layoutContourToggle" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="toggleContourVisibility()">Hide Contours</button>
+                    <button id="layoutClearBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="clearLayoutEditor()">Clear Layout</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Layout Canvas Area -->
+              <div class="inventory-card" style="flex:1;overflow:auto;display:flex;flex-direction:column;background:#2a2a3a;">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <span style="font-size:13px;font-weight:500;">Sheet Layout</span>
+                    <span style="font-size:11px;color:#888;">8.5" x 11" @ 300 DPI</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <!-- Zoom Controls -->
+                    <button id="layoutZoomOutBtn" class="secondary" style="font-size:11px;padding:2px 8px;min-width:28px;" onclick="zoomLayoutCanvas(-1)" title="Zoom Out (Ctrl+-)">−</button>
+                    <span id="layoutZoomLevel" style="font-size:11px;min-width:40px;text-align:center;color:#ccc;">100%</span>
+                    <button id="layoutZoomInBtn" class="secondary" style="font-size:11px;padding:2px 8px;min-width:28px;" onclick="zoomLayoutCanvas(1)" title="Zoom In (Ctrl++)">+</button>
+                    <button id="layoutZoomResetBtn" class="secondary" style="font-size:11px;padding:2px 8px;" onclick="resetLayoutZoom()" title="Reset Zoom (Ctrl+0)">Fit</button>
+                    <span style="font-size:12px;color:#888;">|</span>
+                    <span style="font-size:12px;"><span id="layoutStickerCount">0</span> stickers</span>
+                    <span style="font-size:12px;color:#888;">|</span>
+                    <span style="font-size:12px;">Page <span id="layoutCurrentPage">1</span> of <span id="layoutPageCount">1</span></span>
+                  </div>
+                </div>
+
+                <!-- Canvas Container -->
+                <div style="flex:1;display:flex;justify-content:center;align-items:center;padding:20px;overflow:auto;">
+                  <canvas id="layoutEditorCanvas" style="border:1px solid #444;box-shadow:0 4px 20px rgba(0,0,0,0.3);"></canvas>
+                </div>
+              </div>
+
+              <!-- Page Navigation & Actions -->
+              <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                  <!-- Page Navigator -->
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:12px;color:#888;">Pages:</span>
+                    <div id="layoutPageNavigator" style="display:flex;gap:4px;">
+                      <button class="page-nav-btn active" onclick="goToLayoutPage(0)" title="Page 1">1</button>
+                    </div>
+                    <button id="layoutAddPageBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="addLayoutPage()">+ Add Page</button>
+                  </div>
+
+                  <!-- Sticker Controls -->
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <button id="layoutRefreshContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#3b82f6;color:white;border-color:#3b82f6;" onclick="refreshSelectedContour()" disabled title="Re-fetch contour from server">↻ Refresh</button>
+                    <button id="layoutEditContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#22c55e;color:white;border-color:#22c55e;" onclick="enterContourEditMode()" disabled title="Edit cut line points">Edit Contour</button>
+                    <button id="layoutDoneEditingBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#22c55e;color:white;border-color:#22c55e;display:none;" onclick="exitContourEditMode(true)">Done Editing</button>
+                    <button id="layoutCircleContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="setContourToCircle(16)" title="Circle/ellipse contour">Circle</button>
+                    <button id="layoutRoundedRectBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="setContourToRoundedRect(20)" title="Rounded rectangle contour">Rounded</button>
+                    <button id="layoutSquareContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="resetContourToDefault()" title="Square/rectangle contour">Square</button>
+                    <button id="layoutSmoothContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="smoothContour()" title="Smooth out blocky contours">Smooth</button>
+                    <button id="layoutAddPointBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="addContourPoint()" title="Add point to contour">+ Point</button>
+                    <button id="layoutRemovePointBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="removeContourPoint()" title="Remove selected point">- Point</button>
+                    <button id="layoutRotateBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="rotateSelectedSticker(90)" disabled title="Rotate 90 (R)">Rotate</button>
+                    <button id="layoutScaleUpBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="scaleSelectedSticker(1.1)" disabled title="Scale Up (])">+</button>
+                    <button id="layoutScaleDownBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="scaleSelectedSticker(0.9)" disabled title="Scale Down ([)">-</button>
+                    <button id="layoutDeleteBtn" class="secondary" style="font-size:11px;padding:4px 10px;color:#ef4444;" onclick="removeStickerFromLayout(layoutEditorState.canvas.getActiveObject())" disabled title="Delete (Del)">Delete</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- MANUAL MODE PANEL -->
+            <div id="stickersManualPanel" class="stickers-panel" style="display:none;flex:1;flex-direction:column;gap:12px;">
+              <!-- Category & Search -->
+              <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
+                <select id="stickersCategorySelect" style="flex:1;">
+                  <option value="">All Categories</option>
+                </select>
+                <input type="search" id="stickersSearch" placeholder="Search stickers..." style="flex:1;" />
+                <button id="stickersSelectAllBtn" class="secondary">Select All Visible</button>
+              </div>
+
+              <!-- Size Selection for Manual Mode -->
+              <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
+                <div style="display:flex;align-items:center;gap:16px;">
+                  <label style="display:flex;align-items:center;gap:8px;margin:0;">
+                    <span style="font-size:13px;">Sticker Size:</span>
+                    <input type="number" id="stickersManualSize" value="3" min="1" max="6" step="0.25" style="width:70px;" />
+                    <span style="font-size:13px;">inches</span>
+                  </label>
+                  <span class="muted" style="font-size:11px;">(Scales largest dimension)</span>
+                </div>
+              </div>
+
+              <!-- Grid Info -->
+              <div id="stickersGridInfo" style="font-size:12px;color:#888;flex-shrink:0;">
+                Grid: calculating...
+              </div>
+
+              <!-- Sticker Grid -->
+              <div id="stickersCatalogGrid" class="sticker-catalog-grid" style="flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill, minmax(120px, 1fr));gap:10px;padding:4px;">
+                <div class="placeholder" style="grid-column: 1/-1;text-align:center;padding:40px;">
+                  Select a category to browse stickers
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Panel: Selection, Settings, Actions -->
+          <div class="stickers-side-panel" style="width:340px;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
+
+            <!-- Layout Mode: Available Stickers Panel -->
+            <div id="layoutAvailableStickerPanel" class="inventory-card" style="display:none;flex:1;overflow:hidden;">
+              <h4 style="margin:0 0 10px 0;">Available Stickers</h4>
+              <p style="font-size:11px;color:#888;margin:0 0 10px 0;">Click to add to layout. Select stickers in Manual Selection mode first.</p>
+              <div id="layoutAvailableStickers" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
+                <div class="placeholder" style="text-align:center;padding:20px;color:#888;">
+                  No stickers selected. Go to Manual Selection to choose stickers.
+                </div>
+              </div>
+            </div>
+
+            <!-- Layout Mode: Generate Button -->
+            <div id="layoutGeneratePanel" class="inventory-card" style="display:none;flex-shrink:0;">
+              <button id="layoutGenerateBtn" class="primary" style="width:100%;padding:12px;" onclick="generateSheetsFromLayout()">
+                Generate Sheets from Layout
+              </button>
+              <p id="layoutStatus" style="font-size:11px;color:#888;margin:8px 0 0 0;text-align:center;">Arrange stickers on the canvas, then generate</p>
+            </div>
+
+            <!-- Current Order Info (Order Mode) -->
+            <div id="stickersCurrentOrder" class="inventory-card" style="display:none;flex-shrink:0;background:linear-gradient(135deg, #1e3a5f 0%, #1a1a2e 100%);border:1px solid #38bdf8;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h4 style="margin:0;color:#38bdf8;">Order #<span id="stickersOrderNumber">---</span></h4>
+                <span class="muted" style="font-size:11px;">Customer Order</span>
+              </div>
+              <div style="font-size:12px;color:#888;margin-top:4px;">Size: 3 inches (fixed for orders)</div>
+            </div>
+
+            <!-- Selection Stats -->
+            <div class="inventory-card" style="flex-shrink:0;overflow:hidden;">
+              <h4 style="margin:0 0 10px 0;">Selection Summary</h4>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+                <div>Total Stickers:</div>
+                <div style="text-align:right;"><strong id="stickersSelectionCount">0</strong></div>
+                <div>Sheets Needed:</div>
+                <div style="text-align:right;"><strong id="stickersSheetsNeeded">0</strong></div>
+                <div>Est. per Sheet:</div>
+                <div style="text-align:right;"><strong id="stickersPerSheet">~6</strong></div>
+              </div>
+            </div>
+
+            <!-- Cut Settings (Collapsible) -->
+            <div class="inventory-card" style="flex-shrink:0;overflow:hidden;">
+              <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleCutSettings()">
+                <h4 style="margin:0;">Cut Settings</h4>
+                <span id="stickersCutSettingsToggle" style="font-size:12px;">+ Expand</span>
+              </div>
+              <div id="stickersCutSettingsPanel" style="display:none;margin-top:12px;overflow:hidden;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+                  <label style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+                    <span>Depth (0-10)</span>
+                    <input type="number" id="stickersCutDepth" value="6" min="0" max="10" style="width:100%;box-sizing:border-box;" />
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+                    <span>Speed (1-10)</span>
+                    <input type="number" id="stickersCutSpeed" value="4" min="1" max="10" style="width:100%;box-sizing:border-box;" />
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+                    <span>Pressure (1-33)</span>
+                    <input type="number" id="stickersCutPressure" value="15" min="1" max="33" style="width:100%;box-sizing:border-box;" />
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+                    <span>Offset (mm)</span>
+                    <input type="number" id="stickersCutOffset" value="8.5" min="0" max="15" step="0.5" style="width:100%;box-sizing:border-box;" />
+                  </label>
+                </div>
+                <div style="margin-top:8px;">
+                  <button id="stickersSaveCutSettings" class="secondary" style="width:100%;font-size:11px;box-sizing:border-box;">Save Settings</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="inventory-card" style="flex-shrink:0;overflow:hidden;">
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <button id="stickersViewSheetsBtn" class="secondary" style="width:100%;box-sizing:border-box;">View Generated Sheets</button>
+                <div style="display:flex;gap:8px;">
+                  <button id="stickersPrintBtn" class="primary" style="flex:1;min-width:0;box-sizing:border-box;" disabled>Print</button>
+                  <button id="stickersSendCameoBtn" class="secondary" style="flex:1;min-width:0;box-sizing:border-box;" disabled>Send to Cameo</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Output Info (after generation) -->
+            <div id="stickersOutputInfo" class="inventory-card" style="display:none;flex-shrink:0;overflow:hidden;background:#0f2918;border:1px solid #34d399;">
+              <h4 style="margin:0 0 8px 0;color:#34d399;">Generated Successfully</h4>
+              <div id="stickersOutputDetails" style="font-size:12px;word-wrap:break-word;overflow-wrap:break-word;"></div>
+            </div>
+
+            <!-- Selected Items List -->
+            <div class="inventory-card" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+              <h4 style="margin:0 0 8px 0;flex-shrink:0;">Selected Items</h4>
+              <div id="stickersSelectionList" style="flex:1;overflow-y:auto;">
+                <div class="placeholder" style="text-align:center;padding:20px;color:#888;">
+                  No stickers selected
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blue Ridge Custom Co - Motorsport</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Barlow Condensed', sans-serif;
+            background: #0a0a0a;
+            color: white;
+            min-height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Racing stripes */
+        .racing-stripes {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(90deg, transparent 0%, transparent 47%, #f59e0b 47%, #f59e0b 48%, transparent 48%, transparent 52%, #f59e0b 52%, #f59e0b 53%, transparent 53%);
+            opacity: 0.1;
+        }
+
+        /* Checkered flag pattern */
+        .checkered-corner {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 200px;
+            height: 200px;
+            background: 
+                repeating-conic-gradient(#fff 0deg 90deg, #000 90deg 180deg) 
+                0 0/40px 40px;
+            opacity: 0.1;
+            clip-path: polygon(100% 0, 0 0, 100% 100%);
+        }
+
+        /* Speed lines */
+        .speed-line {
+            position: absolute;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #f59e0b, transparent);
+            animation: speedLine 2s linear infinite;
+        }
+
+        .speed-line:nth-child(1) { top: 20%; left: -100%; width: 300px; animation-delay: 0s; }
+        .speed-line:nth-child(2) { top: 40%; left: -100%; width: 200px; animation-delay: 0.3s; }
+        .speed-line:nth-child(3) { top: 60%; left: -100%; width: 250px; animation-delay: 0.6s; }
+        .speed-line:nth-child(4) { top: 80%; left: -100%; width: 180px; animation-delay: 0.9s; }
+
+        @keyframes speedLine {
+            0% { transform: translateX(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateX(calc(100vw + 300px)); opacity: 0; }
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            min-height: 100vh;
+            position: relative;
+            z-index: 1;
+        }
+
+        .left {
+            padding: 60px 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border-right: 3px solid #f59e0b;
+        }
+
+        .race-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #f59e0b;
+            color: #0a0a0a;
+            padding: 8px 20px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 30px;
+            animation: slideIn 0.5s ease-out;
+            width: fit-content;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-50px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .car-number {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 14rem;
+            line-height: 0.8;
+            color: #f59e0b;
+            text-shadow: 
+                0 0 40px rgba(245, 158, 11, 0.5),
+                0 0 80px rgba(245, 158, 11, 0.3);
+            animation: numberPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes numberPulse {
+            0%, 100% { text-shadow: 0 0 40px rgba(245, 158, 11, 0.5), 0 0 80px rgba(245, 158, 11, 0.3); }
+            50% { text-shadow: 0 0 60px rgba(245, 158, 11, 0.7), 0 0 100px rgba(245, 158, 11, 0.5); }
+        }
+
+        .team-name {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 4rem;
+            letter-spacing: 8px;
+            margin-bottom: 15px;
+            animation: slideIn 0.5s ease-out 0.2s both;
+        }
+
+        .series-name {
+            font-size: 1.3rem;
+            color: #888;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-bottom: 40px;
+            animation: slideIn 0.5s ease-out 0.3s both;
+        }
+
+        .driver-info {
+            background: rgba(245, 158, 11, 0.1);
+            border-left: 4px solid #f59e0b;
+            padding: 25px 30px;
+            animation: slideIn 0.5s ease-out 0.4s both;
+        }
+
+        .driver-label {
+            font-size: 0.85rem;
+            color: #f59e0b;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .driver-name {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2.5rem;
+            letter-spacing: 3px;
+        }
+
+        .right {
+            padding: 60px 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .business-section h2 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 3.5rem;
+            letter-spacing: 4px;
+            margin-bottom: 20px;
+            animation: slideIn 0.5s ease-out 0.5s both;
+        }
+
+        .business-section h2 span {
+            color: #f59e0b;
+        }
+
+        .business-tagline {
+            font-size: 1.3rem;
+            color: #aaa;
+            line-height: 1.7;
+            margin-bottom: 40px;
+            animation: slideIn 0.5s ease-out 0.6s both;
+        }
+
+        .products-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 40px;
+        }
+
+        .product-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: all 0.3s ease;
+            animation: fadeIn 0.5s ease-out both;
+        }
+
+        .product-item:nth-child(1) { animation-delay: 0.7s; }
+        .product-item:nth-child(2) { animation-delay: 0.8s; }
+        .product-item:nth-child(3) { animation-delay: 0.9s; }
+        .product-item:nth-child(4) { animation-delay: 1s; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .product-item:hover {
+            border-color: #f59e0b;
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        .product-icon {
+            font-size: 1.5rem;
+        }
+
+        .product-text {
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        .motorsport-focus {
+            background: linear-gradient(90deg, rgba(245, 158, 11, 0.2), transparent);
+            border-left: 3px solid #f59e0b;
+            padding: 25px 30px;
+            animation: slideIn 0.5s ease-out 1.1s both;
+        }
+
+        .motorsport-focus h3 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+            color: #f59e0b;
+            margin-bottom: 10px;
+        }
+
+        .motorsport-focus p {
+            font-size: 1rem;
+            color: #aaa;
+            line-height: 1.6;
+        }
+
+        .motorsport-focus strong {
+            color: white;
+        }
+
+        .branding {
+            position: absolute;
+            bottom: 40px;
+            left: 80px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            animation: fadeIn 0.5s ease-out 1.2s both;
+        }
+
+        .branding-logo {
+            width: 60px;
+            height: 60px;
+            background: #f59e0b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.5rem;
+            color: #0a0a0a;
+        }
+
+        .branding-text {
+            line-height: 1.3;
+        }
+
+        .branding-name {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.4rem;
+            letter-spacing: 3px;
+        }
+
+        .branding-sub {
+            font-size: 0.85rem;
+            color: #666;
+            letter-spacing: 1px;
+        }
+
+        .sponsor-note {
+            position: absolute;
+            bottom: 40px;
+            right: 80px;
+            text-align: right;
+            animation: fadeIn 0.5s ease-out 1.3s both;
+        }
+
+        .sponsor-note-text {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .sponsor-note-cta {
+            font-size: 1.1rem;
+            color: #f59e0b;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="racing-stripes"></div>
+    <div class="checkered-corner"></div>
+    <div class="speed-line"></div>
+    <div class="speed-line"></div>
+    <div class="speed-line"></div>
+    <div class="speed-line"></div>
+
+    <div class="container">
+        <div class="left">
+            <div class="race-badge">
+                <span>🏁</span>
+                <span>American Rally Association</span>
+            </div>
+            
+            <div class="car-number">656</div>
+            <div class="team-name">SWAYZE RALLY TEAM</div>
+            <div class="series-name">National Competition</div>
+
+            <div class="driver-info">
+                <div class="driver-label">Driver & Business Owner</div>
+                <div class="driver-name">JACK SWAYZE</div>
+            </div>
+        </div>
+
+        <div class="right">
+            <div class="business-section">
+                <h2>RACE. <span>CREATE.</span> REPEAT.</h2>
+                <p class="business-tagline">
+                    When I'm not sliding sideways through stages, I'm making custom prints, 
+                    stickers, and apparel for fellow gearheads. My motorsport products hit different 
+                    because I actually live this life.
+                </p>
+
+                <div class="products-list">
+                    <div class="product-item">
+                        <span class="product-icon">🎨</span>
+                        <span class="product-text">Race Car Graphics</span>
+                    </div>
+                    <div class="product-item">
+                        <span class="product-icon">🏎️</span>
+                        <span class="product-text">Number Plates & Decals</span>
+                    </div>
+                    <div class="product-item">
+                        <span class="product-icon">👕</span>
+                        <span class="product-text">Team Apparel</span>
+                    </div>
+                    <div class="product-item">
+                        <span class="product-icon">🖼️</span>
+                        <span class="product-text">Garage Art Prints</span>
+                    </div>
+                </div>
+
+                <div class="motorsport-focus">
+                    <h3>BUILT FOR MOTORSPORT</h3>
+                    <p>
+                        <strong>UV-resistant vinyl</strong> that survives stages. 
+                        <strong>Metal prints</strong> for the shop. 
+                        <strong>Custom team gear</strong> that looks pro.
+                        I know what works because I use it myself.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="branding">
+        <div class="branding-logo">BR</div>
+        <div class="branding-text">
+            <div class="branding-name">BLUE RIDGE CUSTOM CO</div>
+            <div class="branding-sub">Asheville, NC</div>
+        </div>
+    </div>
+
+    <div class="sponsor-note">
+        <div class="sponsor-note-text">Interested in team sponsorship?</div>
+        <div class="sponsor-note-cta">LET'S TALK →</div>
+    </div>
+</body>
+</html>

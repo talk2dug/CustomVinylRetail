@@ -265,6 +265,29 @@ main {
   line-height: 1.6;
 }
 
+/* Apparel showcase */
+.apparel-showcase {
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 1.5rem;
+  padding: 2.5rem;
+  max-width: 1080px;
+  margin: 0 auto;
+  display: grid;
+  gap: 1.6rem;
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.12);
+}
+.apparel-showcase header { text-align: center; display: grid; gap: 0.5rem; }
+.apparel-showcase h2 { margin: 0; font-size: 2rem; }
+.apparel-showcase p { margin: 0; color: var(--muted); }
+.apparel-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.apparel-card { border: 1px solid rgba(148,163,184,0.35); border-radius: 1rem; padding: 1rem; background: #fff; }
+.apparel-card.highlight { background: #0ea5e9; color: #06131f; border-color: transparent; }
+.apparel-card h3 { margin: 0 0 0.25rem; font-size: 1.05rem; }
+.apparel-card p { margin: 0; color: rgba(15,23,42,0.8); }
+.apparel-card.highlight p { color: #042436; }
+.apparel-cta { display: flex; gap: 0.75rem; justify-content: center; margin-top: 0.5rem; }
+
 .feature-card__media {
   margin: 0;
   background: rgba(15, 23, 42, 0.55);

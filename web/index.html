@@ -3,233 +3,819 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Swayze's Custom Vinyl</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Montserrat:wght@400;600;700&display=swap">
+  <title>BlueRidgeCustomCo | Custom Vinyl Decals, Apparel & Designs</title>
+  <meta name="description" content="Premium custom vinyl decals, heat transfer graphics, and personalized apparel. From racing decals to custom designs - we bring your vision to life.">
+  <link rel="canonical" href="https://blueridgecustomco.com/">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="./images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="BlueRidgeCustomCo">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="BlueRidgeCustomCo | Premium Custom Vinyl & Designs">
+  <meta property="og:description" content="Transform your ideas into stunning vinyl decals, apparel, and custom designs. Professional quality, fast turnaround.">
+  <meta property="og:url" content="https://blueridgecustomco.com/">
+  <meta property="og:image" content="https://blueridgecustomco.com/images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="BlueRidgeCustomCo | Custom Vinyl & Designs">
+  <meta name="twitter:description" content="Premium custom vinyl decals, apparel, and designs with professional quality and fast turnaround.">
+  <meta name="twitter:image" content="https://blueridgecustomco.com/images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Fonts -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
   <link rel="stylesheet" href="./landing.css">
+
+  <style>
+    :root {
+      --color-primary: #2563eb;
+      --color-primary-hover: #1d4ed8;
+      --color-secondary: #0ea5e9;
+      --color-accent: #8b5cf6;
+      --color-success: #10b981;
+      --color-dark: #0f172a;
+      --color-gray-50: #f8fafc;
+      --color-gray-100: #f1f5f9;
+      --color-gray-200: #e2e8f0;
+      --color-gray-300: #cbd5e1;
+      --color-gray-400: #94a3b8;
+      --color-gray-500: #64748b;
+      --color-gray-600: #475569;
+      --color-gray-700: #334155;
+      --color-gray-800: #1e293b;
+      --color-gray-900: #0f172a;
+      --font-primary: 'Inter', -apple-system, sans-serif;
+      --font-display: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-primary);
+      color: var(--color-gray-900);
+      line-height: 1.6;
+      background: #ffffff;
+    }
+
+    /* Modern Header */
+    .modern-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--color-gray-200);
+      padding: 1rem 0;
+    }
+
+    .header-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      text-decoration: none;
+      color: var(--color-dark);
+    }
+
+    .logo img {
+      height: 48px;
+      width: auto;
+    }
+
+    .logo-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .logo-name {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-tagline {
+      font-size: 0.75rem;
+      color: var(--color-gray-600);
+      font-weight: 500;
+    }
+
+    .nav-menu {
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .nav-link {
+      color: var(--color-gray-700);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.938rem;
+      transition: color 0.2s;
+    }
+
+    .nav-link:hover {
+      color: var(--color-primary);
+    }
+
+    .cta-button {
+      background: var(--color-primary);
+      color: white;
+      padding: 0.625rem 1.5rem;
+      border-radius: 0.5rem;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.938rem;
+      transition: all 0.2s;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .cta-button:hover {
+      background: var(--color-primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);
+    }
+
+    /* Hero Section */
+    .modern-hero {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 5rem 2rem;
+      text-align: center;
+    }
+
+    .hero-container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 0.5rem 1rem;
+      border-radius: 2rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 2rem;
+    }
+
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 1.5rem;
+      letter-spacing: -0.02em;
+    }
+
+    .hero-subtitle {
+      font-size: 1.25rem;
+      opacity: 0.95;
+      margin-bottom: 2.5rem;
+      line-height: 1.6;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-large {
+      padding: 1rem 2rem;
+      font-size: 1.125rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary-large {
+      background: white;
+      color: var(--color-primary);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn-primary-large:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn-secondary-large {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 2px solid white;
+    }
+
+    .btn-secondary-large:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    /* Stats Section */
+    .stats-section {
+      background: var(--color-gray-50);
+      padding: 3rem 2rem;
+      border-bottom: 1px solid var(--color-gray-200);
+    }
+
+    .stats-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      text-align: center;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .stat-number {
+      font-family: var(--font-display);
+      font-size: 2.5rem;
+      font-weight: 800;
+      color: var(--color-primary);
+    }
+
+    .stat-label {
+      color: var(--color-gray-600);
+      font-weight: 500;
+    }
+
+    /* Features Grid */
+    .features-section {
+      padding: 5rem 2rem;
+      background: white;
+    }
+
+    .section-container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      margin-bottom: 1rem;
+      color: var(--color-dark);
+      letter-spacing: -0.02em;
+    }
+
+    .section-subtitle {
+      font-size: 1.25rem;
+      color: var(--color-gray-600);
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+    }
+
+    .feature-card {
+      background: var(--color-gray-50);
+      padding: 2rem;
+      border-radius: 1rem;
+      border: 1px solid var(--color-gray-200);
+      transition: all 0.3s;
+      color: var(--color-dark);
+    }
+
+    .feature-card * {
+      color: var(--color-dark);
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+      border-color: var(--color-primary);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+      color: white !important;
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .feature-title {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      color: var(--color-dark) !important;
+    }
+
+    .feature-description {
+      color: var(--color-gray-700) !important;
+      line-height: 1.7;
+    }
+
+    /* Services Section */
+    .services-section {
+      background: var(--color-dark);
+      color: white;
+      padding: 5rem 2rem;
+    }
+
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 3rem;
+      margin-top: 3rem;
+    }
+
+    .service-card {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 2.5rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.3s;
+      color: white;
+    }
+
+    .service-card p {
+      color: rgba(255, 255, 255, 0.9);
+      opacity: 0.9;
+    }
+
+    .service-card li {
+      color: rgba(255, 255, 255, 0.85);
+    }
+
+    .service-card:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--color-primary);
+      transform: translateY(-4px);
+    }
+
+    .service-card h3 {
+      font-family: var(--font-display);
+      font-size: 1.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .service-card ul {
+      list-style: none;
+      margin: 1.5rem 0;
+    }
+
+    .service-card li {
+      padding: 0.75rem 0;
+      padding-left: 1.5rem;
+      position: relative;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .service-card li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--color-success);
+      font-weight: bold;
+    }
+
+    .service-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--color-secondary);
+      text-decoration: none;
+      font-weight: 600;
+      margin-top: 1rem;
+    }
+
+    .service-link:hover {
+      gap: 0.75rem;
+    }
+
+    /* CTA Section */
+    .cta-section {
+      background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+      color: white;
+      padding: 5rem 2rem;
+      text-align: center;
+    }
+
+    .cta-content {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .cta-title {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      margin-bottom: 1.5rem;
+    }
+
+    .cta-text {
+      font-size: 1.25rem;
+      margin-bottom: 2.5rem;
+      opacity: 0.95;
+    }
+
+    /* Footer */
+    .modern-footer {
+      background: var(--color-gray-900);
+      color: var(--color-gray-200);
+      padding: 3rem 2rem 1.5rem;
+    }
+
+    .footer-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 3rem;
+      margin-bottom: 2rem;
+    }
+
+    .footer-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .footer-brand p {
+      color: var(--color-gray-400);
+      line-height: 1.7;
+    }
+
+    .footer-logo {
+      height: 40px;
+      width: auto;
+    }
+
+    .footer-section h4 {
+      color: white;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+
+    .footer-links {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .footer-link {
+      color: var(--color-gray-400);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-link:hover {
+      color: var(--color-primary);
+    }
+
+    .footer-bottom {
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      color: var(--color-gray-400);
+      font-size: 0.875rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .nav-menu {
+        display: none;
+      }
+
+      .modern-hero {
+        padding: 3rem 1.5rem;
+      }
+
+      .hero-actions {
+        flex-direction: column;
+      }
+
+      .features-grid,
+      .services-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <h1>Swayze's Custom Vinyl</h1>
-      <span>Custom vinyl decals • Pop-up proofing • Laser-engraved keepsakes</span>
+
+  <!-- Header -->
+  <header class="modern-header">
+    <div class="header-container">
+      <a href="./" class="logo">
+        <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo">
+        <div class="logo-text">
+          <span class="logo-name">BlueRidgeCustomCo</span>
+          <span class="logo-tagline">Premium Custom Designs</span>
+        </div>
+      </a>
+
+      <nav class="nav-menu">
+        <a href="./designer.html" class="nav-link">Designer</a>
+        <a href="./racing.html" class="nav-link">Racing</a>
+        <a href="https://store.swayzecustomvinyl.com/apparel.html" class="nav-link">Apparel</a>
+        <a href="./customer.html" class="cta-button">Login</a>
+      </nav>
     </div>
-    <nav class="nav-actions">
-      <a class="button ghost" href="./catalog.html">Browse stickers</a>
-      <a class="button ghost" href="./racing.html">Race packages</a>
-      <a class="button primary" href="./customer.html">Customer login</a>
-    </nav>
   </header>
 
-  <main>
-    <section class="hero">
-      <h2>Turn your ideas into bold vinyl stickers and engraved gifts in minutes.</h2>
-      <p>
-        We bring the custom sticker booth to your event, letting customers preview designs, pick their vinyl color,
-        and leave with personalized decals or engraved wood highlights. Quick turnaround, high-impact branding, and
-        artisan craftsmanship—all in one setup.
+  <!-- Hero -->
+  <section class="modern-hero">
+    <div class="hero-container">
+      <div class="hero-badge">
+        <i class="fas fa-bolt"></i>
+        50,000+ Designs Ready to Customize
+      </div>
+
+      <h1 class="hero-title">
+        Transform Your Vision Into<br>Premium Vinyl Designs
+      </h1>
+
+      <p class="hero-subtitle">
+        Custom decals, apparel, and designs with professional quality and lightning-fast turnaround.
+        From racing teams to personal projects - we bring your ideas to life.
+      </p>
+
+      <div class="hero-actions">
+        <a href="./designer.html" class="btn-large btn-primary-large">
+          <i class="fas fa-magic"></i>
+          Launch Designer
+        </a>
+        <a href="./catalog.html" class="btn-large btn-secondary-large">
+          <i class="fas fa-th"></i>
+          Browse Catalog
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="stats-section">
+    <div class="stats-container">
+      <div class="stat-item">
+        <div class="stat-number">50,000+</div>
+        <div class="stat-label">Designs Available</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number">48hr</div>
+        <div class="stat-label">Rush Available</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number">100%</div>
+        <div class="stat-label">Satisfaction Rate</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number">24/7</div>
+        <div class="stat-label">Online Designer</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features-section">
+    <div class="section-container">
+      <div class="section-header">
+        <h2 class="section-title">Why Choose BlueRidgeCustomCo</h2>
+        <p class="section-subtitle">Professional quality meets modern convenience</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <i class="fas fa-palette"></i>
+          </div>
+          <h3 class="feature-title">AI-Powered Designer</h3>
+          <p class="feature-description">
+            Our modern design tool uses AI to help you create professional decals in minutes.
+            Drag, drop, customize - it's that easy.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <i class="fas fa-images"></i>
+          </div>
+          <h3 class="feature-title">Massive Catalog</h3>
+          <p class="feature-description">
+            Browse over 50,000 pre-made designs across all categories. From racing to custom art,
+            we have something for everyone.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <i class="fas fa-bolt"></i>
+          </div>
+          <h3 class="feature-title">Fast Turnaround</h3>
+          <p class="feature-description">
+            Standard 3-5 day production with rush 48-hour options available.
+            Your designs shipped when you need them.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <i class="fas fa-shield-alt"></i>
+          </div>
+          <h3 class="feature-title">Premium Quality</h3>
+          <p class="feature-description">
+            Professional-grade vinyl and heat transfer materials.
+            Weatherproof, fade-resistant, and built to last.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <i class="fas fa-tshirt"></i>
+          </div>
+          <h3 class="feature-title">Apparel Bundles</h3>
+          <p class="feature-description">
+            Match your decals with custom apparel. T-shirts, hoodies, hats -
+            coordinated branding for teams and events.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <i class="fas fa-user-shield"></i>
+          </div>
+          <h3 class="feature-title">Customer Portal</h3>
+          <p class="feature-description">
+            Track orders, save designs, and reorder favorites anytime.
+            Your account, your designs, always accessible.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Services -->
+  <section class="services-section">
+    <div class="section-container">
+      <div class="section-header">
+        <h2 class="section-title" style="color: white;">Our Services</h2>
+        <p class="section-subtitle" style="color: rgba(255,255,255,0.8);">
+          Everything you need for custom vinyl and designs
+        </p>
+      </div>
+
+      <div class="services-grid">
+        <div class="service-card">
+          <h3>Custom Vinyl Decals</h3>
+          <p>Premium vinyl stickers for any surface</p>
+          <ul>
+            <li>Weather-resistant outdoor vinyl</li>
+            <li>3" to 48" sizes available</li>
+            <li>Single or multi-color designs</li>
+            <li>Custom shapes and sizes</li>
+            <li>Bulk discounts available</li>
+          </ul>
+          <a href="./catalog.html" class="service-link">
+            Browse Decals <i class="fas fa-arrow-right"></i>
+          </a>
+        </div>
+
+        <div class="service-card">
+          <h3>Racing Packages</h3>
+          <p>Competition-ready decal kits</p>
+          <ul>
+            <li>ARA, SCCA, NASA compliant</li>
+            <li>Number panels and sponsor layouts</li>
+            <li>Matching crew apparel included</li>
+            <li>Rush 48-hour available</li>
+            <li>Professional design assistance</li>
+          </ul>
+          <a href="./racing.html" class="service-link">
+            See Racing Kits <i class="fas fa-arrow-right"></i>
+          </a>
+        </div>
+
+        <div class="service-card">
+          <h3>Heat Transfer Vinyl</h3>
+          <p>Iron-on graphics for apparel</p>
+          <ul>
+            <li>Professional HTV materials</li>
+            <li>Washable and durable</li>
+            <li>Team apparel bundles</li>
+            <li>Custom colors and designs</li>
+            <li>Bulk pricing for teams</li>
+          </ul>
+          <a href="./custom-stickers.html" class="service-link">
+            Get Started <i class="fas fa-arrow-right"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <div class="cta-content">
+      <h2 class="cta-title">Ready to Create Something Amazing?</h2>
+      <p class="cta-text">
+        Start designing in our modern AI-powered designer or browse our massive catalog.
+        Your custom designs are just minutes away.
       </p>
       <div class="hero-actions">
-        <a class="button primary" href="./catalog.html">Start designing</a>
-        <a class="button ghost" href="./racing.html">Explore race deals</a>
-        <a class="button ghost" href="./customer.html">View my orders</a>
+        <a href="./designer.html" class="btn-large btn-primary-large">
+          <i class="fas fa-magic"></i>
+          Launch Designer
+        </a>
+        <a href="./customer.html" class="btn-large btn-secondary-large">
+          <i class="fas fa-user"></i>
+          Customer Login
+        </a>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <section class="specials" id="weeklySpecials">
-      <header>
-        <h2>This Week's Special</h2>
-        <p>Hand-picked decals the crew is cutting right now.</p>
-      </header>
-      <div class="specials-grid" id="specialsGrid">
-        <p class="specials-empty">Loading featured artwork…</p>
+  <!-- Footer -->
+  <footer class="modern-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo" class="footer-logo">
+        <p>Premium custom vinyl decals, apparel, and designs with professional quality and fast turnaround.</p>
       </div>
-    </section>
 
-    <section class="feature-grid">
-      <article class="feature-card">
-        <h3>Live preview tooling</h3>
-        <p>Customers tweak size, vinyl color, and custom text on the fly—no guessing, no reprints.</p>
-      </article>
-      <article class="feature-card">
-        <h3>Heat Transfer Vinyl</h3>
-        <p>Reduce the cost of your team or crews appearal with ready to iron on graphics. We use high quality heat transfre vinyl and the results are spectacular!</p>
-      </article>
-      <article class="feature-card">
-        <h3>Laser-ready engravings</h3>
-        <p>Polished wood blanks with permanent laser detail—perfect for gifts, awards, or merch tables.</p>
-      </article>
-      <article class="feature-card">
-        <h3>Customer portal</h3>
-        <p>Clients log in to check payment status, download files, and reorder their favorite designs anytime.</p>
-      </article>
-    </section>
-
-    <section class="pricing">
-      <header>
-        <h2>Pricing snapshot</h2>
-        <p>Simple, event-friendly pricing. Bulk discounts and specialty materials available upon request.</p>
-      </header>
-      <div class="price-grid">
-        <article class="price-card race-kit-card">
-          <div class="race-kit-card__media">
-            <img src="./images/race-kit-hero.jpg" alt="GNG Motorsports Subaru race car with vinyl kit">
-          </div>
-          <div class="race-kit-card__body">
-            <h3>Race car decal packages</h3>
-            <p>From local autocross to national series, we build compliant kits that look good at speed. We know the number, class, and sponsor panel rules for SCCA, NASA, RallyCross, and American Rally Association events—so your car passes tech and turns heads.</p>
-            <ul>
-              <li>Choose from number, sponsor, pro, or elite custom kits</li>
-              <li>Metallic, reflective, and layered vinyl options available</li>
-              <li>3–5 day turnaround after proof approval</li>
-            </ul>
-            <div class="race-kit-card__actions">
-              <a class="button primary" href="./racing.html">See race packages</a>
-              <a class="button ghost" href="./race_decal_requirements_cheatsheet.html" target="_blank" rel="noopener">View decal requirements</a>
-            </div>
-          </div>
-        </article>
-        <article class="price-card">
-          <h3>Laser-engraved wood</h3>
-          <div class="price">$15</div>
-          <ul>
-            <li>8&rdquo; round wood plaque</li>
-            <li>Custom laser engraving included</li>
-            <li>Perfect for signage, awards, and decor</li>
-            <li>Ask about bespoke shapes and materials</li>
-          </ul>
-        </article>
+      <div class="footer-section">
+        <h4>Products</h4>
+        <ul class="footer-links">
+          <li><a href="./catalog.html" class="footer-link">Vinyl Decals</a></li>
+          <li><a href="./designer.html" class="footer-link">Custom Designer</a></li>
+          <li><a href="./racing.html" class="footer-link">Racing Packages</a></li>
+          <li><a href="./custom-stickers.html" class="footer-link">Heat Transfer</a></li>
+        </ul>
       </div>
-    </section>
 
-    <section class="cta">
-      <h2>Book the sticker booth or laser station for your next event.</h2>
-      <p>
-        Reach out with your event details and we&rsquo;ll tailor a package that fits your crowd—bulk pricing, on-site staffing,
-        and branded displays available.
-      </p>
-      <div class="cta-actions">
-        <a class="button primary" href="mailto:stickers@example.com">Request availability</a>
-        <a class="button ghost" href="./catalog.html">Preview our catalog</a>
+      <div class="footer-section">
+        <h4>Company</h4>
+        <ul class="footer-links">
+          <li><a href="./customer.html" class="footer-link">Customer Portal</a></li>
+          <li><a href="./terms.html" class="footer-link">Terms of Service</a></li>
+          <li><a href="./privacy-policy.html" class="footer-link">Privacy Policy</a></li>
+          <li><a href="mailto:info@blueridgecustomco.com" class="footer-link">Contact Us</a></li>
+        </ul>
       </div>
-    </section>
-  </main>
 
-  <footer>
-    &copy; <span id="year"></span> Swayze's Custom Vinyl • Crafted on site for events, pop-ups, and makers.
+      <div class="footer-section">
+        <h4>Connect</h4>
+        <ul class="footer-links">
+          <li><a href="#" class="footer-link">Facebook</a></li>
+          <li><a href="#" class="footer-link">Instagram</a></li>
+          <li><a href="#" class="footer-link">Twitter</a></li>
+          <li><a href="mailto:info@blueridgecustomco.com" class="footer-link">Email Us</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      &copy; <span id="year"></span> BlueRidgeCustomCo. All rights reserved.
+    </div>
   </footer>
 
   <script>
-    (function () {
-      function resolveApiBase(port = '4000') {
-        try {
-          const current = new URL(window.location.href);
-          const isDefaultPort = !current.port || current.port === '80' || current.port === '443';
-          if (isDefaultPort) {
-            return current.origin;
-          }
-          current.port = port;
-          return current.origin;
-        } catch (error) {
-          const { protocol, hostname, port: currentPort } = window.location;
-          const isDefaultPort = !currentPort || currentPort === '80' || currentPort === '443';
-          if (isDefaultPort) {
-            return `${protocol}//${hostname}`;
-          }
-          return `${protocol}//${hostname}:${port}`;
-        }
-      }
-
-      const API_BASE = resolveApiBase();
-      const specialsEndpoint = `${API_BASE}/api/public/specials`;
-      const yearElement = document.getElementById('year');
-      if (yearElement) {
-        yearElement.textContent = new Date().getFullYear();
-      }
-
-      const specialsGrid = document.getElementById('specialsGrid');
-      if (!specialsGrid) return;
-
-      function renderStatus(message) {
-        specialsGrid.innerHTML = '';
-        const paragraph = document.createElement('p');
-        paragraph.className = 'specials-empty';
-        paragraph.textContent = message;
-        specialsGrid.appendChild(paragraph);
-      }
-
-      function buildSpecialCard(item) {
-        const article = document.createElement('article');
-        article.className = 'special-card';
-
-        if (item.image) {
-          const imageWrapper = document.createElement('div');
-          imageWrapper.className = 'special-card__image';
-
-          const img = document.createElement('img');
-          img.src = item.image;
-          img.alt = item.title || item.designName || 'Featured artwork';
-          img.loading = 'lazy';
-          imageWrapper.appendChild(img);
-          article.appendChild(imageWrapper);
-        }
-
-        const body = document.createElement('div');
-        body.className = 'special-card__body';
-
-        const title = document.createElement('h3');
-        title.textContent = item.title || item.designName || 'Featured artwork';
-        body.appendChild(title);
-
-        if (item.tagline) {
-          const tagline = document.createElement('p');
-          tagline.className = 'special-card__tagline';
-          tagline.textContent = item.tagline;
-          body.appendChild(tagline);
-        }
-
-        const meta = document.createElement('p');
-        meta.className = 'special-card__meta';
-        const parts = [];
-        if (item.categoryName) parts.push(item.categoryName);
-        if (item.designName) parts.push(item.designName);
-        meta.textContent = parts.join(' • ') || 'Featured vinyl sticker';
-        body.appendChild(meta);
-
-        const action = document.createElement('a');
-        action.className = 'button ghost';
-        action.href = './catalog.html';
-        action.textContent = 'Browse the catalog';
-        body.appendChild(action);
-
-        article.appendChild(body);
-        return article;
-      }
-
-      async function loadSpecials() {
-        renderStatus('Loading featured artwork…');
-        try {
-          const response = await fetch(specialsEndpoint, { cache: 'no-store' });
-          if (!response.ok) {
-            throw new Error(`Failed to load specials (${response.status})`);
-          }
-          const data = await response.json();
-          const items = Array.isArray(data.items) ? data.items : [];
-          if (!items.length) {
-            renderStatus('No featured designs this week—explore the catalog for inspiration.');
-            return;
-          }
-          specialsGrid.innerHTML = '';
-          items.forEach((item) => {
-            specialsGrid.appendChild(buildSpecialCard(item));
-          });
-        } catch (error) {
-          console.error('Unable to load specials:', error);
-          renderStatus('Unable to load this week\'s special. Check back soon for fresh cuts.');
-        }
-      }
-
-      loadSpecials();
-    })();
+    // Set current year
+    document.getElementById('year').textContent = new Date().getFullYear();
   </script>
 </body>
 </html>

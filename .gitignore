@@ -1,6 +1,116 @@
+# Dependencies
 node_modules/
+
+# Environment and secrets
 .env
-web/images/catalog/
+.env.*
+*.pem
+*.key
+
+# IDE and editor
+.vscode/sftp.json
+.vscode/*.code-workspace
+.claude/
+.smoke-userdata/
+
+# Database files
+*.db
+*.db-journal
+*.db.bak
+data/
+server/data/
+
+# Large media and image files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.ico
+*.bmp
+*.tiff
+*.tif
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.mp3
+*.wav
+*.ogg
 Products/
 Stickers/
+StickerSheets/
+Metallic samples/
+PINUP GILRS BUNDLE/
+web/images/catalog/
+web/library/
+web/videos/
+exports/
+extracted_stickers/
+
+# Build outputs
+print-station/dist/
+print-station/extracted_asar/
+print-station/nul
+nul
+
+# Temporary files
+*.bak
+*.tmp
+*.temp
+temp-*
+fix-*.js
+
+# Generated files
 saved-designs/
+sticker-sheet_*.png
+sticker-sheet_*.svg
+eng.traineddata
+print-station/eng.traineddata
+
+# Facebook/marketing data files
+facebook-campaign-*.json
+facebook-posts-*.json
+facebook-marketplace-feeds/
+
+# Shopify theme files (large)
+shopify-theme/
+shopify-template/
+shopify-sections/
+shopify-metal-prints/
+
+# Documentation that shouldn't be in repo
+*.md
+!README.md
+
+# macOS
+._*
+.DS_Store
+
+# Misc large/unnecessary folders
+GF/
+Garment_color_changer/
+kiosk-display-system/
+
+# Config files with potential secrets
+nginx*.conf
+vinylapp.conf
+
+# Scripts that may contain secrets
+scripts/facebook-*.js
+scripts/shopify-*.js
+scripts/validate-*.js
+
+# TikTok verification files
+tiktok*.txt
+
+# Test files
+test-*.js
+print-station/test-*.js
+
+# Sync scripts
+sync-*.js
+
+# Shell scripts
+*.sh

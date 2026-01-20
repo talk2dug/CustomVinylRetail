@@ -20,6 +20,32 @@
 
   <main class="dashboard">
     <section class="status-bar" id="statusBar" aria-live="polite"></section>
+    <section class="card" id="storefrontSettingsCard">
+      <h2>Storefront Settings</h2>
+      <form id="storefrontSettingsForm" class="settings-form">
+        <div class="settings-grid">
+          <label>
+            <span>Preferred S&amp;S warehouse (abbr)</span>
+            <input id="preferredWarehouseInput" list="warehouseCodes" placeholder="e.g. IL" maxlength="4">
+            <datalist id="warehouseCodes">
+              <option value="IL"></option>
+              <option value="TX"></option>
+              <option value="NJ"></option>
+              <option value="GA"></option>
+              <option value="KS"></option>
+              <option value="NV"></option>
+              <option value="CA"></option>
+              <option value="FL"></option>
+              <option value="PA"></option>
+            </datalist>
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button type="submit" class="primary">Save settings</button>
+          <span id="storefrontSettingsStatus" class="status-message"></span>
+        </div>
+      </form>
+    </section>
     <section class="card artwork-card">
       <h2>Upload new artwork</h2>
       <p class="muted-text">Choose a category, upload a preview image, and optional vector files. The catalog regenerates automatically.</p>
@@ -78,6 +104,7 @@
             <select id="specialsDesignSelect" disabled>
               <option value="" disabled selected>Select a category first</option>
             </select>
+            <button type="button" id="openVisualPicker" class="secondary specials-browse-button">Browse visually</button>
           </label>
         </div>
         <div class="specials-fields">
@@ -97,6 +124,28 @@
       </form>
       <div id="specialsList" class="specials-list empty">
         No specials selected yet. Choose up to four designs to feature.
+      </div>
+    </section>
+    <section class="card shopify-sync-card" id="shopifySyncCard">
+      <h2>Shopify Product Sync</h2>
+      <p class="muted-text">Fix all existing Shopify products: publish to all channels, set inventory, update vendor to "Blue Ridge Custom Co", assign correct templates, and clean AI residue from titles.</p>
+      <div class="sync-options">
+        <label>
+          <span>Default inventory count</span>
+          <input type="number" id="syncInventoryInput" value="999" min="0" max="99999" style="width: 100px;">
+        </label>
+      </div>
+      <div class="sync-actions" style="margin-top: 1rem;">
+        <button type="button" id="syncAllProductsBtn" class="primary">Sync All Products</button>
+        <span id="syncStatus" class="status-message"></span>
+      </div>
+      <div id="syncProgressContainer" class="sync-progress" style="display: none; margin-top: 1rem;">
+        <div class="sync-progress-bar">
+          <div id="syncProgressFill" class="sync-progress-fill" style="width: 0%;"></div>
+        </div>
+        <div id="syncProgressText" class="sync-progress-text">0 / 0 products</div>
+      </div>
+      <div id="syncLog" class="sync-log" style="display: none; margin-top: 1rem; max-height: 300px; overflow-y: auto; font-size: 0.85rem; background: #1a1a2e; padding: 1rem; border-radius: 8px;">
       </div>
     </section>
     <section class="card race-admin-card" id="raceQuotesCard">
@@ -138,5 +187,24 @@
   </template>
 
   <script type="module" src="./admin.js"></script>
+
+  <!-- Visual picker modal for Specials selection -->
+  <div class="picker-modal" id="visualPickerModal" hidden>
+    <div class="picker-modal__backdrop" data-picker-close="true"></div>
+    <div class="picker-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="visualPickerTitle">
+      <header class="picker-modal__header">
+        <div>
+          <h2 id="visualPickerTitle">Pick a featured design</h2>
+          <p class="picker-modal__subtitle">Choose a category, then click a design thumbnail to select it.</p>
+        </div>
+        <button class="icon-button" id="visualPickerClose" type="button" aria-label="Close">&times;</button>
+      </header>
+      <div class="picker-modal__body">
+        <nav class="picker-crumbs" id="visualPickerCrumbs"></nav>
+        <div class="picker-status" id="visualPickerStatus"></div>
+        <div class="picker-grid" id="visualPickerGrid"></div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
