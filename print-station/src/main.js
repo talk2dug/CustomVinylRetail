@@ -4909,6 +4909,165 @@ Return ONLY valid JSON, nothing else:
     }
   });
 
+  // ========================================
+  // Studio3 Parser Handlers
+  // ========================================
+  const Studio3Parser = require('./studio3-parser');
+
+  // Parse a .studio3 file and extract all data
+  ipcMain.handle('studio3:parse', async (_event, filepath) => {
+    try {
+      console.log('[Studio3] Parsing file:', filepath);
+      const parser = new Studio3Parser(filepath);
+      const data = await parser.parse();
+
+      // Convert image buffers to base64 for IPC transfer
+      const images = data.images.map(img => ({
+        index: img.index,
+        size: img.size,
+        base64: img.buffer.toString('base64'),
+        mimeType: 'image/png'
+      }));
+
+      return {
+        success: true,
+        images,
+        paths: data.paths,
+        metadata: data.metadata,
+        svg: data.svg
+      };
+    } catch (err) {
+      console.error('[Studio3] Parse error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Extract just the images from a .studio3 file
+  ipcMain.handle('studio3:extractImages', async (_event, filepath) => {
+    try {
+      const parser = new Studio3Parser(filepath);
+      await parser.load();
+      const images = parser.extractImages();
+
+      return {
+        success: true,
+        images: images.map(img => ({
+          index: img.index,
+          size: img.size,
+          base64: img.buffer.toString('base64'),
+          mimeType: 'image/png'
+        }))
+      };
+    } catch (err) {
+      console.error('[Studio3] Extract images error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Extract just the cut paths from a .studio3 file
+  ipcMain.handle('studio3:extractPaths', async (_event, filepath) => {
+    try {
+      const parser = new Studio3Parser(filepath);
+      await parser.load();
+      const paths = parser.extractCutPaths();
+
+      return {
+        success: true,
+        paths,
+        pathCount: paths.length,
+        totalPoints: paths.reduce((sum, p) => sum + p.length, 0)
+      };
+    } catch (err) {
+      console.error('[Studio3] Extract paths error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Convert cut paths to SVG
+  ipcMain.handle('studio3:toSvg', async (_event, filepath, options = {}) => {
+    try {
+      const parser = new Studio3Parser(filepath);
+      await parser.load();
+      const svg = parser.toSvg(options);
+
+      return { success: true, svg };
+    } catch (err) {
+      console.error('[Studio3] SVG conversion error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Save extracted images to a directory
+  ipcMain.handle('studio3:saveImages', async (_event, filepath, outputDir) => {
+    try {
+      const parser = new Studio3Parser(filepath);
+      await parser.load();
+      const saved = await parser.saveImages(outputDir);
+
+      return { success: true, files: saved };
+    } catch (err) {
+      console.error('[Studio3] Save images error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Browse for .studio3 files
+  ipcMain.handle('studio3:browse', async () => {
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog({
+      title: 'Select Studio3 Files',
+      filters: [
+        { name: 'Silhouette Studio Files', extensions: ['studio3'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile', 'multiSelections']
+    });
+
+    if (result.canceled) {
+      return { success: false, canceled: true };
+    }
+
+    return { success: true, files: result.filePaths };
+  });
+
+  // Batch parse multiple .studio3 files (for catalog building)
+  ipcMain.handle('studio3:batchParse', async (_event, filepaths) => {
+    const results = [];
+
+    for (const filepath of filepaths) {
+      try {
+        const parser = new Studio3Parser(filepath);
+        const data = await parser.parse();
+
+        results.push({
+          filepath,
+          success: true,
+          imageCount: data.images.length,
+          pathCount: data.paths.length,
+          metadata: data.metadata,
+          // Include thumbnail (first image) as base64
+          thumbnail: data.images.length > 0
+            ? data.images[0].buffer.toString('base64')
+            : null
+        });
+      } catch (err) {
+        results.push({
+          filepath,
+          success: false,
+          error: err.message
+        });
+      }
+    }
+
+    return {
+      success: true,
+      total: filepaths.length,
+      parsed: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      results
+    };
+  });
+
   // Google Drive Sync handlers
   ipcMain.handle('gdrive:list', (_event, folder) =>
     httpRequest(`/api/gdrive/list${folder ? '?folder=' + encodeURIComponent(folder) : ''}`, { method: 'GET' })

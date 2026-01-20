@@ -7215,6 +7215,134 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // ===== STUDIO3 CATALOG API =====
+  // Store parsed Studio3 file data for catalog/training purposes
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/studio3/catalog') {
+    if (!requireInternalKey(req, res)) return;
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const { filename, metadata, pathCount, imageCount, thumbnail, paths } = data;
+
+        if (!filename) {
+          sendJson(res, 400, { success: false, error: 'filename is required' });
+          return;
+        }
+
+        // Store in SQLite database
+        const db = require('./db');
+        const id = `studio3_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        db.run(`
+          INSERT INTO studio3_catalog (id, filename, metadata, path_count, image_count, thumbnail, paths, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `, [id, filename, JSON.stringify(metadata || {}), pathCount || 0, imageCount || 0, thumbnail || null, JSON.stringify(paths || [])]);
+
+        console.log(`[Studio3 Catalog] Added: ${filename} (${pathCount} paths, ${imageCount} images)`);
+        sendJson(res, 200, { success: true, id, filename });
+
+      } catch (err) {
+        console.error('[Studio3 Catalog] Error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // List Studio3 catalog entries
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/studio3/catalog') {
+    if (!requireInternalKey(req, res)) return;
+
+    try {
+      const db = require('./db');
+      const rows = db.all(`
+        SELECT id, filename, metadata, path_count, image_count, created_at
+        FROM studio3_catalog
+        ORDER BY created_at DESC
+        LIMIT 500
+      `);
+
+      sendJson(res, 200, {
+        success: true,
+        count: rows.length,
+        items: rows.map(row => ({
+          id: row.id,
+          filename: row.filename,
+          metadata: JSON.parse(row.metadata || '{}'),
+          pathCount: row.path_count,
+          imageCount: row.image_count,
+          createdAt: row.created_at
+        }))
+      });
+
+    } catch (err) {
+      console.error('[Studio3 Catalog] List error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Get a specific Studio3 catalog entry with full data (including paths)
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/studio3/catalog/')) {
+    if (!requireInternalKey(req, res)) return;
+
+    const id = decodeURIComponent(parsedUrl.pathname.replace('/api/studio3/catalog/', ''));
+
+    try {
+      const db = require('./db');
+      const row = db.get(`SELECT * FROM studio3_catalog WHERE id = ?`, [id]);
+
+      if (!row) {
+        sendJson(res, 404, { success: false, error: 'Entry not found' });
+        return;
+      }
+
+      sendJson(res, 200, {
+        success: true,
+        entry: {
+          id: row.id,
+          filename: row.filename,
+          metadata: JSON.parse(row.metadata || '{}'),
+          pathCount: row.path_count,
+          imageCount: row.image_count,
+          thumbnail: row.thumbnail,
+          paths: JSON.parse(row.paths || '[]'),
+          createdAt: row.created_at
+        }
+      });
+
+    } catch (err) {
+      console.error('[Studio3 Catalog] Get error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Delete a Studio3 catalog entry
+  if (req.method === 'DELETE' && parsedUrl.pathname.startsWith('/api/studio3/catalog/')) {
+    if (!requireInternalKey(req, res)) return;
+
+    const id = decodeURIComponent(parsedUrl.pathname.replace('/api/studio3/catalog/', ''));
+
+    try {
+      const db = require('./db');
+      db.run(`DELETE FROM studio3_catalog WHERE id = ?`, [id]);
+      console.log(`[Studio3 Catalog] Deleted: ${id}`);
+      sendJson(res, 200, { success: true });
+
+    } catch (err) {
+      console.error('[Studio3 Catalog] Delete error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
   // ===== TASK TRACKER API =====
   // Get all active and recent tasks for dashboard display
   if (req.method === 'GET' && parsedUrl.pathname === '/api/tasks/status') {

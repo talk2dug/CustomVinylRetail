@@ -3007,6 +3007,24 @@ function initCustomArtTables() {
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_mockup_backgrounds_category ON mockup_backgrounds(category)`); } catch (e) { /* ignore */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_mockup_backgrounds_active ON mockup_backgrounds(active)`); } catch (e) { /* ignore */ }
 
+  // Studio3 Catalog - stores parsed .studio3 files for catalog/training
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS studio3_catalog (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      metadata TEXT,
+      path_count INTEGER DEFAULT 0,
+      image_count INTEGER DEFAULT 0,
+      thumbnail TEXT,
+      paths TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create indexes for studio3_catalog
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_studio3_catalog_filename ON studio3_catalog(filename)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_studio3_catalog_created ON studio3_catalog(created_at)`); } catch (e) { /* ignore */ }
+
   // Seed default materials
   seedCustomArtMaterials();
 

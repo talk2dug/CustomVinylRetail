@@ -1556,6 +1556,255 @@ async function deleteVinylCutBatch(batchName) {
 }
 
 // ============================================================================
+// STUDIO3 IMPORT FUNCTIONS
+// ============================================================================
+
+/**
+ * Import .studio3 files into the vinyl cutter canvas
+ * Uses the studio3 parser to extract images and cut paths
+ */
+async function importStudio3Files() {
+  if (!window.printStation?.studio3) {
+    vinylShowToast('Studio3 import not available', 'error');
+    return;
+  }
+
+  try {
+    // Open file browser for .studio3 files
+    const browseResult = await window.printStation.studio3.browse();
+    if (!browseResult.success || browseResult.canceled) {
+      return; // User canceled
+    }
+
+    const files = browseResult.files;
+    if (!files || files.length === 0) {
+      vinylShowToast('No files selected', 'warning');
+      return;
+    }
+
+    vinylShowToast(`Parsing ${files.length} Studio3 file(s)...`, 'info');
+    updateVinylStatus('Parsing Studio3 files...');
+
+    // Parse all selected files
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const filepath of files) {
+      try {
+        const result = await window.printStation.studio3.parse(filepath);
+
+        if (!result.success) {
+          console.error('[Studio3 Import] Parse failed:', filepath, result.error);
+          errorCount++;
+          continue;
+        }
+
+        // Add each image from the studio3 file to canvas
+        for (const image of result.images) {
+          await addStudio3ItemToCanvas({
+            filepath,
+            imageIndex: image.index,
+            base64: image.base64,
+            paths: result.paths,
+            metadata: result.metadata,
+            svg: result.svg
+          });
+          successCount++;
+        }
+      } catch (err) {
+        console.error('[Studio3 Import] Error processing file:', filepath, err);
+        errorCount++;
+      }
+    }
+
+    updateVinylStatus('Ready');
+    updateVinylItemsUI();
+    updateVinylColorLayersUI();
+    updateVinylGenerateButton();
+
+    if (successCount > 0) {
+      vinylShowToast(`Imported ${successCount} design(s) from Studio3 files`, 'success');
+    }
+    if (errorCount > 0) {
+      vinylShowToast(`${errorCount} file(s) failed to import`, 'warning');
+    }
+
+  } catch (err) {
+    console.error('[Studio3 Import] Error:', err);
+    vinylShowToast('Failed to import Studio3 files: ' + err.message, 'error');
+    updateVinylStatus('Import failed');
+  }
+}
+
+/**
+ * Add a Studio3 item to the vinyl canvas
+ * Uses the extracted image and cut paths directly (no vectorization needed)
+ */
+async function addStudio3ItemToCanvas(studio3Data) {
+  const { filepath, imageIndex, base64, paths, metadata, svg } = studio3Data;
+
+  if (!vinylCutterState.canvas) {
+    initVinylCutterEditor();
+  }
+
+  const canvas = vinylCutterState.canvas;
+  const config = vinylCutterState.canvasConfig;
+  const scale = config.displayScale;
+
+  // Create image from base64
+  const imageUrl = 'data:image/png;base64,' + base64;
+
+  console.log('[Studio3 Import] Adding item from:', filepath, 'Image index:', imageIndex);
+
+  try {
+    // Load image
+    const img = await loadVinylImage(imageUrl);
+
+    // Default size: 4 inches for vinyl
+    const targetSizeInches = 4;
+    const targetSizePx = targetSizeInches * config.dpi;
+
+    // Calculate scaled dimensions
+    const aspectRatio = img.width / img.height;
+    let itemWidth, itemHeight;
+
+    if (aspectRatio > 1) {
+      itemWidth = targetSizePx;
+      itemHeight = targetSizePx / aspectRatio;
+    } else {
+      itemHeight = targetSizePx;
+      itemWidth = targetSizePx * aspectRatio;
+    }
+
+    // Create Fabric image
+    const fabricImg = new fabric.Image(img, {
+      left: config.marginPx * scale + 50 + (vinylCutterState.items.length * 30),
+      top: config.marginPx * scale + 50 + (vinylCutterState.items.length * 30),
+      scaleX: (itemWidth * scale) / img.width,
+      scaleY: (itemHeight * scale) / img.height,
+      hasControls: true,
+      hasBorders: true,
+      lockUniScaling: false,
+      cornerStyle: 'circle',
+      cornerColor: '#8b5cf6', // Purple for Studio3 imports
+      cornerStrokeColor: '#8b5cf6',
+      borderColor: '#8b5cf6',
+      transparentCorners: false,
+      centeredRotation: true
+    });
+
+    // Extract filename for title
+    const filename = filepath.split(/[/\\]/).pop().replace('.studio3', '');
+
+    // Store vinyl data with Studio3 source info
+    fabricImg.vinylData = {
+      id: `studio3_${Date.now()}_${imageIndex}`,
+      title: `${filename}${imageIndex > 0 ? ` (${imageIndex + 1})` : ''}`,
+      imagePath: null, // No server path - embedded image
+      thumbnailUrl: imageUrl,
+      imageUrl: imageUrl,
+      originalWidth: img.width,
+      originalHeight: img.height,
+      targetWidth: itemWidth,
+      targetHeight: itemHeight,
+      colors: [],
+      // Studio3 specific data
+      studio3Source: {
+        filepath,
+        imageIndex,
+        metadata,
+        hasPrebuiltPaths: paths && paths.length > 0
+      }
+    };
+
+    // Use pre-built cut paths from Studio3 if available
+    fabricImg.colorContours = [];
+
+    if (paths && paths.length > 0) {
+      console.log('[Studio3 Import] Using pre-built cut paths:', paths.length, 'paths');
+
+      // Convert Studio3 paths to SVG path string
+      for (let pathIdx = 0; pathIdx < paths.length; pathIdx++) {
+        const pathPoints = paths[pathIdx];
+        if (pathPoints.length < 2) continue;
+
+        // Build SVG path string
+        let svgPath = `M ${pathPoints[0].x},${pathPoints[0].y}`;
+        for (let i = 1; i < pathPoints.length; i++) {
+          svgPath += ` L ${pathPoints[i].x},${pathPoints[i].y}`;
+        }
+        svgPath += ' Z';
+
+        // Calculate path bounds for scaling
+        const xs = pathPoints.map(p => p.x);
+        const ys = pathPoints.map(p => p.y);
+        const pathWidth = Math.max(...xs) - Math.min(...xs);
+        const pathHeight = Math.max(...ys) - Math.min(...ys);
+
+        // Create contour
+        const contour = createVinylContour(
+          svgPath,
+          pathWidth || img.width,
+          pathHeight || img.height,
+          itemWidth,
+          itemHeight,
+          scale,
+          pathIdx === 0 ? '#ef4444' : '#f97316' // Red for first path, orange for others
+        );
+
+        contour.colorHex = pathIdx === 0 ? '#000000' : `#path${pathIdx}`;
+        fabricImg.colorContours.push(contour);
+
+        // Position contour to match image
+        contour.set({
+          left: fabricImg.left,
+          top: fabricImg.top,
+          originX: 'center',
+          originY: 'center'
+        });
+
+        canvas.add(contour);
+      }
+
+      // Store path info as "colors" for UI display
+      fabricImg.vinylData.colors = paths.map((p, idx) => ({
+        hex: idx === 0 ? '#000000' : `#path${idx}`,
+        name: `Cut Path ${idx + 1}`,
+        contourPath: null, // SVG stored in contour object
+        count: p.length,
+        percentage: 100 / paths.length
+      }));
+
+    } else {
+      console.log('[Studio3 Import] No pre-built paths, creating fallback contour');
+      // Create fallback rectangular contour
+      const fallbackContour = createFallbackVinylContour(itemWidth, itemHeight, scale);
+      fallbackContour.set({
+        left: fabricImg.left,
+        top: fabricImg.top,
+        originX: 'center',
+        originY: 'center'
+      });
+      canvas.add(fallbackContour);
+      fabricImg.contour = fallbackContour;
+    }
+
+    // Add image to canvas
+    canvas.add(fabricImg);
+    vinylCutterState.items.push(fabricImg);
+    canvas.setActiveObject(fabricImg);
+    canvas.requestRenderAll();
+
+    console.log('[Studio3 Import] Successfully added:', fabricImg.vinylData.title);
+    return true;
+
+  } catch (err) {
+    console.error('[Studio3 Import] Failed to add item:', err);
+    throw err;
+  }
+}
+
+// ============================================================================
 // EXPOSE TO GLOBAL SCOPE
 // ============================================================================
 
@@ -1584,3 +1833,5 @@ window.removeVinylItemByIndex = removeVinylItemByIndex;
 window.previewVinylCutFile = previewVinylCutFile;
 window.sendVinylToSilhouette = sendVinylToSilhouette;
 window.deleteVinylCutBatch = deleteVinylCutBatch;
+window.importStudio3Files = importStudio3Files;
+window.addStudio3ItemToCanvas = addStudio3ItemToCanvas;

@@ -371,6 +371,24 @@ contextBridge.exposeInMainWorld('printStation', {
     getScriptPath: () => ipcRenderer.invoke('cameo:get-script-path')
   },
 
+  // Studio3 Parser API (for .studio3 file import)
+  studio3: {
+    // Parse a complete .studio3 file - returns images, paths, metadata, svg
+    parse: (filepath) => ipcRenderer.invoke('studio3:parse', filepath),
+    // Extract just the embedded PNG images
+    extractImages: (filepath) => ipcRenderer.invoke('studio3:extractImages', filepath),
+    // Extract just the cut paths as coordinate arrays
+    extractPaths: (filepath) => ipcRenderer.invoke('studio3:extractPaths', filepath),
+    // Convert cut paths to SVG string
+    toSvg: (filepath, options) => ipcRenderer.invoke('studio3:toSvg', filepath, options || {}),
+    // Save extracted images to a directory
+    saveImages: (filepath, outputDir) => ipcRenderer.invoke('studio3:saveImages', filepath, outputDir),
+    // Open file browser for .studio3 files
+    browse: () => ipcRenderer.invoke('studio3:browse'),
+    // Batch parse multiple files (for catalog building)
+    batchParse: (filepaths) => ipcRenderer.invoke('studio3:batchParse', filepaths)
+  },
+
   // Google Drive Sync API
   gdrive: {
     list: (folder) => ipcRenderer.invoke('gdrive:list', folder),
