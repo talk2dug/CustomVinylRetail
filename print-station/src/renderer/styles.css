@@ -3998,3 +3998,154 @@ textarea:focus {
   font-size: 9px;
   white-space: nowrap;
 }
+
+/* ========================================
+   STL File Manager
+   ======================================== */
+.stl-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 4px;
+}
+
+.stl-model-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  position: relative;
+}
+
+.stl-model-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.stl-model-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.stl-model-card-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: #1a1a2e;
+  display: block;
+}
+
+.stl-model-card-body {
+  padding: 10px 12px;
+}
+
+.stl-model-card-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.stl-model-card-dims {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.stl-model-card-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.2);
+  color: var(--accent);
+  margin-top: 4px;
+}
+
+.stl-favorite-star {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 2;
+  color: #fbbf24;
+  opacity: 0;
+  transition: opacity 0.15s;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.stl-model-card:hover .stl-favorite-star,
+.stl-favorite-star.active {
+  opacity: 1;
+}
+
+/* 3D Preview Modal */
+.stl-preview-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 2000;
+  display: none;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.stl-preview-modal.modal-visible {
+  display: flex;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.stl-preview-canvas-container {
+  flex: 2;
+  background: #0a0a1a;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  min-height: 400px;
+}
+
+.stl-preview-info-panel {
+  flex: 1;
+  max-width: 350px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.stl-render-mode-btns {
+  display: flex;
+  gap: 4px;
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 5;
+}
+
+.stl-render-mode-btns button {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.8);
+  color: var(--text);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.stl-render-mode-btns button:hover {
+  border-color: var(--accent);
+}
+
+.stl-render-mode-btns button.active {
+  background: var(--accent);
+  color: #0f172a;
+  border-color: var(--accent);
+}

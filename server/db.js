@@ -3025,6 +3025,111 @@ function initCustomArtTables() {
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_studio3_catalog_filename ON studio3_catalog(filename)`); } catch (e) { /* ignore */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_studio3_catalog_created ON studio3_catalog(created_at)`); } catch (e) { /* ignore */ }
 
+  // Contour Style Profile - learned preferences from Studio3 files
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS contour_style_profile (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      profile_data TEXT NOT NULL,
+      sample_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ============================================
+  // SKU CATALOG TABLES - POS System
+  // ============================================
+
+  // SKU Designs (parsed from .studio3 files)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sku_designs (
+      id TEXT PRIMARY KEY,
+      studio3_id TEXT,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      thumbnail TEXT,
+      original_width_mm REAL,
+      original_height_mm REAL,
+      cut_paths TEXT,
+      active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (studio3_id) REFERENCES studio3_catalog(id) ON DELETE SET NULL
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sku_designs_slug ON sku_designs(slug)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sku_designs_active ON sku_designs(active)`); } catch (e) { /* ignore */ }
+
+  // SKU Variants (design + size + color combinations)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sku_variants (
+      id TEXT PRIMARY KEY,
+      design_id TEXT NOT NULL,
+      sku TEXT NOT NULL UNIQUE,
+      size_inches REAL NOT NULL,
+      color_name TEXT NOT NULL,
+      color_hex TEXT,
+      price_cents INTEGER NOT NULL,
+      active INTEGER DEFAULT 1,
+      qr_code_data TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (design_id) REFERENCES sku_designs(id) ON DELETE CASCADE
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sku_variants_design ON sku_variants(design_id)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sku_variants_sku ON sku_variants(sku)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sku_variants_active ON sku_variants(active)`); } catch (e) { /* ignore */ }
+
+  // Cart Sessions (in-progress checkout sessions)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cart_sessions (
+      id TEXT PRIMARY KEY,
+      status TEXT DEFAULT 'active',
+      total_cents INTEGER DEFAULT 0,
+      item_count INTEGER DEFAULT 0,
+      square_order_id TEXT,
+      square_payment_link TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      completed_at TEXT
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_cart_sessions_status ON cart_sessions(status)`); } catch (e) { /* ignore */ }
+
+  // Cart Items (items in a cart session)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cart_items (
+      id TEXT PRIMARY KEY,
+      cart_session_id TEXT NOT NULL,
+      variant_id TEXT NOT NULL,
+      sku TEXT NOT NULL,
+      quantity INTEGER DEFAULT 1,
+      unit_price_cents INTEGER NOT NULL,
+      line_total_cents INTEGER NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (cart_session_id) REFERENCES cart_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (variant_id) REFERENCES sku_variants(id) ON DELETE CASCADE
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_cart_items_session ON cart_items(cart_session_id)`); } catch (e) { /* ignore */ }
+
+  // SKU Scans (analytics and inventory tracking)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sku_scans (
+      id TEXT PRIMARY KEY,
+      variant_id TEXT,
+      sku TEXT NOT NULL,
+      scan_type TEXT DEFAULT 'sale',
+      cart_session_id TEXT,
+      quantity INTEGER DEFAULT 1,
+      scanned_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (variant_id) REFERENCES sku_variants(id) ON DELETE SET NULL
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sku_scans_session ON sku_scans(cart_session_id)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sku_scans_sku ON sku_scans(sku)`); } catch (e) { /* ignore */ }
+
   // Seed default materials
   seedCustomArtMaterials();
 
@@ -4640,6 +4745,415 @@ function mapMockupBackgroundRow(row) {
 }
 
 // ============================================================================
+// SKU CATALOG CRUD FUNCTIONS - POS System
+// ============================================================================
+
+// Pricing table: [size in inches][color count] = price in cents
+const STICKER_PRICE_TABLE = {
+  2: { 1: 325, 2: 350, 3: 375 },
+  3: { 1: 350, 2: 375, 3: 400, 4: 425 },
+  4: { 1: 375, 2: 425, 3: 450, 4: 500 },
+  6: { 1: 425, 2: 500, 3: 575, 4: 700 },
+  8: { 1: 500, 2: 575, 3: 650, 4: 750 },
+  10: { 1: 575, 2: 650, 3: 750, 4: 850 },
+  12: { 1: 650, 2: 750, 3: 850, 4: 950 }
+};
+
+/**
+ * Calculate price for a sticker based on size and color count
+ */
+function calculateStickerPrice(sizeInches, colorCount = 1) {
+  const sizes = Object.keys(STICKER_PRICE_TABLE).map(Number);
+  const nearestSize = sizes.reduce((prev, curr) =>
+    Math.abs(curr - sizeInches) < Math.abs(prev - sizeInches) ? curr : prev
+  );
+  const colorTable = STICKER_PRICE_TABLE[nearestSize] || STICKER_PRICE_TABLE[4];
+  const maxColors = Math.max(...Object.keys(colorTable).map(Number));
+  const clampedColors = Math.min(Math.max(colorCount, 1), maxColors);
+  return colorTable[clampedColors] || 400;
+}
+
+/**
+ * Generate a slug from a design name
+ */
+function generateSlug(name) {
+  return name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 20);
+}
+
+/**
+ * Generate SKU code from design slug, size, and color
+ */
+function generateSkuCode(designSlug, sizeInches, colorName) {
+  const sizePart = `${Math.round(sizeInches)}IN`;
+  const colorPart = colorName
+    .toUpperCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^A-Z0-9-]/g, '')
+    .substring(0, 10);
+  return `${designSlug}-${sizePart}-${colorPart}`;
+}
+
+// --- SKU Designs CRUD ---
+function createSkuDesign({ name, studio3Id, thumbnail, originalWidthMm, originalHeightMm, cutPaths }) {
+  const id = `design_${crypto.randomBytes(8).toString('hex')}`;
+  let slug = generateSlug(name);
+
+  // Ensure slug is unique
+  let counter = 1;
+  let originalSlug = slug;
+  while (db.prepare('SELECT 1 FROM sku_designs WHERE slug = ?').get(slug)) {
+    slug = `${originalSlug}-${counter++}`;
+  }
+
+  db.prepare(`
+    INSERT INTO sku_designs (id, studio3_id, name, slug, thumbnail, original_width_mm, original_height_mm, cut_paths)
+    VALUES (@id, @studio3Id, @name, @slug, @thumbnail, @originalWidthMm, @originalHeightMm, @cutPaths)
+  `).run({
+    id,
+    studio3Id: studio3Id || null,
+    name,
+    slug,
+    thumbnail: thumbnail || null,
+    originalWidthMm: originalWidthMm || null,
+    originalHeightMm: originalHeightMm || null,
+    cutPaths: cutPaths ? JSON.stringify(cutPaths) : null
+  });
+  return getSkuDesignById(id);
+}
+
+function updateSkuDesign(id, updates) {
+  const fields = [];
+  const params = { id };
+
+  if (updates.name !== undefined) { fields.push('name = @name'); params.name = updates.name; }
+  if (updates.slug !== undefined) { fields.push('slug = @slug'); params.slug = updates.slug; }
+  if (updates.thumbnail !== undefined) { fields.push('thumbnail = @thumbnail'); params.thumbnail = updates.thumbnail; }
+  if (updates.originalWidthMm !== undefined) { fields.push('original_width_mm = @originalWidthMm'); params.originalWidthMm = updates.originalWidthMm; }
+  if (updates.originalHeightMm !== undefined) { fields.push('original_height_mm = @originalHeightMm'); params.originalHeightMm = updates.originalHeightMm; }
+  if (updates.cutPaths !== undefined) { fields.push('cut_paths = @cutPaths'); params.cutPaths = JSON.stringify(updates.cutPaths); }
+  if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
+
+  if (fields.length === 0) return getSkuDesignById(id);
+
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  db.prepare(`UPDATE sku_designs SET ${fields.join(', ')} WHERE id = @id`).run(params);
+  return getSkuDesignById(id);
+}
+
+function deleteSkuDesign(id) {
+  const existing = getSkuDesignById(id);
+  if (!existing) return { success: false, error: 'Design not found' };
+  db.prepare('DELETE FROM sku_designs WHERE id = ?').run(id);
+  return { success: true, deleted: existing };
+}
+
+function getSkuDesignById(id) {
+  const row = db.prepare('SELECT * FROM sku_designs WHERE id = ?').get(id);
+  return row ? mapSkuDesignRow(row) : null;
+}
+
+function getSkuDesignBySlug(slug) {
+  const row = db.prepare('SELECT * FROM sku_designs WHERE slug = ?').get(slug);
+  return row ? mapSkuDesignRow(row) : null;
+}
+
+function listSkuDesigns({ activeOnly = false } = {}) {
+  let query = 'SELECT d.*, (SELECT COUNT(*) FROM sku_variants v WHERE v.design_id = d.id) as variant_count FROM sku_designs d';
+  if (activeOnly) query += ' WHERE d.active = 1';
+  query += ' ORDER BY d.created_at DESC';
+  return db.prepare(query).all().map(row => ({
+    ...mapSkuDesignRow(row),
+    variantCount: row.variant_count
+  }));
+}
+
+function mapSkuDesignRow(row) {
+  return {
+    id: row.id,
+    studio3Id: row.studio3_id,
+    name: row.name,
+    slug: row.slug,
+    thumbnail: row.thumbnail,
+    originalWidthMm: row.original_width_mm,
+    originalHeightMm: row.original_height_mm,
+    cutPaths: row.cut_paths ? JSON.parse(row.cut_paths) : null,
+    active: !!row.active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+// --- SKU Variants CRUD ---
+function createSkuVariant({ designId, sizeInches, colorName, colorHex, priceCents }) {
+  const design = getSkuDesignById(designId);
+  if (!design) throw new Error('Design not found');
+
+  const id = `var_${crypto.randomBytes(8).toString('hex')}`;
+  const sku = generateSkuCode(design.slug, sizeInches, colorName);
+
+  // Check for duplicate SKU
+  const existing = db.prepare('SELECT 1 FROM sku_variants WHERE sku = ?').get(sku);
+  if (existing) throw new Error(`SKU ${sku} already exists`);
+
+  // Auto-calculate price if not provided
+  const finalPrice = priceCents || calculateStickerPrice(sizeInches, 1);
+
+  db.prepare(`
+    INSERT INTO sku_variants (id, design_id, sku, size_inches, color_name, color_hex, price_cents)
+    VALUES (@id, @designId, @sku, @sizeInches, @colorName, @colorHex, @priceCents)
+  `).run({
+    id,
+    designId,
+    sku,
+    sizeInches,
+    colorName,
+    colorHex: colorHex || null,
+    priceCents: finalPrice
+  });
+  return getSkuVariantById(id);
+}
+
+function updateSkuVariant(id, updates) {
+  const fields = [];
+  const params = { id };
+
+  if (updates.colorName !== undefined) { fields.push('color_name = @colorName'); params.colorName = updates.colorName; }
+  if (updates.colorHex !== undefined) { fields.push('color_hex = @colorHex'); params.colorHex = updates.colorHex; }
+  if (updates.priceCents !== undefined) { fields.push('price_cents = @priceCents'); params.priceCents = updates.priceCents; }
+  if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
+  if (updates.qrCodeData !== undefined) { fields.push('qr_code_data = @qrCodeData'); params.qrCodeData = updates.qrCodeData; }
+
+  if (fields.length === 0) return getSkuVariantById(id);
+
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  db.prepare(`UPDATE sku_variants SET ${fields.join(', ')} WHERE id = @id`).run(params);
+  return getSkuVariantById(id);
+}
+
+function deleteSkuVariant(id) {
+  const existing = getSkuVariantById(id);
+  if (!existing) return { success: false, error: 'Variant not found' };
+  db.prepare('DELETE FROM sku_variants WHERE id = ?').run(id);
+  return { success: true, deleted: existing };
+}
+
+function getSkuVariantById(id) {
+  const row = db.prepare('SELECT * FROM sku_variants WHERE id = ?').get(id);
+  return row ? mapSkuVariantRow(row) : null;
+}
+
+function getSkuVariantBySku(sku) {
+  const row = db.prepare('SELECT * FROM sku_variants WHERE sku = ?').get(sku);
+  return row ? mapSkuVariantRow(row) : null;
+}
+
+function listSkuVariants({ designId, activeOnly = false } = {}) {
+  let query = 'SELECT * FROM sku_variants WHERE 1=1';
+  const params = [];
+  if (designId) { query += ' AND design_id = ?'; params.push(designId); }
+  if (activeOnly) query += ' AND active = 1';
+  query += ' ORDER BY size_inches ASC, color_name ASC';
+  return db.prepare(query).all(...params).map(mapSkuVariantRow);
+}
+
+function mapSkuVariantRow(row) {
+  return {
+    id: row.id,
+    designId: row.design_id,
+    sku: row.sku,
+    sizeInches: row.size_inches,
+    colorName: row.color_name,
+    colorHex: row.color_hex,
+    priceCents: row.price_cents,
+    active: !!row.active,
+    qrCodeData: row.qr_code_data,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+// --- Cart Sessions CRUD ---
+function createCartSession() {
+  const id = `cart_${crypto.randomBytes(8).toString('hex')}`;
+  db.prepare(`
+    INSERT INTO cart_sessions (id, status, total_cents, item_count)
+    VALUES (@id, 'active', 0, 0)
+  `).run({ id });
+  return getCartSessionById(id);
+}
+
+function updateCartSession(id, updates) {
+  const fields = [];
+  const params = { id };
+
+  if (updates.status !== undefined) { fields.push('status = @status'); params.status = updates.status; }
+  if (updates.totalCents !== undefined) { fields.push('total_cents = @totalCents'); params.totalCents = updates.totalCents; }
+  if (updates.itemCount !== undefined) { fields.push('item_count = @itemCount'); params.itemCount = updates.itemCount; }
+  if (updates.squareOrderId !== undefined) { fields.push('square_order_id = @squareOrderId'); params.squareOrderId = updates.squareOrderId; }
+  if (updates.squarePaymentLink !== undefined) { fields.push('square_payment_link = @squarePaymentLink'); params.squarePaymentLink = updates.squarePaymentLink; }
+  if (updates.completedAt !== undefined) { fields.push('completed_at = @completedAt'); params.completedAt = updates.completedAt; }
+
+  if (fields.length === 0) return getCartSessionById(id);
+
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  db.prepare(`UPDATE cart_sessions SET ${fields.join(', ')} WHERE id = @id`).run(params);
+  return getCartSessionById(id);
+}
+
+function getCartSessionById(id) {
+  const row = db.prepare('SELECT * FROM cart_sessions WHERE id = ?').get(id);
+  return row ? mapCartSessionRow(row) : null;
+}
+
+function getActiveCartSession() {
+  const row = db.prepare("SELECT * FROM cart_sessions WHERE status = 'active' ORDER BY created_at DESC LIMIT 1").get();
+  return row ? mapCartSessionRow(row) : null;
+}
+
+function listCartSessions({ status } = {}) {
+  let query = 'SELECT * FROM cart_sessions';
+  const params = [];
+  if (status) { query += ' WHERE status = ?'; params.push(status); }
+  query += ' ORDER BY created_at DESC';
+  return db.prepare(query).all(...params).map(mapCartSessionRow);
+}
+
+function mapCartSessionRow(row) {
+  return {
+    id: row.id,
+    status: row.status,
+    totalCents: row.total_cents,
+    itemCount: row.item_count,
+    squareOrderId: row.square_order_id,
+    squarePaymentLink: row.square_payment_link,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at
+  };
+}
+
+// --- Cart Items CRUD ---
+function addCartItem(cartSessionId, { variantId, sku, quantity = 1, unitPriceCents }) {
+  const id = `item_${crypto.randomBytes(8).toString('hex')}`;
+  const lineTotalCents = unitPriceCents * quantity;
+
+  db.prepare(`
+    INSERT INTO cart_items (id, cart_session_id, variant_id, sku, quantity, unit_price_cents, line_total_cents)
+    VALUES (@id, @cartSessionId, @variantId, @sku, @quantity, @unitPriceCents, @lineTotalCents)
+  `).run({ id, cartSessionId, variantId, sku, quantity, unitPriceCents, lineTotalCents });
+
+  // Update cart totals
+  recalculateCartTotals(cartSessionId);
+
+  return getCartItemById(id);
+}
+
+function updateCartItem(id, { quantity }) {
+  const item = getCartItemById(id);
+  if (!item) return null;
+
+  const lineTotalCents = item.unitPriceCents * quantity;
+  db.prepare(`
+    UPDATE cart_items SET quantity = @quantity, line_total_cents = @lineTotalCents WHERE id = @id
+  `).run({ id, quantity, lineTotalCents });
+
+  // Update cart totals
+  recalculateCartTotals(item.cartSessionId);
+
+  return getCartItemById(id);
+}
+
+function removeCartItem(id) {
+  const item = getCartItemById(id);
+  if (!item) return { success: false, error: 'Item not found' };
+
+  db.prepare('DELETE FROM cart_items WHERE id = ?').run(id);
+
+  // Update cart totals
+  recalculateCartTotals(item.cartSessionId);
+
+  return { success: true, deleted: item };
+}
+
+function getCartItemById(id) {
+  const row = db.prepare('SELECT * FROM cart_items WHERE id = ?').get(id);
+  return row ? mapCartItemRow(row) : null;
+}
+
+function listCartItems(cartSessionId) {
+  return db.prepare('SELECT * FROM cart_items WHERE cart_session_id = ? ORDER BY created_at ASC')
+    .all(cartSessionId)
+    .map(mapCartItemRow);
+}
+
+function clearCartItems(cartSessionId) {
+  db.prepare('DELETE FROM cart_items WHERE cart_session_id = ?').run(cartSessionId);
+  recalculateCartTotals(cartSessionId);
+}
+
+function recalculateCartTotals(cartSessionId) {
+  const result = db.prepare(`
+    SELECT COALESCE(SUM(line_total_cents), 0) as total, COUNT(*) as count
+    FROM cart_items WHERE cart_session_id = ?
+  `).get(cartSessionId);
+
+  db.prepare(`
+    UPDATE cart_sessions SET total_cents = @total, item_count = @count, updated_at = CURRENT_TIMESTAMP
+    WHERE id = @id
+  `).run({ id: cartSessionId, total: result.total, count: result.count });
+}
+
+function mapCartItemRow(row) {
+  return {
+    id: row.id,
+    cartSessionId: row.cart_session_id,
+    variantId: row.variant_id,
+    sku: row.sku,
+    quantity: row.quantity,
+    unitPriceCents: row.unit_price_cents,
+    lineTotalCents: row.line_total_cents,
+    createdAt: row.created_at
+  };
+}
+
+// --- SKU Scans (Analytics) ---
+function recordSkuScan({ variantId, sku, scanType = 'sale', cartSessionId }) {
+  const id = `scan_${crypto.randomBytes(8).toString('hex')}`;
+  db.prepare(`
+    INSERT INTO sku_scans (id, variant_id, sku, scan_type, cart_session_id)
+    VALUES (@id, @variantId, @sku, @scanType, @cartSessionId)
+  `).run({ id, variantId: variantId || null, sku, scanType, cartSessionId: cartSessionId || null });
+  return id;
+}
+
+function listSkuScans({ sku, cartSessionId, startDate, endDate, limit = 100 } = {}) {
+  let query = 'SELECT * FROM sku_scans WHERE 1=1';
+  const params = [];
+
+  if (sku) { query += ' AND sku = ?'; params.push(sku); }
+  if (cartSessionId) { query += ' AND cart_session_id = ?'; params.push(cartSessionId); }
+  if (startDate) { query += ' AND scanned_at >= ?'; params.push(startDate); }
+  if (endDate) { query += ' AND scanned_at <= ?'; params.push(endDate); }
+
+  query += ' ORDER BY scanned_at DESC LIMIT ?';
+  params.push(limit);
+
+  return db.prepare(query).all(...params).map(row => ({
+    id: row.id,
+    variantId: row.variant_id,
+    sku: row.sku,
+    scanType: row.scan_type,
+    cartSessionId: row.cart_session_id,
+    quantity: row.quantity,
+    scannedAt: row.scanned_at
+  }));
+}
+
+// ============================================================================
 // STICKER CONTOUR CACHE FUNCTIONS
 // Lazy generation of contours - generated on first use, cached forever
 // ============================================================================
@@ -4913,6 +5427,39 @@ module.exports = {
   saveStickerContour,
   deleteStickerContour,
   listStickerContours,
+  // SKU Catalog - POS System
+  calculateStickerPrice,
+  generateSkuCode,
+  // SKU Designs
+  createSkuDesign,
+  updateSkuDesign,
+  deleteSkuDesign,
+  getSkuDesignById,
+  getSkuDesignBySlug,
+  listSkuDesigns,
+  // SKU Variants
+  createSkuVariant,
+  updateSkuVariant,
+  deleteSkuVariant,
+  getSkuVariantById,
+  getSkuVariantBySku,
+  listSkuVariants,
+  // Cart Sessions
+  createCartSession,
+  updateCartSession,
+  getCartSessionById,
+  getActiveCartSession,
+  listCartSessions,
+  // Cart Items
+  addCartItem,
+  updateCartItem,
+  removeCartItem,
+  getCartItemById,
+  listCartItems,
+  clearCartItems,
+  // SKU Scans
+  recordSkuScan,
+  listSkuScans,
   // Expose database instance for modules that need direct access
   getDb: () => db,
   // Database backup functions

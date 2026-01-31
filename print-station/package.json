@@ -26,6 +26,7 @@
     "node-fetch": "^3.3.2",
     "sharp": "^0.33.5",
     "tesseract.js": "^5.1.0",
+    "three": "^0.152.0",
     "unzipper": "^0.12.3"
   },
   "devDependencies": {

@@ -7236,13 +7236,13 @@ const requestHandler = async (req, res) => {
         }
 
         // Store in SQLite database
-        const db = require('./db');
+        const dbInstance = require('./db').getDb();
         const id = `studio3_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        db.run(`
+        dbInstance.prepare(`
           INSERT INTO studio3_catalog (id, filename, metadata, path_count, image_count, thumbnail, paths, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        `, [id, filename, JSON.stringify(metadata || {}), pathCount || 0, imageCount || 0, thumbnail || null, JSON.stringify(paths || [])]);
+        `).run(id, filename, JSON.stringify(metadata || {}), pathCount || 0, imageCount || 0, thumbnail || null, JSON.stringify(paths || []));
 
         console.log(`[Studio3 Catalog] Added: ${filename} (${pathCount} paths, ${imageCount} images)`);
         sendJson(res, 200, { success: true, id, filename });
@@ -7260,23 +7260,24 @@ const requestHandler = async (req, res) => {
     if (!requireInternalKey(req, res)) return;
 
     try {
-      const db = require('./db');
-      const rows = db.all(`
-        SELECT id, filename, metadata, path_count, image_count, created_at
+      const db = require('./db').getDb();
+      const rows = db.prepare(`
+        SELECT id, filename, metadata, path_count, image_count, thumbnail, created_at
         FROM studio3_catalog
         ORDER BY created_at DESC
         LIMIT 500
-      `);
+      `).all();
 
       sendJson(res, 200, {
         success: true,
         count: rows.length,
-        items: rows.map(row => ({
+        entries: rows.map(row => ({
           id: row.id,
           filename: row.filename,
           metadata: JSON.parse(row.metadata || '{}'),
           pathCount: row.path_count,
           imageCount: row.image_count,
+          thumbnail: row.thumbnail,
           createdAt: row.created_at
         }))
       });
@@ -7295,8 +7296,8 @@ const requestHandler = async (req, res) => {
     const id = decodeURIComponent(parsedUrl.pathname.replace('/api/studio3/catalog/', ''));
 
     try {
-      const db = require('./db');
-      const row = db.get(`SELECT * FROM studio3_catalog WHERE id = ?`, [id]);
+      const db = require('./db').getDb();
+      const row = db.prepare(`SELECT * FROM studio3_catalog WHERE id = ?`).get(id);
 
       if (!row) {
         sendJson(res, 404, { success: false, error: 'Entry not found' });
@@ -7331,13 +7332,674 @@ const requestHandler = async (req, res) => {
     const id = decodeURIComponent(parsedUrl.pathname.replace('/api/studio3/catalog/', ''));
 
     try {
-      const db = require('./db');
-      db.run(`DELETE FROM studio3_catalog WHERE id = ?`, [id]);
+      const db = require('./db').getDb();
+      db.prepare(`DELETE FROM studio3_catalog WHERE id = ?`).run(id);
       console.log(`[Studio3 Catalog] Deleted: ${id}`);
       sendJson(res, 200, { success: true });
 
     } catch (err) {
       console.error('[Studio3 Catalog] Delete error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // ===== CONTOUR TRAINING API =====
+  // Train contour style from Studio3 catalog
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/contour/train') {
+    if (!requireInternalKey(req, res)) return;
+
+    try {
+      const dbModule = require('./db');
+      const db = dbModule.getDb();
+      const contourTrainer = require('./lib/contour-trainer');
+      const stickerGen = require('./sticker-sheet-generator');
+
+      // Get all Studio3 files from catalog
+      const rows = db.prepare(`SELECT * FROM studio3_catalog WHERE path_count > 0`).all();
+
+      if (rows.length === 0) {
+        sendJson(res, 400, { success: false, error: 'No Studio3 files with paths in catalog. Import .studio3 files first.' });
+        return;
+      }
+
+      // Parse stored data back into training format
+      const studio3Files = rows.map(row => ({
+        paths: JSON.parse(row.paths || '[]'),
+        images: [], // Not needed for training
+        metadata: { ...JSON.parse(row.metadata || '{}'), filename: row.filename }
+      }));
+
+      // Train and save profile
+      const result = await contourTrainer.trainFromStudio3Collection(studio3Files, db);
+
+      // Reload profile in sticker generator
+      stickerGen.reloadStyleProfile();
+
+      console.log(`[Contour Training] Trained on ${result.sampleCount} files`);
+      sendJson(res, 200, {
+        success: true,
+        sampleCount: result.sampleCount,
+        profile: result.profile,
+        errors: result.errors
+      });
+
+    } catch (err) {
+      console.error('[Contour Training] Error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Get current style profile
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/contour/profile') {
+    if (!requireInternalKey(req, res)) return;
+
+    try {
+      const db = require('./db');
+      const contourTrainer = require('./lib/contour-trainer');
+
+      const profile = contourTrainer.loadStyleProfile(db.getDb());
+
+      if (!profile) {
+        sendJson(res, 404, { success: false, error: 'No style profile found. Run training first.' });
+        return;
+      }
+
+      sendJson(res, 200, { success: true, profile });
+
+    } catch (err) {
+      console.error('[Contour Profile] Error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Compare auto-generated contour to manual Studio3 contour
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/contour/compare') {
+    if (!requireInternalKey(req, res)) return;
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const { autoPath, manualPath, studio3Id } = data;
+
+        const contourTrainer = require('./lib/contour-trainer');
+
+        // If studio3Id provided, load manual path from catalog
+        let manual = manualPath;
+        if (studio3Id && !manual) {
+          const dbInstance = require('./db').getDb();
+          const row = dbInstance.prepare(`SELECT paths FROM studio3_catalog WHERE id = ?`).get(studio3Id);
+          if (row && row.paths) {
+            const paths = JSON.parse(row.paths);
+            manual = paths[0]; // Use first path
+          }
+        }
+
+        if (!autoPath || !manual) {
+          sendJson(res, 400, { success: false, error: 'Both autoPath and manualPath (or studio3Id) required' });
+          return;
+        }
+
+        const comparison = contourTrainer.compareContours(autoPath, manual);
+        sendJson(res, 200, { success: true, comparison });
+
+      } catch (err) {
+        console.error('[Contour Compare] Error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // ===== SKU CATALOG API - POS System =====
+
+  // List all SKU designs
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sku/designs') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const db = require('./db');
+      const activeOnly = parsedUrl.query.activeOnly === 'true';
+      const designs = db.listSkuDesigns({ activeOnly });
+      sendJson(res, 200, { success: true, designs });
+    } catch (err) {
+      console.error('[SKU Designs] List error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Create SKU design
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sku/designs') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const db = require('./db');
+        const design = db.createSkuDesign(data);
+        console.log(`[SKU Designs] Created: ${design.id} - ${design.name}`);
+        sendJson(res, 200, { success: true, design });
+      } catch (err) {
+        console.error('[SKU Designs] Create error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Get or update or delete specific SKU design
+  if (parsedUrl.pathname.startsWith('/api/sku/designs/')) {
+    const designId = decodeURIComponent(parsedUrl.pathname.replace('/api/sku/designs/', ''));
+
+    if (req.method === 'GET') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        const design = db.getSkuDesignById(designId);
+        if (!design) {
+          sendJson(res, 404, { success: false, error: 'Design not found' });
+          return;
+        }
+        const variants = db.listSkuVariants({ designId });
+        sendJson(res, 200, { success: true, design, variants });
+      } catch (err) {
+        console.error('[SKU Designs] Get error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'PUT') {
+      if (!requireInternalKey(req, res)) return;
+      collectRequestBody(req, async (error, body) => {
+        if (error) {
+          sendJson(res, 400, { success: false, error: 'Invalid request body' });
+          return;
+        }
+        try {
+          const data = JSON.parse(body);
+          const db = require('./db');
+          const design = db.updateSkuDesign(designId, data);
+          sendJson(res, 200, { success: true, design });
+        } catch (err) {
+          console.error('[SKU Designs] Update error:', err);
+          sendJson(res, 500, { success: false, error: err.message });
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        const result = db.deleteSkuDesign(designId);
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('[SKU Designs] Delete error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+  }
+
+  // List SKU variants (optionally by design)
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sku/variants') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const db = require('./db');
+      const designId = parsedUrl.query.designId;
+      const activeOnly = parsedUrl.query.activeOnly === 'true';
+      const variants = db.listSkuVariants({ designId, activeOnly });
+      sendJson(res, 200, { success: true, variants });
+    } catch (err) {
+      console.error('[SKU Variants] List error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Create SKU variant
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sku/variants') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const db = require('./db');
+        const variant = db.createSkuVariant(data);
+        console.log(`[SKU Variants] Created: ${variant.sku}`);
+        sendJson(res, 200, { success: true, variant });
+      } catch (err) {
+        console.error('[SKU Variants] Create error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Get variant by SKU code (for scanner lookup)
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/sku/variants/')) {
+    const sku = decodeURIComponent(parsedUrl.pathname.replace('/api/sku/variants/', ''));
+    // This endpoint can be public for QR scanning
+    try {
+      const db = require('./db');
+      const variant = db.getSkuVariantBySku(sku);
+      if (!variant) {
+        sendJson(res, 404, { success: false, error: 'SKU not found' });
+        return;
+      }
+      // Get design info for display
+      const design = db.getSkuDesignById(variant.designId);
+      sendJson(res, 200, {
+        success: true,
+        variant,
+        design: design ? { id: design.id, name: design.name, thumbnail: design.thumbnail } : null
+      });
+    } catch (err) {
+      console.error('[SKU Variants] Get error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Update or delete SKU variant by ID
+  if (parsedUrl.pathname.match(/^\/api\/sku\/variant\/[^/]+$/)) {
+    const variantId = decodeURIComponent(parsedUrl.pathname.replace('/api/sku/variant/', ''));
+
+    if (req.method === 'PUT') {
+      if (!requireInternalKey(req, res)) return;
+      collectRequestBody(req, async (error, body) => {
+        if (error) {
+          sendJson(res, 400, { success: false, error: 'Invalid request body' });
+          return;
+        }
+        try {
+          const data = JSON.parse(body);
+          const db = require('./db');
+          const variant = db.updateSkuVariant(variantId, data);
+          sendJson(res, 200, { success: true, variant });
+        } catch (err) {
+          console.error('[SKU Variants] Update error:', err);
+          sendJson(res, 500, { success: false, error: err.message });
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        const result = db.deleteSkuVariant(variantId);
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('[SKU Variants] Delete error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+  }
+
+  // Record SKU scan (webhook target for QR codes)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sku/scan') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const { sku, scanType, cartSessionId } = data;
+        const db = require('./db');
+
+        // Look up variant
+        const variant = db.getSkuVariantBySku(sku);
+        if (!variant) {
+          sendJson(res, 404, { success: false, error: 'SKU not found' });
+          return;
+        }
+
+        // Record scan
+        const scanId = db.recordSkuScan({
+          variantId: variant.id,
+          sku,
+          scanType: scanType || 'sale',
+          cartSessionId
+        });
+
+        // Get design for response
+        const design = db.getSkuDesignById(variant.designId);
+
+        console.log(`[SKU Scan] ${sku} scanned (${scanType || 'sale'})`);
+        sendJson(res, 200, {
+          success: true,
+          scanId,
+          variant,
+          design: design ? { id: design.id, name: design.name, thumbnail: design.thumbnail } : null
+        });
+      } catch (err) {
+        console.error('[SKU Scan] Error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // ===== CART API - POS System =====
+
+  // Create new cart session
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/cart') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const db = require('./db');
+      const cart = db.createCartSession();
+      console.log(`[Cart] Created: ${cart.id}`);
+      sendJson(res, 200, { success: true, cart });
+    } catch (err) {
+      console.error('[Cart] Create error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Get active cart session
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/cart/active') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const db = require('./db');
+      let cart = db.getActiveCartSession();
+      if (!cart) {
+        // Create one if none exists
+        cart = db.createCartSession();
+      }
+      const items = db.listCartItems(cart.id);
+      sendJson(res, 200, { success: true, cart, items });
+    } catch (err) {
+      console.error('[Cart] Get active error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Cart operations by ID
+  if (parsedUrl.pathname.match(/^\/api\/cart\/[^/]+$/)) {
+    const cartId = decodeURIComponent(parsedUrl.pathname.replace('/api/cart/', ''));
+
+    if (req.method === 'GET') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        const cart = db.getCartSessionById(cartId);
+        if (!cart) {
+          sendJson(res, 404, { success: false, error: 'Cart not found' });
+          return;
+        }
+        const items = db.listCartItems(cartId);
+        sendJson(res, 200, { success: true, cart, items });
+      } catch (err) {
+        console.error('[Cart] Get error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        db.updateCartSession(cartId, { status: 'abandoned' });
+        sendJson(res, 200, { success: true });
+      } catch (err) {
+        console.error('[Cart] Delete error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+  }
+
+  // Add item to cart
+  if (req.method === 'POST' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/items$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const cartId = decodeURIComponent(parsedUrl.pathname.replace('/api/cart/', '').replace('/items', ''));
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const { sku, quantity } = data;
+        const db = require('./db');
+
+        // Look up variant
+        const variant = db.getSkuVariantBySku(sku);
+        if (!variant) {
+          sendJson(res, 404, { success: false, error: 'SKU not found' });
+          return;
+        }
+
+        // Check if item already in cart
+        const existingItems = db.listCartItems(cartId);
+        const existing = existingItems.find(i => i.sku === sku);
+
+        let item;
+        if (existing) {
+          // Update quantity
+          item = db.updateCartItem(existing.id, { quantity: existing.quantity + (quantity || 1) });
+        } else {
+          // Add new item
+          item = db.addCartItem(cartId, {
+            variantId: variant.id,
+            sku,
+            quantity: quantity || 1,
+            unitPriceCents: variant.priceCents
+          });
+        }
+
+        const cart = db.getCartSessionById(cartId);
+        const items = db.listCartItems(cartId);
+        const design = db.getSkuDesignById(variant.designId);
+
+        console.log(`[Cart] Added ${sku} to ${cartId}`);
+        sendJson(res, 200, {
+          success: true,
+          item,
+          cart,
+          items,
+          addedVariant: variant,
+          addedDesign: design ? { id: design.id, name: design.name, thumbnail: design.thumbnail } : null
+        });
+      } catch (err) {
+        console.error('[Cart] Add item error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Update cart item quantity
+  if (req.method === 'PUT' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/items\/[^/]+$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const parts = parsedUrl.pathname.split('/');
+    const itemId = decodeURIComponent(parts[parts.length - 1]);
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const db = require('./db');
+        const item = db.updateCartItem(itemId, { quantity: data.quantity });
+        if (!item) {
+          sendJson(res, 404, { success: false, error: 'Item not found' });
+          return;
+        }
+        const cart = db.getCartSessionById(item.cartSessionId);
+        const items = db.listCartItems(item.cartSessionId);
+        sendJson(res, 200, { success: true, item, cart, items });
+      } catch (err) {
+        console.error('[Cart] Update item error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Remove cart item
+  if (req.method === 'DELETE' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/items\/[^/]+$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const parts = parsedUrl.pathname.split('/');
+    const cartId = decodeURIComponent(parts[3]);
+    const itemId = decodeURIComponent(parts[5]);
+
+    try {
+      const db = require('./db');
+      const result = db.removeCartItem(itemId);
+      if (!result.success) {
+        sendJson(res, 404, result);
+        return;
+      }
+      const cart = db.getCartSessionById(cartId);
+      const items = db.listCartItems(cartId);
+      sendJson(res, 200, { success: true, cart, items });
+    } catch (err) {
+      console.error('[Cart] Remove item error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Clear cart
+  if (req.method === 'POST' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/clear$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const cartId = decodeURIComponent(parsedUrl.pathname.replace('/api/cart/', '').replace('/clear', ''));
+
+    try {
+      const db = require('./db');
+      db.clearCartItems(cartId);
+      const cart = db.getCartSessionById(cartId);
+      sendJson(res, 200, { success: true, cart, items: [] });
+    } catch (err) {
+      console.error('[Cart] Clear error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Checkout cart - create Square payment link
+  if (req.method === 'POST' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/checkout$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const cartId = decodeURIComponent(parsedUrl.pathname.replace('/api/cart/', '').replace('/checkout', ''));
+
+    try {
+      const db = require('./db');
+      const cart = db.getCartSessionById(cartId);
+      if (!cart) {
+        sendJson(res, 404, { success: false, error: 'Cart not found' });
+        return;
+      }
+
+      const items = db.listCartItems(cartId);
+      if (items.length === 0) {
+        sendJson(res, 400, { success: false, error: 'Cart is empty' });
+        return;
+      }
+
+      // Check if Square is configured
+      if (!process.env.SQUARE_ACCESS_TOKEN) {
+        sendJson(res, 503, { success: false, error: 'Square integration not configured' });
+        return;
+      }
+
+      const { SquareClient, SquareEnvironment } = require('square');
+      const squareClient = new SquareClient({
+        token: process.env.SQUARE_ACCESS_TOKEN,
+        environment: process.env.NODE_ENV === 'production' ? SquareEnvironment.Production : SquareEnvironment.Sandbox
+      });
+
+      // Build line items for Square
+      const lineItems = [];
+      for (const item of items) {
+        const variant = db.getSkuVariantBySku(item.sku);
+        const design = variant ? db.getSkuDesignById(variant.designId) : null;
+        lineItems.push({
+          name: design ? `${design.name} - ${variant.colorName} (${variant.sizeInches}")` : item.sku,
+          quantity: String(item.quantity),
+          basePriceMoney: {
+            amount: BigInt(item.unitPriceCents),
+            currency: 'USD'
+          }
+        });
+      }
+
+      // Create payment link
+      const response = await squareClient.checkout.paymentLinks.create({
+        idempotencyKey: `cart_${cartId}_${Date.now()}`,
+        quickPay: {
+          name: `POS Sale - ${items.length} item${items.length > 1 ? 's' : ''}`,
+          priceMoney: {
+            amount: BigInt(cart.totalCents),
+            currency: 'USD'
+          },
+          locationId: process.env.SQUARE_LOCATION_ID || (await getSquareLocationId(squareClient))
+        }
+      });
+
+      const paymentLink = response.result.paymentLink;
+
+      // Update cart with payment link
+      db.updateCartSession(cartId, {
+        status: 'checkout',
+        squarePaymentLink: paymentLink.url,
+        squareOrderId: paymentLink.orderId
+      });
+
+      console.log(`[Cart Checkout] ${cartId} -> ${paymentLink.url}`);
+      sendJson(res, 200, {
+        success: true,
+        paymentLink: paymentLink.url,
+        orderId: paymentLink.orderId,
+        cart: db.getCartSessionById(cartId)
+      });
+    } catch (err) {
+      console.error('[Cart Checkout] Error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Get pricing table
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sku/pricing') {
+    try {
+      const db = require('./db');
+      const STICKER_PRICE_TABLE = {
+        2: { 1: 325, 2: 350, 3: 375 },
+        3: { 1: 350, 2: 375, 3: 400, 4: 425 },
+        4: { 1: 375, 2: 425, 3: 450, 4: 500 },
+        6: { 1: 425, 2: 500, 3: 575, 4: 700 },
+        8: { 1: 500, 2: 575, 3: 650, 4: 750 },
+        10: { 1: 575, 2: 650, 3: 750, 4: 850 },
+        12: { 1: 650, 2: 750, 3: 850, 4: 950 }
+      };
+      sendJson(res, 200, { success: true, priceTable: STICKER_PRICE_TABLE });
+    } catch (err) {
       sendJson(res, 500, { success: false, error: err.message });
     }
     return;

@@ -1810,6 +1810,27 @@ function switchView(viewId) {
     }
   }
 
+  // SKU Catalog view
+  if (viewId === 'skuCatalogView') {
+    if (typeof initSkuCatalogView === 'function') {
+      initSkuCatalogView();
+    }
+  }
+
+  // QR Scanner view
+  if (viewId === 'qrScannerView') {
+    if (typeof initQrScannerView === 'function') {
+      initQrScannerView();
+    }
+  }
+
+  // STL Manager view
+  if (viewId === 'stlManagerView') {
+    if (typeof initStlManagerView === 'function') {
+      initStlManagerView();
+    }
+  }
+
   // Dashboard view
   if (viewId === 'dashboardView') {
     loadDashboardData();
@@ -12644,13 +12665,25 @@ async function loadCatalog({ silent = false, forceRefresh = false, catalogType =
     const type = catalogType || state.catalogType || 'apparel';
     state.catalogType = type;
 
-    const fetchOptions = {
-      catalogType: type,
-      ...(forceRefresh ? { forceRefresh: true, maxAgeMs: 0 } : {})
-    };
-    const catalog = await printStation.fetchCatalog(fetchOptions);
-    state.catalog = catalog;
-    state.catalogCacheMeta = catalog?.__catalogCache || null;
+    // Special handling for Studio3 catalog - fetch from server API
+    if (type === 'studio3') {
+      const studio3Items = await loadStudio3CatalogFromServer();
+      // Convert to catalog format
+      state.catalog = {
+        categories: groupStudio3ByCategory(studio3Items),
+        __catalogCache: { fromServer: true }
+      };
+      state.catalogCacheMeta = { fromServer: true };
+    } else {
+      const fetchOptions = {
+        catalogType: type,
+        ...(forceRefresh ? { forceRefresh: true, maxAgeMs: 0 } : {})
+      };
+      const catalog = await printStation.fetchCatalog(fetchOptions);
+      state.catalog = catalog;
+      state.catalogCacheMeta = catalog?.__catalogCache || null;
+    }
+
     // Reset filters when switching catalog type
     state.catalogFilter.category = '';
     state.catalogFilter.search = '';
@@ -12665,7 +12698,8 @@ async function loadCatalog({ silent = false, forceRefresh = false, catalogType =
     updateCatalogStatus();
     if (!silent) {
       const meta = state.catalogCacheMeta;
-      const typeName = type === 'decal-icons' ? 'Decal Creator Icons' : 'Apparel Ready';
+      const typeName = type === 'decal-icons' ? 'Decal Creator Icons' :
+                       type === 'studio3' ? 'Studio3 Designs' : 'Apparel Ready';
       if (meta?.staleFallback) {
         showToast(`${typeName} catalog loaded from offline cache.`, 'warning', 6000);
       } else if (meta?.fromCache) {
@@ -12690,19 +12724,95 @@ async function loadCatalog({ silent = false, forceRefresh = false, catalogType =
   }
 }
 
+/**
+ * Load Studio3 catalog items from server API
+ */
+async function loadStudio3CatalogFromServer() {
+  // Get config from preload API
+  const config = await window.printStation?.getConfig() || {};
+  const serverBase = (config.serverBaseUrl?.trim() || window.APP_CONFIG?.serverUrl || 'https://blueridgecustomco.com').replace(/\/$/, '');
+  const apiKey = config.apiKey || '';
+
+  const response = await fetch(`${serverBase}/api/studio3/catalog`, {
+    headers: {
+      'x-api-key': apiKey
+    }
+  });
+
+  const data = await response.json();
+
+  if (!data.success) {
+    throw new Error(data.error || 'Failed to load Studio3 catalog');
+  }
+
+  return data.entries || [];
+}
+
+/**
+ * Group Studio3 items into category structure for catalog display
+ */
+function groupStudio3ByCategory(items) {
+  // Group by date (month/year) or just put all in "Uploaded"
+  const categoryMap = {};
+
+  for (const item of items) {
+    // Use "Uploaded" as the category, or extract from metadata
+    const categoryName = item.metadata?.category || 'Uploaded';
+    const slug = categoryName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+    if (!categoryMap[slug]) {
+      categoryMap[slug] = {
+        name: categoryName,
+        slug: slug,
+        designs: []
+      };
+    }
+
+    // Convert to design format expected by catalog renderer
+    categoryMap[slug].designs.push({
+      id: item.id,
+      name: item.filename?.replace(/\.studio3$/i, '') || 'Untitled',
+      title: item.filename?.replace(/\.studio3$/i, '') || 'Untitled',
+      filename: item.filename,
+      preview: item.thumbnail ? `data:image/png;base64,${item.thumbnail}` : null,
+      pathCount: item.pathCount || 0,
+      imageCount: item.imageCount || 0,
+      createdAt: item.createdAt,
+      isStudio3: true // Mark as Studio3 item for special handling
+    });
+  }
+
+  // Return as array (catalog renderer expects an array with slug/name/designs)
+  return Object.values(categoryMap);
+}
+
 function updateCatalogTabsUI() {
   const apparelTab = document.getElementById('catalogTabApparel');
   const decalIconsTab = document.getElementById('catalogTabDecalIcons');
+  const studio3Tab = document.getElementById('catalogTabStudio3');
   if (!apparelTab || !decalIconsTab) return;
 
-  const isApparel = state.catalogType === 'apparel';
-  apparelTab.classList.toggle('active', isApparel);
-  apparelTab.style.color = isApparel ? 'var(--text)' : 'var(--muted)';
-  apparelTab.style.borderBottomColor = isApparel ? 'var(--primary)' : 'transparent';
+  const currentType = state.catalogType;
 
-  decalIconsTab.classList.toggle('active', !isApparel);
-  decalIconsTab.style.color = !isApparel ? 'var(--text)' : 'var(--muted)';
-  decalIconsTab.style.borderBottomColor = !isApparel ? 'var(--primary)' : 'transparent';
+  // Reset all tabs
+  [apparelTab, decalIconsTab, studio3Tab].forEach(tab => {
+    if (tab) {
+      tab.classList.remove('active');
+      tab.style.color = 'var(--muted)';
+      tab.style.borderBottomColor = 'transparent';
+    }
+  });
+
+  // Activate current tab
+  const activeTab = currentType === 'apparel' ? apparelTab :
+                    currentType === 'decal-icons' ? decalIconsTab :
+                    currentType === 'studio3' ? studio3Tab : apparelTab;
+
+  if (activeTab) {
+    activeTab.classList.add('active');
+    activeTab.style.color = 'var(--text)';
+    activeTab.style.borderBottomColor = 'var(--primary)';
+  }
 }
 
 function setUploadApparelType(value) {
@@ -13017,6 +13127,8 @@ async function handleSettingsSubmit(event) {
   };
   try {
     state.config = await printStation.saveConfig(updated);
+    // Update global config for sync functions
+    window.printStationConfig = state.config;
     populateSettingsForm();
     schedulePolling();
     await refreshQueue({ silent: true });
@@ -13481,6 +13593,8 @@ async function init() {
     if (!state.config) return;
     const update = { pollIntervalMs: seconds * 1000 };
     state.config = await printStation.saveConfig(update);
+    // Update global config for sync functions
+    window.printStationConfig = state.config;
     schedulePolling();
     showToast(`Polling every ${seconds} seconds.`, 'success');
   });
@@ -13516,6 +13630,14 @@ async function init() {
     catalogTabDecalIcons.addEventListener('click', () => {
       if (state.catalogType !== 'decal-icons') {
         loadCatalog({ catalogType: 'decal-icons' });
+      }
+    });
+  }
+  const catalogTabStudio3 = document.getElementById('catalogTabStudio3');
+  if (catalogTabStudio3) {
+    catalogTabStudio3.addEventListener('click', () => {
+      if (state.catalogType !== 'studio3') {
+        loadCatalog({ catalogType: 'studio3' });
       }
     });
   }
@@ -16251,6 +16373,8 @@ ${targeting.psychographics.lifestyle}
 
   try {
     state.config = await printStation.getConfig();
+    // Expose config on window for sync functions in other modules
+    window.printStationConfig = state.config;
     populateSettingsForm();
     schedulePolling();
     await refreshQueue({ silent: true });

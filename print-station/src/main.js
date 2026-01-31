@@ -2,11 +2,14 @@ const { app, BrowserWindow, ipcMain, dialog, shell, protocol } = require('electr
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const https = require('https');
 const FormData = require('form-data');
 const sharp = require('sharp');
 const cp = require('child_process');
 const os = require('os');
 const { LocalCatalogDB } = require('./local-db');
+const { StlCatalogDB } = require('./stl-db');
+const { parseStlFile, walkForStlFiles } = require('./stl-parser');
 const chokidar = require('chokidar');
 let autoUpdater = null;
 let tesseractWorker = null;
@@ -155,6 +158,7 @@ const DOC_EXTENSIONS = new Set(['.pdf', '.ai', '.eps']);
 const SCAN_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, ...VECTOR_EXTENSIONS, ...DOC_EXTENSIONS]);
 
 let localDb = null;
+let stlDb = null;
 let fileWatcher = null;
 let watchConfig = null;
 const cancelledJobs = new Set();
@@ -5978,6 +5982,266 @@ Return ONLY valid JSON, nothing else:
     }
     return { updated: count };
   });
+
+  // ==================== STL File Manager IPC ====================
+
+  ipcMain.handle('stl:scan', async (event, { directory } = {}) => {
+    if (!directory) throw new Error('Directory required');
+    if (!stlDb) throw new Error('STL database not initialized');
+
+    const files = await walkForStlFiles(directory);
+    const results = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const filePath = files[i];
+      try {
+        const parsed = parseStlFile(filePath);
+        const item = stlDb.upsert({
+          file_path: filePath,
+          filename: path.basename(filePath, '.stl'),
+          category: path.basename(path.dirname(filePath)),
+          format: parsed.format,
+          triangle_count: parsed.triangleCount,
+          dim_x: parsed.dimensions.x,
+          dim_y: parsed.dimensions.y,
+          dim_z: parsed.dimensions.z,
+          file_size: parsed.fileSize
+        });
+        results.push(item);
+      } catch (e) {
+        console.error(`[STL Scan] Error parsing ${filePath}:`, e.message);
+      }
+
+      try {
+        event.sender.send('stl:scanProgress', {
+          current: i + 1,
+          total: files.length,
+          filename: path.basename(filePath)
+        });
+      } catch (_) {}
+    }
+
+    return { scanned: results.length, total: files.length };
+  });
+
+  ipcMain.handle('stl:list', (_event, query = {}) => {
+    if (!stlDb) return [];
+    return stlDb.list(query);
+  });
+
+  ipcMain.handle('stl:count', (_event, query = {}) => {
+    if (!stlDb) return 0;
+    return stlDb.count(query);
+  });
+
+  ipcMain.handle('stl:get', (_event, id) => {
+    if (!stlDb) return null;
+    return stlDb.getById(id);
+  });
+
+  ipcMain.handle('stl:update', (_event, { id, updates } = {}) => {
+    if (!stlDb || !id) return null;
+    return stlDb.update(id, updates || {});
+  });
+
+  ipcMain.handle('stl:delete', (_event, id) => {
+    if (!stlDb || !id) return { changes: 0 };
+    return stlDb.remove(id);
+  });
+
+  ipcMain.handle('stl:bulkDelete', (_event, { ids } = {}) => {
+    if (!stlDb || !ids?.length) return 0;
+    return stlDb.bulkDelete(ids);
+  });
+
+  ipcMain.handle('stl:bulkSetCategory', (_event, { ids, category } = {}) => {
+    if (!stlDb || !ids?.length) return 0;
+    return stlDb.bulkSetCategory(ids, category || '');
+  });
+
+  ipcMain.handle('stl:bulkSetTags', (_event, { ids, tags } = {}) => {
+    if (!stlDb || !ids?.length) return 0;
+    return stlDb.bulkSetTags(ids, tags || '');
+  });
+
+  ipcMain.handle('stl:toggleFavorite', (_event, id) => {
+    if (!stlDb || !id) return null;
+    return stlDb.toggleFavorite(id);
+  });
+
+  ipcMain.handle('stl:categories', () => {
+    if (!stlDb) return [];
+    return stlDb.categories();
+  });
+
+  ipcMain.handle('stl:readFile', async (_event, filePath) => {
+    if (!filePath) return null;
+    const buffer = await fs.promises.readFile(filePath);
+    return buffer.toString('base64');
+  });
+
+  ipcMain.handle('stl:openInSlicer', async (_event, id) => {
+    if (!stlDb) return false;
+    const model = stlDb.getById(id);
+    if (!model) return false;
+    await shell.openPath(model.file_path);
+    return true;
+  });
+
+  ipcMain.handle('stl:copyToFolder', async (_event, id) => {
+    if (!stlDb) return false;
+    const model = stlDb.getById(id);
+    if (!model) return false;
+
+    const result = await dialog.showOpenDialog({
+      title: 'Choose destination folder',
+      properties: ['openDirectory']
+    });
+    if (result.canceled || !result.filePaths.length) return false;
+
+    const dest = path.join(result.filePaths[0], path.basename(model.file_path));
+    await fs.promises.copyFile(model.file_path, dest);
+    return true;
+  });
+
+  ipcMain.handle('stl:revealInExplorer', (_event, id) => {
+    if (!stlDb) return false;
+    const model = stlDb.getById(id);
+    if (!model) return false;
+    shell.showItemInFolder(model.file_path);
+    return true;
+  });
+
+  ipcMain.handle('stl:saveThumbnail', async (_event, { id, dataUrl } = {}) => {
+    if (!stlDb || !id || !dataUrl) return null;
+    const thumbDir = path.join(app.getPath('userData'), 'stl-catalog', 'thumbnails');
+    await fs.promises.mkdir(thumbDir, { recursive: true });
+
+    const hash = crypto.createHash('md5').update(String(id)).digest('hex');
+    const thumbPath = path.join(thumbDir, `${hash}.png`);
+
+    const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+    await fs.promises.writeFile(thumbPath, Buffer.from(base64Data, 'base64'));
+
+    stlDb.update(id, { thumbnail_path: thumbPath });
+    return thumbPath;
+  });
+
+  // ---------- Translation helper ----------
+  function translateText(text) {
+    return new Promise((resolve, reject) => {
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`;
+      https.get(url, (res) => {
+        let data = '';
+        res.on('data', chunk => (data += chunk));
+        res.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+            const translated = result[0].map(s => s[0]).join('');
+            const detectedLang = result[2] || 'unknown';
+            resolve({ translated, detectedLang });
+          } catch (e) {
+            reject(new Error('Translation parse error: ' + e.message));
+          }
+        });
+      }).on('error', reject);
+    });
+  }
+
+  function isNonEnglishFilename(name) {
+    // Strip extension and separators, check for non-ASCII chars
+    const stripped = name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+    return /[^\x00-\x7F]/.test(stripped);
+  }
+
+  function sanitizeFilename(name) {
+    // Remove chars illegal in Windows filenames, trim whitespace
+    return name.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  ipcMain.handle('stl:translateFilenames', async (event) => {
+    if (!stlDb) throw new Error('STL database not initialized');
+
+    // Get all models
+    const allModels = stlDb.list({ limit: 100000, offset: 0 });
+    const toTranslate = allModels.filter(m => isNonEnglishFilename(m.filename));
+
+    if (!toTranslate.length) return { translated: 0, total: 0, skipped: 0 };
+
+    let translated = 0;
+    let skipped = 0;
+
+    for (let i = 0; i < toTranslate.length; i++) {
+      const model = toTranslate[i];
+      try {
+        const result = await translateText(model.filename);
+
+        // Skip if already English or translation returned same text
+        if (result.detectedLang === 'en' || result.translated === model.filename) {
+          skipped++;
+          try {
+            event.sender.send('stl:translateProgress', {
+              current: i + 1, total: toTranslate.length,
+              filename: model.filename, status: 'skipped'
+            });
+          } catch (_) {}
+          continue;
+        }
+
+        let newName = sanitizeFilename(result.translated);
+        if (!newName) { skipped++; continue; }
+
+        // Capitalize first letter of each word
+        newName = newName.replace(/\b\w/g, c => c.toUpperCase());
+
+        // Rename file on disk
+        const ext = path.extname(model.file_path);
+        const dir = path.dirname(model.file_path);
+        let newPath = path.join(dir, newName + ext);
+
+        // Handle collisions by appending a number
+        let suffix = 1;
+        while (fs.existsSync(newPath) && newPath !== model.file_path) {
+          newPath = path.join(dir, `${newName} (${suffix})${ext}`);
+          suffix++;
+        }
+
+        // Rename the actual file
+        if (newPath !== model.file_path) {
+          fs.renameSync(model.file_path, newPath);
+        }
+
+        // Update DB
+        const finalName = path.basename(newPath, ext);
+        stlDb.update(model.id, { filename: finalName });
+        // Update file_path in DB via direct SQL since update() doesn't allow file_path changes
+        stlDb.db.prepare('UPDATE stl_models SET file_path = ? WHERE id = ?').run(newPath, model.id);
+
+        translated++;
+
+        try {
+          event.sender.send('stl:translateProgress', {
+            current: i + 1, total: toTranslate.length,
+            filename: model.filename, newName: finalName, status: 'translated'
+          });
+        } catch (_) {}
+
+        // Small delay to avoid rate-limiting from Google
+        await new Promise(r => setTimeout(r, 200));
+      } catch (err) {
+        console.error(`[STL Translate] Error translating "${model.filename}":`, err.message);
+        skipped++;
+        try {
+          event.sender.send('stl:translateProgress', {
+            current: i + 1, total: toTranslate.length,
+            filename: model.filename, status: 'error', error: err.message
+          });
+        } catch (_) {}
+      }
+    }
+
+    return { translated, total: toTranslate.length, skipped };
+  });
 }
 
 app.on('ready', async () => {
@@ -6006,6 +6270,13 @@ app.on('ready', async () => {
     localDb = new LocalCatalogDB(app);
   } catch (err) {
     console.warn('Local catalog DB unavailable:', err?.message || err);
+  }
+  // Initialize STL catalog database
+  try {
+    stlDb = new StlCatalogDB(app);
+    console.log('[STL] Catalog database initialized');
+  } catch (err) {
+    console.warn('STL catalog DB unavailable:', err?.message || err);
   }
   try {
     applyWatchSettings(getSettings());

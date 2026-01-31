@@ -23,8 +23,8 @@ function getVinylImageUrl(path) {
   }
 
   // Get server base URL from app config
+  // Note: For sync functions, we use cached config. For async functions, use window.printStation.getConfig()
   const serverBase = (
-    window.state?.config?.serverBaseUrl?.trim() ||
     window.printStationConfig?.serverBaseUrl ||
     'https://blueridgecustomco.com'
   ).replace(/\/$/, '');
@@ -1347,7 +1347,7 @@ function showVinylOutputPanel(files, batchName) {
 
 function previewVinylCutFile(batchName, fileName) {
   // Open preview modal or window
-  const serverBase = (window.state?.config?.serverBaseUrl?.trim() || 'https://blueridgecustomco.com').replace(/\/$/, '');
+  const serverBase = (window.printStationConfig?.serverBaseUrl || 'https://blueridgecustomco.com').replace(/\/$/, '');
   const url = `${serverBase}/api/library/vinyl-cuts/${batchName}/${fileName}`;
   window.open(url, '_blank');
 }
@@ -1562,6 +1562,7 @@ async function deleteVinylCutBatch(batchName) {
 /**
  * Import .studio3 files into the vinyl cutter canvas
  * Uses the studio3 parser to extract images and cut paths
+ * Also uploads to server for contour training
  */
 async function importStudio3Files() {
   if (!window.printStation?.studio3) {
@@ -1588,6 +1589,7 @@ async function importStudio3Files() {
     // Parse all selected files
     let successCount = 0;
     let errorCount = 0;
+    let uploadedCount = 0;
 
     for (const filepath of files) {
       try {
@@ -1598,6 +1600,13 @@ async function importStudio3Files() {
           errorCount++;
           continue;
         }
+
+        // Upload to server for contour training (in background)
+        uploadStudio3ToServer(result, filepath).then(uploaded => {
+          if (uploaded) uploadedCount++;
+        }).catch(err => {
+          console.warn('[Studio3 Import] Server upload failed:', err.message);
+        });
 
         // Add each image from the studio3 file to canvas
         for (const image of result.images) {
@@ -1618,9 +1627,10 @@ async function importStudio3Files() {
     }
 
     updateVinylStatus('Ready');
-    updateVinylItemsUI();
-    updateVinylColorLayersUI();
-    updateVinylGenerateButton();
+    updateVinylItemsList();
+    updateVinylItemCount();
+    updateVinylColorLayers();
+    updateVinylControls();
 
     if (successCount > 0) {
       vinylShowToast(`Imported ${successCount} design(s) from Studio3 files`, 'success');
@@ -1633,6 +1643,175 @@ async function importStudio3Files() {
     console.error('[Studio3 Import] Error:', err);
     vinylShowToast('Failed to import Studio3 files: ' + err.message, 'error');
     updateVinylStatus('Import failed');
+  }
+}
+
+/**
+ * Upload parsed Studio3 data to server for contour training
+ * @param {Object} result - Parsed studio3 data {images, paths, metadata, svg}
+ * @param {string} filepath - Original file path
+ * @returns {Promise<boolean>} Success status
+ */
+async function uploadStudio3ToServer(result, filepath) {
+  // Get config from preload API
+  const config = await window.printStation?.getConfig() || {};
+  const serverBase = (config.serverBaseUrl?.trim() || 'https://blueridgecustomco.com').replace(/\/$/, '');
+  const apiKey = config.apiKey || '';
+
+  // Extract filename from path
+  const filename = filepath.split(/[/\\]/).pop();
+
+  // Create thumbnail from first image (base64, small)
+  let thumbnail = null;
+  if (result.images && result.images.length > 0 && result.images[0].base64) {
+    // Use first 1000 chars of base64 as thumbnail preview (or full if small)
+    const base64 = result.images[0].base64;
+    thumbnail = base64.length > 50000 ? base64.substring(0, 50000) + '...' : base64;
+  }
+
+  const payload = {
+    filename,
+    metadata: result.metadata || {},
+    paths: result.paths || [],
+    pathCount: result.paths?.length || 0,
+    imageCount: result.images?.length || 0,
+    thumbnail
+  };
+
+  console.log('[Studio3 Upload] Sending to server:', filename, 'paths:', payload.pathCount, 'images:', payload.imageCount);
+
+  try {
+    const response = await fetch(`${serverBase}/api/studio3/catalog`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      console.log('[Studio3 Upload] Success:', filename, 'ID:', data.id);
+      return true;
+    } else {
+      console.warn('[Studio3 Upload] Failed:', filename, data.error);
+      return false;
+    }
+  } catch (err) {
+    console.error('[Studio3 Upload] Error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Trigger contour model training on the server
+ * Uses all uploaded Studio3 files to learn contour style preferences
+ */
+async function trainContourModel() {
+  const config = await window.printStation?.getConfig() || {};
+  const serverBase = (config.serverBaseUrl?.trim() || 'https://blueridgecustomco.com').replace(/\/$/, '');
+  const apiKey = config.apiKey || '';
+
+  vinylShowToast('Training contour AI model...', 'info');
+  updateVinylStatus('Training contour model...');
+
+  try {
+    const response = await fetch(`${serverBase}/api/contour/train`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+      }
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      const profile = data.profile;
+      vinylShowToast(`Contour AI trained on ${data.sampleCount} files!`, 'success');
+      console.log('[Contour Training] Success:', {
+        sampleCount: data.sampleCount,
+        cornerSharpness: profile?.cornerSharpness?.toFixed(2),
+        detailLevel: profile?.detailLevel?.toFixed(3),
+        smoothness: profile?.smoothness?.toFixed(2)
+      });
+
+      if (data.errors && data.errors.length > 0) {
+        console.warn('[Contour Training] Some files had errors:', data.errors);
+      }
+    } else {
+      vinylShowToast('Training failed: ' + (data.error || 'Unknown error'), 'error');
+      console.error('[Contour Training] Failed:', data.error);
+    }
+  } catch (err) {
+    console.error('[Contour Training] Error:', err);
+    vinylShowToast('Training failed: ' + err.message, 'error');
+  }
+
+  updateVinylStatus('Ready');
+}
+
+/**
+ * Load Studio3 catalog from server and display in a browsable list
+ * These are the uploaded Studio3 files that can be used for production
+ */
+async function loadStudio3Catalog() {
+  // Get config from preload API
+  const config = await window.printStation?.getConfig() || {};
+  const serverBase = (config.serverBaseUrl?.trim() || 'https://blueridgecustomco.com').replace(/\/$/, '');
+  const apiKey = config.apiKey || '';
+
+  try {
+    const response = await fetch(`${serverBase}/api/studio3/catalog`, {
+      headers: {
+        'x-api-key': apiKey
+      }
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      console.log('[Studio3 Catalog] Loaded', data.count, 'items');
+      return data.entries || [];
+    } else {
+      console.error('[Studio3 Catalog] Failed:', data.error);
+      return [];
+    }
+  } catch (err) {
+    console.error('[Studio3 Catalog] Error:', err);
+    return [];
+  }
+}
+
+/**
+ * Get a specific Studio3 item with full data (including paths) from server
+ */
+async function getStudio3Item(id) {
+  // Get config from preload API
+  const config = await window.printStation?.getConfig() || {};
+  const serverBase = (config.serverBaseUrl?.trim() || 'https://blueridgecustomco.com').replace(/\/$/, '');
+  const apiKey = config.apiKey || '';
+
+  try {
+    const response = await fetch(`${serverBase}/api/studio3/catalog/${encodeURIComponent(id)}`, {
+      headers: {
+        'x-api-key': apiKey
+      }
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      return data.entry;
+    } else {
+      console.error('[Studio3 Item] Failed:', data.error);
+      return null;
+    }
+  } catch (err) {
+    console.error('[Studio3 Item] Error:', err);
+    return null;
   }
 }
 
@@ -1835,3 +2014,7 @@ window.sendVinylToSilhouette = sendVinylToSilhouette;
 window.deleteVinylCutBatch = deleteVinylCutBatch;
 window.importStudio3Files = importStudio3Files;
 window.addStudio3ItemToCanvas = addStudio3ItemToCanvas;
+window.uploadStudio3ToServer = uploadStudio3ToServer;
+window.trainContourModel = trainContourModel;
+window.loadStudio3Catalog = loadStudio3Catalog;
+window.getStudio3Item = getStudio3Item;

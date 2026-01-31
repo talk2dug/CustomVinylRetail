@@ -91,11 +91,189 @@ Then open `http://192.168.0.67:8000/web/` (the root now serves the landing page)
   ```
 - When these variables are present and readable, the API will serve `https://` directly. If they are omitted (or the files cannot be read) the server falls back to plain HTTP on the same port, so you can still reverse-proxy through Nginx/Apache if you prefer.
 
-## Kiosk Mode
+## Kiosk Display System
 
-- The kiosk-friendly interface lives at `http://<save-server>:4000/web/kiosk.html`. It provides a simple canvas, sticker pricing, catalog artwork picker, and a lightweight checkout form designed for trade-show booths or in-store tablets.
-- Payment is flagged as **awaiting collection** so the print station team can take cash or run Square before completing the job.
-- Regenerate the catalog (`npm run generate-catalog`) after adding new artwork so the kiosk sees the latest graphics.
+The kiosk system drives remote display screens at trade shows, markets, and in-store TVs. It uses WebSockets so an admin can push content to any connected screen in real time.
+
+### URLs
+
+| Page | URL | Purpose |
+|------|-----|---------|
+| **Admin Panel** | `https://store.swayzecustomvinyl.com/kiosk-admin?key=YOUR_API_KEY` | Control panel for managing all connected displays |
+| **Display Client** | `https://store.swayzecustomvinyl.com/kiosk?key=YOUR_API_KEY` | Full-screen display page (runs on kiosk devices) |
+| **Kiosk Storefront** | `https://store.swayzecustomvinyl.com/kiosk.html` | Customer-facing sticker builder for booths/tablets |
+
+Replace `YOUR_API_KEY` with the value of `INTERNAL_API_KEY` from your `.env` file.
+
+### Admin Panel Features
+
+- **Displays tab** -- see all connected screens, push content (welcome, QR code, social handles, images, slideshows, "now printing" status), rename displays
+- **Promotions tab** -- upload promotional images/banners, set schedules, assign to specific displays or broadcast to all
+- **Shopify tab** -- pull product collections from Shopify, build product slideshows for displays
+- **Service Slides** -- rotating HTML slide decks that cycle across displays automatically
+- **Broadcast** -- send the same content to every connected display at once
+
+### Content Types
+
+The admin can push these content types to any display:
+
+- `welcome` -- branded welcome screen with service list
+- `qr` -- large QR code pointing customers to the online store
+- `social` -- social media handles
+- `image` -- any uploaded image/banner
+- `video` -- looping video content
+- `slideshow` -- auto-advancing image carousel
+- `shopify-slideshow` -- product showcase from Shopify collections
+- `now-printing` -- live job preview with progress bar
+- `rally` -- motorsport team card (car number, team name, series)
+
+### API Endpoints
+
+All endpoints require `?key=YOUR_API_KEY` query param or `x-api-key` header.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/kiosk/displays` | List connected displays |
+| GET | `/api/kiosk/content` | List available content items |
+| GET | `/api/kiosk/campaigns` | Get campaigns for slideshow display |
+| POST | `/api/kiosk/display/:id/content` | Push content to a specific display |
+| POST | `/api/kiosk/display/:id/rename` | Rename a display |
+| POST | `/api/kiosk/broadcast` | Send content to all displays |
+| GET | `/api/kiosk/promotions` | List all promotions |
+| POST | `/api/kiosk/promotions` | Create a promotion (multipart upload) |
+| PUT | `/api/kiosk/promotions/:id` | Update a promotion |
+| DELETE | `/api/kiosk/promotions/:id` | Delete a promotion |
+| GET | `/api/kiosk/shopify/collections` | List Shopify collections |
+| POST | `/api/kiosk/shopify/slideshow` | Save a Shopify slideshow config |
+| POST | `/api/kiosk/rotating-slides` | Toggle rotating service slides |
+
+### Kiosk Storefront (Trade-Show Booth)
+
+The customer-facing kiosk at `/kiosk.html` provides a simple canvas, sticker pricing, catalog artwork picker, and a lightweight checkout form designed for trade-show booths or in-store tablets. Payment is flagged as **awaiting collection** so the print station team can take cash or run Square before completing the job. Regenerate the catalog (`npm run generate-catalog`) after adding new artwork so the kiosk sees the latest graphics.
+
+### Raspberry Pi Kiosk Setup
+
+Use a Raspberry Pi (3B+ or newer recommended) to drive a TV or monitor as a kiosk display.
+
+#### 1. Flash the OS
+
+1. Download **Raspberry Pi OS Lite (64-bit)** from https://www.raspberrypi.com/software/
+2. Flash to an SD card with Raspberry Pi Imager
+3. In Imager settings, enable SSH, set hostname (e.g. `kiosk-1`), configure Wi-Fi credentials, and set a password
+
+#### 2. Boot and Update
+
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+#### 3. Install Display Server and Chromium
+
+```bash
+# Install X server, Chromium, and utilities
+sudo apt install -y xserver-xorg x11-xserver-utils xinit chromium-browser unclutter
+```
+
+#### 4. Configure Auto-Login
+
+```bash
+sudo raspi-config
+# Navigate to: System Options > Boot / Auto Login > Console Autologin
+```
+
+#### 5. Create the Kiosk Launch Script
+
+```bash
+cat > ~/kiosk.sh << 'SCRIPT'
+#!/bin/bash
+
+# Disable screen blanking and power management
+xset s off
+xset -dpms
+xset s noblank
+
+# Hide the mouse cursor after 3 seconds of inactivity
+unclutter -idle 3 -root &
+
+# Wait for network connectivity
+sleep 5
+
+# Launch Chromium in kiosk mode
+chromium-browser \
+  --noerrdialogs \
+  --disable-infobars \
+  --kiosk \
+  --incognito \
+  --disable-translate \
+  --no-first-run \
+  --fast \
+  --fast-start \
+  --disable-features=TranslateUI \
+  --disk-cache-dir=/dev/null \
+  --overscroll-history-navigation=0 \
+  --disable-pinch \
+  'https://store.swayzecustomvinyl.com/kiosk?key=YOUR_API_KEY'
+SCRIPT
+chmod +x ~/kiosk.sh
+```
+
+Replace `YOUR_API_KEY` with the `INTERNAL_API_KEY` value from your server `.env`.
+
+#### 6. Auto-Start on Boot
+
+Add to the end of `~/.bash_profile` (create if it doesn't exist):
+
+```bash
+# Start kiosk on login (only on tty1)
+if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+  startx ~/kiosk.sh -- -nocursor
+fi
+```
+
+#### 7. Prevent Screen Blanking
+
+```bash
+# Disable console blanking
+sudo bash -c 'echo "consoleblank=0" >> /boot/cmdline.txt'
+```
+
+#### 8. Optional: Rotate Display
+
+If the TV is mounted vertically:
+
+```bash
+# Add to /boot/config.txt
+echo "display_rotate=1" | sudo tee -a /boot/config.txt
+# 0=normal, 1=90°, 2=180°, 3=270°
+```
+
+#### 9. Optional: Scheduled Reboot
+
+Keep things fresh with a nightly reboot:
+
+```bash
+# Reboot at 4 AM daily
+echo "0 4 * * * /sbin/reboot" | sudo crontab -
+```
+
+#### 10. Reboot
+
+```bash
+sudo reboot
+```
+
+The Pi will boot directly into a full-screen Chromium window showing the kiosk display. The admin panel will show it as a connected display and you can push content to it remotely.
+
+#### Troubleshooting
+
+- **Black screen**: Check Wi-Fi connection (`ping store.swayzecustomvinyl.com`), verify the API key in `~/kiosk.sh`
+- **Display not appearing in admin**: The WebSocket connects on page load -- check the browser console via VNC or SSH X-forwarding (`DISPLAY=:0 chromium-browser --remote-debugging-port=9222`)
+- **Screen goes blank after idle**: Verify `xset` commands in `kiosk.sh` and `consoleblank=0` in `/boot/cmdline.txt`
+- **Wrong resolution**: Force HDMI resolution in `/boot/config.txt`:
+  ```
+  hdmi_group=1
+  hdmi_mode=16   # 1080p 60Hz
+  ```
 
 ## Using the app
 

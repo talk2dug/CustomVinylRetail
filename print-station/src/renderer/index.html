@@ -65,6 +65,18 @@
       <button class="tab-button" data-view="campaignsView">Campaigns</button>
       <button class="tab-button" data-view="salesView">Sales</button>
 
+      <!-- POS Dropdown -->
+      <div class="nav-dropdown">
+        <button class="tab-button dropdown-toggle" data-dropdown="pos">
+          POS <span class="dropdown-arrow">▼</span>
+        </button>
+        <div class="dropdown-menu" id="pos-dropdown">
+          <button class="dropdown-item" data-view="skuCatalogView">SKU Catalog</button>
+          <button class="dropdown-item" data-view="qrScannerView">Scanner</button>
+          <button class="dropdown-item" data-view="stlManagerView">3D Models</button>
+        </div>
+      </div>
+
       <!-- Social Dropdown -->
       <div class="nav-dropdown">
         <button class="tab-button dropdown-toggle" data-dropdown="social">
@@ -476,6 +488,9 @@
           </button>
           <button id="catalogTabDecalIcons" class="catalog-tab" data-catalog-type="decal-icons" style="padding:10px 20px;border:none;background:transparent;cursor:pointer;font-size:14px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;">
             Decal Creator Icons
+          </button>
+          <button id="catalogTabStudio3" class="catalog-tab" data-catalog-type="studio3" style="padding:10px 20px;border:none;background:transparent;cursor:pointer;font-size:14px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;">
+            Studio3 Designs
           </button>
         </div>
         <div class="view-toolbar">
@@ -1195,6 +1210,8 @@
               <button id="vinylApplyCanvasSizeBtn" class="secondary" style="font-size:11px;padding:4px 10px;">Apply</button>
             </div>
             <span style="color:#555;">|</span>
+            <button id="vinylImportStudio3Btn" class="secondary" style="background:#8b5cf6;color:white;border-color:#8b5cf6;" onclick="importStudio3Files()">Import .studio3</button>
+            <button id="vinylTrainContoursBtn" class="secondary" style="background:#f59e0b;color:white;border-color:#f59e0b;" onclick="trainContourModel()" title="Train contour AI from uploaded Studio3 files">Train AI</button>
             <button id="vinylClearCanvasBtn" class="secondary">Clear Canvas</button>
             <button id="vinylGenerateCutFilesBtn" class="primary" disabled>Generate Cut Files</button>
           </div>
@@ -5653,7 +5670,340 @@
           </div>
         </div>
       </section>
+
+      <!-- ================================================================== -->
+      <!-- SKU CATALOG VIEW - POS System                                      -->
+      <!-- ================================================================== -->
+      <section id="skuCatalogView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">SKU Catalog</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="skuImportStudio3Btn" class="secondary">Import from Studio3</button>
+            <button id="skuCreateDesignBtn" class="secondary">Create Design</button>
+            <button id="skuRefreshBtn" class="secondary">Refresh</button>
+          </div>
+        </div>
+
+        <div class="sku-catalog-layout" style="display:grid;grid-template-columns:350px 1fr;gap:16px;padding:16px;">
+          <!-- Designs List Panel -->
+          <div class="inventory-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="margin:0;">Designs</h3>
+              <span id="skuDesignCount" class="muted">0 designs</span>
+            </div>
+            <div id="skuDesignsList" style="max-height:500px;overflow-y:auto;">
+              <p class="placeholder">Loading designs...</p>
+            </div>
+          </div>
+
+          <!-- Variants Panel -->
+          <div class="inventory-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="margin:0;">Variants</h3>
+              <div style="display:flex;gap:8px;">
+                <button id="skuAddVariantBtn" class="secondary" disabled>Add Variant</button>
+                <button id="skuGenerateAllBtn" class="secondary" disabled>Generate All Sizes</button>
+              </div>
+            </div>
+            <div id="skuSelectedDesignInfo" style="padding:8px;background:var(--bg-secondary);border-radius:4px;margin-bottom:12px;display:none;">
+              <div style="display:flex;gap:12px;align-items:center;">
+                <img id="skuSelectedDesignThumb" src="" alt="" style="width:60px;height:60px;object-fit:contain;background:#fff;border-radius:4px;">
+                <div>
+                  <div id="skuSelectedDesignName" style="font-weight:600;"></div>
+                  <div id="skuSelectedDesignSlug" class="muted" style="font-size:0.85rem;"></div>
+                  <div id="skuSelectedDesignSize" class="muted" style="font-size:0.85rem;"></div>
+                </div>
+              </div>
+            </div>
+            <table class="inventory-table" id="skuVariantsTable">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Size</th>
+                  <th>Color</th>
+                  <th>Price</th>
+                  <th>QR</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="skuVariantsBody">
+                <tr><td colspan="6" class="placeholder">Select a design to view variants</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Variant Editor Panel -->
+        <div class="inventory-card" style="margin:0 16px 16px;">
+          <h3>Create Variant</h3>
+          <form id="skuVariantForm" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+            <label style="flex:1;min-width:150px;">
+              <span>Size (inches)</span>
+              <select id="skuVariantSize">
+                <option value="2">2"</option>
+                <option value="3">3"</option>
+                <option value="4" selected>4"</option>
+                <option value="6">6"</option>
+                <option value="8">8"</option>
+                <option value="10">10"</option>
+                <option value="12">12"</option>
+              </select>
+            </label>
+            <label style="flex:1;min-width:150px;">
+              <span>Color Name</span>
+              <input id="skuVariantColor" type="text" placeholder="e.g., Red" required>
+            </label>
+            <label style="flex:1;min-width:100px;">
+              <span>Color Hex</span>
+              <input id="skuVariantHex" type="color" value="#FF0000">
+            </label>
+            <label style="flex:1;min-width:100px;">
+              <span>Price (auto)</span>
+              <input id="skuVariantPrice" type="text" placeholder="Auto" readonly>
+            </label>
+            <div style="display:flex;gap:8px;">
+              <button type="submit" class="primary" id="skuVariantSubmitBtn" disabled>Create Variant</button>
+            </div>
+          </form>
+          <div id="skuVariantStatus" class="muted" style="margin-top:8px;"></div>
+        </div>
+
+        <!-- QR Label Preview/Print -->
+        <div class="inventory-card" style="margin:0 16px 16px;">
+          <h3>QR Label Generator</h3>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+            <label>
+              <span>Label Size</span>
+              <select id="skuLabelSize">
+                <option value="2x1" selected>2" x 1"</option>
+                <option value="3x2">3" x 2"</option>
+              </select>
+            </label>
+            <label>
+              <input type="checkbox" id="skuPrintAllVariants"> Print all variants
+            </label>
+            <button id="skuPreviewLabelsBtn" class="secondary" disabled>Preview Labels</button>
+            <button id="skuPrintLabelsBtn" class="primary" disabled>Print Labels</button>
+          </div>
+          <div id="skuLabelPreview" style="margin-top:12px;display:none;"></div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- QR SCANNER VIEW - POS System                                       -->
+      <!-- ================================================================== -->
+      <section id="qrScannerView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Point of Sale Scanner</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="scannerNewCartBtn" class="secondary">New Cart</button>
+            <span id="scannerCartId" class="muted"></span>
+          </div>
+        </div>
+
+        <div class="scanner-layout" style="display:grid;grid-template-columns:1fr 400px;gap:16px;padding:16px;">
+          <!-- Scanner Panel -->
+          <div class="inventory-card">
+            <h3>Scanner</h3>
+            <div id="scannerVideoContainer" style="width:100%;max-width:500px;margin:0 auto;background:#000;border-radius:8px;overflow:hidden;">
+              <video id="scannerVideo" style="width:100%;display:block;"></video>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;">
+              <button id="scannerStartBtn" class="primary">Start Scanner</button>
+              <button id="scannerStopBtn" class="secondary" disabled>Stop</button>
+              <select id="scannerCameraSelect" style="max-width:200px;">
+                <option value="">Select camera...</option>
+              </select>
+            </div>
+            <div id="scannerLastScan" style="text-align:center;margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:4px;display:none;">
+              <div style="font-size:0.9rem;color:#888;">Last scanned:</div>
+              <div id="scannerLastSku" style="font-size:1.2rem;font-weight:600;"></div>
+              <div id="scannerLastName" class="muted"></div>
+            </div>
+            <!-- Manual Entry -->
+            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
+              <h4 style="margin:0 0 8px;">Manual Entry</h4>
+              <form id="scannerManualForm" style="display:flex;gap:8px;">
+                <input id="scannerManualSku" type="text" placeholder="Enter SKU code" style="flex:1;">
+                <button type="submit" class="secondary">Add</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Cart Panel -->
+          <div class="inventory-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="margin:0;">Cart</h3>
+              <span id="scannerItemCount" class="muted">0 items</span>
+            </div>
+            <div id="scannerCartItems" style="max-height:350px;overflow-y:auto;">
+              <p class="placeholder">Cart is empty. Scan items to add.</p>
+            </div>
+            <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                <span>Subtotal:</span>
+                <span id="scannerSubtotal">$0.00</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                <span>Tax (7%):</span>
+                <span id="scannerTax">$0.00</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:1.2rem;font-weight:600;">
+                <span>Total:</span>
+                <span id="scannerTotal">$0.00</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+              <button id="scannerClearCartBtn" class="secondary" style="flex:1;">Clear Cart</button>
+              <button id="scannerCheckoutBtn" class="primary" style="flex:2;" disabled>Checkout with Square</button>
+            </div>
+            <div id="scannerCheckoutStatus" class="muted" style="margin-top:8px;text-align:center;"></div>
+          </div>
+        </div>
+
+        <!-- Recent Scans Log -->
+        <div class="inventory-card" style="margin:0 16px 16px;">
+          <h3>Recent Scans</h3>
+          <div id="scannerRecentScans" style="max-height:150px;overflow-y:auto;font-family:monospace;font-size:0.85rem;">
+            <p class="placeholder">No scans yet</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- STL FILE MANAGER VIEW                                            -->
+      <!-- ================================================================ -->
+      <section id="stlManagerView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">3D Model Library</h2>
+          <div id="stlStatusText" class="muted" style="margin-left:12px;"></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
+            <button id="stlTranslateNamesBtn" title="Translate non-English filenames to English">Translate Names</button>
+            <button id="stlImportFolderBtn" class="primary">Import Folder</button>
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="inventory-card" style="margin:0 16px;padding:12px 16px;">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <input id="stlSearchInput" type="text" placeholder="Search models..." style="flex:1;min-width:200px;padding:8px 12px;">
+            <select id="stlCategoryFilter" style="padding:8px 12px;">
+              <option value="">All Categories</option>
+            </select>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;">
+              <input id="stlFavoritesOnly" type="checkbox"> Favorites
+            </label>
+            <select id="stlSortBy" style="padding:8px 12px;">
+              <option value="filename">Name</option>
+              <option value="created_at">Date Added</option>
+              <option value="file_size">File Size</option>
+              <option value="triangle_count">Triangles</option>
+              <option value="dim_x">Width</option>
+            </select>
+            <select id="stlSortDir" style="padding:8px 12px;">
+              <option value="ASC">A-Z / Low</option>
+              <option value="DESC">Z-A / High</option>
+            </select>
+          </div>
+          <!-- Bulk actions -->
+          <div id="stlBulkActions" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);gap:8px;align-items:center;">
+            <span id="stlSelectedCount" class="muted">0 selected</span>
+            <button id="stlBulkCategoryBtn" class="secondary" style="padding:4px 12px;">Set Category</button>
+            <button id="stlBulkTagsBtn" class="secondary" style="padding:4px 12px;">Set Tags</button>
+            <button id="stlBulkDeleteBtn" class="secondary" style="padding:4px 12px;color:var(--danger);">Delete</button>
+            <button id="stlClearSelectionBtn" class="secondary" style="padding:4px 12px;margin-left:auto;">Clear Selection</button>
+          </div>
+        </div>
+
+        <!-- Progress Bar (hidden by default) -->
+        <div id="stlProgressContainer" style="display:none;margin:0 16px;">
+          <div style="background:var(--card);border-radius:8px;padding:12px 16px;border:1px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+              <span id="stlProgressLabel">Scanning...</span>
+              <span id="stlProgressCount" class="muted"></span>
+            </div>
+            <div style="background:var(--bg);border-radius:4px;overflow:hidden;height:6px;">
+              <div id="stlProgressBar" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pagination -->
+        <div id="stlPagination" style="display:flex;justify-content:space-between;align-items:center;margin:0 16px;padding:8px 0;">
+          <span id="stlShowingText" class="muted">No models imported</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="stlPrevPage" class="secondary" style="padding:4px 12px;" disabled>&lt; Prev</button>
+            <span id="stlPageInfo" class="muted">Page 1</span>
+            <button id="stlNextPage" class="secondary" style="padding:4px 12px;" disabled>Next &gt;</button>
+          </div>
+        </div>
+
+        <!-- Model Grid -->
+        <div id="stlModelGrid" class="stl-model-grid" style="margin:0 16px 16px;">
+          <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
+            Click <strong>Import Folder</strong> to scan a directory of STL files.
+          </div>
+        </div>
+      </section>
+
     </main>
+
+    <!-- STL 3D Preview Modal -->
+    <div id="stlPreviewModal" class="stl-preview-modal">
+      <div style="display:flex;flex-direction:column;width:100%;height:100%;padding:16px;gap:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h2 id="stlPreviewTitle" style="margin:0;color:#fff;"></h2>
+          <button id="stlPreviewCloseBtn" style="background:none;border:none;color:#fff;font-size:28px;cursor:pointer;padding:0 8px;">&times;</button>
+        </div>
+        <div style="display:flex;gap:16px;flex:1;min-height:0;">
+          <!-- 3D Canvas -->
+          <div id="stlPreviewCanvasContainer" class="stl-preview-canvas-container">
+            <div class="stl-render-mode-btns">
+              <button class="active" data-mode="solid">Solid</button>
+              <button data-mode="wireframe">Wireframe</button>
+              <button data-mode="xray">X-Ray</button>
+            </div>
+          </div>
+          <!-- Info Panel -->
+          <div class="stl-preview-info-panel">
+            <div class="inventory-card" style="padding:16px;">
+              <h3 style="margin:0 0 12px;">Model Info</h3>
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:0.9rem;">
+                <span class="muted">Dimensions:</span><span id="stlInfoDims"></span>
+                <span class="muted">Triangles:</span><span id="stlInfoTriangles"></span>
+                <span class="muted">File Size:</span><span id="stlInfoFileSize"></span>
+                <span class="muted">Format:</span><span id="stlInfoFormat"></span>
+                <span class="muted">File:</span><span id="stlInfoPath" style="word-break:break-all;font-size:0.8rem;"></span>
+              </div>
+            </div>
+            <div class="inventory-card" style="padding:16px;">
+              <h3 style="margin:0 0 12px;">Organize</h3>
+              <label style="display:block;margin-bottom:8px;">
+                <span class="muted" style="font-size:0.85rem;">Category</span>
+                <input id="stlPreviewCategory" type="text" style="width:100%;padding:6px 10px;margin-top:4px;" placeholder="e.g. Figurines">
+              </label>
+              <label style="display:block;margin-bottom:8px;">
+                <span class="muted" style="font-size:0.85rem;">Tags</span>
+                <input id="stlPreviewTags" type="text" style="width:100%;padding:6px 10px;margin-top:4px;" placeholder="e.g. dragon, fantasy">
+              </label>
+              <label style="display:block;">
+                <span class="muted" style="font-size:0.85rem;">Notes</span>
+                <textarea id="stlPreviewNotes" rows="3" style="width:100%;padding:6px 10px;margin-top:4px;resize:vertical;" placeholder="Any notes..."></textarea>
+              </label>
+            </div>
+            <div class="inventory-card" style="padding:16px;">
+              <h3 style="margin:0 0 12px;">Actions</h3>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <button id="stlActionSlicer" class="primary" style="width:100%;">Open in Default App</button>
+                <button id="stlActionCopy" class="secondary" style="width:100%;">Copy to Folder</button>
+                <button id="stlActionReveal" class="secondary" style="width:100%;">Reveal in Explorer</button>
+                <button id="stlActionDelete" class="secondary" style="width:100%;color:var(--danger);">Delete from Library</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Sticker Sheets Browser Modal -->
     <div id="stickerSheetsBrowserModal" class="modal" style="display:none;">
@@ -5749,10 +6099,24 @@
 
     <!-- Fabric.js for Visual Layout Editor -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <!-- QR Code library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <!-- HTML5 QR Code Scanner -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <!-- Sticker Layout Editor (must load before index.js) -->
     <script src="./sticker-layout-editor.js"></script>
     <!-- Vinyl Cutter Editor -->
     <script src="./vinyl-cutter-editor.js"></script>
+    <!-- SKU Catalog View -->
+    <script src="./sku-catalog-view.js"></script>
+    <!-- QR Scanner View -->
+    <script src="./qr-scanner-view.js"></script>
+    <!-- Three.js for 3D STL rendering (local copies for Electron compatibility) -->
+    <script src="./lib/three.min.js"></script>
+    <script src="./lib/STLLoader.js"></script>
+    <script src="./lib/OrbitControls.js"></script>
+    <!-- STL Manager View -->
+    <script src="./stl-manager-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>

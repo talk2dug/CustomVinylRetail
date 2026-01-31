@@ -22,8 +22,8 @@ function getStickerImageUrl(path) {
   }
 
   // Get server base URL from app config
+  // Note: For sync functions, we use cached config. For async functions, use window.printStation.getConfig()
   const serverBase = (
-    window.state?.config?.serverBaseUrl?.trim() ||
     window.printStationConfig?.serverBaseUrl ||
     'https://blueridgecustomco.com'
   ).replace(/\/$/, '');

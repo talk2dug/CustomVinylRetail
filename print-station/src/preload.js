@@ -471,5 +471,36 @@ contextBridge.exposeInMainWorld('printStation', {
     batch: (urls) => ipcRenderer.invoke('preview:batchCache', { urls }),
     clear: () => ipcRenderer.invoke('preview:clearCache'),
     stats: () => ipcRenderer.invoke('preview:cacheStats')
+  },
+
+  // STL File Manager
+  stlManager: {
+    scan: (payload) => ipcRenderer.invoke('stl:scan', payload || {}),
+    list: (query) => ipcRenderer.invoke('stl:list', query || {}),
+    count: (query) => ipcRenderer.invoke('stl:count', query || {}),
+    get: (id) => ipcRenderer.invoke('stl:get', id),
+    update: (id, updates) => ipcRenderer.invoke('stl:update', { id, updates }),
+    delete: (id) => ipcRenderer.invoke('stl:delete', id),
+    bulkDelete: (ids) => ipcRenderer.invoke('stl:bulkDelete', { ids }),
+    bulkSetCategory: (ids, category) => ipcRenderer.invoke('stl:bulkSetCategory', { ids, category }),
+    bulkSetTags: (ids, tags) => ipcRenderer.invoke('stl:bulkSetTags', { ids, tags }),
+    toggleFavorite: (id) => ipcRenderer.invoke('stl:toggleFavorite', id),
+    categories: () => ipcRenderer.invoke('stl:categories'),
+    readFile: (filePath) => ipcRenderer.invoke('stl:readFile', filePath),
+    openInSlicer: (id) => ipcRenderer.invoke('stl:openInSlicer', id),
+    copyToFolder: (id) => ipcRenderer.invoke('stl:copyToFolder', id),
+    revealInExplorer: (id) => ipcRenderer.invoke('stl:revealInExplorer', id),
+    saveThumbnail: (id, dataUrl) => ipcRenderer.invoke('stl:saveThumbnail', { id, dataUrl }),
+    translateFilenames: () => ipcRenderer.invoke('stl:translateFilenames'),
+    onScanProgress: (cb) => {
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('stl:scanProgress', handler);
+      return () => ipcRenderer.off('stl:scanProgress', handler);
+    },
+    onTranslateProgress: (cb) => {
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('stl:translateProgress', handler);
+      return () => ipcRenderer.off('stl:translateProgress', handler);
+    }
   }
 });

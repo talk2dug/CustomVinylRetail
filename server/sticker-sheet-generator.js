@@ -18,6 +18,7 @@ const taskTracker = require('./task-tracker');
 const paper = require('paper');
 const potrace = require('potrace');
 const { NestingEngine, createNestingEngine } = require('./nesting-engine');
+const contourTrainer = require('./lib/contour-trainer');
 
 // Note: Using custom NestingEngine with polygon-clipping for contour-aware nesting
 // Supports both MANUAL (efficiency) and ORDER (grouped by order) packing modes
@@ -49,6 +50,86 @@ const SHEET_CONFIG = {
 // Default sticker size
 const DEFAULT_STICKER_SIZE_INCHES = 3;
 const DEFAULT_OFFSET_MM = 0.25; // Offset from sticker edge to cut line (tight cut)
+
+// ============================================================================
+// LEARNED CONTOUR STYLE PARAMETERS
+// Loaded from database based on analysis of Jack's manual Studio3 cut paths
+// Falls back to defaults if no trained profile exists
+// ============================================================================
+let _learnedStyleProfile = null;
+let _styleProfileLoaded = false;
+
+/**
+ * Get learned potrace parameters from trained style profile
+ * @param {string} mode - 'vinyl' (blocky) or 'sticker' (smooth)
+ * @returns {Object} Potrace parameters
+ */
+function getLearnedPotraceParams(mode = 'sticker') {
+  // Try to load profile from database if not already loaded
+  if (!_styleProfileLoaded) {
+    try {
+      const db = require('./db');
+      _learnedStyleProfile = contourTrainer.loadStyleProfile(db.getDb());
+      _styleProfileLoaded = true;
+      if (_learnedStyleProfile) {
+        console.log('[ContourStyle] Loaded trained style profile:', {
+          sampleCount: _learnedStyleProfile.sampleCount,
+          cornerSharpness: _learnedStyleProfile.cornerSharpness?.toFixed(2),
+          detailLevel: _learnedStyleProfile.detailLevel?.toFixed(3),
+          smoothness: _learnedStyleProfile.smoothness?.toFixed(2)
+        });
+      }
+    } catch (err) {
+      console.warn('[ContourStyle] Could not load style profile:', err.message);
+      _styleProfileLoaded = true; // Don't retry
+    }
+  }
+
+  // Default parameters based on mode
+  const defaults = {
+    vinyl: {
+      threshold: 128,
+      turnPolicy: potrace.Potrace.TURNPOLICY_MINORITY,
+      turdSize: 10,
+      optCurve: false,
+      optTolerance: 0.2,
+      alphaMax: 0
+    },
+    sticker: {
+      threshold: 128,
+      turnPolicy: potrace.Potrace.TURNPOLICY_MINORITY,
+      turdSize: 2,
+      optCurve: true,
+      optTolerance: 0.2,
+      alphaMax: 1.0
+    }
+  };
+
+  const baseParams = defaults[mode] || defaults.sticker;
+
+  // Override with learned parameters if available
+  if (_learnedStyleProfile?.valid && _learnedStyleProfile.recommendedParams) {
+    const learned = _learnedStyleProfile.recommendedParams;
+    return {
+      ...baseParams,
+      turdSize: learned.turdSize ?? baseParams.turdSize,
+      optCurve: learned.optCurve ?? baseParams.optCurve,
+      optTolerance: learned.optTolerance ?? baseParams.optTolerance,
+      alphaMax: learned.alphaMax ?? baseParams.alphaMax
+    };
+  }
+
+  return baseParams;
+}
+
+/**
+ * Force reload of style profile (call after training)
+ */
+function reloadStyleProfile() {
+  _styleProfileLoaded = false;
+  _learnedStyleProfile = null;
+  console.log('[ContourStyle] Style profile cache cleared');
+}
 
 // ============================================================================
 // SILHOUETTE REGISTRATION MARK SETTINGS
@@ -710,17 +791,11 @@ async function extractColorContours(imagePath, maxColors = 6) {
       .toFile(tempMaskPath);
 
     // Trace the mask with potrace
-    // Settings optimized for blocky/pixel art vinyl cutting - clean sharp edges
+    // Uses learned parameters from Studio3 training, falls back to blocky defaults
+    const vinylParams = getLearnedPotraceParams('vinyl');
     try {
       const contourResult = await new Promise((resolve, reject) => {
-        potrace.trace(tempMaskPath, {
-          threshold: 128,
-          turnPolicy: potrace.Potrace.TURNPOLICY_MINORITY,
-          turdSize: 10,       // Filter small specks more aggressively
-          optCurve: false,    // DISABLE curve optimization - keep sharp corners
-          optTolerance: 0.2,  // Tighter tolerance
-          alphaMax: 0,        // Force corners (0 = all corners, 1.334 = smooth curves)
-        }, (err, svg) => {
+        potrace.trace(tempMaskPath, vinylParams, (err, svg) => {
           // Clean up temp file
           try { fs.unlinkSync(tempMaskPath); } catch (e) { /* ignore */ }
 
@@ -809,15 +884,11 @@ async function extractContourBezier(imagePath) {
     .png()
     .toFile(tempPngPath);
 
+  // Use learned parameters from Studio3 training, falls back to sticker defaults
+  const stickerParams = getLearnedPotraceParams('sticker');
+
   return new Promise((resolve, reject) => {
-    potrace.trace(tempPngPath, {
-      threshold: 128,
-      turnPolicy: potrace.Potrace.TURNPOLICY_MINORITY,
-      turdSize: 2,       // Ignore small specks
-      optCurve: true,    // Enable curve optimization (beziers!)
-      optTolerance: 0.2, // Curve optimization tolerance (lower = more accurate)
-      alphaMax: 1.0,     // Corner threshold
-    }, (err, svg) => {
+    potrace.trace(tempPngPath, stickerParams, (err, svg) => {
       // Clean up temp file
       try { fs.unlinkSync(tempPngPath); } catch (e) { /* ignore */ }
 
@@ -3891,5 +3962,8 @@ module.exports = {
   NestingEngine,           // Direct access to nesting engine class
   createNestingEngine,     // Factory function for nesting engine
   generateNestedSheets,    // MANUAL mode - pack for efficiency
-  generateNestedSheetsByOrder  // ORDER mode - keep orders grouped
+  generateNestedSheetsByOrder,  // ORDER mode - keep orders grouped
+  // NEW: Learned contour style parameters
+  getLearnedPotraceParams,  // Get potrace params from trained style
+  reloadStyleProfile        // Force reload of style profile after training
 };
