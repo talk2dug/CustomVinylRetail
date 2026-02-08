@@ -304,3 +304,117 @@ Feel free to customize the styling in `web/styles.css` or tweak the interaction 
 - Account tools include email confirmation and password reset links (tokens are returned in responses for now—wire them to your email provider when ready).
 - Resend-verification and reset-password emails are now sent via DreamHost SMTP; update the environment variables above if you rotate credentials.
 - Every order is assigned a sequential order number (starting at 1000) for easy cross-referencing in dashboards, emails, and production logs.
+
+## B2B Metal Prints Portal
+
+A wholesale ordering portal for B2B partners to order metal prints at wholesale pricing.
+
+### Access
+
+| URL | Purpose |
+|-----|---------|
+| `https://your-domain/b2b/` | B2B Portal (via path) |
+| `https://b2b.your-domain.com/` | B2B Portal (via subdomain, requires DNS setup) |
+
+### Features
+
+- **Login System**: Company accounts with admin user management
+- **Multi-Photo Upload**: Drag-and-drop upload with size selection
+- **Wholesale Pricing**: 5x7" = $15, 8x10" = $22, 11x14" = $32, custom sizes = quote
+- **Square Checkout**: Integrated payment via Square payment links
+- **Order Tracking**: Status updates (received → being printed → shipped) with tracking info
+- **Email Notifications**: Welcome, order confirmation, shipping notifications
+
+### Environment Variables
+
+```bash
+# Optional: Set the B2B portal URL for email links
+export B2B_PORTAL_URL=https://b2b.swayzecustomvinyl.com
+```
+
+### Creating a B2B Partner
+
+Use the internal API to create a new B2B company with an admin user:
+
+```bash
+curl -X POST https://your-domain/api/internal/b2b/companies \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_INTERNAL_API_KEY" \
+  -d '{
+    "companyName": "Partner Company Name",
+    "adminEmail": "admin@partner.com",
+    "adminPassword": "securepassword123",
+    "adminName": "John Admin",
+    "contactPhone": "555-123-4567"
+  }'
+```
+
+### B2B API Endpoints
+
+All `/api/b2b/*` endpoints require Bearer token authentication (obtained via login).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/b2b/auth/login` | Login, returns session token |
+| POST | `/api/b2b/auth/logout` | Invalidate session |
+| GET | `/api/b2b/auth/profile` | Get current user profile |
+| GET | `/api/b2b/company/users` | List company users (admin only) |
+| POST | `/api/b2b/company/users` | Add new user (admin only) |
+| PATCH | `/api/b2b/company/users/:id` | Update user (admin only) |
+| DELETE | `/api/b2b/company/users/:id` | Remove user (admin only) |
+| GET | `/api/b2b/orders` | List company orders |
+| POST | `/api/b2b/orders` | Create new order |
+| GET | `/api/b2b/orders/:id` | Get order details |
+| PATCH | `/api/b2b/orders/:id` | Update order (draft only) |
+| POST | `/api/b2b/orders/:id/items` | Add item to order |
+| POST | `/api/b2b/orders/:id/items/:itemId/upload` | Upload image for item |
+| DELETE | `/api/b2b/orders/:id/items/:itemId` | Remove item |
+| POST | `/api/b2b/orders/:id/submit` | Submit order for checkout |
+| POST | `/api/b2b/orders/:id/checkout` | Generate Square payment link |
+| GET | `/api/b2b/pricing` | Get wholesale pricing |
+
+### Internal Admin API
+
+All `/api/internal/b2b/*` endpoints require `x-api-key` header with `INTERNAL_API_KEY`.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/internal/b2b/companies` | List all B2B companies |
+| POST | `/api/internal/b2b/companies` | Create company + admin user |
+| PATCH | `/api/internal/b2b/companies/:id` | Update company |
+| GET | `/api/internal/b2b/orders` | List all B2B orders |
+| GET | `/api/internal/b2b/orders?queue=production` | Production queue (paid orders) |
+| GET | `/api/internal/b2b/orders/:id` | Get order details |
+| PATCH | `/api/internal/b2b/orders/:id/status` | Update order status |
+| POST | `/api/internal/b2b/orders/:id/tracking` | Add tracking info |
+| POST | `/api/internal/b2b/orders/:id/items/:itemId/quote` | Approve custom size quote |
+
+### Order Flow
+
+1. **Create Order** → Enter shipping address
+2. **Add Items** → Select size, upload photos
+3. **Submit** → Validates uploads, calculates totals
+4. **Checkout** → Generates Square payment link
+5. **Payment** → Webhook marks order as paid, status = "received"
+6. **Production** → Admin updates status to "being_printed"
+7. **Ship** → Admin adds tracking, status = "shipped", customer notified
+
+### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `b2b_companies` | Partner companies (name, contact, billing) |
+| `b2b_users` | Users per company (login, role: user/admin) |
+| `b2b_sessions` | Auth sessions (token, expiration) |
+| `b2b_metal_print_orders` | Orders (shipping, status, payment, tracking) |
+| `b2b_metal_print_items` | Line items (size, image, price) |
+
+### Frontend Pages
+
+| File | Purpose |
+|------|---------|
+| `web/b2b/index.html` | Login page |
+| `web/b2b/dashboard.html` | Order history |
+| `web/b2b/new-order.html` | Create order, upload photos |
+| `web/b2b/order-detail.html` | View order status & tracking |
+| `web/b2b/users.html` | User management (admin only) |
