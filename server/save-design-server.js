@@ -8005,6 +8005,480 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // ===== QR PRODUCT CATALOG API =====
+
+  // Product catalog management page (requires ?key= query param)
+  if (req.method === 'GET' && parsedUrl.pathname === '/product-catalog') {
+    if (!checkKioskKey(req, parsedUrl)) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    try {
+      const html = fs.readFileSync(path.join(WEB_DIR, 'product-catalog.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch (e) {
+      sendJson(res, 404, { error: 'Product catalog page not found' });
+    }
+    return;
+  }
+
+  // Public product detail endpoint (no auth - for QR code scanning)
+  if (req.method === 'GET' && parsedUrl.pathname.match(/^\/api\/products\/public\/[^/]+$/)) {
+    const productId = parsedUrl.pathname.split('/').pop();
+    try {
+      const db = require('./db');
+      const product = db.getQrProductById(productId);
+      if (!product || !product.active) {
+        sendJson(res, 404, { error: 'Product not found' });
+        return;
+      }
+      sendJson(res, 200, {
+        success: true,
+        product: {
+          id: product.id,
+          title: product.title,
+          description: product.description,
+          priceCents: product.priceCents,
+          photoUrl: product.photoPath ? `/product-photos/${path.basename(product.photoPath)}` : null,
+          category: product.category,
+          size: product.size,
+          color: product.color,
+          decalText: product.decalText,
+          isHeatTransfer: product.isHeatTransfer,
+          quantity: product.quantity
+        }
+      });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // --- QR Product → Shopify sync helper ---
+  async function syncQrProductToShopify(productId, dbRef) {
+    try {
+      const product = dbRef.getQrProductById(productId);
+      if (!product) return { productId, success: false, error: 'Product not found.' };
+
+      const storeBaseUrl = (process.env.STORE_BASE_URL || 'https://store.swayzecustomvinyl.com').replace(/\/$/, '');
+      let isUpdate = !!product.shopifyProductId;
+      let existingProductId = product.shopifyProductId || null;
+
+      // Check Shopify for existing product by tag if no local ID stored
+      if (!existingProductId) {
+        try {
+          const found = await shopify.findProductByTag(`qr-product-${productId}`);
+          if (found && found.id) {
+            existingProductId = found.id;
+            isUpdate = true;
+            dbRef.updateQrProduct(productId, { shopifyProductId: String(found.id), shopifyHandle: found.handle || null });
+          }
+        } catch (_) { /* not found, will create */ }
+      }
+
+      // Build image array
+      const images = [];
+      if (product.photoPath) {
+        const photoFilename = path.basename(product.photoPath);
+        images.push({ src: `${storeBaseUrl}/product-photos/${encodeURIComponent(photoFilename)}`, position: 1 });
+      }
+
+      // Build description HTML
+      let bodyHtml = '';
+      if (product.description) bodyHtml += `<p>${product.description}</p>`;
+      const details = [];
+      if (product.size) details.push(`Size: ${product.size}`);
+      if (product.color) details.push(`Color: ${product.color}`);
+      if (product.isHeatTransfer) details.push('Heat Transfer Vinyl');
+      if (details.length) bodyHtml += `<p>${details.join(' &bull; ')}</p>`;
+
+      // Build tags
+      const tags = ['qr-product', `qr-product-${productId}`];
+      if (product.category) tags.push(product.category.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
+      if (product.isHeatTransfer) tags.push('heat-transfer');
+
+      // Determine product_type from category
+      const productType = product.category || (product.isHeatTransfer ? 'Heat Transfer' : 'Decal');
+
+      const shopifyPayload = {
+        title: product.title,
+        body_html: bodyHtml || product.title,
+        vendor: 'Blue Ridge Custom Co',
+        product_type: productType,
+        tags: tags.join(', '),
+        status: product.active ? 'active' : 'draft'
+      };
+      if (images.length) shopifyPayload.images = images;
+
+      // Single variant — only sent on create
+      if (!isUpdate) {
+        shopifyPayload.variants = [{
+          price: (product.priceCents / 100).toFixed(2),
+          sku: `QR-${productId}`,
+          inventory_management: 'shopify',
+          inventory_policy: 'deny',
+          requires_shipping: true,
+          taxable: true
+        }];
+      }
+
+      let resultProduct;
+      if (isUpdate) {
+        try {
+          resultProduct = await shopify.updateProduct(existingProductId, shopifyPayload);
+        } catch (upErr) {
+          if (upErr?.status === 404 || String(upErr?.message || '').includes('Not Found')) {
+            console.log(`[QR Shopify] Product ${existingProductId} gone from Shopify, creating new...`);
+            dbRef.updateQrProduct(productId, { shopifyProductId: null, shopifyHandle: null });
+            shopifyPayload.variants = [{
+              price: (product.priceCents / 100).toFixed(2),
+              sku: `QR-${productId}`,
+              inventory_management: 'shopify',
+              inventory_policy: 'deny',
+              requires_shipping: true,
+              taxable: true
+            }];
+            resultProduct = await shopify.createProduct(shopifyPayload);
+            isUpdate = false;
+          } else {
+            throw upErr;
+          }
+        }
+      } else {
+        resultProduct = await shopify.createProduct(shopifyPayload);
+      }
+
+      if (!resultProduct?.id) {
+        return { productId, success: false, error: 'Shopify did not return a product ID.' };
+      }
+
+      // Store Shopify IDs locally
+      dbRef.updateQrProduct(productId, {
+        shopifyProductId: String(resultProduct.id),
+        shopifyHandle: resultProduct.handle || null
+      });
+
+      // Publish to all sales channels
+      await shopify.publishEverywhere(resultProduct.id).catch(e => {
+        console.log('[QR Shopify] publishEverywhere warning:', e?.message || e);
+      });
+
+      console.log(`[QR Shopify] ${isUpdate ? 'Updated' : 'Created'} "${product.title}" → Shopify ID ${resultProduct.id}`);
+      return { productId, success: true, shopifyProductId: String(resultProduct.id), handle: resultProduct.handle, updated: isUpdate };
+    } catch (e) {
+      console.error(`[QR Shopify] Error syncing ${productId}:`, e);
+      return { productId, success: false, error: e?.message || String(e) };
+    }
+  }
+
+  // All other product endpoints require API key
+  if (parsedUrl.pathname.startsWith('/api/products')) {
+    if (!requireInternalKey(req, res)) return;
+
+    const db = require('./db');
+
+    // GET /api/products - list products
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/products') {
+      try {
+        const products = db.listQrProducts({
+          activeOnly: parsedUrl.query.activeOnly === 'true',
+          category: parsedUrl.query.category || undefined,
+          search: parsedUrl.query.search || undefined
+        });
+        // Add photo URLs
+        const productsWithUrls = products.map(p => ({
+          ...p,
+          photoUrl: p.photoPath ? `/product-photos/${path.basename(p.photoPath)}` : null
+        }));
+        sendJson(res, 200, { success: true, products: productsWithUrls });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // GET /api/products/categories - list categories
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/products/categories') {
+      try {
+        const categories = db.listQrProductCategories();
+        sendJson(res, 200, { success: true, categories });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // POST /api/products - create product
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/products') {
+      try {
+        const body = await getReqBodyJson(req);
+        if (!body.title) {
+          sendJson(res, 400, { error: 'Title is required' });
+          return;
+        }
+        const product = db.createQrProduct({
+          title: body.title,
+          description: body.description || '',
+          priceCents: parseInt(body.priceCents, 10) || 0,
+          category: body.category || '',
+          size: body.size || '',
+          color: body.color || '',
+          decalText: body.decalText || '',
+          isHeatTransfer: !!body.isHeatTransfer,
+          quantity: parseInt(body.quantity, 10) || 1
+        });
+        sendJson(res, 201, { success: true, product });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // POST /api/products/:id/photo - upload photo
+    const photoMatch = parsedUrl.pathname.match(/^\/api\/products\/([^/]+)\/photo$/);
+    if (req.method === 'POST' && photoMatch) {
+      const productId = photoMatch[1];
+      try {
+        const existing = db.getQrProductById(productId);
+        if (!existing) {
+          sendJson(res, 404, { error: 'Product not found' });
+          return;
+        }
+
+        const productsDir = path.join(LIBRARY_ROOT, 'uploads', 'products');
+        if (!fs.existsSync(productsDir)) {
+          fs.mkdirSync(productsDir, { recursive: true });
+        }
+
+        const { files } = await parseMultipartForm(req, {
+          uploadDir: productsDir,
+          maxFiles: 1,
+          maxFileSize: 10 * 1024 * 1024
+        });
+
+        const upload = listFormFiles(files.photo || files.file || files.image)[0];
+        if (!upload || !upload.filepath) {
+          sendJson(res, 400, { error: 'No photo uploaded' });
+          return;
+        }
+
+        // Rename to a safe filename
+        const ext = path.extname(upload.originalFilename || '.jpg').toLowerCase();
+        const safeExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext) ? ext : '.jpg';
+        const finalName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${safeExt}`;
+        const finalPath = path.join(productsDir, finalName);
+        fs.renameSync(upload.filepath, finalPath);
+
+        // Delete old photo if exists
+        if (existing.photoPath) {
+          try { fs.unlinkSync(existing.photoPath); } catch (_) {}
+        }
+
+        const updated = db.updateQrProduct(productId, { photoPath: finalPath });
+        sendJson(res, 200, {
+          success: true,
+          product: {
+            ...updated,
+            photoUrl: `/product-photos/${finalName}`
+          }
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // GET /api/products/:id - get single product
+    const getMatch = parsedUrl.pathname.match(/^\/api\/products\/([^/]+)$/);
+    if (req.method === 'GET' && getMatch) {
+      try {
+        const product = db.getQrProductById(getMatch[1]);
+        if (!product) {
+          sendJson(res, 404, { error: 'Product not found' });
+          return;
+        }
+        sendJson(res, 200, {
+          success: true,
+          product: {
+            ...product,
+            photoUrl: product.photoPath ? `/product-photos/${path.basename(product.photoPath)}` : null
+          }
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // PUT /api/products/:id - update product
+    const putMatch = parsedUrl.pathname.match(/^\/api\/products\/([^/]+)$/);
+    if (req.method === 'PUT' && putMatch) {
+      try {
+        const body = await getReqBodyJson(req);
+        const updated = db.updateQrProduct(putMatch[1], body);
+        if (!updated) {
+          sendJson(res, 404, { error: 'Product not found' });
+          return;
+        }
+        sendJson(res, 200, {
+          success: true,
+          product: {
+            ...updated,
+            photoUrl: updated.photoPath ? `/product-photos/${path.basename(updated.photoPath)}` : null
+          }
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // DELETE /api/products/:id - delete product
+    const delMatch = parsedUrl.pathname.match(/^\/api\/products\/([^/]+)$/);
+    if (req.method === 'DELETE' && delMatch) {
+      try {
+        const result = db.deleteQrProduct(delMatch[1]);
+        if (!result.success) {
+          sendJson(res, 404, { error: result.error });
+          return;
+        }
+        // Delete photo file
+        if (result.deleted.photoPath) {
+          try { fs.unlinkSync(result.deleted.photoPath); } catch (_) {}
+        }
+        sendJson(res, 200, { success: true });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // POST /api/products/shopify/export - export QR product(s) to Shopify
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/products/shopify/export') {
+      try {
+        const body = await getReqBodyJson(req);
+        const productIds = body?.productIds || (body?.productId ? [body.productId] : []);
+        if (!Array.isArray(productIds) || !productIds.length) {
+          sendJson(res, 400, { error: 'productIds array or productId is required.' });
+          return;
+        }
+        if (!shopify.isConfigured()) {
+          sendJson(res, 503, { error: 'Shopify is not configured.' });
+          return;
+        }
+        const results = [];
+        for (const pid of productIds) {
+          results.push(await syncQrProductToShopify(pid, db));
+        }
+        sendJson(res, 200, { success: true, results });
+      } catch (e) {
+        console.error('[QR Shopify] Export error:', e);
+        sendJson(res, 500, { error: e?.message || 'Unable to export to Shopify.' });
+      }
+      return;
+    }
+
+    // POST /api/products/shopify/export-all - export all active QR products to Shopify
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/products/shopify/export-all') {
+      try {
+        if (!shopify.isConfigured()) {
+          sendJson(res, 503, { error: 'Shopify is not configured.' });
+          return;
+        }
+        const allProducts = db.listQrProducts({ activeOnly: true });
+        if (!allProducts.length) {
+          sendJson(res, 200, { success: true, total: 0, synced: 0, failed: 0, results: [] });
+          return;
+        }
+        const results = [];
+        for (const product of allProducts) {
+          results.push(await syncQrProductToShopify(product.id, db));
+        }
+        const synced = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+        sendJson(res, 200, { success: true, total: allProducts.length, synced, failed, results });
+      } catch (e) {
+        console.error('[QR Shopify] Export-all error:', e);
+        sendJson(res, 500, { error: e?.message || 'Unable to batch export.' });
+      }
+      return;
+    }
+
+    // POST /api/products/generate-labels - generate label sticker sheets
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/products/generate-labels') {
+      try {
+        const body = await getReqBodyJson(req);
+        const { productIds } = body;
+
+        if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+          sendJson(res, 400, { error: 'productIds array is required' });
+          return;
+        }
+
+        // Fetch all requested products
+        const products = [];
+        for (const id of productIds) {
+          const product = db.getQrProductById(id);
+          if (product) {
+            products.push(product);
+          } else {
+            console.warn(`[Labels] Product not found: ${id}`);
+          }
+        }
+
+        if (products.length === 0) {
+          sendJson(res, 404, { error: 'No valid products found' });
+          return;
+        }
+
+        // Determine base URL and photo directory
+        const baseUrl = process.env.ASSET_BASE_URL || `https://${req.headers.host}`;
+        const photoDir = path.join(LIBRARY_ROOT, 'uploads', 'products');
+
+        // Generate timestamp-based output directory
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const outputDir = path.join(STICKER_OUTPUT_DIR, `product-labels-${timestamp}`);
+        await fs.promises.mkdir(outputDir, { recursive: true });
+
+        console.log(`[Labels] Generating label sheets for ${products.length} products -> ${outputDir}`);
+
+        const result = await stickerSheets.generateProductLabelSheets(
+          products, baseUrl, photoDir, outputDir, 'product-labels'
+        );
+
+        // Build web-accessible URLs for sheets
+        const sheets = (result.sheets || []).map(sheet => {
+          const webBasePath = sheet.printFile.includes('/web/')
+            ? sheet.printFile.split('/web/')[1]
+            : path.basename(path.dirname(sheet.printFile)) + '/' + path.basename(sheet.printFile);
+          return {
+            ...sheet,
+            printUrl: `/sticker-sheets/product-labels-${timestamp}/${sheet.printFilename}`,
+            cutUrl: `/sticker-sheets/product-labels-${timestamp}/${sheet.cutFilename}`,
+            cricutUrl: `/sticker-sheets/product-labels-${timestamp}/${sheet.cricutFilename}`
+          };
+        });
+
+        sendJson(res, 200, {
+          success: true,
+          totalSheets: result.totalSheets,
+          totalStickers: result.totalStickers,
+          batchName: `product-labels-${timestamp}`,
+          sheets,
+          outputDir: result.outputDir
+        });
+      } catch (err) {
+        console.error('[Label Generate Error]', err);
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    sendJson(res, 404, { error: 'Unknown product endpoint' });
+    return;
+  }
+
   // ===== TASK TRACKER API =====
   // Get all active and recent tasks for dashboard display
   if (req.method === 'GET' && parsedUrl.pathname === '/api/tasks/status') {
@@ -16043,6 +16517,39 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // ============================================================================
+  // B2B PORTAL - SUBDOMAIN HANDLING
+  // ============================================================================
+  // Serve B2B portal files when accessed via b2b.* subdomain or /b2b/ path
+  const hostHeader = req.headers.host || '';
+  const isB2BSubdomain = hostHeader.startsWith('b2b.') || hostHeader.includes('b2b-portal');
+
+  if ((req.method === 'GET' || req.method === 'HEAD') && (isB2BSubdomain || parsedUrl.pathname.startsWith('/b2b/'))) {
+    let assetPath = parsedUrl.pathname;
+
+    // If B2B subdomain, serve from /b2b/ directory
+    if (isB2BSubdomain) {
+      assetPath = '/b2b' + (assetPath === '/' ? '' : assetPath);
+    }
+
+    // Remove /b2b prefix to get the file path within b2b directory
+    if (assetPath.startsWith('/b2b/')) {
+      assetPath = assetPath.slice(4); // Remove '/b2b'
+    } else if (assetPath === '/b2b') {
+      assetPath = '/';
+    }
+
+    // Default to index.html
+    if (assetPath === '/' || assetPath === '') {
+      assetPath = 'b2b/index.html';
+    } else {
+      assetPath = 'b2b' + assetPath;
+    }
+
+    serveWebAsset(req, res, assetPath);
+    return;
+  }
+
   // Serve index.html for root path
   if (
     (req.method === 'GET' || req.method === 'HEAD') &&
@@ -16057,6 +16564,34 @@ const requestHandler = async (req, res) => {
     (parsedUrl.pathname === '/kiosk' || parsedUrl.pathname === '/kiosk.html')
   ) {
     serveWebAsset(req, res, 'kiosk.html');
+    return;
+  }
+
+  // Serve product catalog photos
+  if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname.startsWith('/product-photos/')) {
+    const fileName = decodeURIComponent(parsedUrl.pathname.replace('/product-photos/', ''));
+    const productsDir = path.join(LIBRARY_ROOT, 'uploads', 'products');
+    const filePath = path.join(productsDir, fileName);
+
+    if (!filePath.startsWith(productsDir)) {
+      sendJson(res, 403, { error: 'Invalid path' });
+      return;
+    }
+
+    if (fs.existsSync(filePath)) {
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp'
+      };
+      res.writeHead(200, {
+        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+        'Cache-Control': 'public, max-age=86400'
+      });
+      fs.createReadStream(filePath).pipe(res);
+    } else {
+      sendJson(res, 404, { error: 'File not found' });
+    }
     return;
   }
 
@@ -18144,6 +18679,941 @@ Return ONLY valid JSON, no markdown or explanation.`;
     return;
   }
 
+  // ============================================================================
+  // B2B METAL PRINTS PORTAL API
+  // ============================================================================
+
+  // Helper: Extract B2B auth token and validate session
+  function requireB2BAuth() {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) {
+      sendJson(res, 401, { error: 'Authorization required.' });
+      return null;
+    }
+    const user = db.getB2BUserByToken(token);
+    if (!user) {
+      sendJson(res, 401, { error: 'Invalid or expired session.' });
+      return null;
+    }
+    return user;
+  }
+
+  function requireB2BAdmin() {
+    const user = requireB2BAuth();
+    if (!user) return null;
+    if (user.role !== 'admin') {
+      sendJson(res, 403, { error: 'Admin access required.' });
+      return null;
+    }
+    return user;
+  }
+
+  // B2B Auth: Login
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/auth/login') {
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        const user = db.verifyB2BCredentials(payload.email, payload.password);
+        if (!user) {
+          sendJson(res, 401, { error: 'Invalid email or password.' });
+          return;
+        }
+        const session = db.createB2BSession(user.id);
+        sendJson(res, 200, {
+          success: true,
+          token: session.token,
+          expiresAt: session.expiresAt,
+          user
+        });
+      } catch (err) {
+        console.error('[B2B] Login failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to log in.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Auth: Logout
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/auth/logout') {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (token) {
+      db.deleteB2BSession(token);
+    }
+    sendJson(res, 200, { success: true });
+    return;
+  }
+
+  // B2B Auth: Get Profile
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/b2b/auth/profile') {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const company = db.getB2BCompanyById(user.companyId);
+    sendJson(res, 200, { user, company });
+    return;
+  }
+
+  // B2B Company: List Users
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/b2b/company/users') {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const users = db.listB2BUsers(user.companyId);
+    sendJson(res, 200, { users });
+    return;
+  }
+
+  // B2B Company: Add User (Admin only)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/company/users') {
+    const admin = requireB2BAdmin();
+    if (!admin) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        if (!payload.email || !payload.password || !payload.name) {
+          sendJson(res, 400, { error: 'Email, password, and name are required.' });
+          return;
+        }
+        // Check if email already exists
+        const existing = db.getB2BUserByEmail(payload.email);
+        if (existing) {
+          sendJson(res, 400, { error: 'Email already registered.' });
+          return;
+        }
+        const newUser = db.createB2BUser({
+          companyId: admin.companyId,
+          email: payload.email,
+          password: payload.password,
+          name: payload.name,
+          phone: payload.phone,
+          role: payload.role || 'user'
+        });
+        sendJson(res, 201, { success: true, user: newUser });
+      } catch (err) {
+        console.error('[B2B] Add user failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to add user.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Company: Update User (Admin only)
+  const b2bUpdateUserMatch = parsedUrl.pathname.match(/^\/api\/b2b\/company\/users\/([^/]+)$/);
+  if (req.method === 'PATCH' && b2bUpdateUserMatch) {
+    const admin = requireB2BAdmin();
+    if (!admin) return;
+    const userId = b2bUpdateUserMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const targetUser = db.getB2BUserById(userId);
+        if (!targetUser || targetUser.companyId !== admin.companyId) {
+          sendJson(res, 404, { error: 'User not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const updated = db.updateB2BUser(userId, {
+          name: payload.name,
+          phone: payload.phone,
+          role: payload.role,
+          status: payload.status,
+          password: payload.password
+        });
+        sendJson(res, 200, { success: true, user: updated });
+      } catch (err) {
+        console.error('[B2B] Update user failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to update user.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Company: Delete User (Admin only)
+  if (req.method === 'DELETE' && b2bUpdateUserMatch) {
+    const admin = requireB2BAdmin();
+    if (!admin) return;
+    const userId = b2bUpdateUserMatch[1];
+    try {
+      const targetUser = db.getB2BUserById(userId);
+      if (!targetUser || targetUser.companyId !== admin.companyId) {
+        sendJson(res, 404, { error: 'User not found.' });
+        return;
+      }
+      if (targetUser.id === admin.id) {
+        sendJson(res, 400, { error: 'Cannot delete yourself.' });
+        return;
+      }
+      db.deleteB2BUser(userId);
+      sendJson(res, 200, { success: true });
+    } catch (err) {
+      console.error('[B2B] Delete user failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to delete user.' });
+    }
+    return;
+  }
+
+  // B2B Orders: List
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/b2b/orders') {
+    const user = requireB2BAuth();
+    if (!user) return;
+    try {
+      const status = parsedUrl.query.status;
+      const limit = parseInt(parsedUrl.query.limit) || 50;
+      const offset = parseInt(parsedUrl.query.offset) || 0;
+      const orders = db.listB2BOrders({ companyId: user.companyId, status, limit, offset });
+      sendJson(res, 200, { orders });
+    } catch (err) {
+      console.error('[B2B] List orders failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to list orders.' });
+    }
+    return;
+  }
+
+  // B2B Orders: Create
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/orders') {
+    const user = requireB2BAuth();
+    if (!user) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        const order = db.createB2BOrder({
+          companyId: user.companyId,
+          userId: user.id,
+          shippingName: payload.shippingName,
+          shippingAddressLine1: payload.shippingAddressLine1,
+          shippingAddressLine2: payload.shippingAddressLine2,
+          shippingCity: payload.shippingCity,
+          shippingState: payload.shippingState,
+          shippingZip: payload.shippingZip,
+          shippingCountry: payload.shippingCountry,
+          shippingPhone: payload.shippingPhone,
+          notes: payload.notes
+        });
+        sendJson(res, 201, { success: true, order });
+      } catch (err) {
+        console.error('[B2B] Create order failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to create order.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Orders: Get by ID
+  const b2bOrderMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)$/);
+  if (req.method === 'GET' && b2bOrderMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bOrderMatch[1];
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      const items = db.listB2BOrderItems(orderId);
+      sendJson(res, 200, { order, items });
+    } catch (err) {
+      console.error('[B2B] Get order failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to get order.' });
+    }
+    return;
+  }
+
+  // B2B Orders: Update
+  if (req.method === 'PATCH' && b2bOrderMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bOrderMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const order = db.getB2BOrderById(orderId);
+        if (!order || order.companyId !== user.companyId) {
+          sendJson(res, 404, { error: 'Order not found.' });
+          return;
+        }
+        if (order.status !== 'draft') {
+          sendJson(res, 400, { error: 'Cannot modify submitted order.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const updated = db.updateB2BOrder(orderId, {
+          shippingName: payload.shippingName,
+          shippingAddressLine1: payload.shippingAddressLine1,
+          shippingAddressLine2: payload.shippingAddressLine2,
+          shippingCity: payload.shippingCity,
+          shippingState: payload.shippingState,
+          shippingZip: payload.shippingZip,
+          shippingCountry: payload.shippingCountry,
+          shippingPhone: payload.shippingPhone,
+          notes: payload.notes
+        });
+        sendJson(res, 200, { success: true, order: updated });
+      } catch (err) {
+        console.error('[B2B] Update order failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to update order.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Orders: Add Item
+  const b2bAddItemMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/items$/);
+  if (req.method === 'POST' && b2bAddItemMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bAddItemMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const order = db.getB2BOrderById(orderId);
+        if (!order || order.companyId !== user.companyId) {
+          sendJson(res, 404, { error: 'Order not found.' });
+          return;
+        }
+        if (order.status !== 'draft') {
+          sendJson(res, 400, { error: 'Cannot modify submitted order.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        if (!payload.size) {
+          sendJson(res, 400, { error: 'Size is required.' });
+          return;
+        }
+        const item = db.addB2BOrderItem(orderId, {
+          size: payload.size,
+          quantity: payload.quantity || 1,
+          customDimensions: payload.customDimensions,
+          notes: payload.notes
+        });
+        sendJson(res, 201, { success: true, item });
+      } catch (err) {
+        console.error('[B2B] Add item failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to add item.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Orders: Upload Image for Item
+  const b2bUploadMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/items\/([^/]+)\/upload$/);
+  if (req.method === 'POST' && b2bUploadMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bUploadMatch[1];
+    const itemId = b2bUploadMatch[2];
+
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      if (order.status !== 'draft') {
+        sendJson(res, 400, { error: 'Cannot modify submitted order.' });
+        return;
+      }
+      const item = db.getB2BOrderItemById(itemId);
+      if (!item || item.orderId !== orderId) {
+        sendJson(res, 404, { error: 'Item not found.' });
+        return;
+      }
+
+      const uploadDir = path.join(__dirname, '..', 'uploads', 'b2b-metal-prints', orderId);
+      fs.mkdirSync(uploadDir, { recursive: true });
+
+      const form = formidable({
+        uploadDir,
+        keepExtensions: true,
+        maxFileSize: 50 * 1024 * 1024, // 50MB
+        filter: ({ mimetype }) => mimetype && mimetype.startsWith('image/')
+      });
+
+      form.parse(req, async (err, fields, files) => {
+        if (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+
+        const file = files.image?.[0] || files.image;
+        if (!file) {
+          sendJson(res, 400, { error: 'No image file provided.' });
+          return;
+        }
+
+        let width = 0, height = 0;
+        if (sharp) {
+          try {
+            const metadata = await sharp(file.filepath).metadata();
+            width = metadata.width || 0;
+            height = metadata.height || 0;
+          } catch (e) {
+            console.warn('[B2B] Could not get image metadata:', e.message);
+          }
+        }
+
+        db.updateB2BOrderItem(itemId, {
+          imagePath: file.filepath,
+          imageOriginalName: file.originalFilename,
+          imageWidth: width,
+          imageHeight: height,
+          uploadedAt: new Date().toISOString()
+        });
+
+        const updatedItem = db.getB2BOrderItemById(itemId);
+        sendJson(res, 200, { success: true, item: updatedItem });
+      });
+    } catch (err) {
+      console.error('[B2B] Upload failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to upload image.' });
+    }
+    return;
+  }
+
+  // B2B Orders: Delete Item
+  const b2bDeleteItemMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/items\/([^/]+)$/);
+  if (req.method === 'DELETE' && b2bDeleteItemMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bDeleteItemMatch[1];
+    const itemId = b2bDeleteItemMatch[2];
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      if (order.status !== 'draft') {
+        sendJson(res, 400, { error: 'Cannot modify submitted order.' });
+        return;
+      }
+      const item = db.getB2BOrderItemById(itemId);
+      if (!item || item.orderId !== orderId) {
+        sendJson(res, 404, { error: 'Item not found.' });
+        return;
+      }
+      db.deleteB2BOrderItem(itemId);
+      sendJson(res, 200, { success: true });
+    } catch (err) {
+      console.error('[B2B] Delete item failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to delete item.' });
+    }
+    return;
+  }
+
+  // B2B Orders: Submit Order
+  const b2bSubmitMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/submit$/);
+  if (req.method === 'POST' && b2bSubmitMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bSubmitMatch[1];
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      if (order.status !== 'draft') {
+        sendJson(res, 400, { error: 'Order already submitted.' });
+        return;
+      }
+
+      const items = db.listB2BOrderItems(orderId);
+      if (items.length === 0) {
+        sendJson(res, 400, { error: 'Order has no items.' });
+        return;
+      }
+
+      // Validate all items have images
+      const missingUploads = items.filter(item => !item.imagePath);
+      if (missingUploads.length > 0) {
+        sendJson(res, 400, { error: `${missingUploads.length} item(s) missing image uploads.` });
+        return;
+      }
+
+      // Check for items needing quotes
+      const needsQuote = items.filter(item => item.needsQuote && !item.quoteApproved);
+      if (needsQuote.length > 0) {
+        sendJson(res, 400, { error: `${needsQuote.length} item(s) require quote approval.` });
+        return;
+      }
+
+      // Validate shipping address
+      if (!order.shippingName || !order.shippingAddressLine1 || !order.shippingCity || !order.shippingState || !order.shippingZip) {
+        sendJson(res, 400, { error: 'Complete shipping address required.' });
+        return;
+      }
+
+      // Calculate totals
+      const totals = db.calculateB2BOrderTotals(orderId);
+
+      // Update status
+      db.updateB2BOrder(orderId, {
+        status: 'submitted',
+        submittedAt: new Date().toISOString()
+      });
+
+      const updatedOrder = db.getB2BOrderById(orderId);
+      sendJson(res, 200, { success: true, order: updatedOrder, totals });
+    } catch (err) {
+      console.error('[B2B] Submit order failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to submit order.' });
+    }
+    return;
+  }
+
+  // B2B Orders: Checkout (Generate Square Payment Link)
+  const b2bCheckoutMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/checkout$/);
+  if (req.method === 'POST' && b2bCheckoutMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bCheckoutMatch[1];
+
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      if (order.status !== 'submitted') {
+        sendJson(res, 400, { error: 'Order must be submitted before checkout.' });
+        return;
+      }
+      if (order.paymentStatus === 'paid') {
+        sendJson(res, 400, { error: 'Order already paid.' });
+        return;
+      }
+
+      if (!squareClient) {
+        sendJson(res, 500, { error: 'Payment system not configured.' });
+        return;
+      }
+
+      const locationId = await getSquareLocationId();
+      const idempotencyKey = crypto.randomUUID();
+
+      const lineItems = [{
+        name: `B2B Metal Print Order #${order.orderNumber}`,
+        quantity: '1',
+        basePriceMoney: {
+          amount: BigInt(order.totalCents),
+          currency: 'USD'
+        }
+      }];
+
+      const portalUrl = process.env.B2B_PORTAL_URL || `https://${req.headers.host}`;
+      const response = await squareClient.checkout.paymentLinks.create({
+        idempotencyKey,
+        order: {
+          locationId,
+          referenceId: `b2b-order-${order.id}`,
+          lineItems
+        },
+        checkoutOptions: {
+          redirectUrl: `${portalUrl}/b2b/order-detail.html?id=${order.id}&status=paid`
+        }
+      });
+
+      const paymentLink = response.result.paymentLink;
+      db.setB2BOrderPaymentLink(orderId, { url: paymentLink.url, linkId: paymentLink.id });
+
+      sendJson(res, 200, { success: true, paymentUrl: paymentLink.url });
+    } catch (err) {
+      console.error('[B2B] Checkout failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to create payment link.' });
+    }
+    return;
+  }
+
+  // B2B Pricing
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/b2b/pricing') {
+    sendJson(res, 200, {
+      pricing: [
+        { size: '5x7', priceCents: 1500, priceDisplay: '$15.00' },
+        { size: '8x10', priceCents: 2200, priceDisplay: '$22.00' },
+        { size: '11x14', priceCents: 3200, priceDisplay: '$32.00' }
+      ],
+      customSizes: 'Contact for quote'
+    });
+    return;
+  }
+
+  // B2B Orders: Get Image (for viewing uploaded images)
+  const b2bImageMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/items\/([^/]+)\/image$/);
+  if (req.method === 'GET' && b2bImageMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bImageMatch[1];
+    const itemId = b2bImageMatch[2];
+
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      const item = db.getB2BOrderItemById(itemId);
+      if (!item || item.orderId !== orderId || !item.imagePath) {
+        sendJson(res, 404, { error: 'Image not found.' });
+        return;
+      }
+
+      const imagePath = item.imagePath;
+      if (!fs.existsSync(imagePath)) {
+        sendJson(res, 404, { error: 'Image file not found.' });
+        return;
+      }
+
+      const ext = path.extname(imagePath).toLowerCase();
+      const mimeTypes = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+      res.writeHead(200, { 'Content-Type': contentType });
+      fs.createReadStream(imagePath).pipe(res);
+    } catch (err) {
+      console.error('[B2B] Get image failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to get image.' });
+    }
+    return;
+  }
+
+  // ============================================================================
+  // B2B INTERNAL/ADMIN API (requires INTERNAL_API_KEY)
+  // ============================================================================
+
+  // Internal: List all B2B companies
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/internal/b2b/companies') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const status = parsedUrl.query.status;
+      const companies = db.listB2BCompanies({ status });
+      sendJson(res, 200, { companies });
+    } catch (err) {
+      console.error('[B2B Admin] List companies failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to list companies.' });
+    }
+    return;
+  }
+
+  // Internal: Create B2B company with admin user
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/internal/b2b/companies') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        if (!payload.companyName || !payload.adminEmail || !payload.adminPassword || !payload.adminName) {
+          sendJson(res, 400, { error: 'companyName, adminEmail, adminPassword, and adminName are required.' });
+          return;
+        }
+
+        // Check if admin email already exists
+        const existingUser = db.getB2BUserByEmail(payload.adminEmail);
+        if (existingUser) {
+          sendJson(res, 400, { error: 'Admin email already registered.' });
+          return;
+        }
+
+        // Create company
+        const company = db.createB2BCompany({
+          companyName: payload.companyName,
+          contactEmail: payload.adminEmail,
+          contactPhone: payload.contactPhone,
+          billingAddress: payload.billingAddress,
+          shippingAddress: payload.shippingAddress,
+          taxExempt: payload.taxExempt,
+          taxId: payload.taxId,
+          paymentTerms: payload.paymentTerms,
+          notes: payload.notes
+        });
+
+        // Create admin user
+        const adminUser = db.createB2BUser({
+          companyId: company.id,
+          email: payload.adminEmail,
+          password: payload.adminPassword,
+          name: payload.adminName,
+          phone: payload.adminPhone,
+          role: 'admin',
+          isPrimaryContact: true
+        });
+
+        sendJson(res, 201, { success: true, company, adminUser });
+      } catch (err) {
+        console.error('[B2B Admin] Create company failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to create company.' });
+      }
+    });
+    return;
+  }
+
+  // Internal: Update B2B company
+  const b2bAdminCompanyMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/companies\/([^/]+)$/);
+  if (req.method === 'PATCH' && b2bAdminCompanyMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const companyId = b2bAdminCompanyMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const company = db.getB2BCompanyById(companyId);
+        if (!company) {
+          sendJson(res, 404, { error: 'Company not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const updated = db.updateB2BCompany(companyId, payload);
+        sendJson(res, 200, { success: true, company: updated });
+      } catch (err) {
+        console.error('[B2B Admin] Update company failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to update company.' });
+      }
+    });
+    return;
+  }
+
+  // Internal: List B2B production queue
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/internal/b2b/orders') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const queue = parsedUrl.query.queue === 'production';
+      if (queue) {
+        const orders = db.listB2BProductionQueue();
+        sendJson(res, 200, { orders });
+      } else {
+        const status = parsedUrl.query.status;
+        const paymentStatus = parsedUrl.query.paymentStatus;
+        const limit = parseInt(parsedUrl.query.limit) || 100;
+        const offset = parseInt(parsedUrl.query.offset) || 0;
+        const orders = db.listB2BOrders({ status, paymentStatus, limit, offset });
+        sendJson(res, 200, { orders });
+      }
+    } catch (err) {
+      console.error('[B2B Admin] List orders failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to list orders.' });
+    }
+    return;
+  }
+
+  // Internal: Get B2B order details
+  const b2bAdminOrderMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/orders\/([^/]+)$/);
+  if (req.method === 'GET' && b2bAdminOrderMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const orderId = b2bAdminOrderMatch[1];
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      const items = db.listB2BOrderItems(orderId);
+      const company = db.getB2BCompanyById(order.companyId);
+      sendJson(res, 200, { order, items, company });
+    } catch (err) {
+      console.error('[B2B Admin] Get order failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to get order.' });
+    }
+    return;
+  }
+
+  // Internal: Update B2B order status
+  const b2bAdminStatusMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/orders\/([^/]+)\/status$/);
+  if (req.method === 'PATCH' && b2bAdminStatusMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const orderId = b2bAdminStatusMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const order = db.getB2BOrderById(orderId);
+        if (!order) {
+          sendJson(res, 404, { error: 'Order not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const validStatuses = ['received', 'being_printed', 'shipped', 'completed'];
+        if (payload.status && !validStatuses.includes(payload.status)) {
+          sendJson(res, 400, { error: `Invalid status. Valid: ${validStatuses.join(', ')}` });
+          return;
+        }
+
+        const updates = {};
+        if (payload.status) updates.status = payload.status;
+        if (payload.status === 'shipped') updates.shippedAt = new Date().toISOString();
+        if (payload.status === 'completed') updates.completedAt = new Date().toISOString();
+        if (payload.internalNotes !== undefined) updates.internalNotes = payload.internalNotes;
+
+        const updated = db.updateB2BOrder(orderId, updates);
+        sendJson(res, 200, { success: true, order: updated });
+      } catch (err) {
+        console.error('[B2B Admin] Update status failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to update status.' });
+      }
+    });
+    return;
+  }
+
+  // Internal: Add tracking to B2B order
+  const b2bAdminTrackingMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/orders\/([^/]+)\/tracking$/);
+  if (req.method === 'POST' && b2bAdminTrackingMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const orderId = b2bAdminTrackingMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const order = db.getB2BOrderById(orderId);
+        if (!order) {
+          sendJson(res, 404, { error: 'Order not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        if (!payload.carrier || !payload.trackingNumber) {
+          sendJson(res, 400, { error: 'carrier and trackingNumber are required.' });
+          return;
+        }
+
+        const updated = db.updateB2BOrder(orderId, {
+          trackingCarrier: payload.carrier,
+          trackingNumber: payload.trackingNumber,
+          status: 'shipped',
+          shippedAt: new Date().toISOString()
+        });
+
+        // TODO: Send shipping notification email to customer
+        sendJson(res, 200, { success: true, order: updated });
+      } catch (err) {
+        console.error('[B2B Admin] Add tracking failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to add tracking.' });
+      }
+    });
+    return;
+  }
+
+  // Internal: Approve quote for custom size item
+  const b2bAdminQuoteMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/orders\/([^/]+)\/items\/([^/]+)\/quote$/);
+  if (req.method === 'POST' && b2bAdminQuoteMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const orderId = b2bAdminQuoteMatch[1];
+    const itemId = b2bAdminQuoteMatch[2];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const item = db.getB2BOrderItemById(itemId);
+        if (!item || item.orderId !== orderId) {
+          sendJson(res, 404, { error: 'Item not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        if (!payload.priceCents) {
+          sendJson(res, 400, { error: 'priceCents is required.' });
+          return;
+        }
+
+        const updated = db.updateB2BOrderItem(itemId, {
+          quotePriceCents: payload.priceCents,
+          quoteApproved: true
+        });
+
+        // Recalculate order totals
+        db.calculateB2BOrderTotals(orderId);
+
+        sendJson(res, 200, { success: true, item: updated });
+      } catch (err) {
+        console.error('[B2B Admin] Approve quote failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to approve quote.' });
+      }
+    });
+    return;
+  }
+
+  // Square webhook handler for B2B payments
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/webhooks/square') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const event = JSON.parse(body || '{}');
+        console.log('[B2B Square Webhook] Received:', event.type);
+
+        if (event.type === 'payment.completed' || event.type === 'payment.updated') {
+          const payment = event.data?.object?.payment;
+          if (payment && payment.status === 'COMPLETED') {
+            // Try to find order by payment link ID
+            const orderId = payment.order_id;
+            let order = null;
+
+            // Check reference ID first
+            if (payment.reference_id && payment.reference_id.startsWith('b2b-order-')) {
+              const extractedId = payment.reference_id.replace('b2b-order-', '');
+              order = db.getB2BOrderById(extractedId);
+            }
+
+            // Fallback: find by payment link ID
+            if (!order) {
+              order = db.findB2BOrderByPaymentLinkId(payment.payment_link_id);
+            }
+
+            if (order) {
+              db.markB2BOrderPaid(order.id, {
+                paymentId: payment.id,
+                status: payment.status,
+                amount: payment.amount_money,
+                receiptUrl: payment.receipt_url
+              });
+
+              // Update status to received (ready for production)
+              db.updateB2BOrder(order.id, { status: 'received' });
+
+              console.log(`[B2B Square Webhook] Order ${order.orderNumber} marked as paid`);
+            }
+          }
+        }
+
+        sendJson(res, 200, { received: true });
+      } catch (err) {
+        console.error('[B2B Square Webhook] Error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('Not found');
 };
@@ -18993,7 +20463,8 @@ async function handleStickerSheetGenerate(req, res) {
       designs = [],
       stickerSizeInches = 3,
       offsetMm = 3,
-      filenamePrefix = 'sticker-sheet'
+      filenamePrefix = 'sticker-sheet',
+      removeBackgrounds = true
     } = body;
 
     if (!designs || !Array.isArray(designs) || designs.length === 0) {
@@ -19033,7 +20504,8 @@ async function handleStickerSheetGenerate(req, res) {
       stickerSizeInches,
       offsetMm,
       outputDir,
-      filenamePrefix
+      filenamePrefix,
+      removeBackgrounds
     });
 
     sendJson(res, 200, {

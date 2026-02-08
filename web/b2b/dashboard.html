@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard - B2B Metal Prints Portal</title>
+  <link rel="stylesheet" href="b2b.css">
+</head>
+<body>
+  <header class="b2b-header">
+    <a href="dashboard.html" class="b2b-logo">
+      <div class="b2b-logo-icon">MP</div>
+      <span class="b2b-logo-text">Metal Prints</span>
+    </a>
+    <nav class="b2b-nav">
+      <a href="dashboard.html" class="active">Orders</a>
+      <a href="new-order.html">New Order</a>
+      <a href="users.html" id="adminLink" style="display: none;">Users</a>
+    </nav>
+    <div class="b2b-user-menu">
+      <span class="b2b-user-name" id="userName"></span>
+      <button class="b2b-btn b2b-btn-secondary" onclick="B2B.logout()">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="b2b-container">
+    <div class="b2b-page-header">
+      <h1>Your Orders</h1>
+      <a href="new-order.html" class="b2b-btn b2b-btn-primary">+ New Order</a>
+    </div>
+
+    <div class="b2b-card">
+      <div id="ordersLoading" class="text-center" style="padding: 2rem;">
+        <span class="b2b-loading"></span>
+        <p class="text-muted mt-1">Loading orders...</p>
+      </div>
+
+      <div id="ordersEmpty" class="b2b-empty hidden">
+        <div class="b2b-empty-icon">&#128230;</div>
+        <h3>No orders yet</h3>
+        <p class="text-muted">Create your first metal print order to get started.</p>
+        <a href="new-order.html" class="b2b-btn b2b-btn-primary mt-2">Create Order</a>
+      </div>
+
+      <table id="ordersTable" class="b2b-orders-table hidden">
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Items</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th>Payment</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="ordersBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="b2b.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('Not authenticated');
+
+    async function loadDashboard() {
+      try {
+        await B2B.getProfile();
+        updateHeader();
+
+        const { orders } = await B2B.listOrders();
+
+        document.getElementById('ordersLoading').classList.add('hidden');
+
+        if (orders.length === 0) {
+          document.getElementById('ordersEmpty').classList.remove('hidden');
+          return;
+        }
+
+        document.getElementById('ordersTable').classList.remove('hidden');
+        const tbody = document.getElementById('ordersBody');
+
+        orders.forEach(order => {
+          const tr = document.createElement('tr');
+          tr.onclick = () => window.location.href = `order-detail.html?id=${order.id}`;
+          tr.innerHTML = `
+            <td><strong>#${order.orderNumber}</strong></td>
+            <td>${order.itemCount || 0} item${order.itemCount !== 1 ? 's' : ''}</td>
+            <td>${formatCurrency(order.totalCents)}</td>
+            <td><span class="b2b-status b2b-status-${order.status}">${order.status.replace('_', ' ')}</span></td>
+            <td><span class="b2b-status b2b-status-${order.paymentStatus}">${order.paymentStatus}</span></td>
+            <td>${formatDate(order.createdAt)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+      } catch (err) {
+        console.error(err);
+        showToast(err.message, 'danger');
+      }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

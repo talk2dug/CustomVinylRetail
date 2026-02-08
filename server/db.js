@@ -3130,9 +3130,178 @@ function initCustomArtTables() {
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sku_scans_session ON sku_scans(cart_session_id)`); } catch (e) { /* ignore */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sku_scans_sku ON sku_scans(sku)`); } catch (e) { /* ignore */ }
 
+  // QR Product Catalog (simple product items with photo, description, price)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS qr_products (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      price_cents INTEGER NOT NULL DEFAULT 0,
+      photo_path TEXT,
+      category TEXT DEFAULT '',
+      active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_qr_products_active ON qr_products(active)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_qr_products_category ON qr_products(category)`); } catch (e) { /* ignore */ }
+
+  // Decal fields (added via ALTER TABLE so existing rows get defaults)
+  const decalColumns = [
+    { name: 'size', sql: "ALTER TABLE qr_products ADD COLUMN size TEXT DEFAULT ''" },
+    { name: 'color', sql: "ALTER TABLE qr_products ADD COLUMN color TEXT DEFAULT ''" },
+    { name: 'decal_text', sql: "ALTER TABLE qr_products ADD COLUMN decal_text TEXT DEFAULT ''" },
+    { name: 'is_heat_transfer', sql: "ALTER TABLE qr_products ADD COLUMN is_heat_transfer INTEGER DEFAULT 0" },
+    { name: 'quantity', sql: "ALTER TABLE qr_products ADD COLUMN quantity INTEGER DEFAULT 1" },
+  ];
+  for (const col of decalColumns) {
+    try { db.exec(col.sql); } catch (e) { /* column already exists */ }
+  }
+
+  // Shopify sync fields (added via ALTER TABLE so existing rows get defaults)
+  const shopifyColumns = [
+    { name: 'shopify_product_id', sql: "ALTER TABLE qr_products ADD COLUMN shopify_product_id TEXT" },
+    { name: 'shopify_handle', sql: "ALTER TABLE qr_products ADD COLUMN shopify_handle TEXT" },
+  ];
+  for (const col of shopifyColumns) {
+    try { db.exec(col.sql); } catch (e) { /* column already exists */ }
+  }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_qr_products_shopify ON qr_products(shopify_product_id)`); } catch (e) { /* ignore */ }
+
   // Seed default materials
   seedCustomArtMaterials();
 
+  // ============================================================================
+  // B2B METAL PRINTS PORTAL TABLES
+  // ============================================================================
+
+  // B2B Partner Companies
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS b2b_companies (
+      id TEXT PRIMARY KEY,
+      company_name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      contact_email TEXT NOT NULL,
+      contact_phone TEXT,
+      billing_address TEXT,
+      shipping_address TEXT,
+      tax_exempt INTEGER DEFAULT 0,
+      tax_id TEXT,
+      payment_terms TEXT DEFAULT 'prepay',
+      credit_limit_cents INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_companies_slug ON b2b_companies(slug)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_companies_status ON b2b_companies(status)`); } catch (e) { /* ignore */ }
+
+  // B2B Users (employees of partner companies)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS b2b_users (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      name TEXT NOT NULL,
+      phone TEXT,
+      role TEXT DEFAULT 'user',
+      is_primary_contact INTEGER DEFAULT 0,
+      email_verified INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      last_login_at TEXT,
+      FOREIGN KEY (company_id) REFERENCES b2b_companies(id) ON DELETE CASCADE
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_users_company ON b2b_users(company_id)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_users_email ON b2b_users(email)`); } catch (e) { /* ignore */ }
+
+  // B2B Sessions (separate from customer sessions)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS b2b_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES b2b_users(id) ON DELETE CASCADE
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_sessions_token ON b2b_sessions(token)`); } catch (e) { /* ignore */ }
+
+  // B2B Metal Print Orders
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS b2b_metal_print_orders (
+      id TEXT PRIMARY KEY,
+      order_number INTEGER,
+      company_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      status TEXT DEFAULT 'draft',
+      shipping_name TEXT,
+      shipping_address_line1 TEXT,
+      shipping_address_line2 TEXT,
+      shipping_city TEXT,
+      shipping_state TEXT,
+      shipping_zip TEXT,
+      shipping_country TEXT DEFAULT 'US',
+      shipping_phone TEXT,
+      tracking_carrier TEXT,
+      tracking_number TEXT,
+      subtotal_cents INTEGER DEFAULT 0,
+      shipping_cents INTEGER DEFAULT 0,
+      tax_cents INTEGER DEFAULT 0,
+      total_cents INTEGER DEFAULT 0,
+      payment_status TEXT DEFAULT 'pending',
+      payment_link TEXT,
+      payment_link_id TEXT,
+      payment_details TEXT,
+      paid_at TEXT,
+      notes TEXT,
+      internal_notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      submitted_at TEXT,
+      shipped_at TEXT,
+      completed_at TEXT,
+      FOREIGN KEY (company_id) REFERENCES b2b_companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES b2b_users(id) ON DELETE SET NULL
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_orders_company ON b2b_metal_print_orders(company_id)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_orders_status ON b2b_metal_print_orders(status)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_orders_payment ON b2b_metal_print_orders(payment_status)`); } catch (e) { /* ignore */ }
+
+  // B2B Order Line Items (individual prints)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS b2b_metal_print_items (
+      id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      size TEXT NOT NULL,
+      custom_dimensions TEXT,
+      quantity INTEGER DEFAULT 1,
+      unit_price_cents INTEGER NOT NULL,
+      line_total_cents INTEGER NOT NULL,
+      image_path TEXT,
+      image_original_name TEXT,
+      image_width INTEGER,
+      image_height INTEGER,
+      uploaded_at TEXT,
+      needs_quote INTEGER DEFAULT 0,
+      quote_price_cents INTEGER,
+      quote_approved INTEGER DEFAULT 0,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (order_id) REFERENCES b2b_metal_print_orders(id) ON DELETE CASCADE
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_items_order ON b2b_metal_print_items(order_id)`); } catch (e) { /* ignore */ }
+
+  console.log('[B2B Portal] ✅ Tables initialized successfully');
   console.log('[Custom Art] ✅ Tables initialized successfully');
 }
 
@@ -5154,6 +5323,112 @@ function listSkuScans({ sku, cartSessionId, startDate, endDate, limit = 100 } = 
 }
 
 // ============================================================================
+// QR PRODUCT CATALOG FUNCTIONS
+// Simple product items with photo, title, description, price
+// ============================================================================
+
+function mapQrProductRow(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description || '',
+    priceCents: row.price_cents,
+    photoPath: row.photo_path || null,
+    category: row.category || '',
+    size: row.size || '',
+    color: row.color || '',
+    decalText: row.decal_text || '',
+    isHeatTransfer: !!row.is_heat_transfer,
+    quantity: row.quantity || 1,
+    active: !!row.active,
+    shopifyProductId: row.shopify_product_id || null,
+    shopifyHandle: row.shopify_handle || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function createQrProduct({ title, description, priceCents, photoPath, category, size, color, decalText, isHeatTransfer, quantity }) {
+  const id = `prod_${crypto.randomBytes(8).toString('hex')}`;
+  db.prepare(`
+    INSERT INTO qr_products (id, title, description, price_cents, photo_path, category, size, color, decal_text, is_heat_transfer, quantity)
+    VALUES (@id, @title, @description, @priceCents, @photoPath, @category, @size, @color, @decalText, @isHeatTransfer, @quantity)
+  `).run({
+    id,
+    title,
+    description: description || '',
+    priceCents: priceCents || 0,
+    photoPath: photoPath || null,
+    category: category || '',
+    size: size || '',
+    color: color || '',
+    decalText: decalText || '',
+    isHeatTransfer: isHeatTransfer ? 1 : 0,
+    quantity: quantity || 1
+  });
+  return getQrProductById(id);
+}
+
+function updateQrProduct(id, updates) {
+  const fields = [];
+  const params = { id };
+
+  if (updates.title !== undefined) { fields.push('title = @title'); params.title = updates.title; }
+  if (updates.description !== undefined) { fields.push('description = @description'); params.description = updates.description; }
+  if (updates.priceCents !== undefined) { fields.push('price_cents = @priceCents'); params.priceCents = updates.priceCents; }
+  if (updates.photoPath !== undefined) { fields.push('photo_path = @photoPath'); params.photoPath = updates.photoPath; }
+  if (updates.category !== undefined) { fields.push('category = @category'); params.category = updates.category; }
+  if (updates.size !== undefined) { fields.push('size = @size'); params.size = updates.size; }
+  if (updates.color !== undefined) { fields.push('color = @color'); params.color = updates.color; }
+  if (updates.decalText !== undefined) { fields.push('decal_text = @decalText'); params.decalText = updates.decalText; }
+  if (updates.isHeatTransfer !== undefined) { fields.push('is_heat_transfer = @isHeatTransfer'); params.isHeatTransfer = updates.isHeatTransfer ? 1 : 0; }
+  if (updates.quantity !== undefined) { fields.push('quantity = @quantity'); params.quantity = updates.quantity; }
+  if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
+  if (updates.shopifyProductId !== undefined) { fields.push('shopify_product_id = @shopifyProductId'); params.shopifyProductId = updates.shopifyProductId; }
+  if (updates.shopifyHandle !== undefined) { fields.push('shopify_handle = @shopifyHandle'); params.shopifyHandle = updates.shopifyHandle; }
+
+  if (fields.length === 0) return getQrProductById(id);
+
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  db.prepare(`UPDATE qr_products SET ${fields.join(', ')} WHERE id = @id`).run(params);
+  return getQrProductById(id);
+}
+
+function deleteQrProduct(id) {
+  const existing = getQrProductById(id);
+  if (!existing) return { success: false, error: 'Product not found' };
+  db.prepare('DELETE FROM qr_products WHERE id = ?').run(id);
+  return { success: true, deleted: existing };
+}
+
+function getQrProductById(id) {
+  const row = db.prepare('SELECT * FROM qr_products WHERE id = ?').get(id);
+  return row ? mapQrProductRow(row) : null;
+}
+
+function listQrProducts({ activeOnly = false, category, search } = {}) {
+  let query = 'SELECT * FROM qr_products WHERE 1=1';
+  const params = [];
+
+  if (activeOnly) { query += ' AND active = 1'; }
+  if (category) { query += ' AND category = ?'; params.push(category); }
+  if (search) {
+    query += ' AND (title LIKE ? OR description LIKE ? OR category LIKE ?)';
+    const term = `%${search}%`;
+    params.push(term, term, term);
+  }
+
+  query += ' ORDER BY created_at DESC';
+  return db.prepare(query).all(...params).map(mapQrProductRow);
+}
+
+function listQrProductCategories() {
+  return db.prepare(
+    "SELECT DISTINCT category FROM qr_products WHERE category IS NOT NULL AND category != '' ORDER BY category"
+  ).all().map(r => r.category);
+}
+
+// ============================================================================
 // STICKER CONTOUR CACHE FUNCTIONS
 // Lazy generation of contours - generated on first use, cached forever
 // ============================================================================
@@ -5246,6 +5521,639 @@ function listStickerContours(limit = 100) {
     height: row.contour_height,
     createdAt: row.created_at
   }));
+}
+
+// ============================================================================
+// B2B METAL PRINTS PORTAL FUNCTIONS
+// ============================================================================
+
+// Wholesale pricing for B2B metal prints
+const B2B_METAL_PRINT_PRICING = {
+  '5x7': 1500,    // $15.00
+  '8x10': 2200,   // $22.00
+  '11x14': 3200   // $32.00
+};
+
+function getB2BWholesalePrice(size) {
+  return B2B_METAL_PRINT_PRICING[size] || null;
+}
+
+function slugify(text) {
+  return text
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/--+/g, '-')
+    .replace(/^-+/, '')
+    .replace(/-+$/, '');
+}
+
+// --- B2B COMPANIES ---
+
+function createB2BCompany({ companyName, contactEmail, contactPhone, billingAddress, shippingAddress, taxExempt, taxId, paymentTerms, notes }) {
+  const id = `b2b-co-${crypto.randomBytes(8).toString('hex')}`;
+  const slug = slugify(companyName);
+
+  db.prepare(`
+    INSERT INTO b2b_companies (id, company_name, slug, contact_email, contact_phone, billing_address, shipping_address, tax_exempt, tax_id, payment_terms, notes)
+    VALUES (@id, @companyName, @slug, @contactEmail, @contactPhone, @billingAddress, @shippingAddress, @taxExempt, @taxId, @paymentTerms, @notes)
+  `).run({
+    id,
+    companyName,
+    slug,
+    contactEmail: normalizeEmail(contactEmail),
+    contactPhone: contactPhone || null,
+    billingAddress: billingAddress || null,
+    shippingAddress: shippingAddress || null,
+    taxExempt: taxExempt ? 1 : 0,
+    taxId: taxId || null,
+    paymentTerms: paymentTerms || 'prepay',
+    notes: notes || null
+  });
+
+  return getB2BCompanyById(id);
+}
+
+function getB2BCompanyById(id) {
+  const row = db.prepare('SELECT * FROM b2b_companies WHERE id = ?').get(id);
+  return row ? formatB2BCompany(row) : null;
+}
+
+function getB2BCompanyBySlug(slug) {
+  const row = db.prepare('SELECT * FROM b2b_companies WHERE slug = ?').get(slug);
+  return row ? formatB2BCompany(row) : null;
+}
+
+function listB2BCompanies({ status, limit = 100, offset = 0 } = {}) {
+  const where = [];
+  const params = { limit, offset };
+
+  if (status) {
+    where.push('status = @status');
+    params.status = status;
+  }
+
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = db.prepare(`SELECT * FROM b2b_companies ${clause} ORDER BY company_name ASC LIMIT @limit OFFSET @offset`).all(params);
+  return rows.map(formatB2BCompany);
+}
+
+function updateB2BCompany(id, updates) {
+  const fields = [];
+  const params = { id };
+
+  if (updates.companyName !== undefined) { fields.push('company_name = @companyName'); params.companyName = updates.companyName; }
+  if (updates.contactEmail !== undefined) { fields.push('contact_email = @contactEmail'); params.contactEmail = normalizeEmail(updates.contactEmail); }
+  if (updates.contactPhone !== undefined) { fields.push('contact_phone = @contactPhone'); params.contactPhone = updates.contactPhone; }
+  if (updates.billingAddress !== undefined) { fields.push('billing_address = @billingAddress'); params.billingAddress = updates.billingAddress; }
+  if (updates.shippingAddress !== undefined) { fields.push('shipping_address = @shippingAddress'); params.shippingAddress = updates.shippingAddress; }
+  if (updates.taxExempt !== undefined) { fields.push('tax_exempt = @taxExempt'); params.taxExempt = updates.taxExempt ? 1 : 0; }
+  if (updates.taxId !== undefined) { fields.push('tax_id = @taxId'); params.taxId = updates.taxId; }
+  if (updates.paymentTerms !== undefined) { fields.push('payment_terms = @paymentTerms'); params.paymentTerms = updates.paymentTerms; }
+  if (updates.status !== undefined) { fields.push('status = @status'); params.status = updates.status; }
+  if (updates.notes !== undefined) { fields.push('notes = @notes'); params.notes = updates.notes; }
+
+  if (fields.length === 0) return getB2BCompanyById(id);
+
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  db.prepare(`UPDATE b2b_companies SET ${fields.join(', ')} WHERE id = @id`).run(params);
+  return getB2BCompanyById(id);
+}
+
+function formatB2BCompany(row) {
+  return {
+    id: row.id,
+    companyName: row.company_name,
+    slug: row.slug,
+    contactEmail: row.contact_email,
+    contactPhone: row.contact_phone,
+    billingAddress: row.billing_address,
+    shippingAddress: row.shipping_address,
+    taxExempt: !!row.tax_exempt,
+    taxId: row.tax_id,
+    paymentTerms: row.payment_terms,
+    creditLimitCents: row.credit_limit_cents,
+    status: row.status,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+// --- B2B USERS ---
+
+function createB2BUser({ companyId, email, password, name, phone, role, isPrimaryContact }) {
+  const id = `b2b-user-${crypto.randomBytes(8).toString('hex')}`;
+  const passwordHash = bcrypt.hashSync(password, 10);
+
+  db.prepare(`
+    INSERT INTO b2b_users (id, company_id, email, password_hash, name, phone, role, is_primary_contact)
+    VALUES (@id, @companyId, @email, @passwordHash, @name, @phone, @role, @isPrimaryContact)
+  `).run({
+    id,
+    companyId,
+    email: normalizeEmail(email),
+    passwordHash,
+    name,
+    phone: phone || null,
+    role: role || 'user',
+    isPrimaryContact: isPrimaryContact ? 1 : 0
+  });
+
+  return getB2BUserById(id);
+}
+
+function getB2BUserById(id) {
+  const row = db.prepare(`
+    SELECT b2b_users.*, b2b_companies.company_name
+    FROM b2b_users
+    JOIN b2b_companies ON b2b_companies.id = b2b_users.company_id
+    WHERE b2b_users.id = ?
+  `).get(id);
+  return row ? formatB2BUser(row) : null;
+}
+
+function getB2BUserByEmail(email) {
+  const row = db.prepare(`
+    SELECT b2b_users.*, b2b_companies.company_name
+    FROM b2b_users
+    JOIN b2b_companies ON b2b_companies.id = b2b_users.company_id
+    WHERE b2b_users.email = ?
+  `).get(normalizeEmail(email));
+  return row ? formatB2BUser(row) : null;
+}
+
+function listB2BUsers(companyId) {
+  const rows = db.prepare(`
+    SELECT b2b_users.*, b2b_companies.company_name
+    FROM b2b_users
+    JOIN b2b_companies ON b2b_companies.id = b2b_users.company_id
+    WHERE b2b_users.company_id = ?
+    ORDER BY b2b_users.name ASC
+  `).all(companyId);
+  return rows.map(formatB2BUser);
+}
+
+function updateB2BUser(id, updates) {
+  const fields = [];
+  const params = { id };
+
+  if (updates.name !== undefined) { fields.push('name = @name'); params.name = updates.name; }
+  if (updates.phone !== undefined) { fields.push('phone = @phone'); params.phone = updates.phone; }
+  if (updates.role !== undefined) { fields.push('role = @role'); params.role = updates.role; }
+  if (updates.status !== undefined) { fields.push('status = @status'); params.status = updates.status; }
+  if (updates.isPrimaryContact !== undefined) { fields.push('is_primary_contact = @isPrimaryContact'); params.isPrimaryContact = updates.isPrimaryContact ? 1 : 0; }
+  if (updates.password !== undefined) {
+    fields.push('password_hash = @passwordHash');
+    params.passwordHash = bcrypt.hashSync(updates.password, 10);
+  }
+
+  if (fields.length === 0) return getB2BUserById(id);
+
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  db.prepare(`UPDATE b2b_users SET ${fields.join(', ')} WHERE id = @id`).run(params);
+  return getB2BUserById(id);
+}
+
+function deleteB2BUser(id) {
+  const existing = getB2BUserById(id);
+  if (!existing) return { success: false, error: 'User not found' };
+  db.prepare('DELETE FROM b2b_users WHERE id = ?').run(id);
+  return { success: true, deleted: existing };
+}
+
+function formatB2BUser(row) {
+  return {
+    id: row.id,
+    companyId: row.company_id,
+    companyName: row.company_name,
+    email: row.email,
+    name: row.name,
+    phone: row.phone,
+    role: row.role,
+    isPrimaryContact: !!row.is_primary_contact,
+    emailVerified: !!row.email_verified,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastLoginAt: row.last_login_at
+  };
+}
+
+// --- B2B AUTH ---
+
+function verifyB2BCredentials(email, password) {
+  const normalizedEmail = normalizeEmail(email);
+  const row = db.prepare(`
+    SELECT b2b_users.*, b2b_companies.company_name, b2b_companies.status as company_status
+    FROM b2b_users
+    JOIN b2b_companies ON b2b_companies.id = b2b_users.company_id
+    WHERE b2b_users.email = ?
+  `).get(normalizedEmail);
+
+  if (!row || !row.password_hash) return null;
+  if (row.status !== 'active') return null;
+  if (row.company_status !== 'active') return null;
+
+  const valid = bcrypt.compareSync(password, row.password_hash);
+  if (!valid) return null;
+
+  // Update last login
+  db.prepare('UPDATE b2b_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').run(row.id);
+
+  return formatB2BUser(row);
+}
+
+function createB2BSession(userId, days = 7) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+
+  db.prepare(`
+    INSERT INTO b2b_sessions (user_id, token, expires_at)
+    VALUES (?, ?, ?)
+  `).run(userId, token, expiresAt);
+
+  return { token, expiresAt };
+}
+
+function getB2BUserByToken(token) {
+  if (!token) return null;
+  const row = db.prepare(`
+    SELECT b2b_sessions.*, b2b_users.*, b2b_companies.company_name
+    FROM b2b_sessions
+    JOIN b2b_users ON b2b_users.id = b2b_sessions.user_id
+    JOIN b2b_companies ON b2b_companies.id = b2b_users.company_id
+    WHERE b2b_sessions.token = ?
+  `).get(token);
+
+  if (!row) return null;
+  if (new Date(row.expires_at).getTime() < Date.now()) {
+    deleteB2BSession(token);
+    return null;
+  }
+
+  return formatB2BUser(row);
+}
+
+function deleteB2BSession(token) {
+  db.prepare('DELETE FROM b2b_sessions WHERE token = ?').run(token);
+}
+
+// --- B2B ORDERS ---
+
+function getNextB2BOrderNumber() {
+  const row = db.prepare('SELECT MAX(order_number) as max_num FROM b2b_metal_print_orders').get();
+  return (row?.max_num || 10000) + 1;
+}
+
+function createB2BOrder({ companyId, userId, shippingName, shippingAddressLine1, shippingAddressLine2, shippingCity, shippingState, shippingZip, shippingCountry, shippingPhone, notes }) {
+  const id = `b2b-order-${crypto.randomBytes(8).toString('hex')}`;
+  const orderNumber = getNextB2BOrderNumber();
+
+  db.prepare(`
+    INSERT INTO b2b_metal_print_orders (
+      id, order_number, company_id, user_id, shipping_name, shipping_address_line1, shipping_address_line2,
+      shipping_city, shipping_state, shipping_zip, shipping_country, shipping_phone, notes
+    ) VALUES (
+      @id, @orderNumber, @companyId, @userId, @shippingName, @shippingAddressLine1, @shippingAddressLine2,
+      @shippingCity, @shippingState, @shippingZip, @shippingCountry, @shippingPhone, @notes
+    )
+  `).run({
+    id,
+    orderNumber,
+    companyId,
+    userId,
+    shippingName: shippingName || null,
+    shippingAddressLine1: shippingAddressLine1 || null,
+    shippingAddressLine2: shippingAddressLine2 || null,
+    shippingCity: shippingCity || null,
+    shippingState: shippingState || null,
+    shippingZip: shippingZip || null,
+    shippingCountry: shippingCountry || 'US',
+    shippingPhone: shippingPhone || null,
+    notes: notes || null
+  });
+
+  return getB2BOrderById(id);
+}
+
+function getB2BOrderById(id) {
+  const row = db.prepare(`
+    SELECT o.*, c.company_name, u.name as user_name, u.email as user_email
+    FROM b2b_metal_print_orders o
+    JOIN b2b_companies c ON c.id = o.company_id
+    LEFT JOIN b2b_users u ON u.id = o.user_id
+    WHERE o.id = ?
+  `).get(id);
+  return row ? formatB2BOrder(row) : null;
+}
+
+function getB2BOrderByNumber(orderNumber) {
+  const row = db.prepare(`
+    SELECT o.*, c.company_name, u.name as user_name, u.email as user_email
+    FROM b2b_metal_print_orders o
+    JOIN b2b_companies c ON c.id = o.company_id
+    LEFT JOIN b2b_users u ON u.id = o.user_id
+    WHERE o.order_number = ?
+  `).get(orderNumber);
+  return row ? formatB2BOrder(row) : null;
+}
+
+function listB2BOrders({ companyId, status, paymentStatus, limit = 50, offset = 0 } = {}) {
+  const where = [];
+  const params = { limit, offset };
+
+  if (companyId) {
+    where.push('o.company_id = @companyId');
+    params.companyId = companyId;
+  }
+  if (status) {
+    where.push('o.status = @status');
+    params.status = status;
+  }
+  if (paymentStatus) {
+    where.push('o.payment_status = @paymentStatus');
+    params.paymentStatus = paymentStatus;
+  }
+
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const rows = db.prepare(`
+    SELECT o.*, c.company_name, u.name as user_name, u.email as user_email,
+           (SELECT COUNT(*) FROM b2b_metal_print_items WHERE order_id = o.id) as item_count
+    FROM b2b_metal_print_orders o
+    JOIN b2b_companies c ON c.id = o.company_id
+    LEFT JOIN b2b_users u ON u.id = o.user_id
+    ${clause}
+    ORDER BY o.created_at DESC
+    LIMIT @limit OFFSET @offset
+  `).all(params);
+
+  return rows.map(row => ({
+    ...formatB2BOrder(row),
+    itemCount: row.item_count
+  }));
+}
+
+function listB2BProductionQueue() {
+  const rows = db.prepare(`
+    SELECT o.*, c.company_name, u.name as user_name, u.email as user_email,
+           (SELECT COUNT(*) FROM b2b_metal_print_items WHERE order_id = o.id) as item_count
+    FROM b2b_metal_print_orders o
+    JOIN b2b_companies c ON c.id = o.company_id
+    LEFT JOIN b2b_users u ON u.id = o.user_id
+    WHERE o.payment_status = 'paid'
+      AND o.status IN ('received', 'being_printed')
+    ORDER BY
+      CASE o.status
+        WHEN 'being_printed' THEN 1
+        WHEN 'received' THEN 2
+      END,
+      o.paid_at ASC
+  `).all();
+
+  return rows.map(row => ({
+    ...formatB2BOrder(row),
+    itemCount: row.item_count
+  }));
+}
+
+function updateB2BOrder(id, updates) {
+  const fields = [];
+  const params = { id };
+
+  if (updates.status !== undefined) { fields.push('status = @status'); params.status = updates.status; }
+  if (updates.shippingName !== undefined) { fields.push('shipping_name = @shippingName'); params.shippingName = updates.shippingName; }
+  if (updates.shippingAddressLine1 !== undefined) { fields.push('shipping_address_line1 = @shippingAddressLine1'); params.shippingAddressLine1 = updates.shippingAddressLine1; }
+  if (updates.shippingAddressLine2 !== undefined) { fields.push('shipping_address_line2 = @shippingAddressLine2'); params.shippingAddressLine2 = updates.shippingAddressLine2; }
+  if (updates.shippingCity !== undefined) { fields.push('shipping_city = @shippingCity'); params.shippingCity = updates.shippingCity; }
+  if (updates.shippingState !== undefined) { fields.push('shipping_state = @shippingState'); params.shippingState = updates.shippingState; }
+  if (updates.shippingZip !== undefined) { fields.push('shipping_zip = @shippingZip'); params.shippingZip = updates.shippingZip; }
+  if (updates.shippingCountry !== undefined) { fields.push('shipping_country = @shippingCountry'); params.shippingCountry = updates.shippingCountry; }
+  if (updates.shippingPhone !== undefined) { fields.push('shipping_phone = @shippingPhone'); params.shippingPhone = updates.shippingPhone; }
+  if (updates.trackingCarrier !== undefined) { fields.push('tracking_carrier = @trackingCarrier'); params.trackingCarrier = updates.trackingCarrier; }
+  if (updates.trackingNumber !== undefined) { fields.push('tracking_number = @trackingNumber'); params.trackingNumber = updates.trackingNumber; }
+  if (updates.subtotalCents !== undefined) { fields.push('subtotal_cents = @subtotalCents'); params.subtotalCents = updates.subtotalCents; }
+  if (updates.shippingCents !== undefined) { fields.push('shipping_cents = @shippingCents'); params.shippingCents = updates.shippingCents; }
+  if (updates.taxCents !== undefined) { fields.push('tax_cents = @taxCents'); params.taxCents = updates.taxCents; }
+  if (updates.totalCents !== undefined) { fields.push('total_cents = @totalCents'); params.totalCents = updates.totalCents; }
+  if (updates.paymentStatus !== undefined) { fields.push('payment_status = @paymentStatus'); params.paymentStatus = updates.paymentStatus; }
+  if (updates.paymentLink !== undefined) { fields.push('payment_link = @paymentLink'); params.paymentLink = updates.paymentLink; }
+  if (updates.paymentLinkId !== undefined) { fields.push('payment_link_id = @paymentLinkId'); params.paymentLinkId = updates.paymentLinkId; }
+  if (updates.paymentDetails !== undefined) { fields.push('payment_details = @paymentDetails'); params.paymentDetails = updates.paymentDetails; }
+  if (updates.paidAt !== undefined) { fields.push('paid_at = @paidAt'); params.paidAt = updates.paidAt; }
+  if (updates.notes !== undefined) { fields.push('notes = @notes'); params.notes = updates.notes; }
+  if (updates.internalNotes !== undefined) { fields.push('internal_notes = @internalNotes'); params.internalNotes = updates.internalNotes; }
+  if (updates.submittedAt !== undefined) { fields.push('submitted_at = @submittedAt'); params.submittedAt = updates.submittedAt; }
+  if (updates.shippedAt !== undefined) { fields.push('shipped_at = @shippedAt'); params.shippedAt = updates.shippedAt; }
+  if (updates.completedAt !== undefined) { fields.push('completed_at = @completedAt'); params.completedAt = updates.completedAt; }
+
+  if (fields.length === 0) return getB2BOrderById(id);
+
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  db.prepare(`UPDATE b2b_metal_print_orders SET ${fields.join(', ')} WHERE id = @id`).run(params);
+  return getB2BOrderById(id);
+}
+
+function setB2BOrderPaymentLink(id, { url, linkId }) {
+  db.prepare(`
+    UPDATE b2b_metal_print_orders
+    SET payment_link = ?, payment_link_id = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(url, linkId, id);
+  return getB2BOrderById(id);
+}
+
+function markB2BOrderPaid(id, paymentDetails) {
+  db.prepare(`
+    UPDATE b2b_metal_print_orders
+    SET payment_status = 'paid', paid_at = CURRENT_TIMESTAMP, payment_details = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(JSON.stringify(paymentDetails), id);
+  return getB2BOrderById(id);
+}
+
+function findB2BOrderByPaymentLinkId(linkId) {
+  const row = db.prepare(`
+    SELECT o.*, c.company_name, u.name as user_name, u.email as user_email
+    FROM b2b_metal_print_orders o
+    JOIN b2b_companies c ON c.id = o.company_id
+    LEFT JOIN b2b_users u ON u.id = o.user_id
+    WHERE o.payment_link_id = ?
+  `).get(linkId);
+  return row ? formatB2BOrder(row) : null;
+}
+
+function formatB2BOrder(row) {
+  return {
+    id: row.id,
+    orderNumber: row.order_number,
+    companyId: row.company_id,
+    companyName: row.company_name,
+    userId: row.user_id,
+    userName: row.user_name,
+    userEmail: row.user_email,
+    status: row.status,
+    shippingName: row.shipping_name,
+    shippingAddressLine1: row.shipping_address_line1,
+    shippingAddressLine2: row.shipping_address_line2,
+    shippingCity: row.shipping_city,
+    shippingState: row.shipping_state,
+    shippingZip: row.shipping_zip,
+    shippingCountry: row.shipping_country,
+    shippingPhone: row.shipping_phone,
+    trackingCarrier: row.tracking_carrier,
+    trackingNumber: row.tracking_number,
+    subtotalCents: row.subtotal_cents,
+    shippingCents: row.shipping_cents,
+    taxCents: row.tax_cents,
+    totalCents: row.total_cents,
+    paymentStatus: row.payment_status,
+    paymentLink: row.payment_link,
+    paymentLinkId: row.payment_link_id,
+    paymentDetails: row.payment_details ? JSON.parse(row.payment_details) : null,
+    paidAt: row.paid_at,
+    notes: row.notes,
+    internalNotes: row.internal_notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    submittedAt: row.submitted_at,
+    shippedAt: row.shipped_at,
+    completedAt: row.completed_at
+  };
+}
+
+// --- B2B ORDER ITEMS ---
+
+function addB2BOrderItem(orderId, { size, quantity, customDimensions, notes }) {
+  const id = `b2b-item-${crypto.randomBytes(8).toString('hex')}`;
+  const priceCents = getB2BWholesalePrice(size);
+  const needsQuote = priceCents === null ? 1 : 0;
+  const unitPrice = priceCents || 0;
+  const lineTotal = unitPrice * (quantity || 1);
+
+  db.prepare(`
+    INSERT INTO b2b_metal_print_items (id, order_id, size, custom_dimensions, quantity, unit_price_cents, line_total_cents, needs_quote, notes)
+    VALUES (@id, @orderId, @size, @customDimensions, @quantity, @unitPrice, @lineTotal, @needsQuote, @notes)
+  `).run({
+    id,
+    orderId,
+    size,
+    customDimensions: customDimensions ? JSON.stringify(customDimensions) : null,
+    quantity: quantity || 1,
+    unitPrice,
+    lineTotal,
+    needsQuote,
+    notes: notes || null
+  });
+
+  return getB2BOrderItemById(id);
+}
+
+function getB2BOrderItemById(id) {
+  const row = db.prepare('SELECT * FROM b2b_metal_print_items WHERE id = ?').get(id);
+  return row ? formatB2BOrderItem(row) : null;
+}
+
+function listB2BOrderItems(orderId) {
+  const rows = db.prepare('SELECT * FROM b2b_metal_print_items WHERE order_id = ? ORDER BY created_at ASC').all(orderId);
+  return rows.map(formatB2BOrderItem);
+}
+
+function updateB2BOrderItem(id, updates) {
+  const fields = [];
+  const params = { id };
+
+  if (updates.size !== undefined) {
+    fields.push('size = @size');
+    params.size = updates.size;
+    // Recalculate price if size changed
+    const priceCents = getB2BWholesalePrice(updates.size);
+    fields.push('unit_price_cents = @unitPrice');
+    fields.push('needs_quote = @needsQuote');
+    params.unitPrice = priceCents || 0;
+    params.needsQuote = priceCents === null ? 1 : 0;
+  }
+  if (updates.quantity !== undefined) { fields.push('quantity = @quantity'); params.quantity = updates.quantity; }
+  if (updates.customDimensions !== undefined) { fields.push('custom_dimensions = @customDimensions'); params.customDimensions = JSON.stringify(updates.customDimensions); }
+  if (updates.imagePath !== undefined) { fields.push('image_path = @imagePath'); params.imagePath = updates.imagePath; }
+  if (updates.imageOriginalName !== undefined) { fields.push('image_original_name = @imageOriginalName'); params.imageOriginalName = updates.imageOriginalName; }
+  if (updates.imageWidth !== undefined) { fields.push('image_width = @imageWidth'); params.imageWidth = updates.imageWidth; }
+  if (updates.imageHeight !== undefined) { fields.push('image_height = @imageHeight'); params.imageHeight = updates.imageHeight; }
+  if (updates.uploadedAt !== undefined) { fields.push('uploaded_at = @uploadedAt'); params.uploadedAt = updates.uploadedAt; }
+  if (updates.quotePriceCents !== undefined) {
+    fields.push('quote_price_cents = @quotePriceCents');
+    params.quotePriceCents = updates.quotePriceCents;
+    fields.push('unit_price_cents = @quotePriceCents');
+  }
+  if (updates.quoteApproved !== undefined) { fields.push('quote_approved = @quoteApproved'); params.quoteApproved = updates.quoteApproved ? 1 : 0; }
+  if (updates.notes !== undefined) { fields.push('notes = @notes'); params.notes = updates.notes; }
+
+  if (fields.length === 0) return getB2BOrderItemById(id);
+
+  db.prepare(`UPDATE b2b_metal_print_items SET ${fields.join(', ')} WHERE id = @id`).run(params);
+
+  // Recalculate line total
+  const item = db.prepare('SELECT * FROM b2b_metal_print_items WHERE id = ?').get(id);
+  if (item) {
+    const lineTotal = item.unit_price_cents * item.quantity;
+    db.prepare('UPDATE b2b_metal_print_items SET line_total_cents = ? WHERE id = ?').run(lineTotal, id);
+  }
+
+  return getB2BOrderItemById(id);
+}
+
+function deleteB2BOrderItem(id) {
+  const existing = getB2BOrderItemById(id);
+  if (!existing) return { success: false, error: 'Item not found' };
+  db.prepare('DELETE FROM b2b_metal_print_items WHERE id = ?').run(id);
+  return { success: true, deleted: existing };
+}
+
+function formatB2BOrderItem(row) {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    size: row.size,
+    customDimensions: row.custom_dimensions ? JSON.parse(row.custom_dimensions) : null,
+    quantity: row.quantity,
+    unitPriceCents: row.unit_price_cents,
+    lineTotalCents: row.line_total_cents,
+    imagePath: row.image_path,
+    imageOriginalName: row.image_original_name,
+    imageWidth: row.image_width,
+    imageHeight: row.image_height,
+    uploadedAt: row.uploaded_at,
+    needsQuote: !!row.needs_quote,
+    quotePriceCents: row.quote_price_cents,
+    quoteApproved: !!row.quote_approved,
+    notes: row.notes,
+    createdAt: row.created_at
+  };
+}
+
+// Calculate order totals
+function calculateB2BOrderTotals(orderId) {
+  const items = listB2BOrderItems(orderId);
+  let subtotal = 0;
+
+  for (const item of items) {
+    subtotal += item.lineTotalCents;
+  }
+
+  // Flat rate shipping for B2B
+  const shippingCents = items.length > 0 ? 1000 : 0; // $10 flat rate
+  const taxCents = 0; // B2B typically tax-exempt
+  const totalCents = subtotal + shippingCents + taxCents;
+
+  updateB2BOrder(orderId, {
+    subtotalCents: subtotal,
+    shippingCents,
+    taxCents,
+    totalCents
+  });
+
+  return { subtotalCents: subtotal, shippingCents, taxCents, totalCents };
 }
 
 module.exports = {
@@ -5460,11 +6368,55 @@ module.exports = {
   // SKU Scans
   recordSkuScan,
   listSkuScans,
+  // QR Product Catalog
+  createQrProduct,
+  updateQrProduct,
+  deleteQrProduct,
+  getQrProductById,
+  listQrProducts,
+  listQrProductCategories,
   // Expose database instance for modules that need direct access
   getDb: () => db,
   // Database backup functions
   createBackup,
   listBackups,
   restoreFromBackup,
-  BACKUP_DIR
+  BACKUP_DIR,
+  // B2B Metal Prints Portal
+  getB2BWholesalePrice,
+  // B2B Companies
+  createB2BCompany,
+  getB2BCompanyById,
+  getB2BCompanyBySlug,
+  listB2BCompanies,
+  updateB2BCompany,
+  // B2B Users
+  createB2BUser,
+  getB2BUserById,
+  getB2BUserByEmail,
+  listB2BUsers,
+  updateB2BUser,
+  deleteB2BUser,
+  // B2B Auth
+  verifyB2BCredentials,
+  createB2BSession,
+  getB2BUserByToken,
+  deleteB2BSession,
+  // B2B Orders
+  createB2BOrder,
+  getB2BOrderById,
+  getB2BOrderByNumber,
+  listB2BOrders,
+  listB2BProductionQueue,
+  updateB2BOrder,
+  setB2BOrderPaymentLink,
+  markB2BOrderPaid,
+  findB2BOrderByPaymentLinkId,
+  // B2B Order Items
+  addB2BOrderItem,
+  getB2BOrderItemById,
+  listB2BOrderItems,
+  updateB2BOrderItem,
+  deleteB2BOrderItem,
+  calculateB2BOrderTotals
 };

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>New Order - B2B Metal Prints Portal</title>
+  <link rel="stylesheet" href="b2b.css">
+</head>
+<body>
+  <header class="b2b-header">
+    <a href="dashboard.html" class="b2b-logo">
+      <div class="b2b-logo-icon">MP</div>
+      <span class="b2b-logo-text">Metal Prints</span>
+    </a>
+    <nav class="b2b-nav">
+      <a href="dashboard.html">Orders</a>
+      <a href="new-order.html" class="active">New Order</a>
+      <a href="users.html" id="adminLink" style="display: none;">Users</a>
+    </nav>
+    <div class="b2b-user-menu">
+      <span class="b2b-user-name" id="userName"></span>
+      <button class="b2b-btn b2b-btn-secondary" onclick="B2B.logout()">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="b2b-container">
+    <div class="b2b-page-header">
+      <h1>Create New Order</h1>
+    </div>
+
+    <!-- Step 1: Shipping Address -->
+    <div class="b2b-card" id="step1">
+      <h3>1. Shipping Address</h3>
+      <div class="b2b-form-row">
+        <div class="b2b-form-group">
+          <label for="shippingName">Recipient Name *</label>
+          <input type="text" id="shippingName" required placeholder="John Smith">
+        </div>
+        <div class="b2b-form-group">
+          <label for="shippingPhone">Phone</label>
+          <input type="tel" id="shippingPhone" placeholder="555-123-4567">
+        </div>
+      </div>
+      <div class="b2b-form-group">
+        <label for="shippingLine1">Address Line 1 *</label>
+        <input type="text" id="shippingLine1" required placeholder="123 Main Street">
+      </div>
+      <div class="b2b-form-group">
+        <label for="shippingLine2">Address Line 2</label>
+        <input type="text" id="shippingLine2" placeholder="Suite 100">
+      </div>
+      <div class="b2b-form-row">
+        <div class="b2b-form-group">
+          <label for="shippingCity">City *</label>
+          <input type="text" id="shippingCity" required placeholder="Asheville">
+        </div>
+        <div class="b2b-form-group">
+          <label for="shippingState">State *</label>
+          <input type="text" id="shippingState" required placeholder="NC" maxlength="2">
+        </div>
+      </div>
+      <div class="b2b-form-row">
+        <div class="b2b-form-group">
+          <label for="shippingZip">ZIP Code *</label>
+          <input type="text" id="shippingZip" required placeholder="28801">
+        </div>
+        <div class="b2b-form-group">
+          <label for="shippingCountry">Country</label>
+          <input type="text" id="shippingCountry" value="US" placeholder="US">
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Add Photos -->
+    <div class="b2b-card" id="step2">
+      <h3>2. Add Photos</h3>
+
+      <div class="b2b-pricing-grid">
+        <div class="b2b-pricing-card selected" data-size="5x7">
+          <div class="size">5x7"</div>
+          <div class="price">$15.00</div>
+        </div>
+        <div class="b2b-pricing-card" data-size="8x10">
+          <div class="size">8x10"</div>
+          <div class="price">$22.00</div>
+        </div>
+        <div class="b2b-pricing-card" data-size="11x14">
+          <div class="size">11x14"</div>
+          <div class="price">$32.00</div>
+        </div>
+        <div class="b2b-pricing-card" data-size="custom">
+          <div class="size">Custom</div>
+          <div class="price">Quote</div>
+        </div>
+      </div>
+
+      <div class="b2b-upload-zone" id="uploadZone">
+        <div class="b2b-upload-zone-icon">&#128247;</div>
+        <p><span class="highlight">Click to upload</span> or drag and drop</p>
+        <p class="text-small text-muted">JPG, PNG up to 50MB each</p>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden>
+      </div>
+
+      <div id="itemsContainer" class="b2b-items-grid mt-2"></div>
+    </div>
+
+    <!-- Step 3: Review & Submit -->
+    <div class="b2b-card" id="step3">
+      <h3>3. Review & Submit</h3>
+
+      <div class="b2b-order-summary" id="orderSummary">
+        <div class="b2b-summary-row">
+          <span>Subtotal (<span id="itemCount">0</span> items)</span>
+          <span id="subtotal">$0.00</span>
+        </div>
+        <div class="b2b-summary-row">
+          <span>Shipping</span>
+          <span id="shipping">$10.00</span>
+        </div>
+        <div class="b2b-summary-row total">
+          <span>Total</span>
+          <span id="total">$10.00</span>
+        </div>
+      </div>
+
+      <div id="customQuoteAlert" class="b2b-alert b2b-alert-warning hidden mt-2">
+        <strong>Note:</strong> Your order includes custom-sized items that require a quote. We'll contact you with pricing before processing.
+      </div>
+
+      <div class="flex gap-1 mt-2">
+        <button id="saveBtn" class="b2b-btn b2b-btn-secondary">Save Draft</button>
+        <button id="submitBtn" class="b2b-btn b2b-btn-primary" disabled>Submit Order</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="b2b.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('Not authenticated');
+
+    let currentOrder = null;
+    let items = [];
+    let selectedSize = '5x7';
+
+    // Initialize
+    async function init() {
+      await B2B.getProfile();
+      updateHeader();
+
+      // Size selection
+      document.querySelectorAll('.b2b-pricing-card').forEach(card => {
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.b2b-pricing-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectedSize = card.dataset.size;
+        });
+      });
+
+      // Upload zone
+      const uploadZone = document.getElementById('uploadZone');
+      const fileInput = document.getElementById('fileInput');
+
+      uploadZone.addEventListener('click', () => fileInput.click());
+      uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+      });
+      uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('dragover');
+      });
+      uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        handleFiles(e.dataTransfer.files);
+      });
+      fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+      // Buttons
+      document.getElementById('saveBtn').addEventListener('click', saveOrder);
+      document.getElementById('submitBtn').addEventListener('click', submitOrder);
+    }
+
+    async function ensureOrder() {
+      if (currentOrder) return currentOrder;
+
+      const orderData = {
+        shippingName: document.getElementById('shippingName').value,
+        shippingAddressLine1: document.getElementById('shippingLine1').value,
+        shippingAddressLine2: document.getElementById('shippingLine2').value,
+        shippingCity: document.getElementById('shippingCity').value,
+        shippingState: document.getElementById('shippingState').value,
+        shippingZip: document.getElementById('shippingZip').value,
+        shippingCountry: document.getElementById('shippingCountry').value || 'US',
+        shippingPhone: document.getElementById('shippingPhone').value
+      };
+
+      const { order } = await B2B.createOrder(orderData);
+      currentOrder = order;
+      return order;
+    }
+
+    async function handleFiles(files) {
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue;
+
+        try {
+          // Create order if needed
+          const order = await ensureOrder();
+
+          // Add item to order
+          const { item } = await B2B.addItem(order.id, { size: selectedSize, quantity: 1 });
+
+          // Upload image
+          showToast('Uploading image...', 'info');
+          const { item: updatedItem } = await B2B.uploadImage(order.id, item.id, file);
+
+          items.push({
+            ...updatedItem,
+            localPreview: URL.createObjectURL(file)
+          });
+
+          renderItems();
+          updateSummary();
+          showToast('Image uploaded!', 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('Upload failed: ' + err.message, 'danger');
+        }
+      }
+    }
+
+    function renderItems() {
+      const container = document.getElementById('itemsContainer');
+      container.innerHTML = '';
+
+      items.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'b2b-item-card';
+        div.innerHTML = `
+          <div class="b2b-item-image">
+            ${item.localPreview ? `<img src="${item.localPreview}" alt="Photo">` : '<span class="b2b-item-placeholder">&#128247;</span>'}
+          </div>
+          <div class="b2b-item-details">
+            <div class="b2b-item-size">${item.size}" Metal Print</div>
+            <div class="b2b-item-price">
+              ${item.needsQuote ? '<span class="b2b-status b2b-status-pending">Quote Needed</span>' : formatCurrency(item.unitPriceCents)}
+            </div>
+            <div class="b2b-item-actions">
+              <button class="b2b-btn b2b-btn-danger" onclick="removeItem(${index}, '${item.id}')">Remove</button>
+            </div>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+
+      document.getElementById('submitBtn').disabled = items.length === 0;
+    }
+
+    function updateSummary() {
+      const hasQuotes = items.some(i => i.needsQuote);
+      let subtotal = items.reduce((sum, i) => sum + (i.lineTotalCents || 0), 0);
+      const shipping = items.length > 0 ? 1000 : 0;
+      const total = subtotal + shipping;
+
+      document.getElementById('itemCount').textContent = items.length;
+      document.getElementById('subtotal').textContent = formatCurrency(subtotal);
+      document.getElementById('shipping').textContent = formatCurrency(shipping);
+      document.getElementById('total').textContent = formatCurrency(total);
+
+      document.getElementById('customQuoteAlert').classList.toggle('hidden', !hasQuotes);
+    }
+
+    async function removeItem(index, itemId) {
+      try {
+        await B2B.deleteItem(currentOrder.id, itemId);
+        items.splice(index, 1);
+        renderItems();
+        updateSummary();
+        showToast('Item removed', 'success');
+      } catch (err) {
+        showToast('Failed to remove: ' + err.message, 'danger');
+      }
+    }
+
+    async function saveOrder() {
+      if (!currentOrder) {
+        showToast('No order to save yet', 'warning');
+        return;
+      }
+
+      try {
+        await B2B.updateOrder(currentOrder.id, {
+          shippingName: document.getElementById('shippingName').value,
+          shippingAddressLine1: document.getElementById('shippingLine1').value,
+          shippingAddressLine2: document.getElementById('shippingLine2').value,
+          shippingCity: document.getElementById('shippingCity').value,
+          shippingState: document.getElementById('shippingState').value,
+          shippingZip: document.getElementById('shippingZip').value,
+          shippingCountry: document.getElementById('shippingCountry').value || 'US',
+          shippingPhone: document.getElementById('shippingPhone').value
+        });
+        showToast('Order saved as draft', 'success');
+      } catch (err) {
+        showToast('Failed to save: ' + err.message, 'danger');
+      }
+    }
+
+    async function submitOrder() {
+      if (!currentOrder || items.length === 0) return;
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="b2b-loading"></span> Submitting...';
+
+      try {
+        // Update shipping first
+        await B2B.updateOrder(currentOrder.id, {
+          shippingName: document.getElementById('shippingName').value,
+          shippingAddressLine1: document.getElementById('shippingLine1').value,
+          shippingAddressLine2: document.getElementById('shippingLine2').value,
+          shippingCity: document.getElementById('shippingCity').value,
+          shippingState: document.getElementById('shippingState').value,
+          shippingZip: document.getElementById('shippingZip').value,
+          shippingCountry: document.getElementById('shippingCountry').value || 'US',
+          shippingPhone: document.getElementById('shippingPhone').value
+        });
+
+        // Submit order
+        await B2B.submitOrder(currentOrder.id);
+
+        // Check if any items need quotes
+        const hasQuotes = items.some(i => i.needsQuote);
+        if (hasQuotes) {
+          showToast('Order submitted! We\'ll contact you with a quote.', 'success');
+          setTimeout(() => window.location.href = `order-detail.html?id=${currentOrder.id}`, 1500);
+          return;
+        }
+
+        // Proceed to checkout
+        const { paymentUrl } = await B2B.checkout(currentOrder.id);
+        window.location.href = paymentUrl;
+
+      } catch (err) {
+        showToast('Submit failed: ' + err.message, 'danger');
+        btn.disabled = false;
+        btn.textContent = 'Submit Order';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

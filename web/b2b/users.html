@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User Management - B2B Metal Prints Portal</title>
+  <link rel="stylesheet" href="b2b.css">
+</head>
+<body>
+  <header class="b2b-header">
+    <a href="dashboard.html" class="b2b-logo">
+      <div class="b2b-logo-icon">MP</div>
+      <span class="b2b-logo-text">Metal Prints</span>
+    </a>
+    <nav class="b2b-nav">
+      <a href="dashboard.html">Orders</a>
+      <a href="new-order.html">New Order</a>
+      <a href="users.html" id="adminLink" class="active">Users</a>
+    </nav>
+    <div class="b2b-user-menu">
+      <span class="b2b-user-name" id="userName"></span>
+      <button class="b2b-btn b2b-btn-secondary" onclick="B2B.logout()">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="b2b-container">
+    <div class="b2b-page-header">
+      <h1>User Management</h1>
+      <button id="addUserBtn" class="b2b-btn b2b-btn-primary">+ Add User</button>
+    </div>
+
+    <div id="accessDenied" class="b2b-card hidden">
+      <div class="b2b-alert b2b-alert-danger">
+        <strong>Access Denied</strong>
+        <p>Only company administrators can manage users.</p>
+      </div>
+      <a href="dashboard.html" class="b2b-btn b2b-btn-secondary">Back to Dashboard</a>
+    </div>
+
+    <div id="usersContent" class="hidden">
+      <div class="b2b-card">
+        <div id="usersLoading" class="text-center" style="padding: 2rem;">
+          <span class="b2b-loading"></span>
+          <p class="text-muted mt-1">Loading users...</p>
+        </div>
+
+        <div id="usersList" class="b2b-users-list hidden"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Add/Edit User Modal -->
+  <div id="userModal" class="b2b-modal-overlay hidden">
+    <div class="b2b-modal">
+      <div class="b2b-modal-header">
+        <h3 id="modalTitle">Add User</h3>
+        <button class="b2b-modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="b2b-modal-body">
+        <form id="userForm">
+          <input type="hidden" id="editUserId">
+          <div class="b2b-form-group">
+            <label for="userEmail">Email *</label>
+            <input type="email" id="userEmail" required placeholder="user@example.com">
+          </div>
+          <div class="b2b-form-group">
+            <label for="userName">Full Name *</label>
+            <input type="text" id="userNameInput" required placeholder="John Smith">
+          </div>
+          <div class="b2b-form-group">
+            <label for="userPhone">Phone</label>
+            <input type="tel" id="userPhone" placeholder="555-123-4567">
+          </div>
+          <div id="passwordGroup" class="b2b-form-group">
+            <label for="userPassword">Password *</label>
+            <input type="password" id="userPassword" placeholder="Create a password">
+            <p class="text-small text-muted mt-1" id="passwordNote">Required for new users</p>
+          </div>
+          <div class="b2b-form-group">
+            <label for="userRole">Role</label>
+            <select id="userRole">
+              <option value="user">User - Can create and manage orders</option>
+              <option value="admin">Admin - Can also manage users</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="b2b-modal-footer">
+        <button class="b2b-btn b2b-btn-secondary" onclick="closeModal()">Cancel</button>
+        <button id="saveUserBtn" class="b2b-btn b2b-btn-primary">Save User</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="b2b.js"></script>
+  <script>
+    if (!requireAuth()) throw new Error('Not authenticated');
+
+    let users = [];
+    let editingUser = null;
+
+    async function init() {
+      try {
+        await B2B.getProfile();
+        updateHeader();
+
+        // Check admin access
+        if (B2B.user.role !== 'admin') {
+          document.getElementById('accessDenied').classList.remove('hidden');
+          return;
+        }
+
+        document.getElementById('usersContent').classList.remove('hidden');
+        await loadUsers();
+
+        // Event listeners
+        document.getElementById('addUserBtn').addEventListener('click', () => openModal());
+        document.getElementById('userForm').addEventListener('submit', handleSubmit);
+        document.getElementById('saveUserBtn').addEventListener('click', handleSubmit);
+
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to load: ' + err.message, 'danger');
+      }
+    }
+
+    async function loadUsers() {
+      try {
+        const data = await B2B.listUsers();
+        users = data.users;
+
+        document.getElementById('usersLoading').classList.add('hidden');
+        document.getElementById('usersList').classList.remove('hidden');
+
+        renderUsers();
+      } catch (err) {
+        showToast('Failed to load users: ' + err.message, 'danger');
+      }
+    }
+
+    function renderUsers() {
+      const container = document.getElementById('usersList');
+      container.innerHTML = '';
+
+      users.forEach(user => {
+        const div = document.createElement('div');
+        div.className = 'b2b-user-row';
+        div.innerHTML = `
+          <div class="b2b-user-avatar">${getInitials(user.name)}</div>
+          <div class="b2b-user-info">
+            <div class="name">${user.name} ${user.id === B2B.user.id ? '(You)' : ''}</div>
+            <div class="email">${user.email}</div>
+          </div>
+          <span class="b2b-user-role ${user.role}">${user.role}</span>
+          <div class="flex gap-1">
+            <button class="b2b-btn b2b-btn-secondary" onclick="editUser('${user.id}')">Edit</button>
+            ${user.id !== B2B.user.id ? `<button class="b2b-btn b2b-btn-danger" onclick="deleteUser('${user.id}', '${user.name}')">Remove</button>` : ''}
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function openModal(user = null) {
+      editingUser = user;
+      document.getElementById('modalTitle').textContent = user ? 'Edit User' : 'Add User';
+      document.getElementById('editUserId').value = user ? user.id : '';
+      document.getElementById('userEmail').value = user ? user.email : '';
+      document.getElementById('userEmail').disabled = !!user;
+      document.getElementById('userNameInput').value = user ? user.name : '';
+      document.getElementById('userPhone').value = user ? user.phone || '' : '';
+      document.getElementById('userPassword').value = '';
+      document.getElementById('userPassword').required = !user;
+      document.getElementById('passwordNote').textContent = user ? 'Leave blank to keep current password' : 'Required for new users';
+      document.getElementById('userRole').value = user ? user.role : 'user';
+
+      document.getElementById('userModal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('userModal').classList.add('hidden');
+      editingUser = null;
+    }
+
+    function editUser(userId) {
+      const user = users.find(u => u.id === userId);
+      if (user) openModal(user);
+    }
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+
+      const btn = document.getElementById('saveUserBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="b2b-loading"></span> Saving...';
+
+      try {
+        const data = {
+          name: document.getElementById('userNameInput').value,
+          phone: document.getElementById('userPhone').value,
+          role: document.getElementById('userRole').value
+        };
+
+        const password = document.getElementById('userPassword').value;
+        if (password) data.password = password;
+
+        if (editingUser) {
+          await B2B.updateUser(editingUser.id, data);
+          showToast('User updated successfully', 'success');
+        } else {
+          data.email = document.getElementById('userEmail').value;
+          if (!password) throw new Error('Password is required for new users');
+          await B2B.addUser(data);
+          showToast('User added successfully', 'success');
+        }
+
+        closeModal();
+        await loadUsers();
+
+      } catch (err) {
+        showToast(err.message, 'danger');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save User';
+      }
+    }
+
+    async function deleteUser(userId, name) {
+      if (!confirm(`Are you sure you want to remove ${name}? They will no longer be able to access the portal.`)) {
+        return;
+      }
+
+      try {
+        await B2B.deleteUser(userId);
+        showToast('User removed successfully', 'success');
+        await loadUsers();
+      } catch (err) {
+        showToast('Failed to remove user: ' + err.message, 'danger');
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
