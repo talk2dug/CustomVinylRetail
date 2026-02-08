@@ -1824,10 +1824,24 @@ function switchView(viewId) {
     }
   }
 
+  // Product Catalog view
+  if (viewId === 'productCatalogView') {
+    if (typeof initProductCatalogView === 'function') {
+      initProductCatalogView();
+    }
+  }
+
   // STL Manager view
   if (viewId === 'stlManagerView') {
     if (typeof initStlManagerView === 'function') {
       initStlManagerView();
+    }
+  }
+
+  // B2B Management view
+  if (viewId === 'b2bManagementView') {
+    if (typeof initB2BManagementView === 'function') {
+      initB2BManagementView();
     }
   }
 

@@ -73,6 +73,7 @@
         <div class="dropdown-menu" id="pos-dropdown">
           <button class="dropdown-item" data-view="skuCatalogView">SKU Catalog</button>
           <button class="dropdown-item" data-view="qrScannerView">Scanner</button>
+          <button class="dropdown-item" data-view="productCatalogView">Products</button>
           <button class="dropdown-item" data-view="stlManagerView">3D Models</button>
         </div>
       </div>
@@ -100,6 +101,7 @@
         <div class="dropdown-menu" id="configure-dropdown">
           <button class="dropdown-item" data-view="inventoryView">Inventory</button>
           <button class="dropdown-item" data-view="mockupBackgroundsView">Mockup Backgrounds</button>
+          <button class="dropdown-item" data-view="b2bManagementView">B2B Partners</button>
           <button class="dropdown-item" data-view="adminView">Admin</button>
           <button class="dropdown-item" data-view="settingsView">Settings</button>
           <div style="border-top: 1px solid #eee; margin: 4px 0;"></div>
@@ -3655,6 +3657,159 @@
         </div>
       </section>
 
+      <!-- ================================================================== -->
+      <!-- B2B PARTNER MANAGEMENT                                             -->
+      <!-- ================================================================== -->
+      <section id="b2bManagementView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">B2B Partner Management</h2>
+          <div style="display:flex;gap:8px;">
+            <button id="b2bRefreshBtn" class="secondary">Refresh</button>
+            <button id="b2bAddCompanyBtn" class="primary">+ Add Company</button>
+          </div>
+        </div>
+
+        <div class="b2b-management-layout" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px;">
+          <!-- Companies List -->
+          <div class="card" style="max-height:calc(100vh - 200px);overflow-y:auto;">
+            <h3 style="margin:0 0 12px;">Companies</h3>
+            <div id="b2bCompaniesList" class="b2b-list">
+              <div class="b2b-empty-state">Loading companies...</div>
+            </div>
+          </div>
+
+          <!-- Users List -->
+          <div class="card" style="max-height:calc(100vh - 200px);overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="margin:0;">Users <span id="b2bSelectedCompanyName" style="color:#888;font-weight:normal;"></span></h3>
+              <button id="b2bAddUserBtn" class="secondary" style="display:none;">+ Add User</button>
+            </div>
+            <div id="b2bUsersList" class="b2b-list">
+              <div class="b2b-empty-state">Select a company to view users</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Company Stats -->
+        <div id="b2bCompanyStats" class="card" style="margin:0 16px;display:none;">
+          <h4 style="margin:0 0 12px;">Company Orders</h4>
+          <div id="b2bOrdersList" style="max-height:300px;overflow-y:auto;"></div>
+        </div>
+      </section>
+
+      <!-- Add/Edit Company Modal -->
+      <div id="b2bCompanyModal" class="modal-overlay" style="display:none;">
+        <div class="modal-dialog" style="max-width:500px;">
+          <div class="modal-header">
+            <h3 id="b2bCompanyModalTitle">Add Company</h3>
+            <button class="modal-close" onclick="closeB2BCompanyModal()">&times;</button>
+          </div>
+          <form id="b2bCompanyForm">
+            <div class="modal-body">
+              <input type="hidden" id="b2bCompanyId">
+              <div class="form-row">
+                <label>Company Name *</label>
+                <input type="text" id="b2bCompanyName" required placeholder="Partner Company Inc.">
+              </div>
+              <div class="form-row">
+                <label>Contact Email *</label>
+                <input type="email" id="b2bCompanyEmail" required placeholder="contact@company.com">
+              </div>
+              <div class="form-row">
+                <label>Contact Phone</label>
+                <input type="tel" id="b2bCompanyPhone" placeholder="555-123-4567">
+              </div>
+              <div class="form-row">
+                <label>Billing Address</label>
+                <textarea id="b2bCompanyBillingAddress" rows="2" placeholder="123 Main St, City, State 12345"></textarea>
+              </div>
+              <div class="form-row">
+                <label>Shipping Address</label>
+                <textarea id="b2bCompanyShippingAddress" rows="2" placeholder="123 Main St, City, State 12345"></textarea>
+              </div>
+              <div class="form-row">
+                <label>Status</label>
+                <select id="b2bCompanyStatus">
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label>Notes</label>
+                <textarea id="b2bCompanyNotes" rows="2" placeholder="Internal notes..."></textarea>
+              </div>
+              <hr style="margin:16px 0;">
+              <h4 style="margin:0 0 12px;">Admin User (for new companies)</h4>
+              <div id="b2bAdminUserFields">
+                <div class="form-row">
+                  <label>Admin Name *</label>
+                  <input type="text" id="b2bAdminName" placeholder="John Smith">
+                </div>
+                <div class="form-row">
+                  <label>Admin Password *</label>
+                  <input type="password" id="b2bAdminPassword" placeholder="Secure password">
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="secondary" onclick="closeB2BCompanyModal()">Cancel</button>
+              <button type="submit" class="primary" id="b2bCompanySaveBtn">Save Company</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Add/Edit User Modal -->
+      <div id="b2bUserModal" class="modal-overlay" style="display:none;">
+        <div class="modal-dialog" style="max-width:450px;">
+          <div class="modal-header">
+            <h3 id="b2bUserModalTitle">Add User</h3>
+            <button class="modal-close" onclick="closeB2BUserModal()">&times;</button>
+          </div>
+          <form id="b2bUserForm">
+            <div class="modal-body">
+              <input type="hidden" id="b2bUserId">
+              <input type="hidden" id="b2bUserCompanyId">
+              <div class="form-row">
+                <label>Full Name *</label>
+                <input type="text" id="b2bUserName" required placeholder="John Smith">
+              </div>
+              <div class="form-row">
+                <label>Email *</label>
+                <input type="email" id="b2bUserEmail" required placeholder="user@company.com">
+              </div>
+              <div class="form-row">
+                <label>Phone</label>
+                <input type="tel" id="b2bUserPhone" placeholder="555-123-4567">
+              </div>
+              <div class="form-row">
+                <label>Password <span id="b2bPasswordHint">(required for new users)</span></label>
+                <input type="password" id="b2bUserPassword" placeholder="Password">
+              </div>
+              <div class="form-row">
+                <label>Role</label>
+                <select id="b2bUserRole">
+                  <option value="user">User - Can create orders</option>
+                  <option value="admin">Admin - Can also manage users</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label>Status</label>
+                <select id="b2bUserStatus">
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="secondary" onclick="closeB2BUserModal()">Cancel</button>
+              <button type="submit" class="primary" id="b2bUserSaveBtn">Save User</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Social Marketing Tab -->
       <section id="socialMarketingView" class="view">
         <div class="view-toolbar">
@@ -5871,6 +6026,136 @@
       </section>
 
       <!-- ================================================================ -->
+      <!-- PRODUCT CATALOG VIEW                                             -->
+      <!-- ================================================================ -->
+      <section id="productCatalogView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Product Catalog</h2>
+          <div id="productStatusText" class="muted" style="margin-left:12px;"></div>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+            <button id="productPrintLabelsBtn" class="action-btn" style="display:none;background:#7c3aed;" title="Generate label sticker sheets for selected products">Print Labels (0)</button>
+            <button id="productAddBtn" class="action-btn">+ Add Product</button>
+            <button id="productRefreshBtn" class="action-btn secondary">Refresh</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:350px 1fr;gap:0;height:calc(100vh - 120px);">
+          <!-- Left: Product List -->
+          <div class="inventory-card" style="margin:8px;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="padding:8px;border-bottom:1px solid var(--border);">
+              <input type="search" id="productSearchInput" placeholder="Search products..." style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9rem;">
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <select id="productCategoryFilter" style="flex:1;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.85rem;">
+                  <option value="">All Categories</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px solid var(--border);font-size:0.8rem;color:#888;">
+              <input type="checkbox" id="productSelectAllCheckbox" title="Select All / None" style="cursor:pointer;">
+              <label for="productSelectAllCheckbox" style="cursor:pointer;user-select:none;">Select All</label>
+              <span id="productSelectedCount" style="margin-left:auto;"></span>
+            </div>
+            <div id="productListContainer" style="flex:1;overflow-y:auto;"></div>
+          </div>
+
+          <!-- Right: Product Detail / Edit -->
+          <div class="inventory-card" style="margin:8px 8px 8px 0;overflow-y:auto;">
+            <div id="productDetailPanel">
+              <div id="productDetailPlaceholder" style="text-align:center;padding:60px 20px;color:#666;">
+                <p style="font-size:1.1rem;">Select a product to view details</p>
+                <p style="margin-top:8px;font-size:0.9rem;">Or click <strong>+ Add Product</strong> to create one</p>
+              </div>
+              <div id="productDetailContent" style="display:none;padding:16px;">
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                  <!-- Photo -->
+                  <div style="flex:0 0 250px;">
+                    <div id="productDetailPhoto" style="width:250px;height:250px;background:#1a1a1a;border-radius:8px;overflow:hidden;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;" title="Click to change photo">
+                      <span style="color:#555;font-size:3rem;">&#128247;</span>
+                    </div>
+                    <input type="file" id="productPhotoInput" accept="image/*" style="display:none;">
+                    <button id="productChangePhotoBtn" class="action-btn secondary" style="width:100%;margin-top:8px;">Change Photo</button>
+                  </div>
+                  <!-- Info -->
+                  <div style="flex:1;min-width:250px;">
+                    <div style="margin-bottom:12px;">
+                      <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Title</label>
+                      <input type="text" id="productEditTitle" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
+                    </div>
+                    <div style="margin-bottom:12px;">
+                      <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Description</label>
+                      <textarea id="productEditDescription" rows="3" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.95rem;resize:vertical;"></textarea>
+                    </div>
+                    <div style="display:flex;gap:12px;">
+                      <div style="flex:1;">
+                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Price ($)</label>
+                        <input type="number" id="productEditPrice" step="0.01" min="0" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
+                      </div>
+                      <div style="flex:1;">
+                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Category</label>
+                        <input type="text" id="productEditCategory" list="productCategorySuggestions" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
+                        <datalist id="productCategorySuggestions"></datalist>
+                      </div>
+                    </div>
+                    <!-- Decal fields -->
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                      <div style="flex:1;">
+                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Size</label>
+                        <input type="text" id="productEditSize" placeholder="e.g. 3x5, 6 inch" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
+                      </div>
+                      <div style="flex:1;">
+                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Color</label>
+                        <input type="text" id="productEditColor" placeholder="e.g. White, Black" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
+                      </div>
+                      <div style="width:80px;">
+                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Qty</label>
+                        <input type="number" id="productEditQuantity" min="1" value="1" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
+                      </div>
+                    </div>
+                    <div style="margin-top:10px;">
+                      <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Text on Decal</label>
+                      <textarea id="productEditDecalText" rows="2" placeholder="Custom text (leave empty for image-only)" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;resize:vertical;"></textarea>
+                    </div>
+                    <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+                      <input type="checkbox" id="productEditHeatTransfer" style="width:18px;height:18px;">
+                      <label for="productEditHeatTransfer" style="font-size:0.9rem;color:#ccc;cursor:pointer;">Heat Transfer</label>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:14px;">
+                      <button id="productSaveBtn" class="action-btn">Save Changes</button>
+                      <button id="productDeleteBtn" class="action-btn danger">Delete</button>
+                    </div>
+                  </div>
+                </div>
+                <!-- QR Code section -->
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+                  <h3 style="font-size:1rem;margin-bottom:12px;">QR Code</h3>
+                  <div style="display:flex;gap:16px;align-items:flex-start;">
+                    <div id="productQrCode" style="background:#fff;padding:8px;border-radius:8px;"></div>
+                    <div>
+                      <div id="productQrUrl" style="font-family:monospace;font-size:0.8rem;color:#888;word-break:break-all;margin-bottom:8px;"></div>
+                      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button id="productCopyUrlBtn" class="action-btn secondary" style="font-size:0.85rem;">Copy URL</button>
+                        <button id="productDownloadQrBtn" class="action-btn secondary" style="font-size:0.85rem;">Download QR</button>
+                        <button id="productPrintQrBtn" class="action-btn secondary" style="font-size:0.85rem;">Print Label</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <!-- Shopify Sync section -->
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+                  <h3 style="font-size:1rem;margin-bottom:12px;">Shopify</h3>
+                  <div id="productShopifyStatus" style="font-size:0.85rem;color:#888;margin-bottom:8px;">Not yet synced</div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                    <button id="productPushShopifyBtn" class="action-btn" style="font-size:0.85rem;background:#96bf48;color:#fff;">Push to Shopify</button>
+                    <a id="productShopifyLink" href="#" target="_blank" style="display:none;font-size:0.85rem;padding:6px 12px;background:#333;border-radius:4px;color:#96bf48;text-decoration:none;">View in Shopify</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
       <!-- STL FILE MANAGER VIEW                                            -->
       <!-- ================================================================ -->
       <section id="stlManagerView" class="view">
@@ -6111,12 +6396,15 @@
     <script src="./sku-catalog-view.js"></script>
     <!-- QR Scanner View -->
     <script src="./qr-scanner-view.js"></script>
+    <script src="./product-catalog-view.js"></script>
     <!-- Three.js for 3D STL rendering (local copies for Electron compatibility) -->
     <script src="./lib/three.min.js"></script>
     <script src="./lib/STLLoader.js"></script>
     <script src="./lib/OrbitControls.js"></script>
     <!-- STL Manager View -->
     <script src="./stl-manager-view.js"></script>
+    <!-- B2B Management View -->
+    <script src="./b2b-management-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>
