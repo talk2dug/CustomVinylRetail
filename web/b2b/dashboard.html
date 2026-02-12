@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dashboard - B2B Metal Prints Portal</title>
-  <link rel="stylesheet" href="b2b.css">
+  <base href="/b2b/">
+  <link rel="stylesheet" href="/b2b/b2b.css">
 </head>
 <body>
   <header class="b2b-header">
@@ -58,7 +59,7 @@
     </div>
   </main>
 
-  <script src="b2b.js"></script>
+  <script src="/b2b/b2b.js"></script>
   <script>
     if (!requireAuth()) throw new Error('Not authenticated');
 
@@ -81,7 +82,7 @@
 
         orders.forEach(order => {
           const tr = document.createElement('tr');
-          tr.onclick = () => window.location.href = `order-detail.html?id=${order.id}`;
+          tr.onclick = () => window.location.href = `/b2b/order-detail.html?id=${order.id}`;
           tr.innerHTML = `
             <td><strong>#${order.orderNumber}</strong></td>
             <td>${order.itemCount || 0} item${order.itemCount !== 1 ? 's' : ''}</td>

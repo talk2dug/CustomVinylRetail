@@ -18,6 +18,7 @@ node_modules/
 *.db-journal
 *.db.bak
 data/
+!data/multiboard-parts.json
 server/data/
 
 # Large media and image files
@@ -83,6 +84,7 @@ shopify-metal-prints/
 # Documentation that shouldn't be in repo
 *.md
 !README.md
+!miltBin/*.md
 
 # macOS
 ._*

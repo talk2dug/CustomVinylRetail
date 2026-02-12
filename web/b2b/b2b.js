@@ -33,6 +33,15 @@ const B2B = {
 
     const data = await response.json();
     if (!response.ok) {
+      // If token is expired/invalid, clear it and redirect to login
+      if (response.status === 401 && this.token && !endpoint.startsWith('/auth/login')) {
+        this.token = null;
+        this.user = null;
+        localStorage.removeItem('b2b_token');
+        localStorage.removeItem('b2b_user');
+        window.location.href = '/b2b/';
+        return;
+      }
       throw new Error(data.error || 'Request failed');
     }
     return data;

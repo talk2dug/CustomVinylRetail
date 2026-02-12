@@ -3301,8 +3301,29 @@ function initCustomArtTables() {
   `);
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_b2b_items_order ON b2b_metal_print_items(order_id)`); } catch (e) { /* ignore */ }
 
+  // Multiboard Designer
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS multiboard_designs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      design_id TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      customer_name TEXT,
+      customer_email TEXT,
+      customer_phone TEXT,
+      wall_width_inches REAL NOT NULL,
+      wall_height_inches REAL NOT NULL,
+      components_json TEXT NOT NULL,
+      parts_list_json TEXT,
+      total_price_cents INTEGER,
+      status TEXT DEFAULT 'draft',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   console.log('[B2B Portal] ✅ Tables initialized successfully');
   console.log('[Custom Art] ✅ Tables initialized successfully');
+  console.log('[Multiboard] ✅ Table initialized successfully');
 }
 
 function seedCustomArtMaterials() {
@@ -5641,6 +5662,13 @@ function formatB2BCompany(row) {
   };
 }
 
+function deleteB2BCompany(id) {
+  const existing = getB2BCompanyById(id);
+  if (!existing) return { success: false, error: 'Company not found' };
+  db.prepare('DELETE FROM b2b_companies WHERE id = ?').run(id);
+  return { success: true, deleted: existing };
+}
+
 // --- B2B USERS ---
 
 function createB2BUser({ companyId, email, password, name, phone, role, isPrimaryContact }) {
@@ -6390,6 +6418,7 @@ module.exports = {
   getB2BCompanyBySlug,
   listB2BCompanies,
   updateB2BCompany,
+  deleteB2BCompany,
   // B2B Users
   createB2BUser,
   getB2BUserById,

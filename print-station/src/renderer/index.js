@@ -1845,6 +1845,13 @@ function switchView(viewId) {
     }
   }
 
+  // Multiboard Designer view
+  if (viewId === 'multiboardDesignerView') {
+    if (typeof initMultiboardDesignerView === 'function') {
+      initMultiboardDesignerView();
+    }
+  }
+
   // Dashboard view
   if (viewId === 'dashboardView') {
     loadDashboardData();

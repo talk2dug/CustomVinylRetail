@@ -59,36 +59,64 @@ const b2bState = {
   companies: [],
   selectedCompany: null,
   users: [],
-  orders: [],
-  initialized: false
+  orders: []
 };
 
 // =============== INITIALIZATION ===============
 async function initB2BManagementView() {
-  if (!b2bState.initialized) {
-    b2bState.initialized = true;
+  console.log('[B2B] initB2BManagementView called');
+  // Always try to set up listeners if button doesn't have handler yet
+  const addCompanyBtn = document.getElementById('b2bAddCompanyBtn');
+  console.log('[B2B] Add Company button found:', !!addCompanyBtn, 'already attached:', addCompanyBtn?._b2bListenerAttached);
+  if (addCompanyBtn && !addCompanyBtn._b2bListenerAttached) {
     setupB2BListeners();
+    addCompanyBtn._b2bListenerAttached = true;
+    console.log('[B2B] Listeners attached successfully');
   }
+
   await loadB2BCompanies();
 }
 
 function setupB2BListeners() {
-  document.getElementById('b2bRefreshBtn').addEventListener('click', () => {
-    loadB2BCompanies();
-  });
+  const refreshBtn = document.getElementById('b2bRefreshBtn');
+  const addCompanyBtn = document.getElementById('b2bAddCompanyBtn');
+  const addUserBtn = document.getElementById('b2bAddUserBtn');
+  const companyForm = document.getElementById('b2bCompanyForm');
+  const userForm = document.getElementById('b2bUserForm');
 
-  document.getElementById('b2bAddCompanyBtn').addEventListener('click', () => {
-    openB2BCompanyModal();
-  });
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      loadB2BCompanies();
+    });
+  }
 
-  document.getElementById('b2bAddUserBtn').addEventListener('click', () => {
-    if (b2bState.selectedCompany) {
-      openB2BUserModal(b2bState.selectedCompany.id);
-    }
-  });
+  if (addCompanyBtn) {
+    console.log('[B2B] Attaching click listener to Add Company button');
+    addCompanyBtn.addEventListener('click', () => {
+      console.log('[B2B] Add Company button clicked!');
+      openB2BCompanyModal();
+    });
+  } else {
+    console.error('[B2B] Add Company button not found!');
+  }
 
-  document.getElementById('b2bCompanyForm').addEventListener('submit', handleB2BCompanySubmit);
-  document.getElementById('b2bUserForm').addEventListener('submit', handleB2BUserSubmit);
+  if (addUserBtn) {
+    addUserBtn.addEventListener('click', () => {
+      if (b2bState.selectedCompany) {
+        openB2BUserModal(b2bState.selectedCompany.id);
+      }
+    });
+  }
+
+  if (companyForm) {
+    companyForm.addEventListener('submit', handleB2BCompanySubmit);
+  } else {
+    console.error('[B2B] Company form not found!');
+  }
+
+  if (userForm) {
+    userForm.addEventListener('submit', handleB2BUserSubmit);
+  }
 }
 
 // =============== COMPANIES ===============
@@ -157,9 +185,15 @@ function editB2BCompany(companyId) {
 }
 
 function openB2BCompanyModal(company = null) {
+  console.log('[B2B] openB2BCompanyModal called', { company });
   const modal = document.getElementById('b2bCompanyModal');
   const title = document.getElementById('b2bCompanyModalTitle');
   const adminFields = document.getElementById('b2bAdminUserFields');
+
+  if (!modal) {
+    console.error('[B2B] Company modal element not found!');
+    return;
+  }
 
   title.textContent = company ? 'Edit Company' : 'Add Company';
   adminFields.style.display = company ? 'none' : '';
@@ -180,11 +214,17 @@ function openB2BCompanyModal(company = null) {
   document.getElementById('b2bAdminName').required = !company;
   document.getElementById('b2bAdminPassword').required = !company;
 
-  modal.style.display = 'flex';
+  // Show modal (clear inline styles that forceCloseAllBlockingModals may have set)
+  modal.removeAttribute('hidden');
+  modal.style.removeProperty('display');
+  modal.style.removeProperty('pointer-events');
+  modal.style.removeProperty('visibility');
+  modal.classList.add('modal-visible');
 }
 
 function closeB2BCompanyModal() {
-  document.getElementById('b2bCompanyModal').style.display = 'none';
+  const modal = document.getElementById('b2bCompanyModal');
+  modal.classList.remove('modal-visible');
 }
 
 async function handleB2BCompanySubmit(e) {
@@ -294,11 +334,17 @@ function openB2BUserModal(companyId, user = null) {
   document.getElementById('b2bPasswordHint').textContent = user ? '(leave blank to keep current)' : '(required for new users)';
   document.getElementById('b2bUserPassword').required = !user;
 
-  modal.style.display = 'flex';
+  // Show modal (clear inline styles that forceCloseAllBlockingModals may have set)
+  modal.removeAttribute('hidden');
+  modal.style.removeProperty('display');
+  modal.style.removeProperty('pointer-events');
+  modal.style.removeProperty('visibility');
+  modal.classList.add('modal-visible');
 }
 
 function closeB2BUserModal() {
-  document.getElementById('b2bUserModal').style.display = 'none';
+  const modal = document.getElementById('b2bUserModal');
+  modal.classList.remove('modal-visible');
 }
 
 async function handleB2BUserSubmit(e) {

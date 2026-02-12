@@ -33,6 +33,7 @@ const ads = require('./integrations/ads');
 const { classifyMarketingProfile } = require('./utils/classifier');
 const metalPrints = require('./metal-prints-server');
 const { handleLeonardoRoute } = require('./leonardo-server');
+const { handleMultiboardRoute } = require('./multiboard-server');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
@@ -8516,6 +8517,16 @@ const requestHandler = async (req, res) => {
     handleLeonardoRoute(parsedUrl.pathname, req, res).catch(err => {
       console.error('[Leonardo API Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Multiboard Designer API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/multiboard')) {
+    if (!requireInternalKey(req, res)) return;
+    handleMultiboardRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Multiboard API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;
   }
@@ -19338,31 +19349,34 @@ Return ONLY valid JSON, no markdown or explanation.`;
           return;
         }
 
-        // Create company
-        const company = db.createB2BCompany({
-          companyName: payload.companyName,
-          contactEmail: payload.adminEmail,
-          contactPhone: payload.contactPhone,
-          billingAddress: payload.billingAddress,
-          shippingAddress: payload.shippingAddress,
-          taxExempt: payload.taxExempt,
-          taxId: payload.taxId,
-          paymentTerms: payload.paymentTerms,
-          notes: payload.notes
-        });
+        // Create company + admin user atomically
+        const result = db.getDb().transaction(() => {
+          const company = db.createB2BCompany({
+            companyName: payload.companyName,
+            contactEmail: payload.adminEmail,
+            contactPhone: payload.contactPhone,
+            billingAddress: payload.billingAddress,
+            shippingAddress: payload.shippingAddress,
+            taxExempt: payload.taxExempt,
+            taxId: payload.taxId,
+            paymentTerms: payload.paymentTerms,
+            notes: payload.notes
+          });
 
-        // Create admin user
-        const adminUser = db.createB2BUser({
-          companyId: company.id,
-          email: payload.adminEmail,
-          password: payload.adminPassword,
-          name: payload.adminName,
-          phone: payload.adminPhone,
-          role: 'admin',
-          isPrimaryContact: true
-        });
+          const adminUser = db.createB2BUser({
+            companyId: company.id,
+            email: payload.adminEmail,
+            password: payload.adminPassword,
+            name: payload.adminName,
+            phone: payload.adminPhone,
+            role: 'admin',
+            isPrimaryContact: true
+          });
 
-        sendJson(res, 201, { success: true, company, adminUser });
+          return { company, adminUser };
+        })();
+
+        sendJson(res, 201, { success: true, ...result });
       } catch (err) {
         console.error('[B2B Admin] Create company failed:', err);
         sendJson(res, 500, { error: err.message || 'Unable to create company.' });
@@ -19395,6 +19409,44 @@ Return ONLY valid JSON, no markdown or explanation.`;
         sendJson(res, 500, { error: err.message || 'Unable to update company.' });
       }
     });
+    return;
+  }
+
+  // Internal: Delete B2B company (cascades to users, sessions, orders)
+  if (req.method === 'DELETE' && b2bAdminCompanyMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const companyId = b2bAdminCompanyMatch[1];
+    try {
+      const result = db.deleteB2BCompany(companyId);
+      if (!result.success) {
+        sendJson(res, 404, { error: result.error });
+        return;
+      }
+      sendJson(res, 200, { success: true, deleted: result.deleted });
+    } catch (err) {
+      console.error('[B2B Admin] Delete company failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to delete company.' });
+    }
+    return;
+  }
+
+  // Internal: List users for a B2B company
+  const b2bAdminUsersMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/companies\/([^/]+)\/users$/);
+  if (req.method === 'GET' && b2bAdminUsersMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const companyId = b2bAdminUsersMatch[1];
+    try {
+      const company = db.getB2BCompanyById(companyId);
+      if (!company) {
+        sendJson(res, 404, { error: 'Company not found.' });
+        return;
+      }
+      const users = db.listB2BUsers(companyId);
+      sendJson(res, 200, { users });
+    } catch (err) {
+      console.error('[B2B Admin] List users failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to list users.' });
+    }
     return;
   }
 

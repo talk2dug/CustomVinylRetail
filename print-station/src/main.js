@@ -322,7 +322,12 @@ function assertStore() {
 
 function getSettings() {
   assertStore();
-  return { ...defaultSettings, ...store.store };
+  const settings = { ...defaultSettings, ...store.store };
+  // Auto-populate apiKey from environment if not explicitly configured
+  if (!settings.apiKey) {
+    settings.apiKey = process.env.INTERNAL_API_KEY || process.env.PRINT_STATION_API_KEY || '';
+  }
+  return settings;
 }
 
 function updateSettings(updates = {}) {

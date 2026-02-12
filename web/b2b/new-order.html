@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>New Order - B2B Metal Prints Portal</title>
-  <link rel="stylesheet" href="b2b.css">
+  <base href="/b2b/">
+  <link rel="stylesheet" href="/b2b/b2b.css">
 </head>
 <body>
   <header class="b2b-header">
@@ -134,7 +135,7 @@
     </div>
   </main>
 
-  <script src="b2b.js"></script>
+  <script src="/b2b/b2b.js"></script>
   <script>
     if (!requireAuth()) throw new Error('Not authenticated');
 
@@ -332,7 +333,7 @@
         const hasQuotes = items.some(i => i.needsQuote);
         if (hasQuotes) {
           showToast('Order submitted! We\'ll contact you with a quote.', 'success');
-          setTimeout(() => window.location.href = `order-detail.html?id=${currentOrder.id}`, 1500);
+          setTimeout(() => window.location.href = `/b2b/order-detail.html?id=${currentOrder.id}`, 1500);
           return;
         }
 

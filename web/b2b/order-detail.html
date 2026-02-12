@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Order Details - B2B Metal Prints Portal</title>
-  <link rel="stylesheet" href="b2b.css">
+  <base href="/b2b/">
+  <link rel="stylesheet" href="/b2b/b2b.css">
 </head>
 <body>
   <header class="b2b-header">
@@ -128,7 +129,7 @@
     </div>
   </main>
 
-  <script src="b2b.js"></script>
+  <script src="/b2b/b2b.js"></script>
   <script>
     if (!requireAuth()) throw new Error('Not authenticated');
 
@@ -138,7 +139,7 @@
 
     async function loadOrder() {
       if (!orderId) {
-        window.location.href = 'dashboard.html';
+        window.location.href = '/b2b/dashboard.html';
         return;
       }
 

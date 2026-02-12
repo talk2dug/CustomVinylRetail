@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product - Blue Ridge Custom Co</title>
+    <meta property="og:type" content="product">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0f0f0f; color: #fff;
+            min-height: 100vh;
+            display: flex; flex-direction: column;
+        }
+        .brand-bar {
+            text-align: center; padding: 16px;
+            background: #1a1a1a; border-bottom: 1px solid #333;
+        }
+        .brand-bar h1 {
+            font-size: 1rem; color: #3b82f6;
+            letter-spacing: 1px; text-transform: uppercase;
+        }
+        .product-container {
+            flex: 1; max-width: 600px; width: 100%; margin: 0 auto;
+            padding: 20px;
+        }
+        .product-photo {
+            width: 100%; aspect-ratio: 1; border-radius: 12px; overflow: hidden;
+            background: #1a1a1a; margin-bottom: 20px;
+        }
+        .product-photo img {
+            width: 100%; height: 100%; object-fit: cover;
+        }
+        .no-photo {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            color: #444; font-size: 4rem;
+        }
+        .product-title {
+            font-size: 1.6rem; font-weight: 700; margin-bottom: 8px;
+        }
+        .product-price {
+            font-size: 1.4rem; color: #22c55e; font-weight: 600; margin-bottom: 16px;
+        }
+        .product-category {
+            display: inline-block; padding: 4px 12px; background: #333;
+            border-radius: 20px; font-size: 0.8rem; color: #aaa; margin-bottom: 16px;
+        }
+        .product-description {
+            font-size: 1rem; line-height: 1.6; color: #ccc;
+            white-space: pre-wrap;
+        }
+        .cta-section {
+            margin-top: 30px; padding-top: 20px; border-top: 1px solid #333;
+            text-align: center;
+        }
+        .cta-section p { color: #888; margin-bottom: 12px; }
+        .cta-link {
+            display: inline-block; padding: 12px 32px; background: #3b82f6;
+            color: #fff; text-decoration: none; border-radius: 8px;
+            font-weight: 600; font-size: 1rem;
+        }
+        .cta-link:hover { background: #2563eb; }
+        .loading-state {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            color: #666; font-size: 1.1rem;
+        }
+        .error-state {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            flex-direction: column; color: #666; padding: 40px;
+            text-align: center;
+        }
+        .error-state h2 { font-size: 1.5rem; margin-bottom: 8px; color: #888; }
+        .footer {
+            text-align: center; padding: 20px; color: #444; font-size: 0.8rem;
+            border-top: 1px solid #222;
+        }
+    </style>
+</head>
+<body>
+    <div class="brand-bar">
+        <h1>Blue Ridge Custom Co</h1>
+    </div>
+
+    <div id="loadingState" class="loading-state">Loading product...</div>
+    <div id="errorState" class="error-state" style="display:none;">
+        <h2>Product Not Found</h2>
+        <p>This product may no longer be available.</p>
+    </div>
+
+    <div id="productContainer" class="product-container" style="display:none;">
+        <div class="product-photo" id="photoContainer"></div>
+        <h2 class="product-title" id="productTitle"></h2>
+        <div class="product-price" id="productPrice"></div>
+        <div id="categoryContainer"></div>
+        <div id="decalDetails" style="display:none;margin-bottom:16px;">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+                <span id="detailSize" style="display:none;padding:4px 12px;background:#333;border-radius:20px;font-size:0.85rem;color:#ccc;"></span>
+                <span id="detailColor" style="display:none;padding:4px 12px;background:#333;border-radius:20px;font-size:0.85rem;color:#ccc;"></span>
+                <span id="detailQuantity" style="display:none;padding:4px 12px;background:#333;border-radius:20px;font-size:0.85rem;color:#ccc;"></span>
+                <span id="detailHeatTransfer" style="display:none;padding:4px 12px;background:#b45309;border-radius:20px;font-size:0.85rem;color:#fff;">Heat Transfer</span>
+            </div>
+            <p id="detailDecalText" style="display:none;font-size:0.95rem;color:#aaa;font-style:italic;"></p>
+        </div>
+        <p class="product-description" id="productDescription"></p>
+        <div class="cta-section">
+            <p>Interested in this product?</p>
+            <a class="cta-link" href="https://store.swayzecustomvinyl.com">Visit Our Store</a>
+        </div>
+    </div>
+
+    <div class="footer">Swayze Custom Vinyl / Blue Ridge Custom Co</div>
+
+    <script>
+    (function() {
+        const params = new URLSearchParams(window.location.search);
+        const productId = params.get('id');
+
+        if (!productId) {
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('errorState').style.display = 'flex';
+            return;
+        }
+
+        fetch(`${window.location.origin}/api/products/public/${encodeURIComponent(productId)}`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('loadingState').style.display = 'none';
+                if (!data.success || !data.product) {
+                    document.getElementById('errorState').style.display = 'flex';
+                    return;
+                }
+
+                const p = data.product;
+                document.title = `${p.title} - Blue Ridge Custom Co`;
+
+                // Update og tags
+                const ogTitle = document.querySelector('meta[property="og:type"]');
+                if (ogTitle) {
+                    const meta = document.createElement('meta');
+                    meta.setAttribute('property', 'og:title');
+                    meta.setAttribute('content', p.title);
+                    document.head.appendChild(meta);
+                }
+
+                if (p.photoUrl) {
+                    document.getElementById('photoContainer').innerHTML =
+                        `<img src="${window.location.origin}${p.photoUrl}" alt="${esc(p.title)}">`;
+                    const ogImg = document.createElement('meta');
+                    ogImg.setAttribute('property', 'og:image');
+                    ogImg.setAttribute('content', window.location.origin + p.photoUrl);
+                    document.head.appendChild(ogImg);
+                } else {
+                    document.getElementById('photoContainer').innerHTML =
+                        '<div class="no-photo">&#128247;</div>';
+                }
+
+                document.getElementById('productTitle').textContent = p.title;
+                document.getElementById('productPrice').textContent = '$' + (p.priceCents / 100).toFixed(2);
+
+                if (p.category) {
+                    document.getElementById('categoryContainer').innerHTML =
+                        `<span class="product-category">${esc(p.category)}</span>`;
+                }
+
+                if (p.description) {
+                    document.getElementById('productDescription').textContent = p.description;
+                }
+
+                // Decal details
+                const hasDecalInfo = p.size || p.color || p.decalText || p.isHeatTransfer || (p.quantity && p.quantity > 1);
+                if (hasDecalInfo) {
+                    document.getElementById('decalDetails').style.display = 'block';
+                    if (p.size) { const el = document.getElementById('detailSize'); el.textContent = p.size; el.style.display = 'inline-block'; }
+                    if (p.color) { const el = document.getElementById('detailColor'); el.textContent = p.color; el.style.display = 'inline-block'; }
+                    if (p.quantity > 1) { const el = document.getElementById('detailQuantity'); el.textContent = 'Qty: ' + p.quantity; el.style.display = 'inline-block'; }
+                    if (p.isHeatTransfer) { document.getElementById('detailHeatTransfer').style.display = 'inline-block'; }
+                    if (p.decalText) { const el = document.getElementById('detailDecalText'); el.textContent = '"' + p.decalText + '"'; el.style.display = 'block'; }
+                }
+
+                document.getElementById('productContainer').style.display = 'block';
+            })
+            .catch(() => {
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('errorState').style.display = 'flex';
+            });
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+    })();
+    </script>
+</body>
+</html>

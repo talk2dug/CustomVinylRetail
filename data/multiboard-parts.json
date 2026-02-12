@@ -1,0 +1,285 @@
+{
+  "parts": [
+    {
+      "id": "tile-4x4",
+      "name": "Tile 4x4",
+      "category": "tiles",
+      "gridWidth": 4,
+      "gridHeight": 4,
+      "thickness": 0.2,
+      "attachesTo": "wall",
+      "snapType": null,
+      "providesSnaps": ["multihole", "pegboard"],
+      "requiresHardware": [
+        { "partId": "wall-mount", "qty": 2 }
+      ],
+      "weightGrams": 30,
+      "costUSD": 0.80,
+      "priceUSD": 3.00,
+      "colors": ["#333333", "#FFFFFF", "#1B5E20", "#1565C0", "#E65100"],
+      "geometry": {
+        "type": "tile",
+        "cornerRadius": 0.1
+      }
+    },
+    {
+      "id": "tile-6x6",
+      "name": "Tile 6x6",
+      "category": "tiles",
+      "gridWidth": 6,
+      "gridHeight": 6,
+      "thickness": 0.2,
+      "attachesTo": "wall",
+      "snapType": null,
+      "providesSnaps": ["multihole", "pegboard"],
+      "requiresHardware": [
+        { "partId": "wall-mount", "qty": 4 }
+      ],
+      "weightGrams": 60,
+      "costUSD": 1.50,
+      "priceUSD": 4.50,
+      "colors": ["#333333", "#FFFFFF", "#1B5E20", "#1565C0", "#E65100"],
+      "geometry": {
+        "type": "tile",
+        "cornerRadius": 0.1
+      }
+    },
+    {
+      "id": "tile-8x8",
+      "name": "Tile 8x8",
+      "category": "tiles",
+      "gridWidth": 8,
+      "gridHeight": 8,
+      "thickness": 0.2,
+      "attachesTo": "wall",
+      "snapType": null,
+      "providesSnaps": ["multihole", "pegboard"],
+      "requiresHardware": [
+        { "partId": "wall-mount", "qty": 4 }
+      ],
+      "weightGrams": 100,
+      "costUSD": 2.50,
+      "priceUSD": 6.00,
+      "colors": ["#333333", "#FFFFFF", "#1B5E20", "#1565C0", "#E65100"],
+      "geometry": {
+        "type": "tile",
+        "cornerRadius": 0.1
+      }
+    },
+    {
+      "id": "wall-mount",
+      "name": "Wall Mount Standoff",
+      "category": "hardware",
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "thickness": 0.25,
+      "attachesTo": "wall",
+      "snapType": null,
+      "providesSnaps": [],
+      "requiresHardware": [],
+      "weightGrams": 5,
+      "costUSD": 0.15,
+      "priceUSD": 0.00,
+      "colors": ["#333333"],
+      "geometry": { "type": "mount" },
+      "hidden": true
+    },
+    {
+      "id": "snap",
+      "name": "Snap Connector",
+      "category": "hardware",
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "thickness": 0.4,
+      "attachesTo": "multihole",
+      "snapType": "multihole",
+      "providesSnaps": ["pushfit"],
+      "requiresHardware": [],
+      "weightGrams": 3,
+      "costUSD": 0.10,
+      "priceUSD": 0.50,
+      "colors": ["#333333", "#FFFFFF"],
+      "geometry": { "type": "snap" }
+    },
+    {
+      "id": "hook-small",
+      "name": "Small Hook",
+      "category": "hooks",
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "thickness": 2.0,
+      "attachesTo": "pegboard",
+      "snapType": "pegboard",
+      "providesSnaps": [],
+      "requiresHardware": [],
+      "weightGrams": 8,
+      "costUSD": 0.20,
+      "priceUSD": 1.00,
+      "colors": ["#333333", "#FFFFFF"],
+      "geometry": {
+        "type": "hook",
+        "style": "single-peg",
+        "length": 1.5
+      }
+    },
+    {
+      "id": "hook-large",
+      "name": "Large Hook",
+      "category": "hooks",
+      "gridWidth": 1,
+      "gridHeight": 2,
+      "thickness": 3.0,
+      "attachesTo": "pegboard",
+      "snapType": "pegboard",
+      "providesSnaps": [],
+      "requiresHardware": [],
+      "weightGrams": 15,
+      "costUSD": 0.35,
+      "priceUSD": 1.50,
+      "colors": ["#333333", "#FFFFFF"],
+      "geometry": {
+        "type": "hook",
+        "style": "double-peg",
+        "length": 2.5
+      }
+    },
+    {
+      "id": "bin-small",
+      "name": "Small Bin",
+      "category": "bins",
+      "gridWidth": 2,
+      "gridHeight": 2,
+      "thickness": 2.0,
+      "attachesTo": "multihole",
+      "snapType": "multihole",
+      "providesSnaps": [],
+      "requiresHardware": [
+        { "partId": "t-bolt", "qty": 2 }
+      ],
+      "weightGrams": 25,
+      "costUSD": 0.60,
+      "priceUSD": 2.50,
+      "colors": ["#333333", "#FFFFFF", "#1B5E20"],
+      "geometry": {
+        "type": "bin",
+        "depth": 1.5,
+        "wallThickness": 0.08
+      }
+    },
+    {
+      "id": "bin-large",
+      "name": "Large Bin",
+      "category": "bins",
+      "gridWidth": 3,
+      "gridHeight": 3,
+      "thickness": 3.0,
+      "attachesTo": "multihole",
+      "snapType": "multihole",
+      "providesSnaps": [],
+      "requiresHardware": [
+        { "partId": "t-bolt", "qty": 4 }
+      ],
+      "weightGrams": 45,
+      "costUSD": 1.00,
+      "priceUSD": 4.00,
+      "colors": ["#333333", "#FFFFFF", "#1B5E20"],
+      "geometry": {
+        "type": "bin",
+        "depth": 2.5,
+        "wallThickness": 0.08
+      }
+    },
+    {
+      "id": "shelf-4",
+      "name": "Shelf (4-wide)",
+      "category": "shelves",
+      "gridWidth": 4,
+      "gridHeight": 1,
+      "thickness": 2.5,
+      "attachesTo": "multihole",
+      "snapType": "multihole",
+      "providesSnaps": [],
+      "requiresHardware": [
+        { "partId": "shelf-bracket", "qty": 2 },
+        { "partId": "t-bolt", "qty": 4 }
+      ],
+      "weightGrams": 55,
+      "costUSD": 1.50,
+      "priceUSD": 5.00,
+      "colors": ["#333333", "#FFFFFF"],
+      "geometry": {
+        "type": "shelf",
+        "depth": 3.0
+      }
+    },
+    {
+      "id": "shelf-bracket",
+      "name": "Shelf Bracket",
+      "category": "hardware",
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "thickness": 1.5,
+      "attachesTo": "multihole",
+      "snapType": "multihole",
+      "providesSnaps": [],
+      "requiresHardware": [
+        { "partId": "t-bolt", "qty": 2 }
+      ],
+      "weightGrams": 12,
+      "costUSD": 0.30,
+      "priceUSD": 1.50,
+      "colors": ["#333333"],
+      "geometry": { "type": "bracket" },
+      "hidden": true
+    },
+    {
+      "id": "t-bolt",
+      "name": "T-Bolt",
+      "category": "hardware",
+      "gridWidth": 0,
+      "gridHeight": 0,
+      "thickness": 0,
+      "attachesTo": "thread",
+      "snapType": null,
+      "providesSnaps": [],
+      "requiresHardware": [],
+      "weightGrams": 2,
+      "costUSD": 0.05,
+      "priceUSD": 0.25,
+      "colors": ["#333333"],
+      "geometry": { "type": "bolt" },
+      "hidden": true
+    },
+    {
+      "id": "mid-bolt",
+      "name": "Mid-Thread Bolt",
+      "category": "hardware",
+      "gridWidth": 0,
+      "gridHeight": 0,
+      "thickness": 0,
+      "attachesTo": "thread",
+      "snapType": null,
+      "providesSnaps": [],
+      "requiresHardware": [],
+      "weightGrams": 2,
+      "costUSD": 0.05,
+      "priceUSD": 0.25,
+      "colors": ["#333333"],
+      "geometry": { "type": "bolt" },
+      "hidden": true
+    }
+  ],
+  "serviceRates": {
+    "designOnly": { "flat": 35.00 },
+    "designBuild": { "perSqFt": 10.00, "minimum": 50.00 },
+    "turnkey": { "perSqFt": 17.50, "minimum": 150.00, "perMileBeyond30": 1.00 }
+  },
+  "colorPresets": [
+    { "name": "Black", "hex": "#333333" },
+    { "name": "White", "hex": "#FFFFFF" },
+    { "name": "Slate Gray", "hex": "#5D6D7E" },
+    { "name": "Forest Green", "hex": "#1B5E20" },
+    { "name": "Navy Blue", "hex": "#1565C0" },
+    { "name": "Burnt Orange", "hex": "#E65100" }
+  ]
+}

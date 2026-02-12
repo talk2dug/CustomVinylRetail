@@ -4,14 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>B2B Metal Prints Portal - Login</title>
-  <link rel="stylesheet" href="b2b.css">
+  <base href="/b2b/">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/b2b/b2b.css">
 </head>
 <body class="b2b-login-page">
   <div class="b2b-login-card">
     <div class="b2b-login-header">
-      <div class="b2b-logo-icon" style="width: 60px; height: 60px; font-size: 1.5rem; margin: 0 auto 1rem;">MP</div>
+      <div class="b2b-logo-icon" style="width: 64px; height: 64px; font-size: 1.5rem; margin: 0 auto 1.25rem; border-radius: 1rem;">MP</div>
       <h1>Metal Prints Portal</h1>
-      <p>Sign in to your B2B account</p>
+      <p>B2B Partner Access</p>
     </div>
 
     <div id="loginError" class="b2b-login-error"></div>
@@ -35,12 +39,12 @@
     </p>
   </div>
 
-  <script src="b2b.js"></script>
+  <script src="/b2b/b2b.js"></script>
   <script>
     // Check if already logged in
     B2B.init();
     if (B2B.isLoggedIn()) {
-      window.location.href = 'dashboard.html';
+      window.location.href = '/b2b/dashboard.html';
     }
 
     // Handle login form
@@ -58,7 +62,7 @@
 
       try {
         await B2B.login(email, password);
-        window.location.href = 'dashboard.html';
+        window.location.href = '/b2b/dashboard.html';
       } catch (err) {
         errorEl.textContent = err.message;
         errorEl.style.display = 'block';

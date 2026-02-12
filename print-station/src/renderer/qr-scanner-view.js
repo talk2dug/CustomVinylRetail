@@ -8,7 +8,7 @@ const scannerApi = {
   getHeaders() {
     return {
       'Content-Type': 'application/json',
-      'x-api-key': window.printStationConfig?.internalKey || window.APP_CONFIG?.internalKey || ''
+      'x-api-key': window.printStationConfig?.apiKey || window.APP_CONFIG?.internalKey || ''
     };
   },
   async get(path) {

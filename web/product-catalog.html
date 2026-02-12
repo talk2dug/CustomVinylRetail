@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Catalog Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #111; color: #fff;
+            min-height: 100vh;
+        }
+        .header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px; background: #1a1a1a; border-bottom: 1px solid #333;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .header h1 { font-size: 1.2rem; }
+        .header .actions { display: flex; gap: 8px; }
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 6px;
+            font-size: 0.9rem; cursor: pointer; font-family: inherit;
+            transition: opacity 0.2s;
+        }
+        .btn:active { opacity: 0.7; }
+        .btn-primary { background: #3b82f6; color: #fff; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-secondary { background: #333; color: #fff; border: 1px solid #555; }
+        .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .toolbar {
+            display: flex; gap: 8px; padding: 12px 16px; background: #1a1a1a;
+            border-bottom: 1px solid #222; flex-wrap: wrap;
+        }
+        .toolbar input, .toolbar select {
+            flex: 1; min-width: 120px; padding: 8px 12px;
+            background: #222; border: 1px solid #444; border-radius: 6px;
+            color: #fff; font-size: 0.9rem;
+        }
+        .toolbar select { flex: 0 0 auto; min-width: 140px; }
+
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px; padding: 16px;
+        }
+        .product-card {
+            background: #1a1a1a; border: 1px solid #333; border-radius: 8px;
+            overflow: hidden; cursor: pointer; transition: border-color 0.2s;
+        }
+        .product-card:hover { border-color: #3b82f6; }
+        .product-card .photo {
+            width: 100%; aspect-ratio: 1; object-fit: cover;
+            background: #222; display: block;
+        }
+        .product-card .no-photo {
+            width: 100%; aspect-ratio: 1; background: #222;
+            display: flex; align-items: center; justify-content: center;
+            color: #555; font-size: 2rem;
+        }
+        .product-card .info { padding: 10px; }
+        .product-card .title {
+            font-weight: 600; font-size: 0.9rem;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .product-card .price { color: #22c55e; font-size: 0.85rem; margin-top: 2px; }
+        .product-card .category-badge {
+            display: inline-block; font-size: 0.7rem; padding: 2px 6px;
+            background: #333; border-radius: 4px; margin-top: 4px; color: #aaa;
+        }
+
+        .empty-state {
+            text-align: center; padding: 60px 20px; color: #666;
+        }
+        .empty-state p { margin-top: 8px; font-size: 0.9rem; }
+
+        /* Modal */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+            z-index: 200; align-items: center; justify-content: center; padding: 16px;
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal {
+            background: #1a1a1a; border: 1px solid #333; border-radius: 12px;
+            width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto;
+        }
+        .modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px; border-bottom: 1px solid #333;
+        }
+        .modal-header h2 { font-size: 1.1rem; }
+        .modal-close {
+            background: none; border: none; color: #888; font-size: 1.5rem;
+            cursor: pointer; padding: 4px;
+        }
+        .modal-body { padding: 16px; }
+        .modal-footer {
+            display: flex; gap: 8px; justify-content: flex-end;
+            padding: 16px; border-top: 1px solid #333;
+        }
+
+        .form-group { margin-bottom: 14px; }
+        .form-group label {
+            display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 4px;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%; padding: 10px 12px; background: #222; border: 1px solid #444;
+            border-radius: 6px; color: #fff; font-size: 0.95rem; font-family: inherit;
+        }
+        .form-group textarea { resize: vertical; min-height: 80px; }
+
+        .photo-upload {
+            width: 100%; aspect-ratio: 4/3; background: #222; border: 2px dashed #444;
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            flex-direction: column; cursor: pointer; overflow: hidden; position: relative;
+        }
+        .photo-upload.has-photo { border-style: solid; }
+        .photo-upload img {
+            width: 100%; height: 100%; object-fit: cover; position: absolute;
+        }
+        .photo-upload .upload-label {
+            color: #666; font-size: 0.9rem; text-align: center; z-index: 1;
+        }
+        .photo-upload .upload-label span { font-size: 2rem; display: block; margin-bottom: 4px; }
+
+        /* QR Modal */
+        .qr-display { text-align: center; padding: 20px; }
+        .qr-display canvas { max-width: 250px; margin: 16px auto; }
+        .qr-display .product-url {
+            word-break: break-all; font-size: 0.8rem; color: #888;
+            padding: 8px; background: #222; border-radius: 4px; margin-top: 12px;
+        }
+
+        .loading { text-align: center; padding: 40px; color: #666; }
+        .toast {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            padding: 10px 20px; border-radius: 8px; font-size: 0.9rem; z-index: 300;
+            transition: opacity 0.3s; opacity: 0;
+        }
+        .toast.visible { opacity: 1; }
+        .toast.success { background: #166534; color: #fff; }
+        .toast.error { background: #991b1b; color: #fff; }
+
+        @media (max-width: 400px) {
+            .product-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 8px; }
+            .header { padding: 12px; }
+            .header h1 { font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Product Catalog</h1>
+        <div class="actions">
+            <button class="btn btn-primary btn-sm" id="addBtn">+ Add</button>
+            <button class="btn btn-secondary btn-sm" id="refreshBtn">Refresh</button>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <input type="search" id="searchInput" placeholder="Search products...">
+        <select id="categoryFilter">
+            <option value="">All Categories</option>
+        </select>
+    </div>
+
+    <div id="productGrid" class="product-grid"></div>
+    <div id="emptyState" class="empty-state" style="display:none;">
+        <p style="font-size:2rem;">No products yet</p>
+        <p>Tap + Add to create your first product</p>
+    </div>
+    <div id="loadingState" class="loading">Loading products...</div>
+
+    <!-- Add/Edit Modal -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="editModalTitle">Add Product</h2>
+                <button class="modal-close" id="editModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Photo</label>
+                    <div class="photo-upload" id="photoUpload">
+                        <div class="upload-label" id="uploadLabel">
+                            <span>&#128247;</span>
+                            Tap to take photo
+                        </div>
+                    </div>
+                    <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
+                </div>
+                <div class="form-group">
+                    <label>Title *</label>
+                    <input type="text" id="editTitle" placeholder="Product name" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="editDescription" placeholder="Describe this product..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Price ($)</label>
+                    <input type="number" id="editPrice" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <input type="text" id="editCategory" placeholder="e.g. Stickers, Decals" list="categorySuggestions">
+                    <datalist id="categorySuggestions"></datalist>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger btn-sm" id="deleteBtn" style="margin-right:auto;display:none;">Delete</button>
+                <button class="btn btn-secondary" id="editCancel">Cancel</button>
+                <button class="btn btn-primary" id="editSave">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div class="modal-overlay" id="qrModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="qrModalTitle">QR Code</h2>
+                <button class="modal-close" id="qrModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="qr-display">
+                    <div id="qrCodeContainer"></div>
+                    <p id="qrProductInfo" style="font-size:1.1rem;margin-top:12px;"></p>
+                    <div class="product-url" id="qrUrl"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="qrClose">Close</button>
+                <button class="btn btn-primary" id="qrDownload">Download QR</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="qrcode.min.js"></script>
+    <script>
+    (function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const API_KEY = urlParams.get('key') || '';
+        const BASE = window.location.origin;
+
+        let products = [];
+        let categories = [];
+        let editingProduct = null;
+        let pendingPhotoFile = null;
+
+        const $ = id => document.getElementById(id);
+
+        async function api(method, endpoint, body) {
+            const opts = {
+                method,
+                headers: { 'x-api-key': API_KEY }
+            };
+            if (body && !(body instanceof FormData)) {
+                opts.headers['Content-Type'] = 'application/json';
+                opts.body = JSON.stringify(body);
+            } else if (body instanceof FormData) {
+                opts.body = body;
+            }
+            const res = await fetch(`${BASE}${endpoint}`, opts);
+            return res.json();
+        }
+
+        function toast(msg, type = 'success') {
+            const el = $('toast');
+            el.textContent = msg;
+            el.className = `toast ${type} visible`;
+            setTimeout(() => el.classList.remove('visible'), 3000);
+        }
+
+        async function loadProducts() {
+            $('loadingState').style.display = 'block';
+            $('productGrid').innerHTML = '';
+            $('emptyState').style.display = 'none';
+            try {
+                const search = $('searchInput').value.trim();
+                const category = $('categoryFilter').value;
+                let qs = '?activeOnly=false';
+                if (search) qs += `&search=${encodeURIComponent(search)}`;
+                if (category) qs += `&category=${encodeURIComponent(category)}`;
+                const data = await api('GET', `/api/products${qs}`);
+                products = data.products || [];
+                renderProducts();
+            } catch (err) {
+                toast('Failed to load products', 'error');
+            }
+            $('loadingState').style.display = 'none';
+        }
+
+        async function loadCategories() {
+            try {
+                const data = await api('GET', '/api/products/categories');
+                categories = data.categories || [];
+                const sel = $('categoryFilter');
+                sel.innerHTML = '<option value="">All Categories</option>';
+                const dl = $('categorySuggestions');
+                dl.innerHTML = '';
+                categories.forEach(c => {
+                    sel.innerHTML += `<option value="${esc(c)}">${esc(c)}</option>`;
+                    dl.innerHTML += `<option value="${esc(c)}">`;
+                });
+            } catch (_) {}
+        }
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function formatPrice(cents) {
+            return '$' + (cents / 100).toFixed(2);
+        }
+
+        function renderProducts() {
+            const grid = $('productGrid');
+            if (products.length === 0) {
+                grid.innerHTML = '';
+                $('emptyState').style.display = 'block';
+                return;
+            }
+            $('emptyState').style.display = 'none';
+            grid.innerHTML = products.map(p => `
+                <div class="product-card" data-id="${p.id}">
+                    ${p.photoUrl
+                        ? `<img class="photo" src="${BASE}${p.photoUrl}" alt="${esc(p.title)}" loading="lazy">`
+                        : `<div class="no-photo">&#128247;</div>`}
+                    <div class="info">
+                        <div class="title">${esc(p.title)}</div>
+                        <div class="price">${formatPrice(p.priceCents)}</div>
+                        ${p.category ? `<span class="category-badge">${esc(p.category)}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+
+            grid.querySelectorAll('.product-card').forEach(card => {
+                card.addEventListener('click', () => openEditModal(card.dataset.id));
+            });
+        }
+
+        function openEditModal(productId) {
+            editingProduct = productId ? products.find(p => p.id === productId) : null;
+            $('editModalTitle').textContent = editingProduct ? 'Edit Product' : 'Add Product';
+            $('editTitle').value = editingProduct?.title || '';
+            $('editDescription').value = editingProduct?.description || '';
+            $('editPrice').value = editingProduct ? (editingProduct.priceCents / 100).toFixed(2) : '';
+            $('editCategory').value = editingProduct?.category || '';
+            $('deleteBtn').style.display = editingProduct ? 'inline-block' : 'none';
+            pendingPhotoFile = null;
+
+            // Reset photo display
+            const upload = $('photoUpload');
+            const label = $('uploadLabel');
+            upload.classList.remove('has-photo');
+            const existingImg = upload.querySelector('img');
+            if (existingImg) existingImg.remove();
+            label.style.display = 'flex';
+
+            if (editingProduct?.photoUrl) {
+                const img = document.createElement('img');
+                img.src = BASE + editingProduct.photoUrl;
+                upload.appendChild(img);
+                upload.classList.add('has-photo');
+                label.style.display = 'none';
+            }
+
+            $('editModal').classList.add('visible');
+        }
+
+        function closeEditModal() {
+            $('editModal').classList.remove('visible');
+            editingProduct = null;
+            pendingPhotoFile = null;
+        }
+
+        async function compressImage(file, maxDim = 1200) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width, h = img.height;
+                        if (w > maxDim || h > maxDim) {
+                            if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+                            else { w = Math.round(w * maxDim / h); h = maxDim; }
+                        }
+                        canvas.width = w;
+                        canvas.height = h;
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                        canvas.toBlob(resolve, 'image/jpeg', 0.85);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function saveProduct() {
+            const title = $('editTitle').value.trim();
+            if (!title) { toast('Title is required', 'error'); return; }
+
+            const priceStr = $('editPrice').value;
+            const priceCents = Math.round(parseFloat(priceStr || '0') * 100);
+            const description = $('editDescription').value.trim();
+            const category = $('editCategory').value.trim();
+
+            $('editSave').disabled = true;
+            $('editSave').textContent = 'Saving...';
+
+            try {
+                let product;
+                if (editingProduct) {
+                    const data = await api('PUT', `/api/products/${editingProduct.id}`, {
+                        title, description, priceCents, category
+                    });
+                    product = data.product;
+                } else {
+                    const data = await api('POST', '/api/products', {
+                        title, description, priceCents, category
+                    });
+                    product = data.product;
+                }
+
+                // Upload photo if pending
+                if (pendingPhotoFile && product) {
+                    const compressed = await compressImage(pendingPhotoFile);
+                    const form = new FormData();
+                    form.append('photo', compressed, 'photo.jpg');
+                    await api('POST', `/api/products/${product.id}/photo`, form);
+                }
+
+                closeEditModal();
+                toast(editingProduct ? 'Product updated' : 'Product created');
+                await loadProducts();
+                await loadCategories();
+            } catch (err) {
+                toast('Save failed: ' + err.message, 'error');
+            }
+
+            $('editSave').disabled = false;
+            $('editSave').textContent = 'Save';
+        }
+
+        async function deleteProduct() {
+            if (!editingProduct) return;
+            if (!confirm(`Delete "${editingProduct.title}"?`)) return;
+            try {
+                await api('DELETE', `/api/products/${editingProduct.id}`);
+                closeEditModal();
+                toast('Product deleted');
+                await loadProducts();
+                await loadCategories();
+            } catch (err) {
+                toast('Delete failed', 'error');
+            }
+        }
+
+        function showQrCode(productId) {
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+            const url = `${BASE}/web/product.html?id=${product.id}`;
+            $('qrModalTitle').textContent = product.title;
+            $('qrProductInfo').textContent = `${product.title} - ${formatPrice(product.priceCents)}`;
+            $('qrUrl').textContent = url;
+            $('qrCodeContainer').innerHTML = '';
+
+            if (typeof QRCode !== 'undefined') {
+                new QRCode($('qrCodeContainer'), {
+                    text: url, width: 220, height: 220,
+                    colorDark: '#000000', colorLight: '#ffffff'
+                });
+            }
+            $('qrModal').classList.add('visible');
+        }
+
+        // Event listeners
+        $('addBtn').addEventListener('click', () => openEditModal(null));
+        $('refreshBtn').addEventListener('click', () => { loadProducts(); loadCategories(); });
+        $('editModalClose').addEventListener('click', closeEditModal);
+        $('editCancel').addEventListener('click', closeEditModal);
+        $('editSave').addEventListener('click', saveProduct);
+        $('deleteBtn').addEventListener('click', deleteProduct);
+        $('qrModalClose').addEventListener('click', () => $('qrModal').classList.remove('visible'));
+        $('qrClose').addEventListener('click', () => $('qrModal').classList.remove('visible'));
+
+        $('qrDownload').addEventListener('click', () => {
+            const canvas = $('qrCodeContainer').querySelector('canvas');
+            if (!canvas) return;
+            const a = document.createElement('a');
+            a.download = 'qr-code.png';
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+        });
+
+        // Photo upload
+        $('photoUpload').addEventListener('click', () => $('photoInput').click());
+        $('photoInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            pendingPhotoFile = file;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const upload = $('photoUpload');
+                const existingImg = upload.querySelector('img');
+                if (existingImg) existingImg.remove();
+                const img = document.createElement('img');
+                img.src = ev.target.result;
+                upload.appendChild(img);
+                upload.classList.add('has-photo');
+                $('uploadLabel').style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Search and filter
+        let searchTimer;
+        $('searchInput').addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(loadProducts, 300);
+        });
+        $('categoryFilter').addEventListener('change', loadProducts);
+
+        // Long-press for QR code on cards
+        let longPressTimer;
+        $('productGrid').addEventListener('touchstart', (e) => {
+            const card = e.target.closest('.product-card');
+            if (!card) return;
+            longPressTimer = setTimeout(() => {
+                e.preventDefault();
+                showQrCode(card.dataset.id);
+            }, 600);
+        });
+        $('productGrid').addEventListener('touchend', () => clearTimeout(longPressTimer));
+        $('productGrid').addEventListener('touchmove', () => clearTimeout(longPressTimer));
+
+        // Init
+        loadProducts();
+        loadCategories();
+    })();
+    </script>
+</body>
+</html>

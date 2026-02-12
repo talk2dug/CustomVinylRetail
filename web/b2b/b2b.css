@@ -1,19 +1,21 @@
 /* B2B Metal Prints Portal - Styles */
 :root {
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
+  --primary: #38bdf8;
+  --primary-dark: #0ea5e9;
   --secondary: #64748b;
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
-  --bg: #f8fafc;
+  --bg: #0f172a;
+  --bg-light: #1e293b;
   --card: #ffffff;
   --text: #1e293b;
-  --text-muted: #64748b;
+  --text-light: #f8fafc;
+  --text-muted: #94a3b8;
   --border: #e2e8f0;
   --radius: 8px;
   --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+  --shadow-lg: 0 25px 60px rgba(15, 23, 42, 0.3);
 }
 
 * {
@@ -54,12 +56,12 @@ body {
 .b2b-logo-icon {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  background: var(--primary);
   border-radius: var(--radius);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: #0f172a;
   font-weight: bold;
   font-size: 1.25rem;
 }
@@ -86,7 +88,7 @@ body {
 
 .b2b-nav a:hover, .b2b-nav a.active {
   color: var(--primary);
-  background: rgba(37, 99, 235, 0.1);
+  background: rgba(56, 189, 248, 0.1);
 }
 
 .b2b-user-menu {
@@ -154,7 +156,7 @@ body {
 .b2b-form-group textarea:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
 }
 
 .b2b-form-row {
@@ -187,11 +189,15 @@ body {
 
 .b2b-btn-primary {
   background: var(--primary);
-  color: white;
+  color: #0f172a;
+  box-shadow: 0 10px 30px rgba(14, 165, 233, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .b2b-btn-primary:hover {
   background: var(--primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px rgba(14, 165, 233, 0.35);
 }
 
 .b2b-btn-secondary {
@@ -219,7 +225,7 @@ body {
 }
 
 .b2b-btn-ghost:hover {
-  background: rgba(37, 99, 235, 0.1);
+  background: rgba(56, 189, 248, 0.15);
 }
 
 .b2b-btn:disabled {
@@ -237,17 +243,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+  background: var(--bg);
   padding: 2rem;
+  font-family: "Barlow", "Montserrat", system-ui, -apple-system, sans-serif;
 }
 
 .b2b-login-card {
   background: var(--card);
-  border-radius: 12px;
+  border-radius: 1.5rem;
   box-shadow: var(--shadow-lg);
-  padding: 2.5rem;
+  padding: 3rem;
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
 }
 
 .b2b-login-header {
@@ -256,13 +263,14 @@ body {
 }
 
 .b2b-login-header h1 {
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   margin-bottom: 0.5rem;
+  color: var(--text);
 }
 
 .b2b-login-header p {
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-size: 0.95rem;
 }
 
 .b2b-login-error {
@@ -318,7 +326,7 @@ body {
 
 .b2b-status-draft { background: #f1f5f9; color: #64748b; }
 .b2b-status-submitted { background: #fef3c7; color: #d97706; }
-.b2b-status-received { background: #dbeafe; color: #2563eb; }
+.b2b-status-received { background: #e0f2fe; color: #0284c7; }
 .b2b-status-being_printed { background: #e0e7ff; color: #6366f1; }
 .b2b-status-shipped { background: #dcfce7; color: #16a34a; }
 .b2b-status-completed { background: #d1fae5; color: #059669; }
@@ -338,7 +346,7 @@ body {
 
 .b2b-upload-zone:hover, .b2b-upload-zone.dragover {
   border-color: var(--primary);
-  background: rgba(37, 99, 235, 0.05);
+  background: rgba(56, 189, 248, 0.08);
 }
 
 .b2b-upload-zone-icon {
@@ -439,7 +447,7 @@ body {
 
 .b2b-pricing-card.selected {
   border-color: var(--primary);
-  background: rgba(37, 99, 235, 0.05);
+  background: rgba(56, 189, 248, 0.08);
 }
 
 .b2b-pricing-card .size {
@@ -710,8 +718,8 @@ body {
   display: inline-block;
   width: 20px;
   height: 20px;
-  border: 2px solid var(--border);
-  border-top-color: var(--primary);
+  border: 2px solid rgba(15, 23, 42, 0.3);
+  border-top-color: #0f172a;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }

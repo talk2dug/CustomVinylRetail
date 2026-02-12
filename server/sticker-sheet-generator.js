@@ -3911,6 +3911,192 @@ async function generateNestedSheetsByOrder(orders, options = {}) {
 // END NESTING ENGINE INTEGRATION
 // ============================================================================
 
+// ============================================================================
+// PRODUCT LABEL GENERATION
+// Creates 3"x1.5" (900x450px @ 300 DPI) label PNGs for product catalog
+// ============================================================================
+
+const QRCode = require('qrcode');
+
+const LABEL_WIDTH = 900;   // 3 inches @ 300 DPI
+const LABEL_HEIGHT = 450;  // 1.5 inches @ 300 DPI
+const LABEL_TEMP_DIR = path.join(__dirname, '..', 'temp_labels');
+
+/**
+ * Generate a product label PNG (900x450px = 3"x1.5" @ 300 DPI)
+ * Layout: [Photo 120x120] [Text Info] [QR Code 130x130]
+ *
+ * @param {Object} product - Product object from DB
+ * @param {string} baseUrl - Server base URL for QR code link
+ * @param {string} [photoDir] - Directory containing product photos
+ * @returns {Promise<string>} Path to generated label PNG
+ */
+async function generateProductLabel(product, baseUrl, photoDir) {
+  await fs.promises.mkdir(LABEL_TEMP_DIR, { recursive: true });
+
+  const labelPath = path.join(LABEL_TEMP_DIR, `label_${product.id}_${Date.now()}.png`);
+
+  // Generate QR code as PNG buffer
+  const productUrl = `${baseUrl}/web/product.html?id=${product.id}`;
+  const qrBuffer = await QRCode.toBuffer(productUrl, {
+    width: 130,
+    margin: 0,
+    color: { dark: '#000000', light: '#ffffff' }
+  });
+
+  // Build composites array
+  const composites = [];
+
+  // Product photo (if exists)
+  let photoComposited = false;
+  if (product.photoPath && photoDir) {
+    const photoFile = path.join(photoDir, path.basename(product.photoPath));
+    if (fs.existsSync(photoFile)) {
+      try {
+        const photoBuf = await sharp(photoFile)
+          .resize(120, 120, { fit: 'cover' })
+          .png()
+          .toBuffer();
+        composites.push({ input: photoBuf, left: 20, top: 165 });
+        photoComposited = true;
+      } catch (e) {
+        console.warn(`[Label] Could not process photo for ${product.title}:`, e.message);
+      }
+    }
+  }
+
+  // QR code at right side
+  composites.push({ input: qrBuffer, left: 750, top: 160 });
+
+  // Build SVG text overlay
+  const textLeftX = photoComposited ? 160 : 20;
+  const maxTextWidth = 570;
+
+  const title = escSvg(truncateText(product.title || 'Untitled', 40));
+  const price = '$' + ((product.priceCents || 0) / 100).toFixed(2);
+  const qtyText = (product.quantity && product.quantity > 1) ? `  x${product.quantity}` : '';
+  const sizeColor = [product.size, product.color].filter(Boolean).map(escSvg).join(' / ');
+  const category = product.category ? escSvg(product.category) : '';
+  const htBadge = product.isHeatTransfer;
+
+  let svgParts = [];
+  svgParts.push(`<text x="${textLeftX}" y="185" font-family="Arial,Helvetica,sans-serif" font-size="32" font-weight="bold" fill="#111">${title}</text>`);
+  svgParts.push(`<text x="${textLeftX}" y="225" font-family="Arial,Helvetica,sans-serif" font-size="26" fill="#16a34a" font-weight="600">${escSvg(price)}${escSvg(qtyText)}</text>`);
+
+  let infoY = 260;
+  if (sizeColor) {
+    svgParts.push(`<text x="${textLeftX}" y="${infoY}" font-family="Arial,Helvetica,sans-serif" font-size="22" fill="#666">${sizeColor}</text>`);
+    infoY += 32;
+  }
+
+  // Category + HT badge on same line
+  let badgeX = textLeftX;
+  if (category) {
+    svgParts.push(`<rect x="${badgeX}" y="${infoY - 18}" width="${category.length * 12 + 20}" height="26" rx="13" fill="#e5e7eb"/>`);
+    svgParts.push(`<text x="${badgeX + 10}" y="${infoY}" font-family="Arial,Helvetica,sans-serif" font-size="18" fill="#666">${category}</text>`);
+    badgeX += category.length * 12 + 30;
+  }
+  if (htBadge) {
+    svgParts.push(`<rect x="${badgeX}" y="${infoY - 18}" width="120" height="26" rx="13" fill="#b45309"/>`);
+    svgParts.push(`<text x="${badgeX + 10}" y="${infoY}" font-family="Arial,Helvetica,sans-serif" font-size="18" fill="#fff" font-weight="600">Heat Transfer</text>`);
+  }
+
+  // Thin border around label
+  svgParts.push(`<rect x="1" y="1" width="${LABEL_WIDTH - 2}" height="${LABEL_HEIGHT - 2}" rx="8" fill="none" stroke="#ddd" stroke-width="1"/>`);
+
+  const svgOverlay = Buffer.from(`<svg width="${LABEL_WIDTH}" height="${LABEL_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+    ${svgParts.join('\n    ')}
+  </svg>`);
+
+  composites.push({ input: svgOverlay, left: 0, top: 0 });
+
+  // Create white base and composite everything
+  await sharp({
+    create: {
+      width: LABEL_WIDTH,
+      height: LABEL_HEIGHT,
+      channels: 4,
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    }
+  })
+    .composite(composites)
+    .png()
+    .toFile(labelPath);
+
+  return labelPath;
+}
+
+/**
+ * Generate label PNGs for multiple products, then pack onto sticker sheets
+ * @param {Array} products - Array of product objects from DB
+ * @param {string} baseUrl - Server base URL
+ * @param {string} photoDir - Product photos directory
+ * @param {string} outputDir - Output directory for sticker sheets
+ * @param {string} [filenamePrefix='product-labels'] - Filename prefix
+ * @returns {Promise<Object>} Sticker sheet generation results
+ */
+async function generateProductLabelSheets(products, baseUrl, photoDir, outputDir, filenamePrefix = 'product-labels') {
+  console.log(`[Labels] Generating labels for ${products.length} products`);
+
+  // Generate individual label PNGs
+  const labelDesigns = [];
+  const tempLabelFiles = [];
+
+  for (const product of products) {
+    try {
+      const labelPath = await generateProductLabel(product, baseUrl, photoDir);
+      tempLabelFiles.push(labelPath);
+      const qty = Math.max(1, parseInt(product.quantity) || 1);
+      labelDesigns.push({
+        imagePath: labelPath,
+        title: product.title || 'Untitled',
+        quantity: qty
+      });
+      console.log(`[Labels] Generated label for "${product.title}" (qty: ${qty})`);
+    } catch (err) {
+      console.error(`[Labels] Failed to generate label for "${product.title}":`, err.message);
+    }
+  }
+
+  if (labelDesigns.length === 0) {
+    throw new Error('No labels could be generated');
+  }
+
+  // Generate sticker sheets with labels (no background removal needed)
+  const result = await generateStickerSheets(labelDesigns, {
+    stickerSizeInches: 3,    // 3 inches wide (height scales to 1.5" naturally)
+    offsetMm: 0.5,
+    outputDir,
+    filenamePrefix,
+    removeBackgrounds: false,
+    scaleByLargestDimension: true,
+    useRotationPacking: false  // Keep labels horizontal for readability
+  });
+
+  // Cleanup temp label PNGs
+  for (const f of tempLabelFiles) {
+    try { fs.unlinkSync(f); } catch (_) {}
+  }
+  try { fs.rmdirSync(LABEL_TEMP_DIR); } catch (_) {}
+
+  return result;
+}
+
+/** Escape special characters for SVG text */
+function escSvg(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Truncate text to max length */
+function truncateText(text, maxLen) {
+  if (!text || text.length <= maxLen) return text;
+  return text.substring(0, maxLen - 1) + '\u2026';
+}
+
+// ============================================================================
+// END PRODUCT LABEL GENERATION
+// ============================================================================
+
 module.exports = {
   SHEET_CONFIG,
   REGMARK_CONFIG,  // Registration mark settings for Silhouette
@@ -3965,5 +4151,8 @@ module.exports = {
   generateNestedSheetsByOrder,  // ORDER mode - keep orders grouped
   // NEW: Learned contour style parameters
   getLearnedPotraceParams,  // Get potrace params from trained style
-  reloadStyleProfile        // Force reload of style profile after training
+  reloadStyleProfile,       // Force reload of style profile after training
+  // Product label generation
+  generateProductLabel,      // Generate single 3"x1.5" label PNG
+  generateProductLabelSheets // Generate labels + pack onto sticker sheets
 };
