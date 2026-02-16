@@ -34,6 +34,7 @@ const { classifyMarketingProfile } = require('./utils/classifier');
 const metalPrints = require('./metal-prints-server');
 const { handleLeonardoRoute } = require('./leonardo-server');
 const { handleMultiboardRoute } = require('./multiboard-server');
+const { handleSlicerRoute } = require('./slicer-server');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
@@ -8526,6 +8527,16 @@ const requestHandler = async (req, res) => {
     if (!requireInternalKey(req, res)) return;
     handleMultiboardRoute(parsedUrl.pathname, req, res, db).catch(err => {
       console.error('[Multiboard API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Slicer API (3D model catalog, slicing, G-code cache)
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/slicer')) {
+    if (!requireInternalKey(req, res)) return;
+    handleSlicerRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Slicer API Error]', err);
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;

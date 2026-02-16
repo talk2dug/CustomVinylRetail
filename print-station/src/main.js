@@ -8,8 +8,8 @@ const sharp = require('sharp');
 const cp = require('child_process');
 const os = require('os');
 const { LocalCatalogDB } = require('./local-db');
-const { StlCatalogDB } = require('./stl-db');
-const { parseStlFile, walkForStlFiles } = require('./stl-parser');
+const { PrinterFleetDB } = require('./printer-fleet-db');
+const { PrinterService } = require('./printer-service');
 const chokidar = require('chokidar');
 let autoUpdater = null;
 let tesseractWorker = null;
@@ -158,7 +158,8 @@ const DOC_EXTENSIONS = new Set(['.pdf', '.ai', '.eps']);
 const SCAN_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, ...VECTOR_EXTENSIONS, ...DOC_EXTENSIONS]);
 
 let localDb = null;
-let stlDb = null;
+let fleetDb = null;
+let printerService = null;
 let fileWatcher = null;
 let watchConfig = null;
 const cancelledJobs = new Set();
@@ -1542,7 +1543,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webviewTag: true
     },
     show: false
   });
@@ -1554,6 +1556,65 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   return mainWindow;
+}
+
+// ==================== 3D Printer Fleet Helpers ====================
+
+function connectToPrinter(printer) {
+  if (!printerService) return;
+
+  const onStatus = (apiUrl, status) => {
+    // Push to renderer
+    const wins = BrowserWindow.getAllWindows();
+    if (wins.length > 0 && !wins[0].isDestroyed()) {
+      wins[0].webContents.send('fleet:printer:status', {
+        printerId: printer.id,
+        apiUrl,
+        ...status
+      });
+    }
+
+    if (!fleetDb) return;
+
+    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printer.id);
+
+    if (status.state === 'printing' && activeJobs.length > 0) {
+      fleetDb.updateJob(activeJobs[0].id, {
+        progress: status.progress || 0,
+        status: 'printing'
+      });
+      printerService.updatePollRate(apiUrl, true);
+    }
+
+    if (status.state === 'complete' && activeJobs.length > 0) {
+      fleetDb.updateJob(activeJobs[0].id, {
+        status: 'completed',
+        progress: 1,
+        completed_at: new Date().toISOString(),
+        print_duration: status.printDuration || 0
+      });
+      printerService.updatePollRate(apiUrl, false);
+    }
+
+    if (status.state === 'error' && activeJobs.length > 0) {
+      fleetDb.updateJob(activeJobs[0].id, {
+        status: 'error',
+        error_message: status.message || 'Unknown error',
+        completed_at: new Date().toISOString()
+      });
+      printerService.updatePollRate(apiUrl, false);
+    }
+  };
+
+  // Connect WebSocket for real-time, start polling as fallback
+  printerService.connectWebSocket(printer.api_url, onStatus);
+  printerService.startPolling(printer.api_url, onStatus, 5000);
+}
+
+function disconnectPrinter(printer) {
+  if (!printerService) return;
+  printerService.disconnectWebSocket(printer.api_url);
+  printerService.stopPolling(printer.api_url);
 }
 
 function registerIpcHandlers() {
@@ -5988,264 +6049,577 @@ Return ONLY valid JSON, nothing else:
     return { updated: count };
   });
 
-  // ==================== STL File Manager IPC ====================
+  // ==================== 3D Printer Fleet IPC ====================
 
-  ipcMain.handle('stl:scan', async (event, { directory } = {}) => {
-    if (!directory) throw new Error('Directory required');
-    if (!stlDb) throw new Error('STL database not initialized');
+  // --- Printer CRUD ---
+  ipcMain.handle('fleet:printers:list', (_event, query = {}) => {
+    if (!fleetDb) return [];
+    return fleetDb.listPrinters(query);
+  });
 
-    const files = await walkForStlFiles(directory);
+  ipcMain.handle('fleet:printers:get', (_event, id) => {
+    if (!fleetDb) return null;
+    return fleetDb.getPrinter(id);
+  });
+
+  ipcMain.handle('fleet:printers:upsert', (_event, printer) => {
+    if (!fleetDb) throw new Error('Fleet DB not initialized');
+    const result = fleetDb.upsertPrinter(printer);
+    if (result && result.active) connectToPrinter(result);
+    return result;
+  });
+
+  ipcMain.handle('fleet:printers:update', (_event, { id, updates } = {}) => {
+    if (!fleetDb || !id) return null;
+    const before = fleetDb.getPrinter(id);
+    const result = fleetDb.updatePrinter(id, updates || {});
+    // Reconnect if URL changed or printer was re-enabled
+    if (result && before) {
+      if (before.api_url !== result.api_url || (!before.active && result.active)) {
+        disconnectPrinter(before);
+        if (result.active) connectToPrinter(result);
+      }
+    }
+    return result;
+  });
+
+  ipcMain.handle('fleet:printers:remove', (_event, id) => {
+    if (!fleetDb || !id) return { changes: 0 };
+    const printer = fleetDb.getPrinter(id);
+    if (printer) disconnectPrinter(printer);
+    return fleetDb.removePrinter(id);
+  });
+
+  // --- Printer Status ---
+  ipcMain.handle('fleet:printers:status', async (_event, id) => {
+    if (!fleetDb || !printerService) return null;
+    const printer = fleetDb.getPrinter(id);
+    if (!printer) return null;
+    // Return cached status if available, otherwise fetch live
+    const cached = printerService.getCachedStatus(printer.api_url);
+    if (cached && Date.now() - cached.timestamp < 10000) return cached;
+    try {
+      return await printerService.getPrinterStatus(printer.api_url);
+    } catch (err) {
+      return { state: 'offline', error: err.message, timestamp: Date.now() };
+    }
+  });
+
+  ipcMain.handle('fleet:printers:statusAll', async () => {
+    if (!fleetDb || !printerService) return [];
+    const printers = fleetDb.listPrinters({ active: true });
     const results = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const filePath = files[i];
-      try {
-        const parsed = parseStlFile(filePath);
-        const item = stlDb.upsert({
-          file_path: filePath,
-          filename: path.basename(filePath, '.stl'),
-          category: path.basename(path.dirname(filePath)),
-          format: parsed.format,
-          triangle_count: parsed.triangleCount,
-          dim_x: parsed.dimensions.x,
-          dim_y: parsed.dimensions.y,
-          dim_z: parsed.dimensions.z,
-          file_size: parsed.fileSize
-        });
-        results.push(item);
-      } catch (e) {
-        console.error(`[STL Scan] Error parsing ${filePath}:`, e.message);
+    for (const p of printers) {
+      const cached = printerService.getCachedStatus(p.api_url);
+      if (cached && Date.now() - cached.timestamp < 10000) {
+        results.push({ ...p, status: cached });
+      } else {
+        try {
+          const status = await printerService.getPrinterStatus(p.api_url);
+          results.push({ ...p, status });
+        } catch (err) {
+          results.push({ ...p, status: { state: 'offline', error: err.message, timestamp: Date.now() } });
+        }
       }
-
-      try {
-        event.sender.send('stl:scanProgress', {
-          current: i + 1,
-          total: files.length,
-          filename: path.basename(filePath)
-        });
-      } catch (_) {}
     }
-
-    return { scanned: results.length, total: files.length };
+    return results;
   });
 
-  ipcMain.handle('stl:list', (_event, query = {}) => {
-    if (!stlDb) return [];
-    return stlDb.list(query);
+  ipcMain.handle('fleet:printers:reconnect', async (_event, id) => {
+    if (!fleetDb || !printerService) return { success: false };
+    const printer = fleetDb.getPrinter(id);
+    if (!printer) return { success: false, error: 'Printer not found' };
+    disconnectPrinter(printer);
+    connectToPrinter(printer);
+    return { success: true };
   });
 
-  ipcMain.handle('stl:count', (_event, query = {}) => {
-    if (!stlDb) return 0;
-    return stlDb.count(query);
+  ipcMain.handle('fleet:printers:testConnection', async (_event, apiUrl) => {
+    if (!printerService) return { success: false, error: 'Service not initialized' };
+    try {
+      const status = await printerService.getPrinterStatus(apiUrl);
+      const info = await printerService.getPrinterInfo(apiUrl);
+      return { success: true, status, info };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 
-  ipcMain.handle('stl:get', (_event, id) => {
-    if (!stlDb) return null;
-    return stlDb.getById(id);
-  });
-
-  ipcMain.handle('stl:update', (_event, { id, updates } = {}) => {
-    if (!stlDb || !id) return null;
-    return stlDb.update(id, updates || {});
-  });
-
-  ipcMain.handle('stl:delete', (_event, id) => {
-    if (!stlDb || !id) return { changes: 0 };
-    return stlDb.remove(id);
-  });
-
-  ipcMain.handle('stl:bulkDelete', (_event, { ids } = {}) => {
-    if (!stlDb || !ids?.length) return 0;
-    return stlDb.bulkDelete(ids);
-  });
-
-  ipcMain.handle('stl:bulkSetCategory', (_event, { ids, category } = {}) => {
-    if (!stlDb || !ids?.length) return 0;
-    return stlDb.bulkSetCategory(ids, category || '');
-  });
-
-  ipcMain.handle('stl:bulkSetTags', (_event, { ids, tags } = {}) => {
-    if (!stlDb || !ids?.length) return 0;
-    return stlDb.bulkSetTags(ids, tags || '');
-  });
-
-  ipcMain.handle('stl:toggleFavorite', (_event, id) => {
-    if (!stlDb || !id) return null;
-    return stlDb.toggleFavorite(id);
-  });
-
-  ipcMain.handle('stl:categories', () => {
-    if (!stlDb) return [];
-    return stlDb.categories();
-  });
-
-  ipcMain.handle('stl:readFile', async (_event, filePath) => {
-    if (!filePath) return null;
-    const buffer = await fs.promises.readFile(filePath);
-    return buffer.toString('base64');
-  });
-
-  ipcMain.handle('stl:openInSlicer', async (_event, id) => {
-    if (!stlDb) return false;
-    const model = stlDb.getById(id);
-    if (!model) return false;
-    await shell.openPath(model.file_path);
-    return true;
-  });
-
-  ipcMain.handle('stl:copyToFolder', async (_event, id) => {
-    if (!stlDb) return false;
-    const model = stlDb.getById(id);
-    if (!model) return false;
-
+  // --- G-code File Management ---
+  ipcMain.handle('fleet:files:select', async () => {
     const result = await dialog.showOpenDialog({
-      title: 'Choose destination folder',
-      properties: ['openDirectory']
+      properties: ['openFile'],
+      filters: [{ name: 'G-code Files', extensions: ['gcode', 'g', 'gco'] }]
     });
-    if (result.canceled || !result.filePaths.length) return false;
-
-    const dest = path.join(result.filePaths[0], path.basename(model.file_path));
-    await fs.promises.copyFile(model.file_path, dest);
-    return true;
+    if (result.canceled || !result.filePaths.length) return null;
+    return result.filePaths[0];
   });
 
-  ipcMain.handle('stl:revealInExplorer', (_event, id) => {
-    if (!stlDb) return false;
-    const model = stlDb.getById(id);
-    if (!model) return false;
-    shell.showItemInFolder(model.file_path);
-    return true;
+  ipcMain.handle('fleet:files:upload', async (_event, { printerId, filePath }) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    return await printerService.uploadGcode(printer.api_url, filePath);
   });
 
-  ipcMain.handle('stl:saveThumbnail', async (_event, { id, dataUrl } = {}) => {
-    if (!stlDb || !id || !dataUrl) return null;
-    const thumbDir = path.join(app.getPath('userData'), 'stl-catalog', 'thumbnails');
-    await fs.promises.mkdir(thumbDir, { recursive: true });
-
-    const hash = crypto.createHash('md5').update(String(id)).digest('hex');
-    const thumbPath = path.join(thumbDir, `${hash}.png`);
-
-    const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-    await fs.promises.writeFile(thumbPath, Buffer.from(base64Data, 'base64'));
-
-    stlDb.update(id, { thumbnail_path: thumbPath });
-    return thumbPath;
+  ipcMain.handle('fleet:files:list', async (_event, { printerId }) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    return await printerService.listFiles(printer.api_url);
   });
 
-  // ---------- Translation helper ----------
-  function translateText(text) {
-    return new Promise((resolve, reject) => {
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`;
-      https.get(url, (res) => {
-        let data = '';
-        res.on('data', chunk => (data += chunk));
-        res.on('end', () => {
-          try {
-            const result = JSON.parse(data);
-            const translated = result[0].map(s => s[0]).join('');
-            const detectedLang = result[2] || 'unknown';
-            resolve({ translated, detectedLang });
-          } catch (e) {
-            reject(new Error('Translation parse error: ' + e.message));
-          }
-        });
-      }).on('error', reject);
+  ipcMain.handle('fleet:files:delete', async (_event, { printerId, filename }) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    return await printerService.deleteFile(printer.api_url, filename);
+  });
+
+  // --- Print Job Control ---
+  ipcMain.handle('fleet:print:start', async (_event, { printerId, filename, shopifyOrderId }) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    await printerService.startPrint(printer.api_url, filename);
+    const job = fleetDb.createJob({
+      printer_id: printerId,
+      filename,
+      status: 'printing',
+      started_at: new Date().toISOString(),
+      shopify_order_id: shopifyOrderId || null
     });
+    printerService.updatePollRate(printer.api_url, true);
+    return job;
+  });
+
+  ipcMain.handle('fleet:print:pause', async (_event, { printerId }) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    await printerService.pausePrint(printer.api_url);
+    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId);
+    if (activeJobs.length) fleetDb.updateJob(activeJobs[0].id, { status: 'paused' });
+    return { success: true };
+  });
+
+  ipcMain.handle('fleet:print:resume', async (_event, { printerId }) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    await printerService.resumePrint(printer.api_url);
+    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId && j.status === 'paused');
+    if (activeJobs.length) fleetDb.updateJob(activeJobs[0].id, { status: 'printing' });
+    printerService.updatePollRate(printer.api_url, true);
+    return { success: true };
+  });
+
+  ipcMain.handle('fleet:print:cancel', async (_event, { printerId }) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    await printerService.cancelPrint(printer.api_url);
+    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId);
+    if (activeJobs.length) {
+      fleetDb.updateJob(activeJobs[0].id, {
+        status: 'cancelled',
+        completed_at: new Date().toISOString()
+      });
+    }
+    printerService.updatePollRate(printer.api_url, false);
+    return { success: true };
+  });
+
+  ipcMain.handle('fleet:print:emergencyStop', async (_event, { printerId }) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    await printerService.emergencyStop(printer.api_url);
+    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId);
+    if (activeJobs.length) {
+      fleetDb.updateJob(activeJobs[0].id, {
+        status: 'error',
+        error_message: 'Emergency stop triggered',
+        completed_at: new Date().toISOString()
+      });
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('fleet:gcode:send', async (_event, { printerId, command }) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    return await printerService.sendGcode(printer.api_url, command);
+  });
+
+  // --- Webcam ---
+  ipcMain.handle('fleet:webcam:urls', async (_event, printerId) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+    return await printerService.getWebcamUrls(printer.api_url);
+  });
+
+  // --- Job History ---
+  ipcMain.handle('fleet:jobs:list', (_event, query = {}) => {
+    if (!fleetDb) return [];
+    return fleetDb.listJobs(query);
+  });
+
+  ipcMain.handle('fleet:jobs:active', () => {
+    if (!fleetDb) return [];
+    return fleetDb.getActiveJobs();
+  });
+
+  ipcMain.handle('fleet:jobs:stats', () => {
+    if (!fleetDb) return {};
+    return fleetDb.getJobStats();
+  });
+
+  // ============================================================================
+  // SLICER IPC HANDLERS (proxy to server API)
+  // ============================================================================
+
+  async function slicerFetch(endpoint, options = {}) {
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const url = `${settings.serverBaseUrl}${endpoint}`;
+    const headers = { ...(options.headers || {}) };
+    if (settings.apiKey) {
+      headers['X-API-Key'] = settings.apiKey;
+    }
+    const resp = await doFetch(url, { ...options, headers });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `Server returned ${resp.status}`);
+    }
+    return resp;
   }
 
-  function isNonEnglishFilename(name) {
-    // Strip extension and separators, check for non-ASCII chars
-    const stripped = name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
-    return /[^\x00-\x7F]/.test(stripped);
-  }
+  // Presets
+  ipcMain.handle('slicer:presets', async () => {
+    const resp = await slicerFetch('/api/slicer/presets');
+    return resp.json();
+  });
 
-  function sanitizeFilename(name) {
-    // Remove chars illegal in Windows filenames, trim whitespace
-    return name.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
-  }
+  // STL Catalog
+  ipcMain.handle('slicer:catalog:list', async (_event, query = {}) => {
+    const params = new URLSearchParams();
+    if (query.category) params.set('category', query.category);
+    if (query.search) params.set('search', query.search);
+    const qs = params.toString();
+    const resp = await slicerFetch(`/api/slicer/catalog${qs ? '?' + qs : ''}`);
+    return resp.json();
+  });
 
-  ipcMain.handle('stl:translateFilenames', async (event) => {
-    if (!stlDb) throw new Error('STL database not initialized');
+  ipcMain.handle('slicer:catalog:categories', async () => {
+    const resp = await slicerFetch('/api/slicer/catalog/categories');
+    return resp.json();
+  });
 
-    // Get all models
-    const allModels = stlDb.list({ limit: 100000, offset: 0 });
-    const toTranslate = allModels.filter(m => isNonEnglishFilename(m.filename));
+  ipcMain.handle('slicer:catalog:get', async (_event, id) => {
+    const resp = await slicerFetch(`/api/slicer/catalog/${id}`);
+    return resp.json();
+  });
 
-    if (!toTranslate.length) return { translated: 0, total: 0, skipped: 0 };
+  ipcMain.handle('slicer:catalog:create', async (_event, { filePath, name, category, defaults } = {}) => {
+    if (!filePath) throw new Error('No file path provided');
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePath), path.basename(filePath));
+    if (name) form.append('name', name);
+    if (category) form.append('category', category);
+    if (defaults) {
+      if (defaults.quality) form.append('default_quality', defaults.quality);
+      if (defaults.strength) form.append('default_strength', defaults.strength);
+      if (defaults.material) form.append('default_material', defaults.material);
+      if (defaults.texture) form.append('default_texture', defaults.texture);
+      if (defaults.supports) form.append('default_supports', defaults.supports);
+    }
+    const headers = form.getHeaders();
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+    const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
+      method: 'POST',
+      headers,
+      body: form
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `Upload failed (${resp.status})`);
+    }
+    return resp.json();
+  });
 
-    let translated = 0;
-    let skipped = 0;
+  ipcMain.handle('slicer:catalog:update', async (_event, { id, updates } = {}) => {
+    const resp = await slicerFetch(`/api/slicer/catalog/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    return resp.json();
+  });
 
-    for (let i = 0; i < toTranslate.length; i++) {
-      const model = toTranslate[i];
+  ipcMain.handle('slicer:catalog:delete', async (_event, id) => {
+    const resp = await slicerFetch(`/api/slicer/catalog/${id}`, { method: 'DELETE' });
+    return resp.json();
+  });
+
+  // Bulk STL import — scan directory recursively for .stl files + extract from ZIPs
+  ipcMain.handle('slicer:stl:bulkScan', async (_event, directory) => {
+    if (!directory) throw new Error('No directory specified');
+    const unzipper = require('unzipper');
+    const os = require('os');
+
+    const stlFiles = [];   // { filePath, name, source: 'file'|'zip', zipName? }
+
+    // Recursive directory walk
+    async function walk(dir) {
+      let entries;
       try {
-        const result = await translateText(model.filename);
-
-        // Skip if already English or translation returned same text
-        if (result.detectedLang === 'en' || result.translated === model.filename) {
-          skipped++;
-          try {
-            event.sender.send('stl:translateProgress', {
-              current: i + 1, total: toTranslate.length,
-              filename: model.filename, status: 'skipped'
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      } catch (_) { return; }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name.startsWith('.') || entry.name === '__MACOSX') continue;
+          await walk(full);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (ext === '.stl') {
+            stlFiles.push({
+              filePath: full,
+              name: path.basename(entry.name, '.stl').replace(/[_-]/g, ' '),
+              source: 'file'
             });
-          } catch (_) {}
-          continue;
+          } else if (ext === '.zip') {
+            // Extract STL files from ZIP
+            try {
+              const zipDir = await unzipper.Open.file(full);
+              const tempDir = path.join(os.tmpdir(), `stl-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+              fs.mkdirSync(tempDir, { recursive: true });
+              for (const zipEntry of zipDir.files) {
+                if (zipEntry.type === 'Directory') continue;
+                const zExt = path.extname(zipEntry.path).toLowerCase();
+                if (zExt !== '.stl') continue;
+                if (zipEntry.path.includes('__MACOSX') || zipEntry.path.includes('/.')) continue;
+                const destName = path.basename(zipEntry.path);
+                let destPath = path.join(tempDir, destName);
+                let counter = 1;
+                while (fs.existsSync(destPath)) {
+                  destPath = path.join(tempDir, `${path.basename(destName, '.stl')}_${counter}.stl`);
+                  counter++;
+                }
+                await new Promise((resolve, reject) => {
+                  zipEntry.stream()
+                    .pipe(fs.createWriteStream(destPath))
+                    .on('finish', resolve)
+                    .on('error', reject);
+                });
+                stlFiles.push({
+                  filePath: destPath,
+                  name: path.basename(destName, '.stl').replace(/[_-]/g, ' '),
+                  source: 'zip',
+                  zipName: entry.name
+                });
+              }
+            } catch (zipErr) {
+              console.warn(`[Slicer] Failed to extract ZIP ${entry.name}:`, zipErr.message);
+            }
+          }
         }
-
-        let newName = sanitizeFilename(result.translated);
-        if (!newName) { skipped++; continue; }
-
-        // Capitalize first letter of each word
-        newName = newName.replace(/\b\w/g, c => c.toUpperCase());
-
-        // Rename file on disk
-        const ext = path.extname(model.file_path);
-        const dir = path.dirname(model.file_path);
-        let newPath = path.join(dir, newName + ext);
-
-        // Handle collisions by appending a number
-        let suffix = 1;
-        while (fs.existsSync(newPath) && newPath !== model.file_path) {
-          newPath = path.join(dir, `${newName} (${suffix})${ext}`);
-          suffix++;
-        }
-
-        // Rename the actual file
-        if (newPath !== model.file_path) {
-          fs.renameSync(model.file_path, newPath);
-        }
-
-        // Update DB
-        const finalName = path.basename(newPath, ext);
-        stlDb.update(model.id, { filename: finalName });
-        // Update file_path in DB via direct SQL since update() doesn't allow file_path changes
-        stlDb.db.prepare('UPDATE stl_models SET file_path = ? WHERE id = ?').run(newPath, model.id);
-
-        translated++;
-
-        try {
-          event.sender.send('stl:translateProgress', {
-            current: i + 1, total: toTranslate.length,
-            filename: model.filename, newName: finalName, status: 'translated'
-          });
-        } catch (_) {}
-
-        // Small delay to avoid rate-limiting from Google
-        await new Promise(r => setTimeout(r, 200));
-      } catch (err) {
-        console.error(`[STL Translate] Error translating "${model.filename}":`, err.message);
-        skipped++;
-        try {
-          event.sender.send('stl:translateProgress', {
-            current: i + 1, total: toTranslate.length,
-            filename: model.filename, status: 'error', error: err.message
-          });
-        } catch (_) {}
       }
     }
 
-    return { translated, total: toTranslate.length, skipped };
+    await walk(directory);
+    console.log(`[Slicer] Bulk scan found ${stlFiles.length} STL files in ${directory}`);
+    return stlFiles;
+  });
+
+  // Bulk STL upload — upload a single file to the catalog (called per file from renderer)
+  ipcMain.handle('slicer:stl:bulkUploadOne', async (_event, { filePath, name, category } = {}) => {
+    if (!filePath) throw new Error('No file path provided');
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePath), path.basename(filePath));
+    if (name) form.append('name', name);
+    if (category) form.append('category', category);
+    const headers = form.getHeaders();
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+    const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
+      method: 'POST',
+      headers,
+      body: form
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `Upload failed (${resp.status})`);
+    }
+    return resp.json();
+  });
+
+  // STL file download (for 3D preview in renderer)
+  ipcMain.handle('slicer:stl:fetch', async (_event, stlId) => {
+    const resp = await slicerFetch(`/api/slicer/stl/${stlId}/download`);
+    const buf = await resp.arrayBuffer();
+    return Buffer.from(buf).toString('base64');
+  });
+
+  // Slicing
+  ipcMain.handle('slicer:slice', async (_event, options) => {
+    const resp = await slicerFetch('/api/slicer/slice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    });
+    return resp.json();
+  });
+
+  // Slice + Download + Upload to printer + Start print
+  ipcMain.handle('slicer:sliceAndPrint', async (_event, { sliceOptions, printerId, aceSlot } = {}) => {
+    if (!printerId) throw new Error('printerId is required');
+    if (!fleetDb) throw new Error('Fleet DB not initialized');
+    if (!printerService) throw new Error('Printer service not initialized');
+
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+
+    // Step 1: Slice on server
+    console.log('[Slicer] Step 1: Slicing on server...');
+    const sliceResp = await slicerFetch('/api/slicer/slice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sliceOptions)
+    });
+    const sliceResult = await sliceResp.json();
+    console.log(`[Slicer] Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
+
+    // Step 2: Download G-code from server to temp dir
+    console.log('[Slicer] Step 2: Downloading G-code...');
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`);
+    const arrayBuf = await gcodeResp.arrayBuffer();
+    const tmpDir = app.getPath('temp');
+    const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
+    fs.writeFileSync(tmpPath, Buffer.from(arrayBuf));
+    console.log(`[Slicer] Step 2 done: ${tmpPath} (${arrayBuf.byteLength} bytes)`);
+
+    // Step 3: Upload to printer via Moonraker
+    console.log(`[Slicer] Step 3: Uploading to printer ${printer.name} (${printer.api_url})...`);
+    try {
+      await printerService.uploadGcode(printer.api_url, tmpPath);
+    } catch (uploadErr) {
+      // Clean up temp file on failure
+      try { fs.unlinkSync(tmpPath); } catch {}
+      throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
+    }
+    console.log('[Slicer] Step 3 done: uploaded');
+
+    // Step 4: Home, bed level, and start print
+    console.log(`[Slicer] Step 4: Homing, leveling, and starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ')' : ''}`);
+    try {
+      await printerService.homeAndPrint(printer.api_url, sliceResult.gcode_filename, aceSlot);
+    } catch (startErr) {
+      // Clean up temp file on failure
+      try { fs.unlinkSync(tmpPath); } catch {}
+      throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
+    }
+    console.log('[Slicer] Step 4 done: print started');
+
+    // Step 5: Create fleet job record
+    const job = fleetDb.createJob({
+      printer_id: printerId,
+      filename: sliceResult.gcode_filename,
+      status: 'printing',
+      started_at: new Date().toISOString()
+    });
+
+    // Clean up temp file
+    try { fs.unlinkSync(tmpPath); } catch {}
+
+    return { success: true, job, sliceResult };
+  });
+
+  // Print existing G-code (download from server + upload to printer)
+  ipcMain.handle('slicer:printGcode', async (_event, { gcodeId, printerId, aceSlot } = {}) => {
+    if (!gcodeId || !printerId) throw new Error('gcodeId and printerId required');
+    if (!fleetDb) throw new Error('Fleet DB not initialized');
+    if (!printerService) throw new Error('Printer service not initialized');
+
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+
+    // Download G-code from server
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`);
+    const contentDisp = gcodeResp.headers.get('content-disposition') || '';
+    const filenameMatch = contentDisp.match(/filename="?([^"]+)"?/);
+    const filename = filenameMatch ? filenameMatch[1] : `gcode_${gcodeId}.gcode`;
+    const arrayBuf = await gcodeResp.arrayBuffer();
+    const tmpDir = app.getPath('temp');
+    const tmpPath = path.join(tmpDir, filename);
+    fs.writeFileSync(tmpPath, Buffer.from(arrayBuf));
+
+    // Upload to printer
+    try {
+      await printerService.uploadGcode(printer.api_url, tmpPath);
+    } catch (uploadErr) {
+      try { fs.unlinkSync(tmpPath); } catch {}
+      throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
+    }
+
+    // Home, bed level, and start print
+    try {
+      await printerService.homeAndPrint(printer.api_url, filename, aceSlot);
+    } catch (startErr) {
+      try { fs.unlinkSync(tmpPath); } catch {}
+      throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
+    }
+
+    // Create fleet job record
+    const job = fleetDb.createJob({
+      printer_id: printerId,
+      filename: filename,
+      status: 'printing',
+      started_at: new Date().toISOString()
+    });
+
+    // Clean up temp file
+    try { fs.unlinkSync(tmpPath); } catch {}
+
+    return { success: true, job };
+  });
+
+  // G-code cache
+  ipcMain.handle('slicer:gcodeForStl', async (_event, stlId) => {
+    const resp = await slicerFetch(`/api/slicer/cache/for/${stlId}`);
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:cache:list', async () => {
+    const resp = await slicerFetch('/api/slicer/cache');
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:cache:delete', async (_event, id) => {
+    const resp = await slicerFetch(`/api/slicer/cache/${id}`, { method: 'DELETE' });
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:cache:clear', async () => {
+    const resp = await slicerFetch('/api/slicer/cache', { method: 'DELETE' });
+    return resp.json();
+  });
+
+  // Select STL file dialog (for upload)
+  ipcMain.handle('slicer:selectStlFile', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Select STL File',
+      filters: [{ name: '3D Models', extensions: ['stl', 'STL'] }],
+      properties: ['openFile']
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    return result.filePaths[0];
   });
 }
 
@@ -6276,12 +6650,29 @@ app.on('ready', async () => {
   } catch (err) {
     console.warn('Local catalog DB unavailable:', err?.message || err);
   }
-  // Initialize STL catalog database
+  // Initialize 3D Printer Fleet
   try {
-    stlDb = new StlCatalogDB(app);
-    console.log('[STL] Catalog database initialized');
+    fleetDb = new PrinterFleetDB(app);
+    console.log('[Fleet] Printer fleet database initialized');
   } catch (err) {
-    console.warn('STL catalog DB unavailable:', err?.message || err);
+    console.warn('Printer fleet DB unavailable:', err?.message || err);
+  }
+  try {
+    const { fetch: fleetFetch } = await ensureFetch();
+    printerService = new PrinterService({ fetch: fleetFetch });
+    console.log('[Fleet] Printer service initialized');
+    // Auto-connect to all active printers
+    if (fleetDb) {
+      const activePrinters = fleetDb.listPrinters({ active: true });
+      for (const p of activePrinters) {
+        connectToPrinter(p);
+      }
+      if (activePrinters.length) {
+        console.log(`[Fleet] Connecting to ${activePrinters.length} active printer(s)`);
+      }
+    }
+  } catch (err) {
+    console.warn('Printer service unavailable:', err?.message || err);
   }
   try {
     applyWatchSettings(getSettings());
@@ -6289,6 +6680,81 @@ app.on('ready', async () => {
     console.warn('Watch configuration failed:', err?.message || err);
   }
   const mainWindow = createWindow();
+
+  // ==================== Webview Download Interception ====================
+  // Intercept downloads from <webview> tags (Multiboard Parts Browser)
+  app.on('web-contents-created', (_event, contents) => {
+    if (contents.getType() === 'webview') {
+      contents.session.on('will-download', (_dlEvent, item, _webContents) => {
+        const filename = item.getFilename();
+        const ext = path.extname(filename).toLowerCase();
+        const isStl = ext === '.stl';
+        const is3mf = ext === '.3mf';
+        const isStep = ext === '.step' || ext === '.stp';
+
+        if (isStl || is3mf || isStep) {
+          // Auto-save to multiboard-parts folder
+          const partsDir = path.join(app.getPath('userData'), 'multiboard-parts');
+          fs.mkdirSync(partsDir, { recursive: true });
+
+          // Avoid filename collisions
+          let savePath = path.join(partsDir, filename);
+          let counter = 1;
+          while (fs.existsSync(savePath)) {
+            const base = path.basename(filename, ext);
+            savePath = path.join(partsDir, `${base}_${counter}${ext}`);
+            counter++;
+          }
+
+          item.setSavePath(savePath);
+
+          // Notify renderer of download start
+          const win = BrowserWindow.getAllWindows()[0];
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('multiboard:download-start', {
+              filename,
+              savePath,
+              totalBytes: item.getTotalBytes()
+            });
+          }
+
+          item.on('updated', (_updateEvent, state) => {
+            const win2 = BrowserWindow.getAllWindows()[0];
+            if (win2 && !win2.isDestroyed()) {
+              win2.webContents.send('multiboard:download-progress', {
+                filename,
+                receivedBytes: item.getReceivedBytes(),
+                totalBytes: item.getTotalBytes(),
+                state
+              });
+            }
+          });
+
+          item.once('done', (_doneEvent, state) => {
+            const win3 = BrowserWindow.getAllWindows()[0];
+            if (state === 'completed') {
+              console.log(`[Multiboard] Downloaded: ${savePath}`);
+
+              // Notify download complete
+              if (win3 && !win3.isDestroyed()) {
+                win3.webContents.send('multiboard:download-complete', {
+                  filename, savePath, success: true, format: ext.replace('.', '')
+                });
+              }
+            } else {
+              console.warn(`[Multiboard] Download failed: ${filename} (${state})`);
+              if (win3 && !win3.isDestroyed()) {
+                win3.webContents.send('multiboard:download-complete', {
+                  filename, success: false, error: state
+                });
+              }
+            }
+          });
+        }
+        // Non-STL/3MF/STEP files: default Electron download behavior
+      });
+    }
+  });
 
   // Initialize auto-updater (only in production builds)
   if (!process.env.ELECTRON_IS_DEV && app.isPackaged) {
@@ -6302,6 +6768,15 @@ app.on('ready', async () => {
       createWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  if (printerService) {
+    printerService.disconnectAll();
+  }
+  if (fleetDb) {
+    fleetDb.close();
+  }
 });
 
 app.on('window-all-closed', () => {

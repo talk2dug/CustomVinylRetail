@@ -1,6 +1,7 @@
 // =============== Multiboard Designer View ===============
 // Phase 1: Scene + Grid + Tiles
 // Phase 2: Accessories + Snap System + Color Picker
+// Phase 3: Pricing + Quotes
 
 const mbApi = {
   getServerUrl() {
@@ -86,7 +87,13 @@ const mbState = {
   wallWidth: 48,
   wallHeight: 36,
   // Save/Load
-  currentDesignId: null
+  currentDesignId: null,
+  // Pricing
+  serviceLevel: 'designBuild',
+  customerName: '',
+  customerEmail: '',
+  customerPhone: '',
+  designStatus: 'draft'
 };
 
 // =============== COLOR PALETTE ===============
@@ -112,6 +119,127 @@ const MB_CATEGORIES = [
   { key: 'bins', label: 'Bins' },
   { key: 'shelves', label: 'Shelves' }
 ];
+
+// =============== PROCEDURAL TILE TEXTURE ===============
+
+let mbTileCanvasCache = null;
+
+function mbGetTileCanvases() {
+  if (mbTileCanvasCache) return mbTileCanvasCache;
+
+  const res = 256; // pixels per grid cell (25mm)
+  const cx = res / 2, cy = res / 2;
+  const multiR = res * 0.28;  // multihole radius
+  const pegR = res * 0.065;   // pegboard hole radius
+  const lipW = res * 0.025;   // lip/ridge width
+
+  // --- Diffuse Map (grayscale, modulated by material.color) ---
+  const diffCanvas = document.createElement('canvas');
+  diffCanvas.width = res; diffCanvas.height = res;
+  const dc = diffCanvas.getContext('2d');
+
+  // Base surface - light so material color shows through
+  dc.fillStyle = '#d8d8d8';
+  dc.fillRect(0, 0, res, res);
+
+  // Subtle surface texture: concentric print lines
+  dc.strokeStyle = '#d0d0d0';
+  dc.lineWidth = 0.5;
+  for (let r = 8; r < res; r += 6) {
+    dc.beginPath(); dc.arc(cx, cy, r, 0, Math.PI * 2); dc.stroke();
+  }
+
+  // Multihole: lip ring (raised edge, lighter)
+  mbDrawOctagon(dc, cx, cy, multiR + lipW, '#e8e8e8');
+  // Multihole: hole (dark depression)
+  mbDrawOctagon(dc, cx, cy, multiR, '#2a2a2a');
+  // Inner bevel (slightly lighter to suggest depth)
+  mbDrawOctagon(dc, cx, cy, multiR - res * 0.015, '#222222');
+
+  // Pegboard holes at cell corners (each shared with 4 adjacent cells)
+  const corners = [[0, 0], [res, 0], [0, res], [res, res]];
+  corners.forEach(([px, py]) => {
+    // Lip
+    dc.beginPath(); dc.arc(px, py, pegR + lipW, 0, Math.PI * 2);
+    dc.fillStyle = '#e4e4e4'; dc.fill();
+    // Hole
+    dc.beginPath(); dc.arc(px, py, pegR, 0, Math.PI * 2);
+    dc.fillStyle = '#383838'; dc.fill();
+  });
+
+  // Edge pegboard holes at midpoints of cell edges (shared with 2 adjacent cells)
+  const edges = [[cx, 0], [cx, res], [0, cy], [res, cy]];
+  edges.forEach(([px, py]) => {
+    dc.beginPath(); dc.arc(px, py, pegR * 0.7 + lipW, 0, Math.PI * 2);
+    dc.fillStyle = '#e0e0e0'; dc.fill();
+    dc.beginPath(); dc.arc(px, py, pegR * 0.7, 0, Math.PI * 2);
+    dc.fillStyle = '#404040'; dc.fill();
+  });
+
+  // --- Bump Map (height: white=raised, black=depressed) ---
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = res; bumpCanvas.height = res;
+  const bc = bumpCanvas.getContext('2d');
+
+  // Flat surface baseline
+  bc.fillStyle = '#808080';
+  bc.fillRect(0, 0, res, res);
+
+  // Multihole lip (raised ridge)
+  mbDrawOctagon(bc, cx, cy, multiR + lipW, '#b8b8b8');
+  // Multihole depression
+  mbDrawOctagon(bc, cx, cy, multiR, '#1a1a1a');
+
+  // Pegboard holes
+  corners.forEach(([px, py]) => {
+    bc.beginPath(); bc.arc(px, py, pegR + lipW, 0, Math.PI * 2);
+    bc.fillStyle = '#a8a8a8'; bc.fill();
+    bc.beginPath(); bc.arc(px, py, pegR, 0, Math.PI * 2);
+    bc.fillStyle = '#282828'; bc.fill();
+  });
+
+  edges.forEach(([px, py]) => {
+    bc.beginPath(); bc.arc(px, py, pegR * 0.7 + lipW, 0, Math.PI * 2);
+    bc.fillStyle = '#a0a0a0'; bc.fill();
+    bc.beginPath(); bc.arc(px, py, pegR * 0.7, 0, Math.PI * 2);
+    bc.fillStyle = '#303030'; bc.fill();
+  });
+
+  mbTileCanvasCache = { diffCanvas, bumpCanvas };
+  return mbTileCanvasCache;
+}
+
+function mbDrawOctagon(ctx, cx, cy, radius, color) {
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * Math.PI / 4) - Math.PI / 8;
+    ctx.lineTo(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle));
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function mbCreateTileMaterial(part, hexColor) {
+  const { diffCanvas, bumpCanvas } = mbGetTileCanvases();
+
+  const map = new THREE.CanvasTexture(diffCanvas);
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(part.gridWidth, part.gridHeight);
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(part.gridWidth, part.gridHeight);
+
+  return new THREE.MeshStandardMaterial({
+    color: hexColor,
+    map: map,
+    bumpMap: bumpMap,
+    bumpScale: 0.12,
+    metalness: 0.1,
+    roughness: 0.7
+  });
+}
 
 // =============== INITIALIZATION ===============
 
@@ -457,9 +585,9 @@ function mbCreatePartMesh(part, color) {
     mesh.userData._materials = [shelfMat];
 
   } else {
-    // Default: tile (flat box)
+    // Default: tile (flat box with procedural multiboard texture)
     const geometry = new THREE.BoxGeometry(part.gridWidth, part.gridHeight, part.thickness || 0.2);
-    const material = new THREE.MeshPhongMaterial({ color: hexColor, specular: 0x222222, shininess: 30 });
+    const material = mbCreateTileMaterial(part, hexColor);
     mesh = new THREE.Mesh(geometry, material);
     mesh.userData._materials = [material];
   }
@@ -932,20 +1060,16 @@ function mbOnClick(e) {
   }
 }
 
-// =============== BOM (BILL OF MATERIALS) ===============
+// =============== BOM (BILL OF MATERIALS) + PRICING ===============
 
-function mbUpdateBom() {
-  const body = document.getElementById('mbBomBody');
-  const totalEl = document.getElementById('mbGrandTotal');
-  if (!body || !totalEl || !mbState.catalog) return;
+function mbCalculatePricing() {
+  if (!mbState.catalog) return { partsTotal: 0, hardwareTotal: 0, weightGrams: 0, serviceFee: 0, grandTotal: 0, partCounts: {}, hardwareCounts: {} };
 
-  // Count all placed parts
-  const counts = {};
+  const partCounts = {};
   mbState.tiles.forEach(t => {
-    counts[t.partId] = (counts[t.partId] || 0) + 1;
+    partCounts[t.partId] = (partCounts[t.partId] || 0) + 1;
   });
 
-  // Required hardware from all placed parts
   const hardwareCounts = {};
   mbState.tiles.forEach(t => {
     const part = mbFindPart(t.partId);
@@ -955,39 +1079,88 @@ function mbUpdateBom() {
     });
   });
 
-  let grandTotal = 0;
+  let partsTotal = 0;
+  let weightGrams = 0;
+  Object.entries(partCounts).forEach(([partId, qty]) => {
+    const part = mbFindPart(partId);
+    if (!part) return;
+    partsTotal += qty * part.priceUSD;
+    weightGrams += qty * (part.weightGrams || 0);
+  });
+
+  let hardwareTotal = 0;
+  Object.entries(hardwareCounts).forEach(([partId, qty]) => {
+    const part = mbFindPart(partId);
+    if (!part) return;
+    hardwareTotal += qty * part.priceUSD;
+    weightGrams += qty * (part.weightGrams || 0);
+  });
+
+  // Service fee calculation
+  const rates = mbState.catalog.serviceRates || {};
+  const level = mbState.serviceLevel;
+  const wallSqFt = (mbState.wallWidth * mbState.wallHeight) / 144;
+  let serviceFee = 0;
+
+  if (level === 'designOnly' && rates.designOnly) {
+    serviceFee = rates.designOnly.flat || 35;
+  } else if (level === 'designBuild' && rates.designBuild) {
+    serviceFee = Math.max(wallSqFt * (rates.designBuild.perSqFt || 10), rates.designBuild.minimum || 50);
+  } else if (level === 'turnkey' && rates.turnkey) {
+    serviceFee = Math.max(wallSqFt * (rates.turnkey.perSqFt || 17.5), rates.turnkey.minimum || 150);
+  }
+
+  const grandTotal = partsTotal + hardwareTotal + serviceFee;
+
+  return { partsTotal, hardwareTotal, weightGrams, serviceFee, grandTotal, partCounts, hardwareCounts, wallSqFt };
+}
+
+function mbUpdateBom() {
+  const body = document.getElementById('mbBomBody');
+  if (!body || !mbState.catalog) return;
+
+  const pricing = mbCalculatePricing();
   let rows = '';
 
   // Part rows (tiles + accessories)
-  Object.entries(counts).forEach(([partId, qty]) => {
+  Object.entries(pricing.partCounts).forEach(([partId, qty]) => {
     const part = mbFindPart(partId);
     if (!part) return;
     const lineTotal = qty * part.priceUSD;
-    grandTotal += lineTotal;
     rows += `<tr>
-      <td style="padding:4px 8px;">${part.name}</td>
-      <td style="padding:4px 8px;text-align:center;">${qty}</td>
-      <td style="padding:4px 8px;text-align:right;">$${part.priceUSD.toFixed(2)}</td>
-      <td style="padding:4px 8px;text-align:right;">$${lineTotal.toFixed(2)}</td>
+      <td style="padding:3px 6px;">${part.name}</td>
+      <td style="padding:3px 6px;text-align:center;">${qty}</td>
+      <td style="padding:3px 6px;text-align:right;">$${part.priceUSD.toFixed(2)}</td>
+      <td style="padding:3px 6px;text-align:right;">$${lineTotal.toFixed(2)}</td>
     </tr>`;
   });
 
   // Hardware rows
-  Object.entries(hardwareCounts).forEach(([partId, qty]) => {
+  Object.entries(pricing.hardwareCounts).forEach(([partId, qty]) => {
     const part = mbFindPart(partId);
     if (!part) return;
     const lineTotal = qty * part.priceUSD;
-    grandTotal += lineTotal;
     rows += `<tr style="color:#888;">
-      <td style="padding:4px 8px;">&nbsp;&nbsp;${part.name}</td>
-      <td style="padding:4px 8px;text-align:center;">${qty}</td>
-      <td style="padding:4px 8px;text-align:right;">$${part.priceUSD.toFixed(2)}</td>
-      <td style="padding:4px 8px;text-align:right;">$${lineTotal.toFixed(2)}</td>
+      <td style="padding:3px 6px;">&nbsp;&nbsp;${part.name}</td>
+      <td style="padding:3px 6px;text-align:center;">${qty}</td>
+      <td style="padding:3px 6px;text-align:right;">$${part.priceUSD.toFixed(2)}</td>
+      <td style="padding:3px 6px;text-align:right;">$${lineTotal.toFixed(2)}</td>
     </tr>`;
   });
 
   body.innerHTML = rows || '<tr><td colspan="4" style="padding:8px;color:#888;text-align:center;">No parts placed yet</td></tr>';
-  totalEl.textContent = `Total: $${grandTotal.toFixed(2)}`;
+
+  // Update pricing summary
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setEl('mbPartsTotal', `$${pricing.partsTotal.toFixed(2)}`);
+  setEl('mbHardwareTotal', `$${pricing.hardwareTotal.toFixed(2)}`);
+  setEl('mbWeightTotal', pricing.weightGrams >= 1000 ? `${(pricing.weightGrams / 1000).toFixed(1)}kg` : `${pricing.weightGrams}g`);
+  setEl('mbServiceFee', `$${pricing.serviceFee.toFixed(2)}`);
+  setEl('mbGrandTotal', `$${pricing.grandTotal.toFixed(2)}`);
+
+  // Show/hide service fee row
+  const feeRow = document.getElementById('mbServiceFeeRow');
+  if (feeRow) feeRow.style.display = mbState.serviceLevel === 'none' ? 'none' : 'flex';
 }
 
 // =============== SAVE / LOAD ===============
@@ -1012,13 +1185,18 @@ async function mbSaveDesign() {
 
   const grandTotal = partsList.reduce((s, p) => s + p.qty * p.unitPrice, 0);
 
+  const pricing = mbCalculatePricing();
+
   const payload = {
     name,
+    customerName: mbState.customerName || null,
+    customerEmail: mbState.customerEmail || null,
+    customerPhone: mbState.customerPhone || null,
     wallWidth: mbState.wallWidth,
     wallHeight: mbState.wallHeight,
     components,
     partsList,
-    totalPriceCents: Math.round(grandTotal * 100),
+    totalPriceCents: Math.round(pricing.grandTotal * 100),
     status: 'draft'
   };
 
@@ -1054,10 +1232,14 @@ async function mbLoadDesign() {
     mbState.wallWidth = design.wall_width_inches || 48;
     mbState.wallHeight = design.wall_height_inches || 36;
     mbState.currentDesignId = design.design_id;
+    mbState.customerName = design.customer_name || '';
+    mbState.customerEmail = design.customer_email || '';
+    mbState.customerPhone = design.customer_phone || '';
 
     document.getElementById('mbWallWidth').value = mbState.wallWidth;
     document.getElementById('mbWallHeight').value = mbState.wallHeight;
     document.getElementById('mbProjectName').value = design.name || '';
+    mbUpdateStatusBadge(design.status || 'draft');
 
     mbBuildWall();
     mbBuildGrid();
@@ -1143,27 +1325,37 @@ function mbClearAll() {
   mbState.nextTileId = 1;
   mbState.selectedTile = null;
   mbState.currentDesignId = null;
+  mbState.designStatus = 'draft';
   mbClearSnapMarkers();
   mbUpdateSelectionPanel();
   mbUpdateBom();
+  const badge = document.getElementById('mbStatusBadge');
+  if (badge) badge.style.display = 'none';
 }
 
 // =============== MESH UTILITIES ===============
+
+function mbDisposeMaterial(mat) {
+  if (mat.map) mat.map.dispose();
+  if (mat.bumpMap) mat.bumpMap.dispose();
+  if (mat.normalMap) mat.normalMap.dispose();
+  mat.dispose();
+}
 
 function mbDisposeObject(obj) {
   if (obj.isGroup) {
     obj.children.forEach(child => {
       if (child.geometry) child.geometry.dispose();
       if (child.material) {
-        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
-        else child.material.dispose();
+        if (Array.isArray(child.material)) child.material.forEach(m => mbDisposeMaterial(m));
+        else mbDisposeMaterial(child.material);
       }
     });
   } else {
     if (obj.geometry) obj.geometry.dispose();
     if (obj.material) {
-      if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
-      else obj.material.dispose();
+      if (Array.isArray(obj.material)) obj.material.forEach(m => mbDisposeMaterial(m));
+      else mbDisposeMaterial(obj.material);
     }
   }
 }
@@ -1207,10 +1399,419 @@ function mbFindPart(partId) {
 }
 
 function mbShowToast(message, type) {
-  if (typeof showNotification === 'function') {
-    showNotification(message, type === 'danger' ? 'error' : type);
+  if (typeof window.showToast === 'function') {
+    window.showToast(message, type === 'danger' ? 'error' : type);
   } else {
     console.log(`[Multiboard ${type}] ${message}`);
+  }
+}
+
+// =============== QUOTE GENERATION ===============
+
+function mbGenerateQuote() {
+  if (mbState.tiles.length === 0) {
+    mbShowToast('Place some parts before generating a quote', 'info');
+    return;
+  }
+  mbShowQuoteModal();
+}
+
+function mbShowQuoteModal() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--bg-primary,#1e1e2e);border:1px solid var(--border,#333);border-radius:8px;padding:24px;max-width:420px;width:90%;';
+  modal.innerHTML = `
+    <h3 style="margin:0 0 16px;">Customer Information</h3>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">Customer Name</label>
+      <input id="mbQuoteCustName" type="text" value="${mbState.customerName}" placeholder="e.g. Mike Johnson" style="width:100%;padding:8px 10px;box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">Phone</label>
+      <input id="mbQuoteCustPhone" type="tel" value="${mbState.customerPhone}" placeholder="828-555-1234" style="width:100%;padding:8px 10px;box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">Email</label>
+      <input id="mbQuoteCustEmail" type="email" value="${mbState.customerEmail}" placeholder="customer@example.com" style="width:100%;padding:8px 10px;box-sizing:border-box;">
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button id="mbQuoteCancelBtn" class="secondary" style="padding:8px 16px;">Cancel</button>
+      <button id="mbQuoteGenBtn" class="primary" style="padding:8px 16px;">Generate Quote</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
+
+  document.body.appendChild(overlay);
+
+  document.getElementById('mbQuoteCancelBtn').addEventListener('click', () => document.body.removeChild(overlay));
+  document.getElementById('mbQuoteGenBtn').addEventListener('click', () => {
+    mbState.customerName = document.getElementById('mbQuoteCustName').value.trim();
+    mbState.customerPhone = document.getElementById('mbQuoteCustPhone').value.trim();
+    mbState.customerEmail = document.getElementById('mbQuoteCustEmail').value.trim();
+    document.body.removeChild(overlay);
+    mbOpenPrintableQuote();
+  });
+
+  document.getElementById('mbQuoteCustName').focus();
+}
+
+function mbOpenPrintableQuote() {
+  const pricing = mbCalculatePricing();
+  const projectName = document.getElementById('mbProjectName')?.value || 'Untitled Design';
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const serviceLevelLabels = {
+    none: 'Parts Only',
+    designOnly: 'Design Only',
+    designBuild: 'Design + Build',
+    turnkey: 'Turnkey Install'
+  };
+
+  // Build BOM rows
+  let bomRows = '';
+  Object.entries(pricing.partCounts).forEach(([partId, qty]) => {
+    const part = mbFindPart(partId);
+    if (!part) return;
+    bomRows += `<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;">${part.name}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">${qty}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">$${part.priceUSD.toFixed(2)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">$${(qty * part.priceUSD).toFixed(2)}</td>
+    </tr>`;
+  });
+
+  // Hardware rows
+  Object.entries(pricing.hardwareCounts).forEach(([partId, qty]) => {
+    const part = mbFindPart(partId);
+    if (!part) return;
+    bomRows += `<tr style="color:#666;">
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;padding-left:20px;">${part.name}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;">${qty}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">$${part.priceUSD.toFixed(2)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">$${(qty * part.priceUSD).toFixed(2)}</td>
+    </tr>`;
+  });
+
+  const serviceRow = mbState.serviceLevel !== 'none' ? `
+    <tr>
+      <td colspan="3" style="padding:6px 10px;border-bottom:1px solid #eee;">${serviceLevelLabels[mbState.serviceLevel]} Service</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">$${pricing.serviceFee.toFixed(2)}</td>
+    </tr>` : '';
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Quote - ${projectName}</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color:#333; padding:40px; max-width:800px; margin:0 auto; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:30px; padding-bottom:20px; border-bottom:3px solid #2196f3; }
+    .company { font-size:24px; font-weight:700; color:#1a1a2e; }
+    .company-sub { font-size:12px; color:#666; margin-top:4px; }
+    .quote-title { font-size:20px; font-weight:600; color:#2196f3; text-align:right; }
+    .quote-date { font-size:12px; color:#666; text-align:right; margin-top:4px; }
+    .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
+    .info-box { background:#f8f9fa; border-radius:6px; padding:14px; }
+    .info-box h4 { font-size:11px; text-transform:uppercase; color:#888; letter-spacing:0.5px; margin-bottom:6px; }
+    .info-box p { font-size:13px; line-height:1.6; }
+    table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+    thead th { background:#f8f9fa; padding:8px 10px; text-align:left; font-size:12px; text-transform:uppercase; color:#888; letter-spacing:0.3px; border-bottom:2px solid #ddd; }
+    .totals { margin-left:auto; width:280px; }
+    .totals .row { display:flex; justify-content:space-between; padding:4px 0; font-size:13px; }
+    .totals .total-row { border-top:2px solid #333; margin-top:6px; padding-top:8px; font-size:18px; font-weight:700; }
+    .footer { margin-top:40px; padding-top:16px; border-top:1px solid #ddd; font-size:11px; color:#888; text-align:center; }
+    .notes { background:#fffde7; border-left:3px solid #ffc107; padding:12px 16px; margin:20px 0; font-size:12px; border-radius:0 4px 4px 0; }
+    @media print {
+      body { padding:20px; }
+      .no-print { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom:20px;text-align:right;">
+    <button onclick="window.print()" style="padding:8px 20px;background:#2196f3;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px;">Print / Save PDF</button>
+  </div>
+
+  <div class="header">
+    <div>
+      <div class="company">Swayzee Custom Vinyl</div>
+      <div class="company-sub">Blue Ridge Custom Co.<br>Multiboard Wall Systems</div>
+    </div>
+    <div>
+      <div class="quote-title">QUOTE</div>
+      <div class="quote-date">${date}</div>
+    </div>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-box">
+      <h4>Project</h4>
+      <p><strong>${projectName}</strong><br>
+      Wall: ${mbState.wallWidth}" x ${mbState.wallHeight}" (${pricing.wallSqFt.toFixed(1)} sq ft)<br>
+      Service: ${serviceLevelLabels[mbState.serviceLevel]}</p>
+    </div>
+    <div class="info-box">
+      <h4>Customer</h4>
+      <p>${mbState.customerName || 'N/A'}<br>
+      ${mbState.customerPhone || ''}<br>
+      ${mbState.customerEmail || ''}</p>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:left;">Part</th>
+        <th style="text-align:center;">Qty</th>
+        <th style="text-align:right;">Unit Price</th>
+        <th style="text-align:right;">Line Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${bomRows}
+      ${serviceRow}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div class="row"><span>Parts Subtotal:</span><span>$${pricing.partsTotal.toFixed(2)}</span></div>
+    <div class="row" style="color:#666;"><span>Hardware:</span><span>$${pricing.hardwareTotal.toFixed(2)}</span></div>
+    ${mbState.serviceLevel !== 'none' ? `<div class="row"><span>Service Fee:</span><span>$${pricing.serviceFee.toFixed(2)}</span></div>` : ''}
+    <div class="row" style="color:#666;"><span>Est. Weight:</span><span>${pricing.weightGrams >= 1000 ? (pricing.weightGrams / 1000).toFixed(1) + 'kg' : pricing.weightGrams + 'g'}</span></div>
+    <div class="row total-row"><span>Total:</span><span>$${pricing.grandTotal.toFixed(2)}</span></div>
+  </div>
+
+  <div class="notes">
+    <strong>Note:</strong> This quote is valid for 30 days. Prices may vary based on color selections and material availability.
+    All Multiboard components are 3D printed with PLA and designed for the 25mm grid system.
+    ${mbState.serviceLevel === 'turnkey' ? 'Turnkey pricing includes on-site installation within 30 miles. Additional mileage billed at $1.00/mile.' : ''}
+  </div>
+
+  <div class="footer">
+    Swayzee Custom Vinyl &bull; Blue Ridge Custom Co. &bull; store.swayzecustomvinyl.com
+  </div>
+</body>
+</html>`;
+
+  const quoteWindow = window.open('', '_blank', 'width=850,height=1100');
+  if (quoteWindow) {
+    quoteWindow.document.write(html);
+    quoteWindow.document.close();
+  } else {
+    mbShowToast('Pop-up blocked. Please allow pop-ups for quote generation.', 'danger');
+  }
+}
+
+// =============== ORDERS + STATUS ===============
+
+const MB_STATUS_CONFIG = {
+  draft:           { label: 'Draft',         bg: '#444',    color: '#fff' },
+  quoted:          { label: 'Quoted',        bg: '#1565c0', color: '#fff' },
+  ordered:         { label: 'Ordered',       bg: '#e65100', color: '#fff' },
+  'in-production': { label: 'In Production', bg: '#6a1b9a', color: '#fff' },
+  complete:        { label: 'Complete',      bg: '#2e7d32', color: '#fff' },
+  cancelled:       { label: 'Cancelled',     bg: '#b71c1c', color: '#fff' }
+};
+
+function mbUpdateStatusBadge(status) {
+  const badge = document.getElementById('mbStatusBadge');
+  if (!badge) return;
+  const cfg = MB_STATUS_CONFIG[status] || MB_STATUS_CONFIG.draft;
+  badge.style.display = 'inline-block';
+  badge.style.background = cfg.bg;
+  badge.style.color = cfg.color;
+  badge.textContent = cfg.label;
+  mbState.designStatus = status;
+}
+
+function mbCreateOrder() {
+  if (mbState.tiles.length === 0) {
+    mbShowToast('Design a layout before creating an order', 'info');
+    return;
+  }
+
+  // Must save first
+  if (!mbState.currentDesignId) {
+    mbShowToast('Please save the design first', 'info');
+    return;
+  }
+
+  mbShowOrderConfirmModal();
+}
+
+function mbShowOrderConfirmModal() {
+  const pricing = mbCalculatePricing();
+  const projectName = document.getElementById('mbProjectName')?.value || 'Untitled Design';
+  const serviceLevelLabels = {
+    none: 'Parts Only', designOnly: 'Design Only',
+    designBuild: 'Design + Build', turnkey: 'Turnkey Install'
+  };
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--bg-primary,#1e1e2e);border:1px solid var(--border,#333);border-radius:8px;padding:24px;max-width:480px;width:90%;';
+  modal.innerHTML = `
+    <h3 style="margin:0 0 4px;">Create Production Order</h3>
+    <p style="font-size:12px;color:#888;margin:0 0 16px;">This will lock the design and add it to the production queue.</p>
+
+    <div style="background:var(--bg-secondary,#252538);border-radius:6px;padding:12px;margin-bottom:12px;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="color:#888;">Project:</span><span>${projectName}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="color:#888;">Wall:</span><span>${mbState.wallWidth}" x ${mbState.wallHeight}"</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="color:#888;">Service:</span><span>${serviceLevelLabels[mbState.serviceLevel]}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="color:#888;">Parts:</span><span>${mbState.tiles.length} components</span></div>
+      <div style="display:flex;justify-content:space-between;font-weight:600;border-top:1px solid var(--border,#333);padding-top:6px;margin-top:4px;">
+        <span>Total:</span><span>$${pricing.grandTotal.toFixed(2)}</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">Customer</label>
+      <input id="mbOrderCustName" type="text" value="${mbState.customerName}" placeholder="Customer name" style="width:100%;padding:6px 10px;margin-bottom:6px;box-sizing:border-box;">
+      <div style="display:flex;gap:6px;">
+        <input id="mbOrderCustPhone" type="tel" value="${mbState.customerPhone}" placeholder="Phone" style="flex:1;padding:6px 10px;box-sizing:border-box;">
+        <input id="mbOrderCustEmail" type="email" value="${mbState.customerEmail}" placeholder="Email" style="flex:1;padding:6px 10px;box-sizing:border-box;">
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px;">Notes</label>
+      <textarea id="mbOrderNotes" rows="2" placeholder="Production notes (optional)" style="width:100%;padding:6px 10px;resize:vertical;box-sizing:border-box;"></textarea>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="mbOrderCancelBtn" class="secondary" style="padding:8px 16px;">Cancel</button>
+      <button id="mbOrderConfirmBtn" class="primary" style="padding:8px 16px;background:#e65100;">Confirm Order</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
+  document.body.appendChild(overlay);
+
+  document.getElementById('mbOrderCancelBtn').addEventListener('click', () => document.body.removeChild(overlay));
+  document.getElementById('mbOrderConfirmBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('mbOrderConfirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+
+    mbState.customerName = document.getElementById('mbOrderCustName').value.trim();
+    mbState.customerPhone = document.getElementById('mbOrderCustPhone').value.trim();
+    mbState.customerEmail = document.getElementById('mbOrderCustEmail').value.trim();
+
+    try {
+      // Save design first to capture latest customer info
+      await mbSaveDesign();
+
+      const pricing = mbCalculatePricing();
+      const result = await mbApi.post('/api/multiboard/order', {
+        designId: mbState.currentDesignId,
+        customerName: mbState.customerName,
+        customerEmail: mbState.customerEmail,
+        customerPhone: mbState.customerPhone,
+        serviceLevel: mbState.serviceLevel,
+        totalPriceCents: Math.round(pricing.grandTotal * 100),
+        serviceFeeCents: Math.round(pricing.serviceFee * 100),
+        notes: document.getElementById('mbOrderNotes').value.trim() || null
+      });
+
+      document.body.removeChild(overlay);
+      mbUpdateStatusBadge('ordered');
+      mbShowToast(`Order created: ${result.orderId}`, 'success');
+    } catch (err) {
+      console.error('[Multiboard] Create order error:', err);
+      btn.disabled = false;
+      btn.textContent = 'Confirm Order';
+      mbShowToast('Order failed: ' + err.message, 'danger');
+    }
+  });
+
+  document.getElementById('mbOrderCustName').focus();
+}
+
+async function mbShowOrdersPanel() {
+  try {
+    const { orders } = await mbApi.get('/api/multiboard/orders');
+    if (!orders || orders.length === 0) {
+      mbShowToast('No orders found', 'info');
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--bg-primary,#1e1e2e);border:1px solid var(--border,#333);border-radius:8px;padding:20px;max-width:600px;width:95%;max-height:500px;overflow-y:auto;';
+    modal.innerHTML = `<h3 style="margin:0 0 12px;">Production Orders</h3>`;
+
+    orders.forEach(o => {
+      const cfg = MB_STATUS_CONFIG[o.status] || MB_STATUS_CONFIG.draft;
+      const total = o.total_price_cents ? `$${(o.total_price_cents / 100).toFixed(2)}` : '$0.00';
+      const date = new Date(o.created_at).toLocaleDateString();
+
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border,#333);border-radius:6px;margin-bottom:6px;';
+      row.innerHTML = `
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:500;font-size:13px;">${o.customer_name || 'No Customer'} <span style="color:#888;font-weight:400;">— ${o.order_id}</span></div>
+          <div style="font-size:12px;color:#888;">${o.wall_width_inches}x${o.wall_height_inches}" | ${total} | ${date}</div>
+          ${o.notes ? `<div style="font-size:11px;color:#666;margin-top:2px;">${o.notes}</div>` : ''}
+        </div>
+        <span style="font-size:10px;padding:3px 8px;border-radius:8px;font-weight:600;text-transform:uppercase;background:${cfg.bg};color:${cfg.color};">${cfg.label}</span>
+        <select class="mb-order-status-select" data-order-id="${o.order_id}" style="padding:4px 6px;font-size:11px;border-radius:4px;">
+          <option value="ordered" ${o.status === 'ordered' ? 'selected' : ''}>Ordered</option>
+          <option value="in-production" ${o.status === 'in-production' ? 'selected' : ''}>In Production</option>
+          <option value="complete" ${o.status === 'complete' ? 'selected' : ''}>Complete</option>
+          <option value="cancelled" ${o.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+        </select>
+      `;
+      modal.appendChild(row);
+    });
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'secondary';
+    closeBtn.style.cssText = 'margin-top:8px;width:100%;padding:8px;';
+    closeBtn.textContent = 'Close';
+    closeBtn.addEventListener('click', () => document.body.removeChild(overlay));
+    modal.appendChild(closeBtn);
+
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) { document.body.removeChild(overlay); } });
+    document.body.appendChild(overlay);
+
+    // Status change handlers
+    modal.querySelectorAll('.mb-order-status-select').forEach(sel => {
+      sel.addEventListener('change', async (e) => {
+        const orderId = e.target.dataset.orderId;
+        const newStatus = e.target.value;
+        try {
+          const resp = await fetch(`${mbApi.getServerUrl()}/api/multiboard/orders/${orderId}/status`, {
+            method: 'PATCH',
+            headers: mbApi.getHeaders(),
+            body: JSON.stringify({ status: newStatus })
+          });
+          if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || 'Failed');
+          mbShowToast(`Order ${orderId} → ${newStatus}`, 'success');
+          // Refresh the badge on the parent row
+          const badge = e.target.previousElementSibling;
+          const cfg = MB_STATUS_CONFIG[newStatus];
+          if (badge && cfg) {
+            badge.style.background = cfg.bg;
+            badge.textContent = cfg.label;
+          }
+        } catch (err) {
+          mbShowToast('Status update failed: ' + err.message, 'danger');
+        }
+      });
+    });
+  } catch (err) {
+    console.error('[Multiboard] Load orders error:', err);
+    mbShowToast('Failed to load orders: ' + err.message, 'danger');
   }
 }
 
@@ -1221,6 +1822,14 @@ function setupMultiboardEventListeners() {
   document.getElementById('mbResetCameraBtn')?.addEventListener('click', mbResetCamera);
   document.getElementById('mbSaveBtn')?.addEventListener('click', mbSaveDesign);
   document.getElementById('mbLoadBtn')?.addEventListener('click', mbLoadDesign);
+  document.getElementById('mbQuoteBtn')?.addEventListener('click', mbGenerateQuote);
+  document.getElementById('mbOrderBtn')?.addEventListener('click', mbCreateOrder);
+  document.getElementById('mbOrdersListBtn')?.addEventListener('click', mbShowOrdersPanel);
+
+  document.getElementById('mbServiceLevel')?.addEventListener('change', (e) => {
+    mbState.serviceLevel = e.target.value;
+    mbUpdateBom();
+  });
 
   document.getElementById('mbToggleGridBtn')?.addEventListener('click', () => {
     mbState.showGrid = !mbState.showGrid;

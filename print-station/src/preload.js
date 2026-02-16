@@ -473,34 +473,106 @@ contextBridge.exposeInMainWorld('printStation', {
     stats: () => ipcRenderer.invoke('preview:cacheStats')
   },
 
-  // STL File Manager
-  stlManager: {
-    scan: (payload) => ipcRenderer.invoke('stl:scan', payload || {}),
-    list: (query) => ipcRenderer.invoke('stl:list', query || {}),
-    count: (query) => ipcRenderer.invoke('stl:count', query || {}),
-    get: (id) => ipcRenderer.invoke('stl:get', id),
-    update: (id, updates) => ipcRenderer.invoke('stl:update', { id, updates }),
-    delete: (id) => ipcRenderer.invoke('stl:delete', id),
-    bulkDelete: (ids) => ipcRenderer.invoke('stl:bulkDelete', { ids }),
-    bulkSetCategory: (ids, category) => ipcRenderer.invoke('stl:bulkSetCategory', { ids, category }),
-    bulkSetTags: (ids, tags) => ipcRenderer.invoke('stl:bulkSetTags', { ids, tags }),
-    toggleFavorite: (id) => ipcRenderer.invoke('stl:toggleFavorite', id),
-    categories: () => ipcRenderer.invoke('stl:categories'),
-    readFile: (filePath) => ipcRenderer.invoke('stl:readFile', filePath),
-    openInSlicer: (id) => ipcRenderer.invoke('stl:openInSlicer', id),
-    copyToFolder: (id) => ipcRenderer.invoke('stl:copyToFolder', id),
-    revealInExplorer: (id) => ipcRenderer.invoke('stl:revealInExplorer', id),
-    saveThumbnail: (id, dataUrl) => ipcRenderer.invoke('stl:saveThumbnail', { id, dataUrl }),
-    translateFilenames: () => ipcRenderer.invoke('stl:translateFilenames'),
-    onScanProgress: (cb) => {
+  // Multiboard Parts Browser — download events from webview
+  multiboardBrowser: {
+    onDownloadStart: (cb) => {
       const handler = (_e, data) => cb(data || {});
-      ipcRenderer.on('stl:scanProgress', handler);
-      return () => ipcRenderer.off('stl:scanProgress', handler);
+      ipcRenderer.on('multiboard:download-start', handler);
+      return () => ipcRenderer.off('multiboard:download-start', handler);
     },
-    onTranslateProgress: (cb) => {
+    onDownloadProgress: (cb) => {
       const handler = (_e, data) => cb(data || {});
-      ipcRenderer.on('stl:translateProgress', handler);
-      return () => ipcRenderer.off('stl:translateProgress', handler);
+      ipcRenderer.on('multiboard:download-progress', handler);
+      return () => ipcRenderer.off('multiboard:download-progress', handler);
+    },
+    onDownloadComplete: (cb) => {
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('multiboard:download-complete', handler);
+      return () => ipcRenderer.off('multiboard:download-complete', handler);
     }
+  },
+
+  // ============================================================================
+  // 3D PRINTER FLEET API
+  // ============================================================================
+  printerFleet: {
+    // Printer CRUD
+    listPrinters: (query) => ipcRenderer.invoke('fleet:printers:list', query || {}),
+    getPrinter: (id) => ipcRenderer.invoke('fleet:printers:get', id),
+    upsertPrinter: (printer) => ipcRenderer.invoke('fleet:printers:upsert', printer || {}),
+    updatePrinter: (id, updates) => ipcRenderer.invoke('fleet:printers:update', { id, updates }),
+    removePrinter: (id) => ipcRenderer.invoke('fleet:printers:remove', id),
+
+    // Status
+    getStatus: (id) => ipcRenderer.invoke('fleet:printers:status', id),
+    getAllStatus: () => ipcRenderer.invoke('fleet:printers:statusAll'),
+    reconnect: (id) => ipcRenderer.invoke('fleet:printers:reconnect', id),
+    testConnection: (apiUrl) => ipcRenderer.invoke('fleet:printers:testConnection', apiUrl),
+
+    // Files
+    selectGcodeFile: () => ipcRenderer.invoke('fleet:files:select'),
+    uploadGcode: (printerId, filePath) => ipcRenderer.invoke('fleet:files:upload', { printerId, filePath }),
+    listFiles: (printerId) => ipcRenderer.invoke('fleet:files:list', { printerId }),
+    deleteFile: (printerId, filename) => ipcRenderer.invoke('fleet:files:delete', { printerId, filename }),
+
+    // Webcam
+    getWebcamUrls: (printerId) => ipcRenderer.invoke('fleet:webcam:urls', printerId),
+
+    // Print control
+    startPrint: (printerId, filename, shopifyOrderId) =>
+      ipcRenderer.invoke('fleet:print:start', { printerId, filename, shopifyOrderId }),
+    pausePrint: (printerId) => ipcRenderer.invoke('fleet:print:pause', { printerId }),
+    resumePrint: (printerId) => ipcRenderer.invoke('fleet:print:resume', { printerId }),
+    cancelPrint: (printerId) => ipcRenderer.invoke('fleet:print:cancel', { printerId }),
+    emergencyStop: (printerId) => ipcRenderer.invoke('fleet:print:emergencyStop', { printerId }),
+    sendGcode: (printerId, command) => ipcRenderer.invoke('fleet:gcode:send', { printerId, command }),
+
+    // Jobs
+    listJobs: (query) => ipcRenderer.invoke('fleet:jobs:list', query || {}),
+    getActiveJobs: () => ipcRenderer.invoke('fleet:jobs:active'),
+    getJobStats: () => ipcRenderer.invoke('fleet:jobs:stats'),
+
+    // Real-time status events
+    onPrinterStatus: (cb) => {
+      if (typeof cb !== 'function') return () => {};
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('fleet:printer:status', handler);
+      return () => ipcRenderer.off('fleet:printer:status', handler);
+    }
+  },
+
+  // ============================================================================
+  // 3D SLICER API (STL catalog, slicing, G-code cache)
+  // ============================================================================
+  slicer: {
+    // Presets (human-readable options)
+    getPresets: () => ipcRenderer.invoke('slicer:presets'),
+
+    // STL Catalog
+    listCatalog: (query) => ipcRenderer.invoke('slicer:catalog:list', query || {}),
+    getCategories: () => ipcRenderer.invoke('slicer:catalog:categories'),
+    getCatalogItem: (id) => ipcRenderer.invoke('slicer:catalog:get', id),
+    uploadStl: (opts) => ipcRenderer.invoke('slicer:catalog:create', opts),
+    updateCatalogItem: (id, updates) => ipcRenderer.invoke('slicer:catalog:update', { id, updates }),
+    deleteCatalogItem: (id) => ipcRenderer.invoke('slicer:catalog:delete', id),
+    fetchStlBytes: (stlId) => ipcRenderer.invoke('slicer:stl:fetch', stlId),
+
+    // Slicing
+    slice: (options) => ipcRenderer.invoke('slicer:slice', options),
+    sliceAndPrint: (sliceOptions, printerId, aceSlot) => ipcRenderer.invoke('slicer:sliceAndPrint', { sliceOptions, printerId, aceSlot }),
+    printGcode: (gcodeId, printerId, aceSlot) => ipcRenderer.invoke('slicer:printGcode', { gcodeId, printerId, aceSlot }),
+
+    // G-code cache
+    getGcodeForStl: (stlId) => ipcRenderer.invoke('slicer:gcodeForStl', stlId),
+    listCache: () => ipcRenderer.invoke('slicer:cache:list'),
+    deleteCache: (id) => ipcRenderer.invoke('slicer:cache:delete', id),
+    clearCache: () => ipcRenderer.invoke('slicer:cache:clear'),
+
+    // File dialog
+    selectStlFile: () => ipcRenderer.invoke('slicer:selectStlFile'),
+
+    // Bulk import
+    bulkScan: (directory) => ipcRenderer.invoke('slicer:stl:bulkScan', directory),
+    bulkUploadOne: (opts) => ipcRenderer.invoke('slicer:stl:bulkUploadOne', opts)
   }
 });

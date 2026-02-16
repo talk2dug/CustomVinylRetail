@@ -4283,3 +4283,132 @@ textarea:focus {
   font-weight: 500;
   color: var(--accent);
 }
+
+/* ================================================================== */
+/* 3D PRINTER FLEET                                                    */
+/* ================================================================== */
+
+.fleet-printer-card {
+  transition: border-color 0.2s;
+}
+.fleet-printer-card:hover {
+  border-color: var(--accent);
+}
+
+.fleet-action {
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+.fleet-action:hover {
+  opacity: 0.85;
+}
+
+.fleet-detail-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+
+.fleet-detail-content {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 90%;
+  max-width: 820px;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 24px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.5);
+}
+
+.fleet-gcode-console {
+  background: #0a0e17;
+  color: #22c55e;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.82rem;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  min-height: 80px;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+/* ============================================================================
+   SLICER VIEW
+   ============================================================================ */
+
+.slicer-catalog-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.slicer-settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.slicer-option-group label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+  color: var(--text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.slicer-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.slicer-opt-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary, #1e293b);
+  color: var(--text, #e2e8f0);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.slicer-opt-btn:hover {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.slicer-opt-btn.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.slicer-gcode-entry:hover {
+  border-color: var(--accent) !important;
+  background: rgba(99, 102, 241, 0.03);
+}
+
+.slicer-gcode-entry .badge {
+  background: var(--bg-secondary, #1e293b);
+  color: var(--text-secondary, #94a3b8);
+  border-radius: 4px;
+}
+
+@keyframes slicerPulse {
+  0% { width: 10%; }
+  50% { width: 80%; }
+  100% { width: 10%; }
+}

@@ -1831,13 +1831,6 @@ function switchView(viewId) {
     }
   }
 
-  // STL Manager view
-  if (viewId === 'stlManagerView') {
-    if (typeof initStlManagerView === 'function') {
-      initStlManagerView();
-    }
-  }
-
   // B2B Management view
   if (viewId === 'b2bManagementView') {
     if (typeof initB2BManagementView === 'function') {
@@ -1849,6 +1842,27 @@ function switchView(viewId) {
   if (viewId === 'multiboardDesignerView') {
     if (typeof initMultiboardDesignerView === 'function') {
       initMultiboardDesignerView();
+    }
+  }
+
+  // Multiboard Parts Browser view
+  if (viewId === 'multiboardPartsBrowserView') {
+    if (typeof initMultiboardPartsBrowserView === 'function') {
+      initMultiboardPartsBrowserView();
+    }
+  }
+
+  // 3D Printer Fleet view
+  if (viewId === 'printerFleetView') {
+    if (typeof initPrinterFleetView === 'function') {
+      initPrinterFleetView();
+    }
+  }
+
+  // Slicer view
+  if (viewId === 'slicerView') {
+    if (typeof initSlicerView === 'function') {
+      initSlicerView();
     }
   }
 

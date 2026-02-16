@@ -3321,9 +3321,84 @@ function initCustomArtTables() {
     )
   `);
 
+  // Multiboard Orders (production queue)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS multiboard_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT UNIQUE NOT NULL,
+      design_id TEXT NOT NULL,
+      customer_name TEXT,
+      customer_email TEXT,
+      customer_phone TEXT,
+      service_level TEXT DEFAULT 'designBuild',
+      wall_width_inches REAL NOT NULL,
+      wall_height_inches REAL NOT NULL,
+      components_json TEXT NOT NULL,
+      parts_list_json TEXT,
+      total_price_cents INTEGER,
+      service_fee_cents INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'ordered',
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   console.log('[B2B Portal] ✅ Tables initialized successfully');
   console.log('[Custom Art] ✅ Tables initialized successfully');
-  console.log('[Multiboard] ✅ Table initialized successfully');
+  console.log('[Multiboard] ✅ Tables initialized successfully');
+
+  // STL Catalog (3D models stored on server for slicing)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stl_catalog (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT,
+      stl_path TEXT NOT NULL,
+      thumbnail_path TEXT,
+      default_quality TEXT DEFAULT 'standard',
+      default_strength TEXT DEFAULT 'normal',
+      default_material TEXT DEFAULT 'pla',
+      default_texture TEXT DEFAULT 'smooth',
+      default_supports TEXT DEFAULT 'none',
+      notes TEXT,
+      file_size INTEGER,
+      triangle_count INTEGER,
+      dim_x REAL, dim_y REAL, dim_z REAL,
+      est_weight_g REAL,
+      est_time_min REAL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_stl_catalog_name ON stl_catalog(name);
+    CREATE INDEX IF NOT EXISTS idx_stl_catalog_category ON stl_catalog(category);
+  `);
+
+  // G-code Cache (sliced G-code with full settings metadata)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS gcode_cache (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      stl_catalog_id INTEGER NOT NULL,
+      settings_hash TEXT NOT NULL UNIQUE,
+      printer_model TEXT NOT NULL,
+      material TEXT NOT NULL,
+      quality TEXT NOT NULL,
+      strength TEXT NOT NULL,
+      speed TEXT NOT NULL,
+      texture TEXT NOT NULL,
+      supports TEXT NOT NULL,
+      gcode_path TEXT NOT NULL,
+      gcode_filename TEXT NOT NULL,
+      est_weight_g REAL,
+      est_time_min REAL,
+      file_size INTEGER,
+      sliced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (stl_catalog_id) REFERENCES stl_catalog(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_gcode_cache_stl ON gcode_cache(stl_catalog_id);
+    CREATE INDEX IF NOT EXISTS idx_gcode_cache_hash ON gcode_cache(settings_hash);
+  `);
+
+  console.log('[Slicer] ✅ Tables initialized successfully');
 }
 
 function seedCustomArtMaterials() {
@@ -6184,6 +6259,123 @@ function calculateB2BOrderTotals(orderId) {
   return { subtotalCents: subtotal, shippingCents, taxCents, totalCents };
 }
 
+// ============================================================================
+// STL CATALOG (3D Model Library for Slicer)
+// ============================================================================
+
+function createStlCatalogItem(item) {
+  const ins = db.prepare(`
+    INSERT INTO stl_catalog (name, category, stl_path, thumbnail_path,
+      default_quality, default_strength, default_material, default_texture, default_supports,
+      notes, file_size, triangle_count, dim_x, dim_y, dim_z, est_weight_g, est_time_min)
+    VALUES (@name, @category, @stl_path, @thumbnail_path,
+      @default_quality, @default_strength, @default_material, @default_texture, @default_supports,
+      @notes, @file_size, @triangle_count, @dim_x, @dim_y, @dim_z, @est_weight_g, @est_time_min)
+  `);
+  const info = ins.run({
+    name: item.name || 'Unnamed',
+    category: item.category || null,
+    stl_path: item.stl_path,
+    thumbnail_path: item.thumbnail_path || null,
+    default_quality: item.default_quality || 'standard',
+    default_strength: item.default_strength || 'normal',
+    default_material: item.default_material || 'pla',
+    default_texture: item.default_texture || 'smooth',
+    default_supports: item.default_supports || 'none',
+    notes: item.notes || null,
+    file_size: item.file_size || null,
+    triangle_count: item.triangle_count || null,
+    dim_x: item.dim_x || null,
+    dim_y: item.dim_y || null,
+    dim_z: item.dim_z || null,
+    est_weight_g: item.est_weight_g || null,
+    est_time_min: item.est_time_min || null
+  });
+  return getStlCatalogItem(info.lastInsertRowid);
+}
+
+function getStlCatalogItem(id) {
+  return db.prepare('SELECT * FROM stl_catalog WHERE id = ?').get(id) || null;
+}
+
+function listStlCatalog({ category, search } = {}) {
+  const clauses = [];
+  const params = {};
+  if (category) {
+    clauses.push('category = @category');
+    params.category = category;
+  }
+  if (search) {
+    clauses.push('(name LIKE @q OR category LIKE @q OR notes LIKE @q)');
+    params.q = `%${search}%`;
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  return db.prepare(`SELECT * FROM stl_catalog ${where} ORDER BY name COLLATE NOCASE`).all(params);
+}
+
+function listStlCatalogCategories() {
+  return db.prepare('SELECT DISTINCT category FROM stl_catalog WHERE category IS NOT NULL ORDER BY category').all()
+    .map(r => r.category);
+}
+
+function updateStlCatalogItem(id, updates) {
+  const allowed = ['name', 'category', 'stl_path', 'thumbnail_path',
+    'default_quality', 'default_strength', 'default_material', 'default_texture', 'default_supports',
+    'notes', 'file_size', 'triangle_count', 'dim_x', 'dim_y', 'dim_z', 'est_weight_g', 'est_time_min'];
+  const set = [];
+  const params = { id };
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(updates, key)) {
+      set.push(`${key} = @${key}`);
+      params[key] = updates[key];
+    }
+  }
+  if (!set.length) return getStlCatalogItem(id);
+  db.prepare(`UPDATE stl_catalog SET ${set.join(', ')} WHERE id = @id`).run(params);
+  return getStlCatalogItem(id);
+}
+
+function deleteStlCatalogItem(id) {
+  // Delete associated G-code cache entries
+  db.prepare('DELETE FROM gcode_cache WHERE stl_catalog_id = ?').run(id);
+  return db.prepare('DELETE FROM stl_catalog WHERE id = ?').run(id);
+}
+
+// ============================================================================
+// G-CODE CACHE (Sliced G-code with settings metadata)
+// ============================================================================
+
+function getGcodeCache(id) {
+  return db.prepare('SELECT * FROM gcode_cache WHERE id = ?').get(id) || null;
+}
+
+function listGcodeCacheForStl(stlCatalogId) {
+  return db.prepare(`
+    SELECT gc.*, sc.name AS stl_name
+    FROM gcode_cache gc
+    LEFT JOIN stl_catalog sc ON sc.id = gc.stl_catalog_id
+    WHERE gc.stl_catalog_id = ?
+    ORDER BY gc.sliced_at DESC
+  `).all(stlCatalogId);
+}
+
+function listAllGcodeCache() {
+  return db.prepare(`
+    SELECT gc.*, sc.name AS stl_name
+    FROM gcode_cache gc
+    LEFT JOIN stl_catalog sc ON sc.id = gc.stl_catalog_id
+    ORDER BY gc.sliced_at DESC
+  `).all();
+}
+
+function deleteGcodeCache(id) {
+  return db.prepare('DELETE FROM gcode_cache WHERE id = ?').run(id);
+}
+
+function clearAllGcodeCache() {
+  return db.prepare('DELETE FROM gcode_cache').run();
+}
+
 module.exports = {
   initDatabase,
   normalizeEmail,
@@ -6447,5 +6639,18 @@ module.exports = {
   listB2BOrderItems,
   updateB2BOrderItem,
   deleteB2BOrderItem,
-  calculateB2BOrderTotals
+  calculateB2BOrderTotals,
+  // STL Catalog (3D Slicer)
+  createStlCatalogItem,
+  getStlCatalogItem,
+  listStlCatalog,
+  listStlCatalogCategories,
+  updateStlCatalogItem,
+  deleteStlCatalogItem,
+  // G-code Cache
+  getGcodeCache,
+  listGcodeCacheForStl,
+  listAllGcodeCache,
+  deleteGcodeCache,
+  clearAllGcodeCache
 };

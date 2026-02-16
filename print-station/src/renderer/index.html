@@ -84,7 +84,9 @@
         </button>
         <div class="dropdown-menu" id="threed-dropdown">
           <button class="dropdown-item" data-view="multiboardDesignerView">Multiboard Designer</button>
-          <button class="dropdown-item" data-view="stlManagerView">3D Models</button>
+          <button class="dropdown-item" data-view="multiboardPartsBrowserView">Parts Browser</button>
+          <button class="dropdown-item" data-view="printerFleetView">Printer Fleet</button>
+          <button class="dropdown-item" data-view="slicerView">Slice &amp; Print</button>
         </div>
       </div>
 
@@ -6165,79 +6167,238 @@
         </div>
       </section>
 
-      <!-- ================================================================ -->
-      <!-- STL FILE MANAGER VIEW                                            -->
-      <!-- ================================================================ -->
-      <section id="stlManagerView" class="view">
+      <!-- ================================================================== -->
+      <!-- 3D PRINTER FLEET                                                   -->
+      <!-- ================================================================== -->
+      <section id="printerFleetView" class="view">
         <div class="view-toolbar">
-          <h2 style="margin:0;">3D Model Library</h2>
-          <div id="stlStatusText" class="muted" style="margin-left:12px;"></div>
+          <h2 style="margin:0;">3D Printer Fleet</h2>
           <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
-            <button id="stlTranslateNamesBtn" title="Translate non-English filenames to English">Translate Names</button>
-            <button id="stlImportFolderBtn" class="primary">Import Folder</button>
+            <span id="fleetLastUpdated" class="muted" style="font-size:0.85rem;"></span>
+            <button id="fleetRefreshBtn" class="secondary" style="padding:6px 14px;">Refresh</button>
+            <button id="fleetAddPrinterBtn" class="primary" style="padding:6px 14px;">Add Printer</button>
           </div>
         </div>
 
-        <!-- Filter Bar -->
+        <!-- Fleet Summary Bar -->
         <div class="inventory-card" style="margin:0 16px;padding:12px 16px;">
-          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-            <input id="stlSearchInput" type="text" placeholder="Search models..." style="flex:1;min-width:200px;padding:8px 12px;">
-            <select id="stlCategoryFilter" style="padding:8px 12px;">
+          <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
+            <div><strong id="fleetTotalPrinters">0</strong> <span class="muted">Printers</span></div>
+            <div><span id="fleetOnlineCount" style="color:var(--success);">0</span> <span class="muted">Online</span></div>
+            <div><span id="fleetPrintingCount" style="color:var(--accent);">0</span> <span class="muted">Printing</span></div>
+            <div><span id="fleetIdleCount" style="color:var(--muted);">0</span> <span class="muted">Idle</span></div>
+            <div><span id="fleetOfflineCount" style="color:var(--danger);">0</span> <span class="muted">Offline</span></div>
+            <div style="margin-left:auto;"><strong id="fleetJobsToday">0</strong> <span class="muted">Jobs Today</span></div>
+          </div>
+        </div>
+
+        <!-- Printer Cards Grid -->
+        <div id="fleetPrinterGrid" class="dashboard-grid" style="margin:0 16px 16px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));">
+          <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
+            Click <strong>Add Printer</strong> to register your first 3D printer.
+          </div>
+        </div>
+
+        <!-- Print Queue Section -->
+        <div style="margin:0 16px 16px;">
+          <div class="inventory-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="margin:0;">Print Queue &amp; History</h3>
+              <div style="display:flex;gap:8px;">
+                <select id="fleetJobFilter" style="padding:6px 12px;">
+                  <option value="">All Jobs</option>
+                  <option value="printing">Printing</option>
+                  <option value="queued">Queued</option>
+                  <option value="paused">Paused</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="error">Error</option>
+                </select>
+              </div>
+            </div>
+            <div id="fleetJobsList" style="max-height:400px;overflow-y:auto;">
+              <div class="muted" style="text-align:center;padding:20px;">No print jobs yet</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- SLICE & PRINT (3D Slicer)                                          -->
+      <!-- ================================================================== -->
+      <section id="slicerView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Slice &amp; Print</h2>
+          <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
+            <input id="slicerSearch" type="text" placeholder="Search models..." style="padding:6px 12px;width:200px;">
+            <select id="slicerCategoryFilter" style="padding:6px 12px;">
               <option value="">All Categories</option>
             </select>
-            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;">
-              <input id="stlFavoritesOnly" type="checkbox"> Favorites
-            </label>
-            <select id="stlSortBy" style="padding:8px 12px;">
-              <option value="filename">Name</option>
-              <option value="created_at">Date Added</option>
-              <option value="file_size">File Size</option>
-              <option value="triangle_count">Triangles</option>
-              <option value="dim_x">Width</option>
-            </select>
-            <select id="stlSortDir" style="padding:8px 12px;">
-              <option value="ASC">A-Z / Low</option>
-              <option value="DESC">Z-A / High</option>
-            </select>
-          </div>
-          <!-- Bulk actions -->
-          <div id="stlBulkActions" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);gap:8px;align-items:center;">
-            <span id="stlSelectedCount" class="muted">0 selected</span>
-            <button id="stlBulkCategoryBtn" class="secondary" style="padding:4px 12px;">Set Category</button>
-            <button id="stlBulkTagsBtn" class="secondary" style="padding:4px 12px;">Set Tags</button>
-            <button id="stlBulkDeleteBtn" class="secondary" style="padding:4px 12px;color:var(--danger);">Delete</button>
-            <button id="stlClearSelectionBtn" class="secondary" style="padding:4px 12px;margin-left:auto;">Clear Selection</button>
+            <button id="slicerUploadBtn" class="primary" style="padding:6px 14px;">+ Upload STL</button>
+            <button id="slicerBulkImportBtn" class="secondary" style="padding:6px 14px;">Bulk Import</button>
           </div>
         </div>
 
-        <!-- Progress Bar (hidden by default) -->
-        <div id="stlProgressContainer" style="display:none;margin:0 16px;">
-          <div style="background:var(--card);border-radius:8px;padding:12px 16px;border:1px solid var(--border);">
-            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-              <span id="stlProgressLabel">Scanning...</span>
-              <span id="stlProgressCount" class="muted"></span>
-            </div>
-            <div style="background:var(--bg);border-radius:4px;overflow:hidden;height:6px;">
-              <div id="stlProgressBar" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s;"></div>
+        <div id="slicerContent" style="flex:1;overflow-y:auto;padding:0 16px 16px;">
+          <!-- Panel 1: STL Catalog Grid (shown by default) -->
+          <div id="slicerCatalogPanel">
+            <div id="slicerCatalogGrid" class="dashboard-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));">
+              <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
+                No STL models in the catalog yet. Click <strong>+ Upload STL</strong> to add your first model.
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Pagination -->
-        <div id="stlPagination" style="display:flex;justify-content:space-between;align-items:center;margin:0 16px;padding:8px 0;">
-          <span id="stlShowingText" class="muted">No models imported</span>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button id="stlPrevPage" class="secondary" style="padding:4px 12px;" disabled>&lt; Prev</button>
-            <span id="stlPageInfo" class="muted">Page 1</span>
-            <button id="stlNextPage" class="secondary" style="padding:4px 12px;" disabled>Next &gt;</button>
+          <!-- Panel 2: Slice Settings (hidden until model selected) -->
+          <div id="slicerSettingsPanel" style="display:none;">
+            <!-- Back button -->
+            <div style="margin-bottom:12px;">
+              <button id="slicerBackBtn" class="secondary" style="padding:6px 14px;">&larr; Back to Catalog</button>
+            </div>
+
+            <!-- Selected STL info -->
+            <div class="inventory-card" style="margin-bottom:16px;padding:16px;">
+              <div style="display:flex;gap:16px;align-items:flex-start;">
+                <div id="slicerSelectedThumb" style="width:140px;height:140px;border-radius:8px;background:#0a0a1a;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;cursor:pointer;" title="Click to view 3D model">
+                  <canvas id="slicerSelectedCanvas" width="280" height="280" style="width:100%;height:100%;"></canvas>
+                </div>
+                <div style="flex:1;">
+                  <h3 id="slicerSelectedName" style="margin:0 0 4px;"></h3>
+                  <div id="slicerSelectedCategory" class="muted" style="font-size:0.85rem;margin-bottom:4px;"></div>
+                  <div id="slicerSelectedDims" class="muted" style="font-size:0.85rem;margin-bottom:4px;"></div>
+                  <div id="slicerSelectedNotes" class="muted" style="font-size:0.85rem;"></div>
+                  <button id="slicerView3dBtn" class="secondary" style="margin-top:8px;padding:6px 14px;font-size:0.85rem;">View 3D Model</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Existing G-code for this STL -->
+            <div id="slicerGcodeSection" class="inventory-card" style="margin-bottom:16px;padding:16px;">
+              <h3 style="margin:0 0 12px;">Existing G-code</h3>
+              <div id="slicerGcodeList">
+                <div class="muted" style="text-align:center;padding:16px;">No cached G-code for this model.</div>
+              </div>
+            </div>
+
+            <!-- New Slice Settings -->
+            <div class="inventory-card" style="padding:16px;">
+              <h3 style="margin:0 0 16px;">Slice Settings</h3>
+
+              <div class="slicer-settings-grid">
+                <div class="slicer-option-group">
+                  <label>Quality</label>
+                  <div id="slicerQuality" class="slicer-btn-row" data-setting="quality"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Strength</label>
+                  <div id="slicerStrength" class="slicer-btn-row" data-setting="strength"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Speed</label>
+                  <div id="slicerSpeed" class="slicer-btn-row" data-setting="speed"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Texture</label>
+                  <div id="slicerTexture" class="slicer-btn-row" data-setting="texture"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Supports</label>
+                  <div id="slicerSupports" class="slicer-btn-row" data-setting="supports"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Material</label>
+                  <div id="slicerMaterial" class="slicer-btn-row" data-setting="material"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Printer</label>
+                  <select id="slicerPrinter" style="padding:8px 12px;width:100%;font-size:0.95rem;">
+                    <option value="">Select a printer...</option>
+                  </select>
+                </div>
+                <div id="slicerAceSlotGroup" class="slicer-option-group" style="display:none;">
+                  <label>ACE Slot</label>
+                  <select id="slicerAceSlot" style="padding:8px 12px;width:100%;font-size:0.95rem;">
+                    <option value="">Select filament slot...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:12px;margin-top:20px;">
+                <button id="slicerSliceBtn" class="primary" style="flex:1;padding:14px 24px;font-size:1.1rem;font-weight:600;">
+                  🖨️ SLICE &amp; PRINT
+                </button>
+                <button id="slicerSliceOnlyBtn" class="secondary" style="padding:14px 18px;font-size:0.95rem;">
+                  Slice Only
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Model Grid -->
-        <div id="stlModelGrid" class="stl-model-grid" style="margin:0 16px 16px;">
-          <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
-            Click <strong>Import Folder</strong> to scan a directory of STL files.
+        <!-- Slicing Progress Overlay -->
+        <div id="slicerProgressOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;">
+          <div style="background:var(--card,#1e293b);border-radius:12px;padding:32px 48px;text-align:center;max-width:400px;">
+            <div style="font-size:2rem;margin-bottom:12px;">⚙️</div>
+            <h3 id="slicerProgressTitle" style="margin:0 0 8px;">Slicing...</h3>
+            <p id="slicerProgressMsg" class="muted" style="margin:0 0 16px;font-size:0.9rem;">PrusaSlicer is processing your model on the server</p>
+            <div style="height:4px;border-radius:2px;background:var(--bg-secondary);overflow:hidden;">
+              <div id="slicerProgressBar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s;"></div>
+            </div>
           </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- MULTIBOARD PARTS BROWSER                                           -->
+      <!-- ================================================================== -->
+      <section id="multiboardPartsBrowserView" class="view" style="flex:1;min-height:0;overflow:hidden;gap:0;">
+        <!-- Top Toolbar: Navigation -->
+        <div class="view-toolbar" style="gap:8px;padding:8px 16px;flex-wrap:nowrap;">
+          <h2 style="margin:0;font-size:1rem;white-space:nowrap;">Parts Browser</h2>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <button id="mpbBackBtn" class="secondary" style="padding:4px 10px;" title="Back" disabled>&larr;</button>
+            <button id="mpbForwardBtn" class="secondary" style="padding:4px 10px;" title="Forward" disabled>&rarr;</button>
+            <button id="mpbReloadBtn" class="secondary" style="padding:4px 10px;" title="Reload">&#8635;</button>
+            <button id="mpbHomeBtn" class="secondary" style="padding:4px 10px;" title="Parts Library Home">&#8962; Home</button>
+          </div>
+          <input id="mpbUrlBar" type="text" readonly style="flex:1;padding:6px 12px;font-size:0.85rem;background:rgba(15,23,42,0.5);color:#94a3b8;border:1px solid var(--border);border-radius:6px;cursor:default;" value="https://www.multiboard.io/parts-library">
+          <div style="display:flex;gap:4px;align-items:center;">
+            <span id="mpbImportCount" class="muted" style="font-size:0.85rem;white-space:nowrap;">0 imported</span>
+            <button id="mpbOpenExternalBtn" class="secondary" style="padding:4px 10px;" title="Open in system browser">&#x2197;</button>
+          </div>
+        </div>
+
+        <!-- Main Content: Sidebar + Webview -->
+        <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
+          <!-- Left Sidebar: Category Tree -->
+          <div id="mpbSidebar" style="width:240px;border-right:1px solid var(--border);overflow-y:auto;padding:8px;background:var(--bg-secondary);font-size:0.85rem;">
+            <div id="mpbCategoryTree"></div>
+          </div>
+
+          <!-- Webview Container -->
+          <div id="mpbWebviewContainer" style="flex:1;position:relative;overflow:hidden;background:#fff;">
+            <div id="mpbLoadingOverlay" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);z-index:10;">
+              <div style="background:var(--card,#1e1e2e);padding:20px 30px;border-radius:8px;text-align:center;">
+                <div style="font-size:1.1rem;margin-bottom:8px;">Loading...</div>
+                <div id="mpbLoadingUrl" class="muted" style="font-size:0.8rem;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Status Bar -->
+        <div id="mpbStatusBar" style="display:flex;align-items:center;gap:12px;padding:6px 16px;border-top:1px solid var(--border);background:var(--bg-secondary);font-size:0.8rem;min-height:32px;">
+          <span id="mpbStatusText" class="muted">Ready</span>
+          <div id="mpbDownloadProgress" style="display:none;flex:1;max-width:300px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+              <span id="mpbDownloadFilename" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;"></span>
+              <span id="mpbDownloadPercent">0%</span>
+            </div>
+            <div style="background:var(--bg);border-radius:3px;overflow:hidden;height:4px;">
+              <div id="mpbDownloadBar" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s;"></div>
+            </div>
+          </div>
+          <div id="mpbImportHistory" style="margin-left:auto;display:flex;gap:8px;overflow-x:auto;"></div>
         </div>
       </section>
 
@@ -6412,10 +6573,13 @@
             <button id="mbApplyWallBtn" class="secondary" style="padding:4px 12px;">Apply</button>
           </div>
           <div style="display:flex;gap:6px;align-items:center;margin-left:auto;">
+            <span id="mbStatusBadge" style="display:none;font-size:11px;padding:3px 10px;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;"></span>
             <button id="mbResetCameraBtn" class="secondary" title="Reset Camera">Reset View</button>
             <button id="mbToggleGridBtn" class="secondary" title="Toggle Grid">Grid</button>
             <button id="mbSaveBtn" class="primary">Save</button>
             <button id="mbLoadBtn" class="secondary">Load</button>
+            <button id="mbOrderBtn" class="primary" style="background:#e65100;" title="Create production order">Create Order</button>
+            <button id="mbOrdersListBtn" class="secondary" title="View production orders">Orders</button>
           </div>
         </div>
 
@@ -6444,23 +6608,49 @@
           </div>
         </div>
 
-        <!-- Bottom Panel: Parts List / BOM -->
-        <div id="mbBottomPanel" style="height:160px;border-top:1px solid var(--border);overflow-y:auto;padding:12px 16px;background:var(--bg-secondary);">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <h3 style="margin:0;font-size:14px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Bill of Materials</h3>
-            <div id="mbGrandTotal" style="font-size:16px;font-weight:600;">Total: $0.00</div>
+        <!-- Bottom Panel: Parts List / BOM + Pricing -->
+        <div id="mbBottomPanel" style="height:200px;border-top:1px solid var(--border);overflow:hidden;padding:0;background:var(--bg-secondary);display:flex;">
+          <!-- BOM Table (left) -->
+          <div style="flex:1;overflow-y:auto;padding:12px 16px;border-right:1px solid var(--border);">
+            <h3 style="margin:0 0 8px;font-size:13px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Bill of Materials</h3>
+            <table id="mbBomTable" style="width:100%;font-size:12px;border-collapse:collapse;">
+              <thead>
+                <tr style="text-align:left;color:#888;border-bottom:1px solid var(--border);">
+                  <th style="padding:3px 6px;">Part</th>
+                  <th style="padding:3px 6px;text-align:center;">Qty</th>
+                  <th style="padding:3px 6px;text-align:right;">Unit</th>
+                  <th style="padding:3px 6px;text-align:right;">Total</th>
+                </tr>
+              </thead>
+              <tbody id="mbBomBody"></tbody>
+            </table>
           </div>
-          <table id="mbBomTable" style="width:100%;font-size:13px;border-collapse:collapse;">
-            <thead>
-              <tr style="text-align:left;color:#888;border-bottom:1px solid var(--border);">
-                <th style="padding:4px 8px;">Part</th>
-                <th style="padding:4px 8px;text-align:center;">Qty</th>
-                <th style="padding:4px 8px;text-align:right;">Unit Price</th>
-                <th style="padding:4px 8px;text-align:right;">Total</th>
-              </tr>
-            </thead>
-            <tbody id="mbBomBody"></tbody>
-          </table>
+          <!-- Pricing Summary (right) -->
+          <div style="width:280px;padding:12px 16px;overflow-y:auto;">
+            <h3 style="margin:0 0 8px;font-size:13px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Pricing</h3>
+            <div style="font-size:12px;margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Parts:</span><span id="mbPartsTotal">$0.00</span></div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:3px;color:#888;"><span>Hardware:</span><span id="mbHardwareTotal">$0.00</span></div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:#888;"><span>Weight:</span><span id="mbWeightTotal">0g</span></div>
+            </div>
+            <div style="margin-bottom:8px;">
+              <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Service Level:</label>
+              <select id="mbServiceLevel" style="width:100%;padding:4px 6px;font-size:12px;border-radius:4px;">
+                <option value="none">Parts Only (no service)</option>
+                <option value="designOnly">Design Only — $35 flat</option>
+                <option value="designBuild" selected>Design + Build — $10/sq ft</option>
+                <option value="turnkey">Turnkey Install — $17.50/sq ft</option>
+              </select>
+            </div>
+            <div style="font-size:12px;margin-bottom:8px;">
+              <div id="mbServiceFeeRow" style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Service:</span><span id="mbServiceFee">$0.00</span></div>
+              <div id="mbWallAreaRow" style="display:none;font-size:11px;color:#666;margin-bottom:6px;text-align:right;"></div>
+            </div>
+            <div style="border-top:1px solid var(--border);padding-top:6px;display:flex;justify-content:space-between;font-size:15px;font-weight:700;">
+              <span>Total:</span><span id="mbGrandTotal">$0.00</span>
+            </div>
+            <button id="mbQuoteBtn" class="primary" style="width:100%;margin-top:8px;padding:6px;font-size:12px;">Generate Quote</button>
+          </div>
         </div>
       </section>
 
@@ -6483,10 +6673,14 @@
     <script src="./lib/three.min.js"></script>
     <script src="./lib/STLLoader.js"></script>
     <script src="./lib/OrbitControls.js"></script>
-    <!-- STL Manager View -->
-    <script src="./stl-manager-view.js"></script>
     <!-- Multiboard Designer View -->
     <script src="./multiboard-designer-view.js"></script>
+    <!-- Multiboard Parts Browser View -->
+    <script src="./multiboard-parts-browser-view.js"></script>
+    <!-- 3D Printer Fleet View -->
+    <script src="./printer-fleet-view.js"></script>
+    <!-- Slicer View -->
+    <script src="./slicer-view.js"></script>
     <!-- B2B Management View -->
     <script src="./b2b-management-view.js"></script>
     <script type="module" src="./index.js"></script>
