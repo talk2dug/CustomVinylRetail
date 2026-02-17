@@ -1597,9 +1597,36 @@ function connectToPrinter(printer) {
     }
 
     if (status.state === 'error' && activeJobs.length > 0) {
+      const job = activeJobs[0];
+      const jobAgeMs = Date.now() - new Date(job.started_at || job.created_at).getTime();
+      const hasProgress = (job.progress || 0) > 0.005;
+
+      // Grace period: don't mark as error within first 3 minutes of job creation
+      // unless the print has already made progress. This avoids false failures
+      // during the printer's startup calibration phase (homing, bed mesh, etc.)
+      // Also verify the error is for this specific print file when possible.
+      const CALIBRATION_GRACE_MS = 180000; // 3 minutes
+
+      if (jobAgeMs > CALIBRATION_GRACE_MS || hasProgress) {
+        // Past calibration window or print was actively running — real error
+        fleetDb.updateJob(job.id, {
+          status: 'error',
+          error_message: status.message || 'Unknown error',
+          completed_at: new Date().toISOString()
+        });
+        printerService.updatePollRate(apiUrl, false);
+      } else {
+        // Within calibration grace period and no progress yet — likely a transient
+        // error during homing/probing/bed mesh. Log but don't mark job as failed.
+        console.log(`[Fleet] Ignoring transient error during calibration for job ${job.id} (age: ${Math.round(jobAgeMs / 1000)}s): ${status.message || 'Unknown'}`);
+      }
+    }
+
+    // Handle cancelled state from Moonraker
+    if (status.state === 'cancelled' && activeJobs.length > 0) {
       fleetDb.updateJob(activeJobs[0].id, {
         status: 'error',
-        error_message: status.message || 'Unknown error',
+        error_message: 'Print cancelled',
         completed_at: new Date().toISOString()
       });
       printerService.updatePollRate(apiUrl, false);
@@ -1876,6 +1903,60 @@ function registerIpcHandlers() {
     } catch (e) {
       return { count: 0, sizeBytes: 0, sizeMB: '0.00' };
     }
+  });
+
+  // ---- STL Thumbnail Disk Cache ----
+  const getStlThumbCacheDir = () => path.join(app.getPath('userData'), 'stl-thumb-cache');
+
+  // Batch check which thumbnails are cached on disk
+  ipcMain.handle('slicer:thumb:batchGet', async (_event, stlIds) => {
+    if (!Array.isArray(stlIds) || !stlIds.length) return {};
+    const cacheDir = getStlThumbCacheDir();
+    try { await fsPromises.mkdir(cacheDir, { recursive: true }); } catch {}
+
+    const results = {};
+    for (const id of stlIds) {
+      const thumbPath = path.join(cacheDir, `${id}.png`);
+      try {
+        await fsPromises.access(thumbPath, fs.constants.F_OK);
+        results[id] = `file://${thumbPath.replace(/\\/g, '/')}`;
+      } catch {
+        results[id] = null;
+      }
+    }
+    return results;
+  });
+
+  // Save a rendered thumbnail to disk
+  ipcMain.handle('slicer:thumb:save', async (_event, { stlId, dataUrl }) => {
+    if (!stlId || !dataUrl) return null;
+    const cacheDir = getStlThumbCacheDir();
+    try { await fsPromises.mkdir(cacheDir, { recursive: true }); } catch {}
+
+    const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    const thumbPath = path.join(cacheDir, `${stlId}.png`);
+    await fsPromises.writeFile(thumbPath, buffer);
+    return `file://${thumbPath.replace(/\\/g, '/')}`;
+  });
+
+  // Delete a single cached thumbnail
+  ipcMain.handle('slicer:thumb:delete', async (_event, stlId) => {
+    const thumbPath = path.join(getStlThumbCacheDir(), `${stlId}.png`);
+    try { await fsPromises.unlink(thumbPath); return true; } catch { return false; }
+  });
+
+  // Clear all cached thumbnails
+  ipcMain.handle('slicer:thumb:clear', async () => {
+    try {
+      const cacheDir = getStlThumbCacheDir();
+      const files = await fsPromises.readdir(cacheDir);
+      let cleared = 0;
+      for (const file of files) {
+        try { await fsPromises.unlink(path.join(cacheDir, file)); cleared++; } catch {}
+      }
+      return { cleared };
+    } catch { return { cleared: 0 }; }
   });
 
   ipcMain.handle('queue:fetch', (_event, args) => fetchQueue(args || {}));
@@ -6139,10 +6220,48 @@ Return ONLY valid JSON, nothing else:
     try {
       const status = await printerService.getPrinterStatus(apiUrl);
       const info = await printerService.getPrinterInfo(apiUrl);
-      return { success: true, status, info };
+
+      // Also query build volume and auto-update fleet DB if printer exists
+      let buildVolume = null;
+      try {
+        buildVolume = await printerService.getBuildVolume(apiUrl);
+        if (buildVolume && fleetDb) {
+          const existing = fleetDb.getPrinterByUrl(apiUrl);
+          if (existing) {
+            fleetDb.updatePrinter(existing.id, {
+              build_width: buildVolume.width,
+              build_depth: buildVolume.depth,
+              build_height: buildVolume.height
+            });
+            console.log(`[Fleet] Auto-updated build volume for ${existing.name}: ${buildVolume.width}x${buildVolume.depth}x${buildVolume.height}`);
+          }
+        }
+      } catch (bvErr) {
+        console.warn('[Fleet] Could not query build volume:', bvErr.message);
+      }
+
+      return { success: true, status, info, buildVolume };
     } catch (err) {
       return { success: false, error: err.message };
     }
+  });
+
+  // --- Build Volume Query ---
+  ipcMain.handle('fleet:printers:buildVolume', async (_event, id) => {
+    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
+    const printer = fleetDb.getPrinter(id);
+    if (!printer) throw new Error('Printer not found');
+
+    const buildVolume = await printerService.getBuildVolume(printer.api_url);
+    if (buildVolume) {
+      // Save to fleet DB
+      fleetDb.updatePrinter(id, {
+        build_width: buildVolume.width,
+        build_depth: buildVolume.depth,
+        build_height: buildVolume.height
+      });
+    }
+    return buildVolume;
   });
 
   // --- G-code File Management ---
@@ -6318,6 +6437,47 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
+  ipcMain.handle('slicer:catalog:categories:counts', async () => {
+    const resp = await slicerFetch('/api/slicer/catalog/categories/counts');
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:categories:merge', async (_event, { from_categories, to_category }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/categories/merge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_categories, to_category })
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:categories:rename', async (_event, { old_name, new_name }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/categories/rename', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old_name, new_name })
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:categories:remove', async (_event, { category }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/categories/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category })
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:bulk-category', async (_event, { stl_ids, category }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/bulk-category', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stl_ids, category })
+    });
+    return resp.json();
+  });
+
   ipcMain.handle('slicer:catalog:get', async (_event, id) => {
     const resp = await slicerFetch(`/api/slicer/catalog/${id}`);
     return resp.json();
@@ -6363,6 +6523,9 @@ Return ONLY valid JSON, nothing else:
 
   ipcMain.handle('slicer:catalog:delete', async (_event, id) => {
     const resp = await slicerFetch(`/api/slicer/catalog/${id}`, { method: 'DELETE' });
+    // Clean up cached thumbnail on disk
+    const thumbPath = path.join(getStlThumbCacheDir(), `${id}.png`);
+    fsPromises.unlink(thumbPath).catch(() => {});
     return resp.json();
   });
 
@@ -6372,7 +6535,8 @@ Return ONLY valid JSON, nothing else:
     const unzipper = require('unzipper');
     const os = require('os');
 
-    const stlFiles = [];   // { filePath, name, source: 'file'|'zip', zipName? }
+    const rootDir = directory; // top-level selected folder
+    const stlFiles = [];      // { filePath, name, category, source: 'file'|'zip', zipName? }
 
     // Recursive directory walk
     async function walk(dir) {
@@ -6388,13 +6552,20 @@ Return ONLY valid JSON, nothing else:
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
           if (ext === '.stl') {
+            // Category = immediate parent folder name (unless it's the root selected folder)
+            const parentDir = path.dirname(full);
+            const category = parentDir === rootDir
+              ? path.basename(rootDir)
+              : path.basename(parentDir);
             stlFiles.push({
               filePath: full,
               name: path.basename(entry.name, '.stl').replace(/[_-]/g, ' '),
+              category,
               source: 'file'
             });
           } else if (ext === '.zip') {
-            // Extract STL files from ZIP
+            // Category = ZIP filename without extension
+            const zipCategory = path.basename(entry.name, '.zip').replace(/[_-]/g, ' ');
             try {
               const zipDir = await unzipper.Open.file(full);
               const tempDir = path.join(os.tmpdir(), `stl-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -6420,6 +6591,7 @@ Return ONLY valid JSON, nothing else:
                 stlFiles.push({
                   filePath: destPath,
                   name: path.basename(destName, '.stl').replace(/[_-]/g, ' '),
+                  category: zipCategory,
                   source: 'zip',
                   zipName: entry.name
                 });
@@ -6477,6 +6649,83 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
+  // Slice plate (multiple STLs)
+  ipcMain.handle('slicer:slicePlate', async (_event, options) => {
+    console.log('[Slicer] slicePlate IPC called with', JSON.stringify(options?.stl_ids));
+    const resp = await slicerFetch('/api/slicer/slice-plate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  });
+
+  // Slice plate + Download + Upload to printer + Start print
+  ipcMain.handle('slicer:slicePlateAndPrint', async (_event, { sliceOptions, printerId, aceSlot } = {}) => {
+    if (!printerId) throw new Error('printerId is required');
+    if (!fleetDb) throw new Error('Fleet DB not initialized');
+    if (!printerService) throw new Error('Printer service not initialized');
+
+    const printer = fleetDb.getPrinter(printerId);
+    if (!printer) throw new Error('Printer not found');
+
+    // Step 1: Slice plate on server
+    console.log('[Slicer] Plate Step 1: Slicing plate on server...', JSON.stringify(sliceOptions?.stl_ids));
+    const sliceResp = await slicerFetch('/api/slicer/slice-plate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sliceOptions)
+    });
+    const sliceResult = await sliceResp.json();
+    if (sliceResult.error) throw new Error(`Server slicing error: ${sliceResult.error}`);
+    if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
+    console.log(`[Slicer] Plate Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
+
+    // Step 2: Download G-code from server to temp dir
+    console.log('[Slicer] Plate Step 2: Downloading G-code...');
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`);
+    const arrayBuf = await gcodeResp.arrayBuffer();
+    const tmpDir = app.getPath('temp');
+    const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
+    fs.writeFileSync(tmpPath, Buffer.from(arrayBuf));
+    console.log(`[Slicer] Plate Step 2 done: ${tmpPath} (${arrayBuf.byteLength} bytes)`);
+
+    // Step 3: Upload to printer via Moonraker
+    console.log(`[Slicer] Plate Step 3: Uploading to printer ${printer.name} (${printer.api_url})...`);
+    try {
+      await printerService.uploadGcode(printer.api_url, tmpPath);
+    } catch (uploadErr) {
+      try { fs.unlinkSync(tmpPath); } catch {}
+      throw new Error(`Failed to upload plate G-code to printer "${printer.name}": ${uploadErr.message}`);
+    }
+    console.log('[Slicer] Plate Step 3 done: uploaded');
+
+    // Step 4: Home, bed level, and start print
+    console.log(`[Slicer] Plate Step 4: Homing, leveling, and starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ')' : ''}`);
+    try {
+      await printerService.homeAndPrint(printer.api_url, sliceResult.gcode_filename, aceSlot);
+    } catch (startErr) {
+      try { fs.unlinkSync(tmpPath); } catch {}
+      throw new Error(`Plate G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
+    }
+    console.log('[Slicer] Plate Step 4 done: print started');
+
+    // Step 5: Create fleet job record
+    const job = fleetDb.createJob({
+      printer_id: printerId,
+      filename: sliceResult.gcode_filename,
+      status: 'printing',
+      started_at: new Date().toISOString()
+    });
+
+    // Clean up temp file
+    try { fs.unlinkSync(tmpPath); } catch {}
+
+    return { success: true, job, sliceResult };
+  });
+
   // Slice + Download + Upload to printer + Start print
   ipcMain.handle('slicer:sliceAndPrint', async (_event, { sliceOptions, printerId, aceSlot } = {}) => {
     if (!printerId) throw new Error('printerId is required');
@@ -6494,6 +6743,8 @@ Return ONLY valid JSON, nothing else:
       body: JSON.stringify(sliceOptions)
     });
     const sliceResult = await sliceResp.json();
+    if (sliceResult.error) throw new Error(`Server slicing error: ${sliceResult.error}`);
+    if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
     console.log(`[Slicer] Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
 
     // Step 2: Download G-code from server to temp dir

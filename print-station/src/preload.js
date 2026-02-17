@@ -508,6 +508,7 @@ contextBridge.exposeInMainWorld('printStation', {
     getAllStatus: () => ipcRenderer.invoke('fleet:printers:statusAll'),
     reconnect: (id) => ipcRenderer.invoke('fleet:printers:reconnect', id),
     testConnection: (apiUrl) => ipcRenderer.invoke('fleet:printers:testConnection', apiUrl),
+    getBuildVolume: (id) => ipcRenderer.invoke('fleet:printers:buildVolume', id),
 
     // Files
     selectGcodeFile: () => ipcRenderer.invoke('fleet:files:select'),
@@ -551,6 +552,11 @@ contextBridge.exposeInMainWorld('printStation', {
     // STL Catalog
     listCatalog: (query) => ipcRenderer.invoke('slicer:catalog:list', query || {}),
     getCategories: () => ipcRenderer.invoke('slicer:catalog:categories'),
+    getCategoriesWithCounts: () => ipcRenderer.invoke('slicer:catalog:categories:counts'),
+    mergeCategories: (from_categories, to_category) => ipcRenderer.invoke('slicer:catalog:categories:merge', { from_categories, to_category }),
+    renameCategory: (old_name, new_name) => ipcRenderer.invoke('slicer:catalog:categories:rename', { old_name, new_name }),
+    removeCategory: (category) => ipcRenderer.invoke('slicer:catalog:categories:remove', { category }),
+    bulkSetCategory: (stl_ids, category) => ipcRenderer.invoke('slicer:catalog:bulk-category', { stl_ids, category }),
     getCatalogItem: (id) => ipcRenderer.invoke('slicer:catalog:get', id),
     uploadStl: (opts) => ipcRenderer.invoke('slicer:catalog:create', opts),
     updateCatalogItem: (id, updates) => ipcRenderer.invoke('slicer:catalog:update', { id, updates }),
@@ -560,6 +566,8 @@ contextBridge.exposeInMainWorld('printStation', {
     // Slicing
     slice: (options) => ipcRenderer.invoke('slicer:slice', options),
     sliceAndPrint: (sliceOptions, printerId, aceSlot) => ipcRenderer.invoke('slicer:sliceAndPrint', { sliceOptions, printerId, aceSlot }),
+    slicePlate: (options) => ipcRenderer.invoke('slicer:slicePlate', options),
+    slicePlateAndPrint: (sliceOptions, printerId, aceSlot) => ipcRenderer.invoke('slicer:slicePlateAndPrint', { sliceOptions, printerId, aceSlot }),
     printGcode: (gcodeId, printerId, aceSlot) => ipcRenderer.invoke('slicer:printGcode', { gcodeId, printerId, aceSlot }),
 
     // G-code cache
@@ -573,6 +581,12 @@ contextBridge.exposeInMainWorld('printStation', {
 
     // Bulk import
     bulkScan: (directory) => ipcRenderer.invoke('slicer:stl:bulkScan', directory),
-    bulkUploadOne: (opts) => ipcRenderer.invoke('slicer:stl:bulkUploadOne', opts)
+    bulkUploadOne: (opts) => ipcRenderer.invoke('slicer:stl:bulkUploadOne', opts),
+
+    // STL thumbnail disk cache
+    getThumbsCached: (stlIds) => ipcRenderer.invoke('slicer:thumb:batchGet', stlIds),
+    saveThumbCache: (stlId, dataUrl) => ipcRenderer.invoke('slicer:thumb:save', { stlId, dataUrl }),
+    deleteThumbCache: (stlId) => ipcRenderer.invoke('slicer:thumb:delete', stlId),
+    clearThumbCache: () => ipcRenderer.invoke('slicer:thumb:clear')
   }
 });

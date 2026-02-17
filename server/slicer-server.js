@@ -75,6 +75,98 @@ async function handleSlicerRoute(pathname, req, res, db) {
     return true;
   }
 
+  // GET /api/slicer/catalog/categories/counts — list categories with item counts
+  if (req.method === 'GET' && route === '/catalog/categories/counts') {
+    try {
+      const categories = db.listStlCatalogCategoriesWithCounts();
+      sendJson(res, 200, { categories });
+    } catch (err) {
+      console.error('[Slicer] List categories counts error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/catalog/categories/merge — merge multiple categories into one
+  if (req.method === 'POST' && route === '/catalog/categories/merge') {
+    try {
+      const body = await parseBody(req);
+      const { from_categories, to_category } = body;
+      if (!from_categories || !Array.isArray(from_categories) || !from_categories.length) {
+        sendError(res, 400, 'from_categories (array) is required');
+        return true;
+      }
+      if (!to_category || typeof to_category !== 'string' || !to_category.trim()) {
+        sendError(res, 400, 'to_category (string) is required');
+        return true;
+      }
+      const result = db.mergeStlCategories(from_categories, to_category.trim());
+      sendJson(res, 200, result);
+    } catch (err) {
+      console.error('[Slicer] Merge categories error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // PUT /api/slicer/catalog/categories/rename — rename a single category
+  if (req.method === 'PUT' && route === '/catalog/categories/rename') {
+    try {
+      const body = await parseBody(req);
+      const { old_name, new_name } = body;
+      if (!old_name || !new_name) {
+        sendError(res, 400, 'old_name and new_name are required');
+        return true;
+      }
+      const result = db.renameStlCategory(old_name.trim(), new_name.trim());
+      sendJson(res, 200, result);
+    } catch (err) {
+      console.error('[Slicer] Rename category error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // DELETE /api/slicer/catalog/categories/remove — uncategorize items in a category
+  if (req.method === 'POST' && route === '/catalog/categories/remove') {
+    try {
+      const body = await parseBody(req);
+      const { category } = body;
+      if (!category) {
+        sendError(res, 400, 'category is required');
+        return true;
+      }
+      const result = db.deleteStlCategory(category);
+      sendJson(res, 200, result);
+    } catch (err) {
+      console.error('[Slicer] Remove category error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/catalog/bulk-category — set category for multiple items at once
+  if (req.method === 'POST' && route === '/catalog/bulk-category') {
+    try {
+      const body = await parseBody(req);
+      const { stl_ids, category } = body;
+      if (!Array.isArray(stl_ids) || stl_ids.length === 0) {
+        sendError(res, 400, 'stl_ids array is required');
+        return true;
+      }
+      if (typeof category !== 'string') {
+        sendError(res, 400, 'category string is required');
+        return true;
+      }
+      const result = db.bulkSetCategory(stl_ids, category.trim());
+      sendJson(res, 200, result);
+    } catch (err) {
+      console.error('[Slicer] Bulk set category error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
   // GET /api/slicer/catalog/:id — get item + its G-code entries
   const catalogIdMatch = route.match(/^\/catalog\/(\d+)$/);
   if (req.method === 'GET' && catalogIdMatch) {
@@ -164,6 +256,8 @@ async function handleSlicerRoute(pathname, req, res, db) {
         default_material: fieldVal('default_material') || 'pla',
         default_texture: fieldVal('default_texture') || 'smooth',
         default_supports: fieldVal('default_supports') || 'none',
+        default_surface: fieldVal('default_surface') || 'standard',
+        default_speed: fieldVal('default_speed') || 'normal',
         notes: fieldVal('notes') || null,
         file_size: fileStat.size,
         triangle_count: modelInfo?.triangle_count || null,
@@ -312,7 +406,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
   if (req.method === 'POST' && route === '/slice') {
     try {
       const body = await parseBody(req);
-      const { stl_id, printer_model, material, quality, strength, speed, texture, supports } = body;
+      const { stl_id, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient } = body;
 
       if (!stl_id) {
         sendError(res, 400, 'stl_id is required');
@@ -341,12 +435,68 @@ async function handleSlicerRoute(pathname, req, res, db) {
         strength: strength || item.default_strength || 'normal',
         speed: speed || 'normal',
         texture: texture || item.default_texture || 'smooth',
-        supports: supports || item.default_supports || 'none'
+        surface: surface || item.default_surface || 'standard',
+        supports: supports || item.default_supports || 'none',
+        auto_orient: auto_orient === true  // Default OFF — most models are already oriented correctly
       }, rawDb);
 
       sendJson(res, 200, result);
     } catch (err) {
       console.error('[Slicer] Slice error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/slice-plate — slice multiple STLs on one plate
+  if (req.method === 'POST' && route === '/slice-plate') {
+    try {
+      const body = await parseBody(req);
+      const { stl_ids, transforms, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient } = body;
+
+      if (!stl_ids || !Array.isArray(stl_ids) || stl_ids.length === 0) {
+        sendError(res, 400, 'stl_ids (array) is required');
+        return true;
+      }
+
+      // Validate all IDs and resolve paths
+      const stlPaths = [];
+      const items = [];
+      for (const id of stl_ids) {
+        const item = db.getStlCatalogItem(id);
+        if (!item) {
+          sendError(res, 404, `STL catalog item not found: id=${id}`);
+          return true;
+        }
+        const absPath = path.join(slicer.STL_MODELS, item.stl_path);
+        if (!fs.existsSync(absPath)) {
+          sendError(res, 404, `STL file missing from disk: ${item.name || item.stl_path}`);
+          return true;
+        }
+        stlPaths.push(absPath);
+        items.push(item);
+      }
+
+      const rawDb = db.db || db.getDb();
+      const firstItem = items[0];
+
+      const result = await slicer.slicePlate(stlPaths, {
+        stl_ids,
+        transforms: transforms || {},
+        printer_model: printer_model || 'kobra3',
+        material: material || firstItem.default_material || 'pla',
+        quality: quality || firstItem.default_quality || 'standard',
+        strength: strength || firstItem.default_strength || 'normal',
+        speed: speed || 'normal',
+        texture: texture || firstItem.default_texture || 'smooth',
+        surface: surface || firstItem.default_surface || 'standard',
+        supports: supports || firstItem.default_supports || 'none',
+        auto_orient: auto_orient === true  // Default OFF — most models are already oriented correctly
+      }, rawDb);
+
+      sendJson(res, 200, result);
+    } catch (err) {
+      console.error('[Slicer] Plate slice error:', err);
       sendError(res, 500, err.message);
     }
     return true;

@@ -3398,6 +3398,27 @@ function initCustomArtTables() {
     CREATE INDEX IF NOT EXISTS idx_gcode_cache_hash ON gcode_cache(settings_hash);
   `);
 
+  // V2 migrations — add surface finish and speed defaults
+  ensureColumn('stl_catalog', 'default_surface', "TEXT DEFAULT 'standard'");
+  ensureColumn('stl_catalog', 'default_speed', "TEXT DEFAULT 'normal'");
+  ensureColumn('gcode_cache', 'surface', "TEXT DEFAULT 'standard'");
+  ensureColumn('gcode_cache', 'plate_stl_ids', "TEXT DEFAULT NULL");
+
+  // Calibration log table (for future calibration wizard)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS calibration_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      printer_model TEXT NOT NULL,
+      material TEXT,
+      calibration_type TEXT NOT NULL,
+      value TEXT,
+      notes TEXT,
+      calibrated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      next_due DATETIME
+    );
+    CREATE INDEX IF NOT EXISTS idx_calibration_log_printer ON calibration_log(printer_model);
+  `);
+
   console.log('[Slicer] ✅ Tables initialized successfully');
 }
 
@@ -6267,9 +6288,11 @@ function createStlCatalogItem(item) {
   const ins = db.prepare(`
     INSERT INTO stl_catalog (name, category, stl_path, thumbnail_path,
       default_quality, default_strength, default_material, default_texture, default_supports,
+      default_surface, default_speed,
       notes, file_size, triangle_count, dim_x, dim_y, dim_z, est_weight_g, est_time_min)
     VALUES (@name, @category, @stl_path, @thumbnail_path,
       @default_quality, @default_strength, @default_material, @default_texture, @default_supports,
+      @default_surface, @default_speed,
       @notes, @file_size, @triangle_count, @dim_x, @dim_y, @dim_z, @est_weight_g, @est_time_min)
   `);
   const info = ins.run({
@@ -6282,6 +6305,8 @@ function createStlCatalogItem(item) {
     default_material: item.default_material || 'pla',
     default_texture: item.default_texture || 'smooth',
     default_supports: item.default_supports || 'none',
+    default_surface: item.default_surface || 'standard',
+    default_speed: item.default_speed || 'normal',
     notes: item.notes || null,
     file_size: item.file_size || null,
     triangle_count: item.triangle_count || null,
@@ -6318,9 +6343,52 @@ function listStlCatalogCategories() {
     .map(r => r.category);
 }
 
+function listStlCatalogCategoriesWithCounts() {
+  return db.prepare(`
+    SELECT category, COUNT(*) as count
+    FROM stl_catalog
+    WHERE category IS NOT NULL AND category != ''
+    GROUP BY category
+    ORDER BY count DESC, category COLLATE NOCASE
+  `).all();
+}
+
+function mergeStlCategories(fromCategories, toCategory) {
+  if (!fromCategories || !fromCategories.length || !toCategory) {
+    throw new Error('fromCategories (array) and toCategory (string) are required');
+  }
+  const placeholders = fromCategories.map(() => '?').join(', ');
+  const result = db.prepare(`
+    UPDATE stl_catalog SET category = ? WHERE category IN (${placeholders})
+  `).run(toCategory, ...fromCategories);
+  return { updated: result.changes, toCategory };
+}
+
+function renameStlCategory(oldName, newName) {
+  if (!oldName || !newName) throw new Error('oldName and newName are required');
+  const result = db.prepare('UPDATE stl_catalog SET category = ? WHERE category = ?').run(newName, oldName);
+  return { updated: result.changes, oldName, newName };
+}
+
+function deleteStlCategory(categoryName) {
+  // Sets category to empty string (doesn't delete the items)
+  if (!categoryName) throw new Error('categoryName is required');
+  const result = db.prepare("UPDATE stl_catalog SET category = '' WHERE category = ?").run(categoryName);
+  return { updated: result.changes };
+}
+
+function bulkSetCategory(stlIds, category) {
+  // Set category for multiple STL catalog items at once
+  if (!Array.isArray(stlIds) || stlIds.length === 0) throw new Error('stlIds array is required');
+  const placeholders = stlIds.map(() => '?').join(', ');
+  const result = db.prepare(`UPDATE stl_catalog SET category = ? WHERE id IN (${placeholders})`).run(category, ...stlIds);
+  return { updated: result.changes, category };
+}
+
 function updateStlCatalogItem(id, updates) {
   const allowed = ['name', 'category', 'stl_path', 'thumbnail_path',
     'default_quality', 'default_strength', 'default_material', 'default_texture', 'default_supports',
+    'default_surface', 'default_speed',
     'notes', 'file_size', 'triangle_count', 'dim_x', 'dim_y', 'dim_z', 'est_weight_g', 'est_time_min'];
   const set = [];
   const params = { id };
@@ -6645,6 +6713,11 @@ module.exports = {
   getStlCatalogItem,
   listStlCatalog,
   listStlCatalogCategories,
+  listStlCatalogCategoriesWithCounts,
+  mergeStlCategories,
+  renameStlCategory,
+  deleteStlCategory,
+  bulkSetCategory,
   updateStlCatalogItem,
   deleteStlCatalogItem,
   // G-code Cache

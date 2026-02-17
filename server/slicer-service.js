@@ -28,7 +28,466 @@ const PROFILES_DIR = path.join(DATA_DIR, 'profiles');
 ].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
 // PrusaSlicer path from env
-const SLICER_PATH = process.env.PRUSA_SLICER_PATH || 'prusa-slicer';
+const SLICER_PATH = process.env.PRUSA_SLICER_PATH || '/home/ubuntu/vinylApp/squashfs-root-2.8.1/usr/bin/prusa-slicer';
+
+// ============================================================================
+// AUTO-ORIENT STL — Rotate model for best build plate placement
+// ============================================================================
+
+const os = require('os');
+
+/**
+ * Parse a binary STL file into arrays of triangles with normals and vertices.
+ * Returns { triangleCount, normals: Float32Array, vertices: Float32Array }
+ */
+function parseSTLBinary(buffer) {
+  // Binary STL: 80-byte header, 4-byte uint32 triangle count, then 50 bytes per triangle
+  const dataView = new DataView(buffer.buffer || buffer, buffer.byteOffset || 0);
+  const triangleCount = dataView.getUint32(80, true);
+  const normals = new Float32Array(triangleCount * 3);
+  const vertices = new Float32Array(triangleCount * 9);
+
+  for (let i = 0; i < triangleCount; i++) {
+    const offset = 84 + i * 50;
+    // Normal
+    normals[i * 3]     = dataView.getFloat32(offset, true);
+    normals[i * 3 + 1] = dataView.getFloat32(offset + 4, true);
+    normals[i * 3 + 2] = dataView.getFloat32(offset + 8, true);
+    // Vertex 1
+    vertices[i * 9]     = dataView.getFloat32(offset + 12, true);
+    vertices[i * 9 + 1] = dataView.getFloat32(offset + 16, true);
+    vertices[i * 9 + 2] = dataView.getFloat32(offset + 20, true);
+    // Vertex 2
+    vertices[i * 9 + 3] = dataView.getFloat32(offset + 24, true);
+    vertices[i * 9 + 4] = dataView.getFloat32(offset + 28, true);
+    vertices[i * 9 + 5] = dataView.getFloat32(offset + 32, true);
+    // Vertex 3
+    vertices[i * 9 + 6] = dataView.getFloat32(offset + 36, true);
+    vertices[i * 9 + 7] = dataView.getFloat32(offset + 40, true);
+    vertices[i * 9 + 8] = dataView.getFloat32(offset + 44, true);
+  }
+
+  return { triangleCount, normals, vertices };
+}
+
+/**
+ * Compute the area of a triangle given 3 vertices (9 floats: v0x,v0y,v0z,v1x,v1y,v1z,v2x,v2y,v2z)
+ */
+function triangleArea(v, offset) {
+  const ax = v[offset + 3] - v[offset], ay = v[offset + 4] - v[offset + 1], az = v[offset + 5] - v[offset + 2];
+  const bx = v[offset + 6] - v[offset], by = v[offset + 7] - v[offset + 1], bz = v[offset + 8] - v[offset + 2];
+  const cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx;
+  return 0.5 * Math.sqrt(cx * cx + cy * cy + cz * cz);
+}
+
+/**
+ * Find the best "bottom face" normal by clustering triangle normals weighted by area.
+ * Uses hemisphere quantization — buckets normals by direction, picks the largest cluster.
+ * Returns the normal vector [nx, ny, nz] that should face downward.
+ */
+function findBestBottomNormal(normals, vertices, triangleCount) {
+  // Quantize each normal to a bucket (angular resolution ~15°)
+  const buckets = new Map();
+  const ANGULAR_RES = 15; // degrees
+  const RAD = Math.PI / 180;
+
+  for (let i = 0; i < triangleCount; i++) {
+    let nx = normals[i * 3], ny = normals[i * 3 + 1], nz = normals[i * 3 + 2];
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (len < 1e-8) continue;
+    nx /= len; ny /= len; nz /= len;
+
+    // Compute area
+    const area = triangleArea(vertices, i * 9);
+    if (area < 1e-10) continue;
+
+    // Quantize normal direction (spherical coords)
+    const theta = Math.round(Math.acos(Math.max(-1, Math.min(1, nz))) / (ANGULAR_RES * RAD));
+    const phi = Math.round(Math.atan2(ny, nx) / (ANGULAR_RES * RAD));
+    const key = `${theta},${phi}`;
+
+    if (buckets.has(key)) {
+      const b = buckets.get(key);
+      b.area += area;
+      b.nx += nx * area;
+      b.ny += ny * area;
+      b.nz += nz * area;
+    } else {
+      buckets.set(key, { area, nx: nx * area, ny: ny * area, nz: nz * area });
+    }
+  }
+
+  // Find largest bucket
+  let bestBucket = null;
+  let bestArea = 0;
+  for (const b of buckets.values()) {
+    if (b.area > bestArea) {
+      bestArea = b.area;
+      bestBucket = b;
+    }
+  }
+
+  if (!bestBucket) return [0, 0, -1]; // Default: no rotation needed
+
+  // Normalize the area-weighted normal
+  const len = Math.sqrt(bestBucket.nx ** 2 + bestBucket.ny ** 2 + bestBucket.nz ** 2);
+  if (len < 1e-8) return [0, 0, -1];
+
+  return [bestBucket.nx / len, bestBucket.ny / len, bestBucket.nz / len];
+}
+
+/**
+ * Build rotation matrix to align vector 'from' to vector 'to'.
+ * Uses Rodrigues' rotation formula.
+ * Returns 3x3 matrix as [r00, r01, r02, r10, r11, r12, r20, r21, r22]
+ */
+function rotationMatrixFromTo(from, to) {
+  // Cross product
+  const cx = from[1] * to[2] - from[2] * to[1];
+  const cy = from[2] * to[0] - from[0] * to[2];
+  const cz = from[0] * to[1] - from[1] * to[0];
+  const sinA = Math.sqrt(cx * cx + cy * cy + cz * cz);
+  const cosA = from[0] * to[0] + from[1] * to[1] + from[2] * to[2];
+
+  if (sinA < 1e-8) {
+    // Vectors are parallel
+    if (cosA > 0) return [1, 0, 0, 0, 1, 0, 0, 0, 1]; // same direction
+    // Opposite direction — rotate 180° around any perpendicular axis
+    // Pick axis with least alignment to 'from'
+    let ax = 1, ay = 0, az = 0;
+    if (Math.abs(from[0]) > 0.9) { ax = 0; ay = 1; }
+    // Cross with from to get perpendicular axis
+    const px = from[1] * az - from[2] * ay;
+    const py = from[2] * ax - from[0] * az;
+    const pz = from[0] * ay - from[1] * ax;
+    const plen = Math.sqrt(px * px + py * py + pz * pz);
+    const ux = px / plen, uy = py / plen, uz = pz / plen;
+    // 180° rotation around [ux, uy, uz]: R = 2 * u*u^T - I
+    return [
+      2 * ux * ux - 1, 2 * ux * uy,     2 * ux * uz,
+      2 * uy * ux,     2 * uy * uy - 1,  2 * uy * uz,
+      2 * uz * ux,     2 * uz * uy,      2 * uz * uz - 1
+    ];
+  }
+
+  // Skew-symmetric cross-product matrix
+  const vx = cx / sinA, vy = cy / sinA, vz = cz / sinA;
+  const t = 1 - cosA;
+  return [
+    cosA + vx * vx * t,      vx * vy * t - vz * sinA,  vx * vz * t + vy * sinA,
+    vy * vx * t + vz * sinA, cosA + vy * vy * t,       vy * vz * t - vx * sinA,
+    vz * vx * t - vy * sinA, vz * vy * t + vx * sinA,  cosA + vz * vz * t
+  ];
+}
+
+/**
+ * Auto-orient an STL file for optimal build plate placement.
+ * Finds the largest flat face and rotates the model so it sits flat on Z=0.
+ * Writes a rotated copy to a temp file.
+ * @param {string} stlPath - Path to the original STL
+ * @returns {string|null} - Path to the rotated temp STL, or null if no rotation needed
+ */
+function autoOrientSTL(stlPath) {
+  const fileBuffer = fs.readFileSync(stlPath);
+
+  // Check if ASCII STL (starts with "solid")
+  const header = fileBuffer.slice(0, 5).toString('ascii');
+  if (header === 'solid' && fileBuffer.indexOf(0x00, 0, 80) === -1) {
+    console.log('[Slicer] Auto-orient: ASCII STL detected, skipping (binary only)');
+    return null;
+  }
+
+  const { triangleCount, normals, vertices } = parseSTLBinary(fileBuffer);
+  if (triangleCount < 4) return null;
+
+  // Find the dominant flat face normal
+  const bottomNormal = findBestBottomNormal(normals, vertices, triangleCount);
+
+  // We want this normal to point DOWN (-Z), so we rotate bottomNormal → [0, 0, -1]
+  const target = [0, 0, -1];
+  const dot = bottomNormal[0] * target[0] + bottomNormal[1] * target[1] + bottomNormal[2] * target[2];
+
+  // If already aligned (within ~10°), skip rotation
+  if (dot > 0.985) {
+    console.log('[Slicer] Auto-orient: Model already well-oriented, skipping');
+    return null;
+  }
+
+  const R = rotationMatrixFromTo(bottomNormal, target);
+
+  // Apply rotation to all vertices
+  const rotatedVertices = new Float32Array(vertices.length);
+  for (let i = 0; i < vertices.length; i += 3) {
+    const x = vertices[i], y = vertices[i + 1], z = vertices[i + 2];
+    rotatedVertices[i]     = R[0] * x + R[1] * y + R[2] * z;
+    rotatedVertices[i + 1] = R[3] * x + R[4] * y + R[5] * z;
+    rotatedVertices[i + 2] = R[6] * x + R[7] * y + R[8] * z;
+  }
+
+  // Also rotate normals
+  const rotatedNormals = new Float32Array(normals.length);
+  for (let i = 0; i < normals.length; i += 3) {
+    const nx = normals[i], ny = normals[i + 1], nz = normals[i + 2];
+    rotatedNormals[i]     = R[0] * nx + R[1] * ny + R[2] * nz;
+    rotatedNormals[i + 1] = R[3] * nx + R[4] * ny + R[5] * nz;
+    rotatedNormals[i + 2] = R[6] * nx + R[7] * ny + R[8] * nz;
+  }
+
+  // Shift model so min Z = 0 (ensure it sits on the build plate)
+  let minZ = Infinity;
+  for (let i = 2; i < rotatedVertices.length; i += 3) {
+    if (rotatedVertices[i] < minZ) minZ = rotatedVertices[i];
+  }
+  if (minZ !== 0) {
+    for (let i = 2; i < rotatedVertices.length; i += 3) {
+      rotatedVertices[i] -= minZ;
+    }
+  }
+
+  // Write rotated binary STL to temp file
+  const outputSize = 84 + triangleCount * 50;
+  const outputBuffer = Buffer.alloc(outputSize);
+
+  // Copy original 80-byte header
+  fileBuffer.copy(outputBuffer, 0, 0, 80);
+  // Triangle count
+  outputBuffer.writeUInt32LE(triangleCount, 80);
+
+  const dv = new DataView(outputBuffer.buffer, outputBuffer.byteOffset);
+  for (let i = 0; i < triangleCount; i++) {
+    const off = 84 + i * 50;
+    // Normal
+    dv.setFloat32(off, rotatedNormals[i * 3], true);
+    dv.setFloat32(off + 4, rotatedNormals[i * 3 + 1], true);
+    dv.setFloat32(off + 8, rotatedNormals[i * 3 + 2], true);
+    // Vertex 1
+    dv.setFloat32(off + 12, rotatedVertices[i * 9], true);
+    dv.setFloat32(off + 16, rotatedVertices[i * 9 + 1], true);
+    dv.setFloat32(off + 20, rotatedVertices[i * 9 + 2], true);
+    // Vertex 2
+    dv.setFloat32(off + 24, rotatedVertices[i * 9 + 3], true);
+    dv.setFloat32(off + 28, rotatedVertices[i * 9 + 4], true);
+    dv.setFloat32(off + 32, rotatedVertices[i * 9 + 5], true);
+    // Vertex 3
+    dv.setFloat32(off + 36, rotatedVertices[i * 9 + 6], true);
+    dv.setFloat32(off + 40, rotatedVertices[i * 9 + 7], true);
+    dv.setFloat32(off + 44, rotatedVertices[i * 9 + 8], true);
+    // Attribute byte count (copy original)
+    const origAttr = fileBuffer.readUInt16LE(84 + i * 50 + 48);
+    outputBuffer.writeUInt16LE(origAttr, off + 48);
+  }
+
+  const tmpPath = path.join(os.tmpdir(), `oriented_${path.basename(stlPath)}`);
+  fs.writeFileSync(tmpPath, outputBuffer);
+
+  console.log(`[Slicer] Auto-orient: Rotated ${path.basename(stlPath)} (dot=${dot.toFixed(3)}) → ${tmpPath}`);
+  return tmpPath;
+}
+
+// ============================================================================
+// TRANSFORM BAKING — apply client-side transforms into STL vertex data
+// ============================================================================
+
+/**
+ * Check if a transform differs from identity (no-op).
+ */
+function hasNonIdentityTransform(t) {
+  return (t.rx || 0) !== 0 || (t.ry || 0) !== 0 || (t.rz || 0) !== 0 ||
+         ((t.scale || 1) !== 1) || (t.posX || 0) !== 0 || (t.posZ || 0) !== 0;
+}
+
+/**
+ * Build a 3x3 rotation+scale matrix from Euler angles and uniform scale.
+ *
+ * Coordinate system mapping:
+ *   THREE.js (client): X = right, Y = up, Z = toward camera
+ *   STL/PrusaSlicer:   X = right, Y = depth, Z = up
+ *
+ * The client stores rotations as THREE.js rotateX/Y/Z incremental Euler angles.
+ * In the THREE.js Y-up system:
+ *   rotateX(rx) = rotation around X axis
+ *   rotateY(ry) = rotation around Y axis (up)
+ *   rotateZ(rz) = rotation around Z axis
+ *
+ * We need to remap to Z-up for the STL file:
+ *   THREE Y-up → STL Z-up coordinate swap: (x, y, z) → (x, z, -y)
+ *   But since bpLoadAllModels applies rotations to geometry BEFORE computing the
+ *   centered bounding box (in Y-up space), and the STL is already in its native
+ *   coordinate system, we apply the same rotation matrix in the STL's own space.
+ *
+ * Since the STL files are parsed in their native coordinate system (typically Z-up),
+ * and the Three.js loader preserves the raw vertex data, the rotation that the client
+ * applied in Y-up space to the geometry (via geometry.rotateX/Y/Z) is equivalent to
+ * applying the same rotations to the raw STL vertices. The centering translation
+ * and Y-floor are baked afterward.
+ */
+function buildRotationMatrix(rx, ry, rz) {
+  // Rotation around X axis
+  const cosX = Math.cos(rx), sinX = Math.sin(rx);
+  const Rx = [
+    1,    0,     0,
+    0, cosX, -sinX,
+    0, sinX,  cosX
+  ];
+
+  // Rotation around Y axis
+  const cosY = Math.cos(ry), sinY = Math.sin(ry);
+  const Ry = [
+     cosY, 0, sinY,
+        0, 1,    0,
+    -sinY, 0, cosY
+  ];
+
+  // Rotation around Z axis
+  const cosZ = Math.cos(rz), sinZ = Math.sin(rz);
+  const Rz = [
+    cosZ, -sinZ, 0,
+    sinZ,  cosZ, 0,
+       0,     0, 1
+  ];
+
+  // Combined: R = Rz * Ry * Rx (same order as THREE.js default Euler 'XYZ')
+  // Actually THREE.js rotateX/Y/Z are incremental object-space rotations,
+  // which means: final = Rz * Ry * Rx applied in that order
+  function mul3x3(A, B) {
+    const C = new Array(9);
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        C[r * 3 + c] = A[r * 3] * B[c] + A[r * 3 + 1] * B[3 + c] + A[r * 3 + 2] * B[6 + c];
+      }
+    }
+    return C;
+  }
+
+  return mul3x3(Rz, mul3x3(Ry, Rx));
+}
+
+/**
+ * Bake a transform (rotation, scale, position) into an STL file.
+ * Returns path to a temp file with the baked STL, or null if transform is identity.
+ *
+ * @param {string} stlPath - Path to the original STL file
+ * @param {object} transform - { rx, ry, rz, scale, posX, posZ }
+ * @param {string|number} stlId - STL ID for naming the temp file
+ * @returns {string|null} - Path to baked temp STL, or null
+ */
+function bakeTransformToSTL(stlPath, transform, stlId) {
+  if (!hasNonIdentityTransform(transform)) return null;
+
+  const fileBuffer = fs.readFileSync(stlPath);
+
+  // Check if ASCII STL (starts with "solid")
+  const header = fileBuffer.slice(0, 5).toString('ascii');
+  if (header === 'solid' && fileBuffer.indexOf(0x00, 0, 80) === -1) {
+    console.log('[Slicer] Transform bake: ASCII STL detected, skipping');
+    return null;
+  }
+
+  const { triangleCount, normals, vertices } = parseSTLBinary(fileBuffer);
+  if (triangleCount < 1) return null;
+
+  const rx = transform.rx || 0;
+  const ry = transform.ry || 0;
+  const rz = transform.rz || 0;
+  const scale = transform.scale || 1;
+  const posX = transform.posX || 0;
+  const posZ = transform.posZ || 0;
+
+  // Build rotation matrix
+  const R = buildRotationMatrix(rx, ry, rz);
+
+  // Apply rotation + scale to vertices
+  const bakedVertices = new Float32Array(vertices.length);
+  for (let i = 0; i < vertices.length; i += 3) {
+    const x = vertices[i], y = vertices[i + 1], z = vertices[i + 2];
+    bakedVertices[i]     = (R[0] * x + R[1] * y + R[2] * z) * scale;
+    bakedVertices[i + 1] = (R[3] * x + R[4] * y + R[5] * z) * scale;
+    bakedVertices[i + 2] = (R[6] * x + R[7] * y + R[8] * z) * scale;
+  }
+
+  // Apply rotation to normals (no scale — normals are directions)
+  const bakedNormals = new Float32Array(normals.length);
+  for (let i = 0; i < normals.length; i += 3) {
+    const nx = normals[i], ny = normals[i + 1], nz = normals[i + 2];
+    bakedNormals[i]     = R[0] * nx + R[1] * ny + R[2] * nz;
+    bakedNormals[i + 1] = R[3] * nx + R[4] * ny + R[5] * nz;
+    bakedNormals[i + 2] = R[6] * nx + R[7] * ny + R[8] * nz;
+  }
+
+  // Center the model on its own XY footprint (matching what bpLoadAllModels does)
+  // The client centers geometry in XZ (which maps to XY in STL Z-up),
+  // then positions at posX, posZ on the bed.
+  // In STL coordinates: X = bed X, Y = bed Y (depth), Z = height
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity;
+  for (let i = 0; i < bakedVertices.length; i += 3) {
+    if (bakedVertices[i] < minX) minX = bakedVertices[i];
+    if (bakedVertices[i] > maxX) maxX = bakedVertices[i];
+    if (bakedVertices[i + 1] < minY) minY = bakedVertices[i + 1];
+    if (bakedVertices[i + 1] > maxY) maxY = bakedVertices[i + 1];
+    if (bakedVertices[i + 2] < minZ) minZ = bakedVertices[i + 2];
+  }
+
+  // Center in XY, floor to Z=0
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  for (let i = 0; i < bakedVertices.length; i += 3) {
+    bakedVertices[i]     -= cx;
+    bakedVertices[i + 1] -= cy;
+    bakedVertices[i + 2] -= minZ; // floor to Z=0
+  }
+
+  // Now translate to the bed position.
+  // Client: mesh.position.x = bed X position (center of model on bed)
+  // Client: mesh.position.z = bed Y position (depth on bed, center of model)
+  // STL: X = bed X, Y = bed Y
+  // The client positions represent the center of the model on the bed,
+  // so we translate directly.
+  for (let i = 0; i < bakedVertices.length; i += 3) {
+    bakedVertices[i]     += posX;  // Client X → STL X
+    bakedVertices[i + 1] += posZ;  // Client Z (depth) → STL Y
+  }
+
+  // Write baked binary STL to temp file
+  const outputSize = 84 + triangleCount * 50;
+  const outputBuffer = Buffer.alloc(outputSize);
+
+  // Copy original 80-byte header
+  fileBuffer.copy(outputBuffer, 0, 0, 80);
+  // Triangle count
+  outputBuffer.writeUInt32LE(triangleCount, 80);
+
+  const dv = new DataView(outputBuffer.buffer, outputBuffer.byteOffset);
+  for (let i = 0; i < triangleCount; i++) {
+    const off = 84 + i * 50;
+    // Normal
+    dv.setFloat32(off, bakedNormals[i * 3], true);
+    dv.setFloat32(off + 4, bakedNormals[i * 3 + 1], true);
+    dv.setFloat32(off + 8, bakedNormals[i * 3 + 2], true);
+    // Vertex 1
+    dv.setFloat32(off + 12, bakedVertices[i * 9], true);
+    dv.setFloat32(off + 16, bakedVertices[i * 9 + 1], true);
+    dv.setFloat32(off + 20, bakedVertices[i * 9 + 2], true);
+    // Vertex 2
+    dv.setFloat32(off + 24, bakedVertices[i * 9 + 3], true);
+    dv.setFloat32(off + 28, bakedVertices[i * 9 + 4], true);
+    dv.setFloat32(off + 32, bakedVertices[i * 9 + 5], true);
+    // Vertex 3
+    dv.setFloat32(off + 36, bakedVertices[i * 9 + 6], true);
+    dv.setFloat32(off + 40, bakedVertices[i * 9 + 7], true);
+    dv.setFloat32(off + 44, bakedVertices[i * 9 + 8], true);
+    // Attribute byte count (copy original)
+    const origAttr = fileBuffer.readUInt16LE(84 + i * 50 + 48);
+    outputBuffer.writeUInt16LE(origAttr, off + 48);
+  }
+
+  const tmpPath = path.join(os.tmpdir(), `baked_${stlId}_${path.basename(stlPath)}`);
+  fs.writeFileSync(tmpPath, outputBuffer);
+
+  console.log(`[Slicer] Transform bake: ${path.basename(stlPath)} → ${tmpPath} (rx=${rx.toFixed(2)} ry=${ry.toFixed(2)} rz=${rz.toFixed(2)} scale=${scale.toFixed(2)} pos=${posX.toFixed(1)},${posZ.toFixed(1)})`);
+  return tmpPath;
+}
 
 // ============================================================================
 // HUMAN-READABLE OPTIONS MAPPING
@@ -42,10 +501,10 @@ const QUALITY_MAP = {
 };
 
 const STRENGTH_MAP = {
-  light:  { infill: 10, perimeters: 2, top_layers: 3, bottom_layers: 3, label: 'Light',  description: 'Decorative, minimal strength' },
-  normal: { infill: 20, perimeters: 3, top_layers: 4, bottom_layers: 4, label: 'Normal', description: 'Everyday use' },
-  strong: { infill: 40, perimeters: 4, top_layers: 5, bottom_layers: 5, label: 'Strong', description: 'Structural, load-bearing' },
-  solid:  { infill: 100, perimeters: 4, top_layers: 6, bottom_layers: 6, label: 'Solid', description: 'Maximum strength, heaviest' }
+  light:  { infill: 10, perimeters: 2, top_layers: 4, bottom_layers: 3, fill_pattern: 'gyroid',       label: 'Light',  description: 'Decorative, minimal strength' },
+  normal: { infill: 20, perimeters: 3, top_layers: 5, bottom_layers: 4, fill_pattern: 'gyroid',       label: 'Normal', description: 'Everyday use' },
+  strong: { infill: 40, perimeters: 4, top_layers: 5, bottom_layers: 5, fill_pattern: 'gyroid',       label: 'Strong', description: 'Structural, load-bearing' },
+  solid:  { infill: 100, perimeters: 4, top_layers: 6, bottom_layers: 6, fill_pattern: 'rectilinear', label: 'Solid', description: 'Maximum strength, heaviest' }
 };
 
 const SPEED_MAP = {
@@ -61,11 +520,17 @@ const TEXTURE_MAP = {
   full_fuzzy: { fuzzy_skin: 'all',      label: 'Full Fuzzy', description: 'Textured everywhere' }
 };
 
+const SURFACE_MAP = {
+  standard:   { top_fill: 'monotonic',  ironing: false,                                                     label: 'Standard',   description: 'Clean monotonic top surface' },
+  polished:   { top_fill: 'monotonic',  ironing: true, ironing_flowrate: '15%', ironing_spacing: 0.1, ironing_speed: 15, label: 'Polished',   description: 'Ironed smooth top, for premium products' },
+  concentric: { top_fill: 'concentric', ironing: false,                                                     label: 'Concentric', description: 'Circular pattern, best for round shapes' }
+};
+
 const SUPPORTS_MAP = {
-  none:       { enabled: false, threshold: 0,  buildplate_only: true,  label: 'None',       description: 'No support material' },
-  light:      { enabled: true,  threshold: 55, buildplate_only: true,  label: 'Light',      description: 'Minimal supports, easy removal' },
-  full:       { enabled: true,  threshold: 45, buildplate_only: true,  label: 'Full',       description: 'More supports for complex overhangs' },
-  everywhere: { enabled: true,  threshold: 30, buildplate_only: false, label: 'Everywhere', description: 'Supports from all surfaces' }
+  none:       { enabled: false, label: 'None',       description: 'No support material' },
+  light:      { enabled: true,  threshold: 55, buildplate_only: true,  style: 'organic', contact_distance: 0.2, interface_layers: 3, bottom_interface_layers: 0, interface_spacing: 0.2, support_spacing: 2.5, label: 'Light',      description: 'Minimal organic supports, easy removal' },
+  full:       { enabled: true,  threshold: 45, buildplate_only: true,  style: 'organic', contact_distance: 0.2, interface_layers: 3, bottom_interface_layers: 0, interface_spacing: 0.2, support_spacing: 2.5, label: 'Full',       description: 'More supports for complex overhangs' },
+  everywhere: { enabled: true,  threshold: 30, buildplate_only: false, style: 'organic', contact_distance: 0.2, interface_layers: 3, bottom_interface_layers: 0, interface_spacing: 0.2, support_spacing: 2.5, label: 'Everywhere', description: 'Supports from all surfaces' }
 };
 
 const MATERIALS_MAP = {
@@ -115,6 +580,7 @@ function mapOptionsToSlicerArgs(options) {
   const strength = STRENGTH_MAP[options.strength] || STRENGTH_MAP.normal;
   const speed = SPEED_MAP[options.speed] || SPEED_MAP.normal;
   const texture = TEXTURE_MAP[options.texture] || TEXTURE_MAP.smooth;
+  const surface = SURFACE_MAP[options.surface] || SURFACE_MAP.standard;
   const supports = SUPPORTS_MAP[options.supports] || SUPPORTS_MAP.none;
   const material = MATERIALS_MAP[options.material] || MATERIALS_MAP.pla;
 
@@ -123,6 +589,7 @@ function mapOptionsToSlicerArgs(options) {
 
   // Strength
   args.push('--fill-density', `${strength.infill}%`);
+  args.push('--fill-pattern', strength.fill_pattern);
   args.push('--perimeters', String(strength.perimeters));
   args.push('--top-solid-layers', String(strength.top_layers));
   args.push('--bottom-solid-layers', String(strength.bottom_layers));
@@ -134,7 +601,9 @@ function mapOptionsToSlicerArgs(options) {
   const baseSolidInfill = 60;
   const baseTopSolid = 40;
   const mult = speed.multiplier;
-  args.push('--perimeter-speed', String(Math.round(basePerimeter * mult)));
+  const perimeterSpeed = Math.round(basePerimeter * mult);
+  args.push('--perimeter-speed', String(perimeterSpeed));
+  args.push('--external-perimeter-speed', String(Math.round(perimeterSpeed * 0.7)));
   args.push('--infill-speed', String(Math.round(baseInfill * mult)));
   args.push('--travel-speed', String(Math.round(baseTravel * mult)));
   args.push('--solid-infill-speed', String(Math.round(baseSolidInfill * mult)));
@@ -143,13 +612,34 @@ function mapOptionsToSlicerArgs(options) {
   // Texture
   args.push('--fuzzy-skin', texture.fuzzy_skin);
 
-  // Supports (PrusaSlicer 2.4 uses boolean flags, not 0/1 values)
+  // Surface finish
+  args.push('--top-fill-pattern', surface.top_fill);
+  if (surface.ironing) {
+    args.push('--ironing');
+    args.push('--ironing-type', 'top');
+    args.push('--ironing-flowrate', surface.ironing_flowrate || '15%');
+    args.push('--ironing-speed', String(surface.ironing_speed || 15));
+    args.push('--ironing-spacing', String(surface.ironing_spacing || 0.1));
+  }
+
+  // Supports — organic tree supports with optimized interface
+  // Always use same extruder for supports (single-extruder printers)
   if (supports.enabled) {
     args.push('--support-material');
+    args.push('--support-material-extruder', '0');
+    args.push('--support-material-interface-extruder', '0');
     args.push('--support-material-threshold', String(supports.threshold));
+    if (supports.style) {
+      args.push('--support-material-style', supports.style);
+    }
     if (supports.buildplate_only) {
       args.push('--support-material-buildplate-only');
     }
+    args.push('--support-material-contact-distance', String(supports.contact_distance));
+    args.push('--support-material-interface-layers', String(supports.interface_layers));
+    args.push('--support-material-bottom-interface-layers', String(supports.bottom_interface_layers));
+    args.push('--support-material-interface-spacing', String(supports.interface_spacing));
+    args.push('--support-material-spacing', String(supports.support_spacing));
   } else {
     args.push('--no-support-material');
   }
@@ -183,8 +673,47 @@ function generateSettingsHash(stlPath, options) {
     options.strength || 'normal',
     options.speed || 'normal',
     options.texture || 'smooth',
-    options.supports || 'none'
+    options.surface || 'standard',
+    options.supports || 'none',
+    options.auto_orient ? 'oriented' : 'raw'
   ].join('|');
+
+  return crypto.createHash('sha256').update(settingsStr).digest('hex').substring(0, 16);
+}
+
+/**
+ * Generate SHA256 hash for a multi-STL plate (order-independent)
+ */
+function generatePlateHash(stlPaths, options) {
+  const fileInfos = stlPaths.map(p => {
+    try {
+      const stat = fs.statSync(p);
+      return `${stat.size}:${stat.mtimeMs}`;
+    } catch {
+      return p;
+    }
+  }).sort();
+
+  let settingsStr = [
+    fileInfos.join('+'),
+    options.printer_model || 'kobra3',
+    options.material || 'pla',
+    options.quality || 'standard',
+    options.strength || 'normal',
+    options.speed || 'normal',
+    options.texture || 'smooth',
+    options.surface || 'standard',
+    options.supports || 'none',
+    options.auto_orient ? 'oriented' : 'raw'
+  ].join('|');
+
+  // Include transforms in hash so different arrangements bust cache
+  if (options.transforms && Object.keys(options.transforms).length > 0) {
+    const sortedKeys = Object.keys(options.transforms).sort();
+    const tObj = {};
+    for (const k of sortedKeys) tObj[k] = options.transforms[k];
+    settingsStr += '|T:' + JSON.stringify(tObj);
+  }
 
   return crypto.createHash('sha256').update(settingsStr).digest('hex').substring(0, 16);
 }
@@ -271,6 +800,17 @@ async function sliceSTL(stlPath, options, dbInstance) {
   // Ensure output directory exists
   fs.mkdirSync(path.dirname(gcodeAbsPath), { recursive: true });
 
+  // Auto-orient if requested
+  let orientedPath = null;
+  if (options.auto_orient) {
+    try {
+      orientedPath = autoOrientSTL(stlPath);
+    } catch (err) {
+      console.warn(`[Slicer] Auto-orient failed, using original: ${err.message}`);
+    }
+  }
+  const slicePath = orientedPath || stlPath;
+
   // Calculate bed center from printer build volume (e.g. '250x250x260')
   const [bedX, bedY] = (printerInfo.build || '220x220x250').split('x').map(Number);
   const centerX = bedX / 2;
@@ -279,13 +819,14 @@ async function sliceSTL(stlPath, options, dbInstance) {
   // Build CLI args
   const cliArgs = [
     '--export-gcode',
+    '--ensure-on-bed',
     '--load', printProfile,
     '--load', filamentProfile,
     '--load', printerProfile,
     ...mapOptionsToSlicerArgs(options),
     '--center', `${centerX},${centerY}`,
     '--output', gcodeAbsPath,
-    stlPath
+    slicePath
   ];
 
   console.log(`[Slicer] Slicing: ${path.basename(stlPath)} → ${gcodeFilename}`);
@@ -317,6 +858,11 @@ async function sliceSTL(stlPath, options, dbInstance) {
     });
   });
 
+  // Clean up oriented temp file
+  if (orientedPath) {
+    try { fs.unlinkSync(orientedPath); } catch {}
+  }
+
   // Parse output
   const combined = result.stdout + '\n' + result.stderr;
   const estimates = parseSlicerOutput(combined);
@@ -335,8 +881,8 @@ async function sliceSTL(stlPath, options, dbInstance) {
 
   // Insert into cache
   const ins = dbInstance.prepare(`
-    INSERT INTO gcode_cache (stl_catalog_id, settings_hash, printer_model, material, quality, strength, speed, texture, supports, gcode_path, gcode_filename, est_weight_g, est_time_min, file_size)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO gcode_cache (stl_catalog_id, settings_hash, printer_model, material, quality, strength, speed, texture, surface, supports, gcode_path, gcode_filename, est_weight_g, est_time_min, file_size)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const info = ins.run(
@@ -348,6 +894,7 @@ async function sliceSTL(stlPath, options, dbInstance) {
     options.strength || 'normal',
     options.speed || 'normal',
     options.texture || 'smooth',
+    options.surface || 'standard',
     options.supports || 'none',
     gcodeRelPath.replace(/\\/g, '/'),
     gcodeFilename,
@@ -357,6 +904,186 @@ async function sliceSTL(stlPath, options, dbInstance) {
   );
 
   console.log(`[Slicer] Done: ${gcodeFilename} (${estimates.est_weight_g || '?'}g, ${estimates.est_time_min || '?'}min)`);
+
+  return {
+    gcode_id: info.lastInsertRowid,
+    gcode_filename: gcodeFilename,
+    gcode_path: gcodeRelPath.replace(/\\/g, '/'),
+    est_weight_g: estimates.est_weight_g,
+    est_time_min: estimates.est_time_min,
+    file_size: fileSize,
+    cached: false
+  };
+}
+
+/**
+ * Slice multiple STL files as a single plate
+ * PrusaSlicer auto-arranges multiple positional STL args onto the bed
+ */
+async function slicePlate(stlPaths, options, dbInstance) {
+  if (!stlPaths || stlPaths.length === 0) throw new Error('No STL files provided');
+  if (stlPaths.length === 1) return sliceSTL(stlPaths[0], options, dbInstance);
+
+  const printerModel = options.printer_model || 'kobra3';
+  const hash = generatePlateHash(stlPaths, options);
+
+  // Check cache
+  const cached = dbInstance.prepare('SELECT * FROM gcode_cache WHERE settings_hash = ?').get(hash);
+  if (cached) {
+    const fullPath = path.join(GCODE_CACHE, cached.gcode_path);
+    if (fs.existsSync(fullPath)) {
+      console.log(`[Slicer] Plate cache hit: ${hash} → ${cached.gcode_filename}`);
+      return {
+        gcode_id: cached.id,
+        gcode_filename: cached.gcode_filename,
+        gcode_path: cached.gcode_path,
+        est_weight_g: cached.est_weight_g,
+        est_time_min: cached.est_time_min,
+        file_size: cached.file_size,
+        cached: true
+      };
+    }
+    dbInstance.prepare('DELETE FROM gcode_cache WHERE id = ?').run(cached.id);
+  }
+
+  // Resolve profiles
+  const printerInfo = PRINTERS_MAP[printerModel];
+  if (!printerInfo) throw new Error(`Unknown printer model: ${printerModel}`);
+
+  const printerProfile = path.join(PROFILES_DIR, 'printers', printerInfo.profile);
+  const filamentProfile = path.join(PROFILES_DIR, 'filaments', FILAMENT_PROFILES[options.material] || FILAMENT_PROFILES.pla);
+  const printProfile = path.join(PROFILES_DIR, 'prints', PRINT_PROFILES[options.quality] || PRINT_PROFILES.standard);
+
+  // Build output path
+  const gcodeFilename = `plate_${stlPaths.length}items_${printerModel}_${options.quality || 'standard'}_${options.material || 'pla'}_${hash}.gcode`;
+  const gcodeRelPath = path.join(printerModel, gcodeFilename);
+  const gcodeAbsPath = path.join(GCODE_CACHE, gcodeRelPath);
+
+  fs.mkdirSync(path.dirname(gcodeAbsPath), { recursive: true });
+
+  // Auto-orient each STL if requested
+  const orientedTempFiles = [];
+  const bakedTempFiles = [];
+  let slicePaths = [...stlPaths];
+  const hasTransforms = options.transforms && Object.keys(options.transforms).length > 0;
+
+  if (options.auto_orient && !hasTransforms) {
+    // Only auto-orient if no user transforms are provided (user positioned manually)
+    slicePaths = stlPaths.map(p => {
+      try {
+        const oriented = autoOrientSTL(p);
+        if (oriented) {
+          orientedTempFiles.push(oriented);
+          return oriented;
+        }
+      } catch (err) {
+        console.warn(`[Slicer] Auto-orient failed for ${path.basename(p)}: ${err.message}`);
+      }
+      return p;
+    });
+  }
+
+  // Bake user transforms (rotation, scale, position) into temp STL files
+  if (hasTransforms) {
+    const stlIds = options.stl_ids || [];
+    slicePaths = slicePaths.map((p, idx) => {
+      const stlId = stlIds[idx];
+      const t = stlId ? options.transforms[String(stlId)] : null;
+      if (t && hasNonIdentityTransform(t)) {
+        try {
+          const baked = bakeTransformToSTL(p, t, stlId);
+          if (baked) {
+            bakedTempFiles.push(baked);
+            return baked;
+          }
+        } catch (err) {
+          console.warn(`[Slicer] Transform bake failed for ${path.basename(p)}: ${err.message}`);
+        }
+      }
+      return p;
+    });
+  }
+
+  // CLI args — use --dont-arrange when transforms are baked (user positioned models)
+  const cliArgs = [
+    '--export-gcode',
+    '--ensure-on-bed',
+    ...(hasTransforms ? ['--dont-arrange'] : []),
+    '--load', printProfile,
+    '--load', filamentProfile,
+    '--load', printerProfile,
+    ...mapOptionsToSlicerArgs(options),
+    '--output', gcodeAbsPath,
+    ...slicePaths
+  ];
+
+  console.log(`[Slicer] Plating ${stlPaths.length} STLs → ${gcodeFilename}`);
+  console.log(`[Slicer] CLI: ${SLICER_PATH} ${cliArgs.join(' ')}`);
+
+  let result;
+  try {
+    result = await new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+      const proc = spawn(SLICER_PATH, cliArgs, {
+        timeout: 600000, // 10 min for plates
+        env: { ...process.env, DISPLAY: '' }
+      });
+      proc.stdout.on('data', (data) => { stdout += data.toString(); });
+      proc.stderr.on('data', (data) => { stderr += data.toString(); });
+      proc.on('close', (code) => {
+        if (code === 0) resolve({ stdout, stderr });
+        else reject(new Error(`PrusaSlicer exited with code ${code}: ${stderr || stdout}`));
+      });
+      proc.on('error', (err) => {
+        reject(new Error(`Failed to spawn PrusaSlicer: ${err.message}`));
+      });
+    });
+  } finally {
+    // Clean up oriented temp files
+    for (const tmp of orientedTempFiles) {
+      try { fs.unlinkSync(tmp); } catch {}
+    }
+    // Clean up baked transform temp files
+    for (const tmp of bakedTempFiles) {
+      try { fs.unlinkSync(tmp); } catch {}
+    }
+  }
+
+  const combined = result.stdout + '\n' + result.stderr;
+  const estimates = parseSlicerOutput(combined);
+
+  let fileSize = 0;
+  try { fileSize = fs.statSync(gcodeAbsPath).size; } catch {}
+
+  const stlIds = options.stl_ids || [];
+  const primaryStlId = stlIds[0] || 0;
+
+  const ins = dbInstance.prepare(`
+    INSERT INTO gcode_cache (stl_catalog_id, settings_hash, printer_model, material, quality, strength, speed, texture, surface, supports, gcode_path, gcode_filename, est_weight_g, est_time_min, file_size, plate_stl_ids)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const info = ins.run(
+    primaryStlId,
+    hash,
+    printerModel,
+    options.material || 'pla',
+    options.quality || 'standard',
+    options.strength || 'normal',
+    options.speed || 'normal',
+    options.texture || 'smooth',
+    options.surface || 'standard',
+    options.supports || 'none',
+    gcodeRelPath.replace(/\\/g, '/'),
+    gcodeFilename,
+    estimates.est_weight_g,
+    estimates.est_time_min,
+    fileSize,
+    JSON.stringify(stlIds)
+  );
+
+  console.log(`[Slicer] Plate done: ${gcodeFilename} (${estimates.est_weight_g || '?'}g, ${estimates.est_time_min || '?'}min)`);
 
   return {
     gcode_id: info.lastInsertRowid,
@@ -439,6 +1166,9 @@ function getPresets() {
     texture: Object.entries(TEXTURE_MAP).map(([key, v]) => ({
       key, label: v.label, description: v.description
     })),
+    surface: Object.entries(SURFACE_MAP).map(([key, v]) => ({
+      key, label: v.label, description: v.description
+    })),
     supports: Object.entries(SUPPORTS_MAP).map(([key, v]) => ({
       key, label: v.label, description: v.description
     })),
@@ -458,8 +1188,10 @@ function getPresets() {
 module.exports = {
   // Core slicing
   sliceSTL,
+  slicePlate,
   getModelInfo,
   generateSettingsHash,
+  generatePlateHash,
   mapOptionsToSlicerArgs,
   parseSlicerOutput,
   // Presets
@@ -469,6 +1201,7 @@ module.exports = {
   STRENGTH_MAP,
   SPEED_MAP,
   TEXTURE_MAP,
+  SURFACE_MAP,
   SUPPORTS_MAP,
   MATERIALS_MAP,
   PRINTERS_MAP,

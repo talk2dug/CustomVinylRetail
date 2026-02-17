@@ -534,7 +534,17 @@ function showAddPrinterModal(editPrinter = null) {
       const res = await printStation.printerFleet.testConnection(apiUrl);
       if (res.success) {
         resultDiv.className = 'status-bar success';
-        resultDiv.textContent = `Connected! State: ${res.status?.state || 'unknown'}, Klippy: ${res.info?.state || 'unknown'}`;
+        let msg = `Connected! State: ${res.status?.state || 'unknown'}, Klippy: ${res.info?.state || 'unknown'}`;
+        if (res.buildVolume) {
+          msg += ` | Bed: ${res.buildVolume.width}×${res.buildVolume.depth}×${res.buildVolume.height}mm`;
+          // Auto-populate the build dimension fields
+          const widthInput = document.getElementById('fleetAddWidth');
+          const depthInput = document.getElementById('fleetAddDepth');
+          const heightInput = document.getElementById('fleetAddHeight');
+          if (widthInput) widthInput.value = res.buildVolume.width;
+          if (depthInput) depthInput.value = res.buildVolume.depth;
+          if (heightInput) heightInput.value = res.buildVolume.height;
+        }
       } else {
         resultDiv.className = 'status-bar error';
         resultDiv.textContent = `Failed: ${res.error}`;

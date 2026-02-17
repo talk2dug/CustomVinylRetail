@@ -6232,10 +6232,12 @@
           <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
             <input id="slicerSearch" type="text" placeholder="Search models..." style="padding:6px 12px;width:200px;">
             <select id="slicerCategoryFilter" style="padding:6px 12px;">
-              <option value="">All Categories</option>
+              <option value="">-- Choose a Category --</option>
             </select>
             <button id="slicerUploadBtn" class="primary" style="padding:6px 14px;">+ Upload STL</button>
             <button id="slicerBulkImportBtn" class="secondary" style="padding:6px 14px;">Bulk Import</button>
+            <button id="slicerPlateToggle" class="secondary" style="padding:6px 14px;">🔲 Build Plate</button>
+            <button id="slicerManageCategoriesBtn" class="secondary" style="padding:6px 14px;">📁 Categories</button>
           </div>
         </div>
 
@@ -6268,6 +6270,7 @@
                   <div id="slicerSelectedDims" class="muted" style="font-size:0.85rem;margin-bottom:4px;"></div>
                   <div id="slicerSelectedNotes" class="muted" style="font-size:0.85rem;"></div>
                   <button id="slicerView3dBtn" class="secondary" style="margin-top:8px;padding:6px 14px;font-size:0.85rem;">View 3D Model</button>
+                  <button id="slicerViewOnBedBtn" class="secondary" style="margin-top:8px;padding:6px 14px;font-size:0.85rem;">View on Build Plate</button>
                 </div>
               </div>
             </div>
@@ -6302,8 +6305,21 @@
                   <div id="slicerTexture" class="slicer-btn-row" data-setting="texture"></div>
                 </div>
                 <div class="slicer-option-group">
+                  <label>Surface Finish</label>
+                  <div id="slicerSurface" class="slicer-btn-row" data-setting="surface"></div>
+                </div>
+                <div class="slicer-option-group">
                   <label>Supports</label>
                   <div id="slicerSupports" class="slicer-btn-row" data-setting="supports"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Auto Orient</label>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;font-size:0.9rem;text-transform:none;letter-spacing:0;color:var(--text);">
+                      <input type="checkbox" id="slicerAutoOrient" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;">
+                      Rotate model flat on build plate (reduces supports)
+                    </label>
+                  </div>
                 </div>
                 <div class="slicer-option-group">
                   <label>Material</label>
@@ -6332,6 +6348,99 @@
                 </button>
               </div>
             </div>
+          </div>
+
+          <!-- Panel 3: Plate Settings (hidden until plate mode + "Slice Plate" clicked) -->
+          <div id="slicerPlateSettingsPanel" style="display:none;">
+            <!-- Back button -->
+            <div style="margin-bottom:12px;">
+              <button id="slicerPlateBackBtn" class="secondary" style="padding:6px 14px;">&larr; Back to Catalog</button>
+            </div>
+
+            <!-- Plate items list -->
+            <div class="inventory-card" style="margin-bottom:16px;padding:16px;">
+              <h3 style="margin:0 0 12px;">Build Plate Items</h3>
+              <div id="slicerPlateItemsList" style="display:flex;flex-direction:column;gap:8px;"></div>
+            </div>
+
+            <!-- Shared settings -->
+            <div class="inventory-card" style="padding:16px;">
+              <h3 style="margin:0 0 16px;">Plate Slice Settings</h3>
+
+              <div class="slicer-settings-grid">
+                <div class="slicer-option-group">
+                  <label>Quality</label>
+                  <div id="slicerPlateQuality" class="slicer-btn-row slicer-plate-btn-row" data-setting="quality"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Strength</label>
+                  <div id="slicerPlateStrength" class="slicer-btn-row slicer-plate-btn-row" data-setting="strength"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Speed</label>
+                  <div id="slicerPlateSpeed" class="slicer-btn-row slicer-plate-btn-row" data-setting="speed"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Texture</label>
+                  <div id="slicerPlateTexture" class="slicer-btn-row slicer-plate-btn-row" data-setting="texture"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Surface Finish</label>
+                  <div id="slicerPlateSurface" class="slicer-btn-row slicer-plate-btn-row" data-setting="surface"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Supports</label>
+                  <div id="slicerPlateSupports" class="slicer-btn-row slicer-plate-btn-row" data-setting="supports"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Auto Orient</label>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;font-size:0.9rem;text-transform:none;letter-spacing:0;color:var(--text);">
+                      <input type="checkbox" id="slicerPlateAutoOrient" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;">
+                      Rotate models flat on build plate (reduces supports)
+                    </label>
+                  </div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Material</label>
+                  <div id="slicerPlateMaterial" class="slicer-btn-row slicer-plate-btn-row" data-setting="material"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Printer</label>
+                  <select id="slicerPlatePrinter" style="padding:8px 12px;width:100%;font-size:0.95rem;">
+                    <option value="">Select a printer...</option>
+                  </select>
+                </div>
+                <div id="slicerPlateAceSlotGroup" class="slicer-option-group" style="display:none;">
+                  <label>ACE Slot</label>
+                  <select id="slicerPlateAceSlot" style="padding:8px 12px;width:100%;font-size:0.95rem;">
+                    <option value="">Select filament slot...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:12px;margin-top:20px;">
+                <button id="slicerPlateSliceBtn" class="primary" style="flex:1;padding:14px 24px;font-size:1.1rem;font-weight:600;">
+                  🖨️ SLICE &amp; PRINT PLATE
+                </button>
+                <button id="slicerPlateSliceOnlyBtn" class="secondary" style="padding:14px 18px;font-size:0.95rem;">
+                  Slice Only
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating Plate Bar (sticky bottom, hidden until plate mode active) -->
+        <div id="slicerPlateBar" style="display:none;position:sticky;bottom:0;left:0;right:0;z-index:50;background:var(--card,#1e293b);border-top:2px solid var(--accent);padding:10px 16px;display:none;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="flex:1;min-width:0;">
+              <span id="slicerPlateCount" style="font-weight:700;font-size:1rem;color:var(--accent);">0 models</span>
+              <span id="slicerPlateNames" class="muted" style="font-size:0.85rem;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+            </div>
+            <button id="slicerPlateClearBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Clear</button>
+            <button id="slicerBulkCategoryBtn" class="secondary" style="padding:8px 14px;font-size:0.9rem;font-weight:600;">📁 Set Category</button>
+            <button id="slicerPlateGoBtn" class="primary" style="padding:8px 18px;font-size:0.95rem;font-weight:600;">Slice Plate &rarr;</button>
           </div>
         </div>
 

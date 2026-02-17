@@ -164,7 +164,10 @@ class PrinterFleetDB {
     for (const key of allowed) {
       if (Object.prototype.hasOwnProperty.call(updates, key)) {
         set.push(`${key} = @${key}`);
-        params[key] = updates[key];
+        // Convert booleans to integers for SQLite
+        let val = updates[key];
+        if (key === 'has_multicolor' || key === 'active') val = val ? 1 : 0;
+        params[key] = val;
       }
     }
     if (!set.length) return this.getPrinter(id);

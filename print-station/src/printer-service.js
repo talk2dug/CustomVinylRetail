@@ -125,6 +125,69 @@ class PrinterService {
     return data?.result || data;
   }
 
+  /**
+   * Query the printer's build volume via Moonraker's toolhead object.
+   * Returns { width, depth, height } in mm parsed from axis_minimum / axis_maximum.
+   * Falls back to configfile settings if toolhead data is incomplete.
+   */
+  async getBuildVolume(apiUrl) {
+    try {
+      // Primary: query toolhead for axis limits
+      const data = await this._get(apiUrl,
+        '/printer/objects/query?toolhead&configfile'
+      );
+      const objects = data?.result?.status || {};
+      const toolhead = objects.toolhead || {};
+      const configfile = objects.configfile || {};
+
+      // toolhead.axis_minimum = [x_min, y_min, z_min, e_min]
+      // toolhead.axis_maximum = [x_max, y_max, z_max, e_max]
+      const axisMin = toolhead.axis_minimum;
+      const axisMax = toolhead.axis_maximum;
+
+      if (Array.isArray(axisMin) && Array.isArray(axisMax) && axisMin.length >= 3 && axisMax.length >= 3) {
+        const width = Math.round(axisMax[0] - axisMin[0]);
+        const depth = Math.round(axisMax[1] - axisMin[1]);
+        const height = Math.round(axisMax[2] - axisMin[2]);
+
+        if (width > 0 && depth > 0 && height > 0) {
+          console.log(`[PrinterService] Build volume from toolhead: ${width}x${depth}x${height}`);
+          return { width, depth, height, source: 'toolhead' };
+        }
+      }
+
+      // Fallback: parse configfile stepper settings
+      const settings = configfile.settings || configfile.config || {};
+      const stepperX = settings.stepper_x || {};
+      const stepperY = settings.stepper_y || {};
+      const stepperZ = settings.stepper_z || {};
+
+      const xMax = stepperX.position_max;
+      const yMax = stepperY.position_max;
+      const zMax = stepperZ.position_max;
+      const xMin = stepperX.position_min || 0;
+      const yMin = stepperY.position_min || 0;
+      const zMin = stepperZ.position_min || 0;
+
+      if (xMax != null && yMax != null && zMax != null) {
+        const width = Math.round(xMax - xMin);
+        const depth = Math.round(yMax - yMin);
+        const height = Math.round(zMax - zMin);
+
+        if (width > 0 && depth > 0 && height > 0) {
+          console.log(`[PrinterService] Build volume from configfile: ${width}x${depth}x${height}`);
+          return { width, depth, height, source: 'configfile' };
+        }
+      }
+
+      console.warn('[PrinterService] Could not determine build volume from printer');
+      return null;
+    } catch (err) {
+      console.warn('[PrinterService] getBuildVolume error:', err.message);
+      return null;
+    }
+  }
+
   async getServerInfo(apiUrl) {
     const data = await this._get(apiUrl, '/server/info');
     return data?.result || data;
