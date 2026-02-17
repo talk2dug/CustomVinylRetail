@@ -736,12 +736,14 @@ function slicerOnPrinterChange() {
 
   if (!printerId) {
     slotGroup.style.display = 'none';
+    slotSelect.value = '';
     return;
   }
 
   const printer = slicerState.printers.find(p => String(p.id) === String(printerId));
   if (!printer || !printer.has_multicolor) {
     slotGroup.style.display = 'none';
+    slotSelect.value = '';
     return;
   }
 
@@ -750,6 +752,7 @@ function slicerOnPrinterChange() {
 
   if (!aceSlots.length) {
     slotGroup.style.display = 'none';
+    slotSelect.value = '';
     return;
   }
 
@@ -788,11 +791,12 @@ async function slicerSliceAndPrint(andPrint) {
 
   // Find the selected printer to get its model
   let printerModel = '';
+  let printerName = '';
   if (printerId) {
     const printer = slicerState.printers.find(p => String(p.id) === String(printerId));
-    if (printer && printer.model) {
-      // Map printer model name to slicer key
-      printerModel = slicerMapPrinterModel(printer.model);
+    if (printer) {
+      printerName = printer.name || '';
+      if (printer.model) printerModel = slicerMapPrinterModel(printer.model);
     }
   }
 
@@ -809,66 +813,72 @@ async function slicerSliceAndPrint(andPrint) {
     auto_orient: slicerState.settings.auto_orient
   };
 
-  slicerShowProgress(
-    andPrint ? 'Slicing & Printing...' : 'Slicing...',
-    'PrusaSlicer is processing your model on the server'
-  );
-
   // Read ACE slot if visible
   const aceSlotVal = document.getElementById('slicerAceSlot')?.value;
   const aceSlot = (aceSlotVal !== '' && aceSlotVal != null) ? parseInt(aceSlotVal, 10) : null;
 
-  try {
-    let result;
-    if (andPrint) {
-      result = await printStation.slicer.sliceAndPrint(sliceOptions, parseInt(printerId, 10), aceSlot);
-    } else {
-      result = await printStation.slicer.slice(sliceOptions);
-    }
+  if (andPrint) {
+    // Fire-and-forget — don't block the UI
+    const modelName = item.name || 'model';
+    showToast(`Slicing & sending "${modelName}" to ${printerName || 'printer'}...`, 'info', 6000);
 
-    slicerHideProgress();
+    printStation.slicer.sliceAndPrint(sliceOptions, parseInt(printerId, 10), aceSlot)
+      .then(result => {
+        if (result.success) {
+          showToast(`Print started on ${printerName}: ${modelName} (Job #${result.job?.id || ''})`, 'success', 6000);
+        }
+      })
+      .catch(err => {
+        console.error('[Slicer] Slice & print error:', err);
+        showToast(`Print failed: ${err.message}`, 'error', 8000);
+      });
+  } else {
+    // Slice-only: keep blocking so user sees the G-code result
+    slicerShowProgress('Slicing...', 'PrusaSlicer is processing your model on the server');
+    try {
+      const result = await printStation.slicer.slice(sliceOptions);
+      slicerHideProgress();
 
-    // Refresh G-code list
-    const updated = await printStation.slicer.getCatalogItem(item.id);
-    if (updated) {
-      slicerState.gcodeEntries = updated.gcodeEntries || [];
-      slicerRenderGcodeList(slicerState.gcodeEntries);
-    }
+      // Refresh G-code list
+      const updated = await printStation.slicer.getCatalogItem(item.id);
+      if (updated) {
+        slicerState.gcodeEntries = updated.gcodeEntries || [];
+        slicerRenderGcodeList(slicerState.gcodeEntries);
+      }
 
-    if (andPrint && result.success) {
-      alert(`Print started! Job #${result.job?.id || ''}`);
-    } else if (!andPrint) {
       const cached = result.cached ? ' (cache hit)' : '';
-      alert(`Slicing complete${cached}! G-code: ${result.gcode_filename || 'ready'}`);
+      showToast(`Slicing complete${cached}!`, 'success');
+    } catch (err) {
+      slicerHideProgress();
+      console.error('[Slicer] Slice error:', err);
+      showToast('Slicing failed: ' + err.message, 'error', 8000);
     }
-  } catch (err) {
-    slicerHideProgress();
-    console.error('[Slicer] Slice error:', err);
-    alert('Slicing failed: ' + err.message);
   }
 }
 
-async function slicerPrintExistingGcode(gcodeId) {
+function slicerPrintExistingGcode(gcodeId) {
   const printerId = document.getElementById('slicerPrinter')?.value;
   if (!printerId) return alert('Please select a printer first');
 
   const aceSlotVal = document.getElementById('slicerAceSlot')?.value;
   const aceSlot = (aceSlotVal !== '' && aceSlotVal != null) ? parseInt(aceSlotVal, 10) : null;
 
-  slicerShowProgress('Printing...', 'Downloading G-code and sending to printer');
+  const printer = slicerState.printers.find(p => String(p.id) === String(printerId));
+  const printerName = printer?.name || 'printer';
 
-  try {
-    const result = await printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10), aceSlot);
-    slicerHideProgress();
+  // Fire-and-forget — don't block the UI
+  showToast(`Sending G-code to ${printerName}...`, 'info', 6000);
 
-    if (result.success) {
-      alert(`Print started! Job #${result.job?.id || ''}`);
-    }
-  } catch (err) {
-    slicerHideProgress();
-    console.error('[Slicer] Print existing G-code error:', err);
-    alert('Print failed: ' + err.message);
-  }
+  printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10), aceSlot)
+    .then(result => {
+      if (result.success) {
+        showToast(`Print started on ${printerName} (Job #${result.job?.id || ''})`, 'success', 6000);
+      }
+    })
+    .catch(err => {
+      console.error('[Slicer] Print existing G-code error:', err);
+      showToast('Print failed: ' + err.message, 'error', 8000);
+    });
 }
 
 async function slicerDeleteGcodeEntry(gcodeId) {
@@ -2338,12 +2348,14 @@ function slicerPopulatePlatePrinterDropdown() {
 
     if (!printerId) {
       slotGroup.style.display = 'none';
+      slotSelect.value = '';
       return;
     }
 
     const printer = slicerState.printers.find(p => String(p.id) === String(printerId));
     if (!printer || !printer.has_multicolor) {
       slotGroup.style.display = 'none';
+      slotSelect.value = '';
       return;
     }
 
@@ -2352,6 +2364,7 @@ function slicerPopulatePlatePrinterDropdown() {
 
     if (!aceSlots.length) {
       slotGroup.style.display = 'none';
+      slotSelect.value = '';
       return;
     }
 
@@ -2425,36 +2438,45 @@ async function slicerSlicePlate(andPrint) {
     auto_orient: slicerState.settings.auto_orient
   };
 
-  slicerShowProgress(
-    andPrint ? 'Slicing & Printing Plate...' : 'Slicing Plate...',
-    `PrusaSlicer is processing ${slicerState.plateItems.length} models on the server`
-  );
-
   // Read ACE slot
   const aceSlotVal = document.getElementById('slicerPlateAceSlot')?.value;
   const aceSlot = (aceSlotVal !== '' && aceSlotVal != null) ? parseInt(aceSlotVal, 10) : null;
 
-  try {
-    let result;
-    if (andPrint) {
-      result = await printStation.slicer.slicePlateAndPrint(sliceOptions, parseInt(printerId, 10), aceSlot);
-    } else {
-      result = await printStation.slicer.slicePlate(sliceOptions);
-    }
+  const modelCount = slicerState.plateItems.length;
 
-    slicerHideProgress();
+  if (andPrint) {
+    // Fire-and-forget — don't block the UI
+    const printer = slicerState.printers.find(p => String(p.id) === String(printerId));
+    const printerName = printer?.name || 'printer';
 
-    if (andPrint && result.success) {
-      alert(`Plate print started! Job #${result.job?.id || ''}`);
-    } else if (!andPrint) {
+    showToast(`Slicing ${modelCount} models & sending to ${printerName}...`, 'info', 6000);
+
+    printStation.slicer.slicePlateAndPrint(sliceOptions, parseInt(printerId, 10), aceSlot)
+      .then(result => {
+        if (result.success) {
+          showToast(`Plate print started on ${printerName} (Job #${result.job?.id || ''})`, 'success', 6000);
+        }
+      })
+      .catch(err => {
+        console.error('[Slicer] Plate slice & print error:', err);
+        const msg = err?.message || err?.error || JSON.stringify(err) || 'Unknown error';
+        showToast('Plate print failed: ' + msg, 'error', 8000);
+      });
+  } else {
+    // Slice-only: keep blocking so user sees the result
+    slicerShowProgress('Slicing Plate...', `PrusaSlicer is processing ${modelCount} models on the server`);
+    try {
+      const result = await printStation.slicer.slicePlate(sliceOptions);
+      slicerHideProgress();
+
       const cached = result.cached ? ' (cache hit)' : '';
-      alert(`Plate slicing complete${cached}! G-code: ${result.gcode_filename || 'ready'}`);
+      showToast(`Plate slicing complete${cached}!`, 'success');
+    } catch (err) {
+      slicerHideProgress();
+      console.error('[Slicer] Plate slice error:', err);
+      const msg = err?.message || err?.error || JSON.stringify(err) || 'Unknown error';
+      showToast('Plate slicing failed: ' + msg, 'error', 8000);
     }
-  } catch (err) {
-    slicerHideProgress();
-    console.error('[Slicer] Plate slice error:', err);
-    const msg = err?.message || err?.error || JSON.stringify(err) || 'Unknown error';
-    alert('Plate slicing failed: ' + msg);
   }
 }
 

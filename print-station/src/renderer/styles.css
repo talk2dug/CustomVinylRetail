@@ -1231,6 +1231,9 @@ textarea:focus {
     transform: translateY(0);
   }
 }
+.toast-success { border-color: rgba(34, 197, 94, 0.5); }
+.toast-error   { border-color: rgba(239, 68, 68, 0.5); }
+.toast-warning { border-color: rgba(234, 179, 8, 0.5); }
 
 .badge {
   display: inline-flex;

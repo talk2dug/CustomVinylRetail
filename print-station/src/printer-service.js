@@ -255,7 +255,12 @@ class PrinterService {
     // Select ACE tool before homing if specified
     if (aceSlot != null && aceSlot >= 0 && aceSlot <= 3) {
       console.log(`[PrinterService] Selecting ACE slot T${aceSlot}...`);
-      await this.sendGcode(apiUrl, `T${aceSlot}`, 30000);
+      try {
+        await this.sendGcode(apiUrl, `T${aceSlot}`, 30000);
+      } catch (aceErr) {
+        // Printer may not have an ACE/multi-color hub — log warning and continue
+        console.warn(`[PrinterService] ACE tool change T${aceSlot} failed (printer may not have a filament hub): ${aceErr.message}`);
+      }
     }
 
     console.log('[PrinterService] Homing all axes...');
