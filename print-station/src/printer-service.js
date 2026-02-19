@@ -211,7 +211,18 @@ class PrinterService {
   }
 
   async startPrint(apiUrl, filename) {
-    return this._post(apiUrl, `/printer/print/start?filename=${encodeURIComponent(filename)}`);
+    try {
+      return await this._post(apiUrl, `/printer/print/start?filename=${encodeURIComponent(filename)}`);
+    } catch (err) {
+      // Rinkhals on Anycubic printers routes print-start through MQTT, which fails
+      // with "filament hub not exist" (code 11503) if no ACE hub is connected.
+      // Fall back to Klipper's native SDCARD_PRINT_FILE command to bypass the hub check.
+      if (err.message && err.message.includes('filament hub')) {
+        console.log('[PrinterService] No ACE hub detected — falling back to SDCARD_PRINT_FILE...');
+        return this.sendGcode(apiUrl, `SDCARD_PRINT_FILE FILENAME="${filename}"`, 30000);
+      }
+      throw err;
+    }
   }
 
   async pausePrint(apiUrl) {
