@@ -539,7 +539,7 @@ const MATERIALS_MAP = {
   abs:        { hotend: 250, bed: 100, retract_length: 0.8, retract_speed: 60, label: 'ABS',        description: 'Strong, needs enclosure' },
   tpu:        { hotend: 225, bed: 60,  retract_length: 1.5, retract_speed: 25, label: 'TPU',        description: 'Flexible, rubber-like' },
   rapid_pla:  { hotend: 220, bed: 60,  retract_length: 0.8, retract_speed: 60, label: 'Rapid PLA',  description: 'High-speed PLA' },
-  rapid_petg: { hotend: 245, bed: 80,  retract_length: 1.0, retract_speed: 50, label: 'Rapid PETG', description: 'High-speed PETG' }
+  rapid_petg: { hotend: 255, bed: 80,  retract_length: 1.0, retract_speed: 50, label: 'Rapid PETG', description: 'High-speed PETG' }
 };
 
 const PRINTERS_MAP = {

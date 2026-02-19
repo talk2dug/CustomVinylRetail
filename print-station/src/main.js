@@ -6296,10 +6296,23 @@ Return ONLY valid JSON, nothing else:
   });
 
   // --- Print Job Control ---
-  ipcMain.handle('fleet:print:start', async (_event, { printerId, filename, shopifyOrderId }) => {
+  ipcMain.handle('fleet:print:start', async (_event, { printerId, filename, shopifyOrderId, aceSlot }) => {
     if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
     const printer = fleetDb.getPrinter(printerId);
     if (!printer) throw new Error('Printer not found');
+
+    // If ACE slot specified, download G-code from printer, inject T-code, re-upload
+    if (aceSlot != null && aceSlot >= 0 && aceSlot <= 3) {
+      console.log(`[Fleet] Injecting ACE T${aceSlot} into ${filename} on printer...`);
+      const gcodeBuf = await printerService.downloadGcode(printer.api_url, filename);
+      const modified = injectAceSlotIntoGcode(gcodeBuf, aceSlot);
+      const tmpPath = path.join(app.getPath('temp'), filename);
+      fs.writeFileSync(tmpPath, modified);
+      await printerService.uploadGcode(printer.api_url, tmpPath);
+      try { fs.unlinkSync(tmpPath); } catch {}
+    }
+
+    // Start print — the G-code's START_PRINT macro handles homing, leveling, and heating
     await printerService.startPrint(printer.api_url, filename);
     const job = fleetDb.createJob({
       printer_id: printerId,
@@ -6639,6 +6652,50 @@ Return ONLY valid JSON, nothing else:
     return Buffer.from(buf).toString('base64');
   });
 
+  // Fetch raw G-code text (for renderer-side visualization)
+  ipcMain.handle('slicer:gcode:fetchText', async (_event, gcodeId) => {
+    const resp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`);
+    const buf = await resp.arrayBuffer();
+    return Buffer.from(buf).toString('utf-8');
+  });
+
+  /**
+   * Inject an ACE filament slot T-code into G-code text.
+   * Inserts after the START_PRINT macro line so it runs after homing/leveling.
+   * If no START_PRINT found, inserts before the first G0/G1 move command.
+   */
+  function injectAceSlotIntoGcode(gcodeBuffer, aceSlot) {
+    if (aceSlot == null || aceSlot < 0 || aceSlot > 3) return gcodeBuffer;
+    const text = gcodeBuffer.toString('utf-8');
+    const lines = text.split('\n');
+    const tcodeLine = `T${aceSlot} ; Select ACE filament slot`;
+
+    // Try to insert after START_PRINT line
+    const startPrintIdx = lines.findIndex(l => l.trim().startsWith('START_PRINT'));
+    if (startPrintIdx >= 0) {
+      lines.splice(startPrintIdx + 1, 0, tcodeLine);
+      console.log(`[Slicer] Injected T${aceSlot} after START_PRINT (line ${startPrintIdx + 1})`);
+      return Buffer.from(lines.join('\n'), 'utf-8');
+    }
+
+    // Fallback: insert before first G0/G1 movement command
+    const moveIdx = lines.findIndex(l => /^\s*G[01]\s/i.test(l));
+    if (moveIdx >= 0) {
+      lines.splice(moveIdx, 0, tcodeLine);
+      console.log(`[Slicer] Injected T${aceSlot} before first move (line ${moveIdx})`);
+      return Buffer.from(lines.join('\n'), 'utf-8');
+    }
+
+    // Last resort: insert after initial comments
+    let insertAt = 0;
+    while (insertAt < lines.length && (lines[insertAt].trim().startsWith(';') || lines[insertAt].trim() === '')) {
+      insertAt++;
+    }
+    lines.splice(insertAt, 0, tcodeLine);
+    console.log(`[Slicer] Injected T${aceSlot} at line ${insertAt} (no START_PRINT or moves found)`);
+    return Buffer.from(lines.join('\n'), 'utf-8');
+  }
+
   // Slicing
   ipcMain.handle('slicer:slice', async (_event, options) => {
     const resp = await slicerFetch('/api/slicer/slice', {
@@ -6683,14 +6740,15 @@ Return ONLY valid JSON, nothing else:
     if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
     console.log(`[Slicer] Plate Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
 
-    // Step 2: Download G-code from server to temp dir
+    // Step 2: Download G-code from server, inject ACE T-code if needed, write to temp
     console.log('[Slicer] Plate Step 2: Downloading G-code...');
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`);
     const arrayBuf = await gcodeResp.arrayBuffer();
+    const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
     const tmpDir = app.getPath('temp');
     const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
-    fs.writeFileSync(tmpPath, Buffer.from(arrayBuf));
-    console.log(`[Slicer] Plate Step 2 done: ${tmpPath} (${arrayBuf.byteLength} bytes)`);
+    fs.writeFileSync(tmpPath, gcodeBuf);
+    console.log(`[Slicer] Plate Step 2 done: ${tmpPath} (${gcodeBuf.length} bytes)`);
 
     // Step 3: Upload to printer via Moonraker
     console.log(`[Slicer] Plate Step 3: Uploading to printer ${printer.name} (${printer.api_url})...`);
@@ -6702,10 +6760,10 @@ Return ONLY valid JSON, nothing else:
     }
     console.log('[Slicer] Plate Step 3 done: uploaded');
 
-    // Step 4: Home, bed level, and start print
-    console.log(`[Slicer] Plate Step 4: Homing, leveling, and starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ')' : ''}`);
+    // Step 4: Start print (START_PRINT macro handles homing, leveling, heating)
+    console.log(`[Slicer] Plate Step 4: Starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ' injected in G-code)' : ''}`);
     try {
-      await printerService.homeAndPrint(printer.api_url, sliceResult.gcode_filename, aceSlot);
+      await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
     } catch (startErr) {
       try { fs.unlinkSync(tmpPath); } catch {}
       throw new Error(`Plate G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
@@ -6747,32 +6805,31 @@ Return ONLY valid JSON, nothing else:
     if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
     console.log(`[Slicer] Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
 
-    // Step 2: Download G-code from server to temp dir
+    // Step 2: Download G-code from server, inject ACE T-code if needed, write to temp
     console.log('[Slicer] Step 2: Downloading G-code...');
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`);
     const arrayBuf = await gcodeResp.arrayBuffer();
+    const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
     const tmpDir = app.getPath('temp');
     const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
-    fs.writeFileSync(tmpPath, Buffer.from(arrayBuf));
-    console.log(`[Slicer] Step 2 done: ${tmpPath} (${arrayBuf.byteLength} bytes)`);
+    fs.writeFileSync(tmpPath, gcodeBuf);
+    console.log(`[Slicer] Step 2 done: ${tmpPath} (${gcodeBuf.length} bytes)`);
 
     // Step 3: Upload to printer via Moonraker
     console.log(`[Slicer] Step 3: Uploading to printer ${printer.name} (${printer.api_url})...`);
     try {
       await printerService.uploadGcode(printer.api_url, tmpPath);
     } catch (uploadErr) {
-      // Clean up temp file on failure
       try { fs.unlinkSync(tmpPath); } catch {}
       throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
     }
     console.log('[Slicer] Step 3 done: uploaded');
 
-    // Step 4: Home, bed level, and start print
-    console.log(`[Slicer] Step 4: Homing, leveling, and starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ')' : ''}`);
+    // Step 4: Start print (START_PRINT macro handles homing, leveling, heating)
+    console.log(`[Slicer] Step 4: Starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ' injected in G-code)' : ''}`);
     try {
-      await printerService.homeAndPrint(printer.api_url, sliceResult.gcode_filename, aceSlot);
+      await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
     } catch (startErr) {
-      // Clean up temp file on failure
       try { fs.unlinkSync(tmpPath); } catch {}
       throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
     }
@@ -6801,15 +6858,16 @@ Return ONLY valid JSON, nothing else:
     const printer = fleetDb.getPrinter(printerId);
     if (!printer) throw new Error('Printer not found');
 
-    // Download G-code from server
+    // Download G-code from server, inject ACE T-code if needed
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`);
     const contentDisp = gcodeResp.headers.get('content-disposition') || '';
     const filenameMatch = contentDisp.match(/filename="?([^"]+)"?/);
     const filename = filenameMatch ? filenameMatch[1] : `gcode_${gcodeId}.gcode`;
     const arrayBuf = await gcodeResp.arrayBuffer();
+    const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
     const tmpDir = app.getPath('temp');
     const tmpPath = path.join(tmpDir, filename);
-    fs.writeFileSync(tmpPath, Buffer.from(arrayBuf));
+    fs.writeFileSync(tmpPath, gcodeBuf);
 
     // Upload to printer
     try {
@@ -6819,9 +6877,9 @@ Return ONLY valid JSON, nothing else:
       throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
     }
 
-    // Home, bed level, and start print
+    // Start print (START_PRINT macro handles homing, leveling, heating)
     try {
-      await printerService.homeAndPrint(printer.api_url, filename, aceSlot);
+      await printerService.startPrint(printer.api_url, filename);
     } catch (startErr) {
       try { fs.unlinkSync(tmpPath); } catch {}
       throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);

@@ -520,8 +520,8 @@ contextBridge.exposeInMainWorld('printStation', {
     getWebcamUrls: (printerId) => ipcRenderer.invoke('fleet:webcam:urls', printerId),
 
     // Print control
-    startPrint: (printerId, filename, shopifyOrderId) =>
-      ipcRenderer.invoke('fleet:print:start', { printerId, filename, shopifyOrderId }),
+    startPrint: (printerId, filename, shopifyOrderId, aceSlot) =>
+      ipcRenderer.invoke('fleet:print:start', { printerId, filename, shopifyOrderId, aceSlot }),
     pausePrint: (printerId) => ipcRenderer.invoke('fleet:print:pause', { printerId }),
     resumePrint: (printerId) => ipcRenderer.invoke('fleet:print:resume', { printerId }),
     cancelPrint: (printerId) => ipcRenderer.invoke('fleet:print:cancel', { printerId }),
@@ -569,6 +569,7 @@ contextBridge.exposeInMainWorld('printStation', {
     slicePlate: (options) => ipcRenderer.invoke('slicer:slicePlate', options),
     slicePlateAndPrint: (sliceOptions, printerId, aceSlot) => ipcRenderer.invoke('slicer:slicePlateAndPrint', { sliceOptions, printerId, aceSlot }),
     printGcode: (gcodeId, printerId, aceSlot) => ipcRenderer.invoke('slicer:printGcode', { gcodeId, printerId, aceSlot }),
+    fetchGcodeText: (gcodeId) => ipcRenderer.invoke('slicer:gcode:fetchText', gcodeId),
 
     // G-code cache
     getGcodeForStl: (stlId) => ipcRenderer.invoke('slicer:gcodeForStl', stlId),

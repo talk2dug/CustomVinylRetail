@@ -37,10 +37,13 @@ function fleetRefreshSnapshots() {
   const now = Date.now();
   imgs.forEach(img => {
     const base = img.dataset.snapshotUrl;
-    if (base) {
-      // Append cache-buster to force reload
-      img.src = base + (base.includes('?') ? '&' : '?') + '_t=' + now;
-    }
+    if (!base) return;
+    const newSrc = base + (base.includes('?') ? '&' : '?') + '_t=' + now;
+    // Preload to avoid blank flash — only swap src after the new image is fully loaded
+    const preload = new Image();
+    preload.onload = () => { img.src = newSrc; img.style.display = ''; };
+    preload.onerror = () => {}; // keep showing the old image on error
+    preload.src = newSrc;
   });
 }
 
@@ -129,8 +132,11 @@ function renderPrinterCards(printers) {
   grid.innerHTML = printers.map(p => renderPrinterCard(p)).join('');
 }
 
-function renderPrinterCard(printer) {
-  const status = printer.status || {};
+/**
+ * Derive the display state and color for a printer status.
+ * Synthesizes states like "Heating" from temperature data when Klipper reports "standby".
+ */
+function fleetDeriveDisplayState(status) {
   const stateColors = {
     standby: 'var(--success)',
     printing: 'var(--accent)',
@@ -138,26 +144,77 @@ function renderPrinterCard(printer) {
     error: 'var(--danger)',
     offline: 'var(--muted)',
     complete: 'var(--success)',
+    cancelled: 'var(--muted)',
+    heating: 'var(--warning)',
     unknown: 'var(--muted)'
   };
-  const stateColor = stateColors[status.state] || 'var(--muted)';
-  const stateLabel = status.state || 'unknown';
 
+  const rawState = status.state || 'unknown';
   const extTemp = status.temperatures?.extruder;
   const bedTemp = status.temperatures?.bed;
 
-  let progressHtml = '';
-  if (status.state === 'printing' || status.state === 'paused') {
+  // Synthesize "heating" when standby but targets are set
+  if (rawState === 'standby') {
+    const nozzleHeating = extTemp && extTemp.target > 0 && extTemp.current < extTemp.target - 5;
+    const bedHeating = bedTemp && bedTemp.target > 0 && bedTemp.current < bedTemp.target - 5;
+    if (nozzleHeating || bedHeating) {
+      return { label: 'Heating', color: stateColors.heating };
+    }
+  }
+
+  return { label: rawState, color: stateColors[rawState] || stateColors.unknown };
+}
+
+/**
+ * Build the activity message line from Moonraker's display_status.message and temp data.
+ */
+function fleetGetActivityMessage(status) {
+  // If Moonraker provides a display message, use it
+  if (status.message && status.message.trim()) {
+    return status.message.trim();
+  }
+
+  const rawState = status.state || 'unknown';
+  const extTemp = status.temperatures?.extruder;
+  const bedTemp = status.temperatures?.bed;
+
+  // Synthesize activity from temperature data
+  if (rawState === 'standby' || rawState === 'printing') {
+    const msgs = [];
+    if (extTemp && extTemp.target > 0 && extTemp.current < extTemp.target - 5) {
+      msgs.push(`Heating nozzle ${extTemp.current.toFixed(0)}/${extTemp.target.toFixed(0)}\u00b0C`);
+    }
+    if (bedTemp && bedTemp.target > 0 && bedTemp.current < bedTemp.target - 5) {
+      msgs.push(`Heating bed ${bedTemp.current.toFixed(0)}/${bedTemp.target.toFixed(0)}\u00b0C`);
+    }
+    if (msgs.length) return msgs.join(' \u00b7 ');
+  }
+
+  if (rawState === 'complete' && status.filename) {
+    return `Completed: ${status.filename}`;
+  }
+
+  return '';
+}
+
+/**
+ * Build the progress block HTML.
+ * Shows for printing, paused, and complete states.
+ */
+function fleetBuildProgressHtml(status) {
+  const rawState = status.state || '';
+
+  if (rawState === 'printing' || rawState === 'paused') {
     const pct = ((status.progress || 0) * 100).toFixed(1);
     const fname = fleetEscapeHtml(status.filename || 'Unknown file');
-    progressHtml = `
-      <div style="margin-bottom:10px;">
+    return `
+      <div style="margin-bottom:10px;" data-fleet-section="progress">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:0.85rem;">
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;" title="${fname}">${fname}</span>
           <span>${pct}%</span>
         </div>
         <div class="progress-bar-container" style="height:8px;margin-bottom:4px;">
-          <div class="progress-bar${status.state === 'paused' ? ' warning' : ''}" style="width:${pct}%"></div>
+          <div class="progress-bar${rawState === 'paused' ? ' warning' : ''}" style="width:${pct}%"></div>
         </div>
         <div style="font-size:0.8rem;color:var(--muted);">
           ${fleetFormatDuration(status.printDuration)} elapsed
@@ -165,6 +222,57 @@ function renderPrinterCard(printer) {
         </div>
       </div>`;
   }
+
+  if (rawState === 'complete' && status.filename) {
+    const fname = fleetEscapeHtml(status.filename);
+    return `
+      <div style="margin-bottom:10px;" data-fleet-section="progress">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:0.85rem;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;" title="${fname}">${fname}</span>
+          <span style="color:var(--success);">100%</span>
+        </div>
+        <div class="progress-bar-container" style="height:8px;margin-bottom:4px;">
+          <div class="progress-bar" style="width:100%;background:var(--success);"></div>
+        </div>
+        <div style="font-size:0.8rem;color:var(--muted);">
+          ${fleetFormatDuration(status.totalDuration || status.printDuration)} total
+        </div>
+      </div>`;
+  }
+
+  return '';
+}
+
+/**
+ * Build action buttons HTML based on state.
+ */
+function fleetBuildActionsHtml(status, printerId) {
+  const state = status.state || '';
+  let actionsHtml = '';
+  if (state === 'standby' || state === 'complete' || state === 'cancelled') {
+    actionsHtml = `<button class="secondary fleet-action" data-action="upload" data-printer="${printerId}" style="padding:4px 10px;font-size:0.8rem;">Upload &amp; Print</button>`;
+  } else if (state === 'printing') {
+    actionsHtml = `
+      <button class="secondary fleet-action" data-action="pause" data-printer="${printerId}" style="padding:4px 10px;font-size:0.8rem;">Pause</button>
+      <button class="secondary fleet-action" data-action="cancel" data-printer="${printerId}" style="padding:4px 10px;font-size:0.8rem;color:var(--warning);">Cancel</button>`;
+  } else if (state === 'paused') {
+    actionsHtml = `
+      <button class="secondary fleet-action" data-action="resume" data-printer="${printerId}" style="padding:4px 10px;font-size:0.8rem;">Resume</button>
+      <button class="secondary fleet-action" data-action="cancel" data-printer="${printerId}" style="padding:4px 10px;font-size:0.8rem;color:var(--warning);">Cancel</button>`;
+  } else if (state === 'offline' || state === 'unknown' || !state) {
+    actionsHtml = `<button class="secondary fleet-action" data-action="reconnect" data-printer="${printerId}" style="padding:4px 10px;font-size:0.8rem;">Reconnect</button>`;
+  }
+  return actionsHtml;
+}
+
+function renderPrinterCard(printer) {
+  const status = printer.status || {};
+  const displayState = fleetDeriveDisplayState(status);
+  const extTemp = status.temperatures?.extruder;
+  const bedTemp = status.temperatures?.bed;
+  const activityMsg = fleetGetActivityMessage(status);
+  const progressHtml = fleetBuildProgressHtml(status);
+  const actionsHtml = fleetBuildActionsHtml(status, printer.id);
 
   let materialHtml = '';
   let aceSlots = [];
@@ -182,21 +290,6 @@ function renderPrinterCard(printer) {
       </div>`;
   }
 
-  let actionsHtml = '';
-  if (status.state === 'standby') {
-    actionsHtml = `<button class="secondary fleet-action" data-action="upload" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;">Upload &amp; Print</button>`;
-  } else if (status.state === 'printing') {
-    actionsHtml = `
-      <button class="secondary fleet-action" data-action="pause" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;">Pause</button>
-      <button class="secondary fleet-action" data-action="cancel" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;color:var(--warning);">Cancel</button>`;
-  } else if (status.state === 'paused') {
-    actionsHtml = `
-      <button class="secondary fleet-action" data-action="resume" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;">Resume</button>
-      <button class="secondary fleet-action" data-action="cancel" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;color:var(--warning);">Cancel</button>`;
-  } else if (status.state === 'offline' || status.state === 'unknown' || !status.state) {
-    actionsHtml = `<button class="secondary fleet-action" data-action="reconnect" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;">Reconnect</button>`;
-  }
-
   return `
     <div class="dashboard-card fleet-printer-card" data-printer-id="${printer.id}" id="fleetCard-${printer.id}">
       <div class="dashboard-card-header">
@@ -204,10 +297,10 @@ function renderPrinterCard(printer) {
           <h3 style="margin:0;">${fleetEscapeHtml(printer.name)}</h3>
           <span class="muted" style="font-size:0.75rem;">${fleetEscapeHtml(printer.model || '')}</span>
         </div>
-        <span style="display:flex;align-items:center;gap:6px;">
+        <span data-fleet-el="stateBlock" style="display:flex;align-items:center;gap:6px;">
           ${printer.has_multicolor ? '<span style="font-size:0.65rem;background:rgba(56,189,248,0.2);color:var(--accent);padding:2px 6px;border-radius:10px;">ACE</span>' : ''}
-          <span style="color:${stateColor};font-size:1.1rem;">&#9679;</span>
-          <span style="color:${stateColor};font-size:0.85rem;text-transform:capitalize;">${stateLabel}</span>
+          <span data-fleet-el="stateDot" style="color:${displayState.color};font-size:1.1rem;">&#9679;</span>
+          <span data-fleet-el="stateLabel" style="color:${displayState.color};font-size:0.85rem;text-transform:capitalize;">${displayState.label}</span>
         </span>
       </div>
       <div class="dashboard-card-body" style="padding:14px 18px;">
@@ -220,25 +313,27 @@ function renderPrinterCard(printer) {
                alt="Camera"
                onerror="this.style.display='none'">
         </div>
+        <!-- Activity Message -->
+        <div data-fleet-el="activity" style="font-size:0.8rem;color:var(--warning);margin-bottom:${activityMsg ? '8' : '0'}px;min-height:0;${activityMsg ? '' : 'display:none;'}">${fleetEscapeHtml(activityMsg)}</div>
         <!-- Temperatures -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+        <div data-fleet-el="temps" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
           <div style="font-size:0.85rem;">
             <span class="muted">Nozzle:</span>
-            <strong>${extTemp ? extTemp.current.toFixed(0) : '--'}&deg;C</strong>
-            <span class="muted">/ ${extTemp ? extTemp.target.toFixed(0) : '--'}&deg;C</span>
+            <strong data-fleet-el="nozzleTemp">${extTemp ? extTemp.current.toFixed(0) : '--'}</strong>&deg;C
+            <span class="muted">/ <span data-fleet-el="nozzleTarget">${extTemp ? extTemp.target.toFixed(0) : '--'}</span>&deg;C</span>
           </div>
           <div style="font-size:0.85rem;">
             <span class="muted">Bed:</span>
-            <strong>${bedTemp ? bedTemp.current.toFixed(0) : '--'}&deg;C</strong>
-            <span class="muted">/ ${bedTemp ? bedTemp.target.toFixed(0) : '--'}&deg;C</span>
+            <strong data-fleet-el="bedTemp">${bedTemp ? bedTemp.current.toFixed(0) : '--'}</strong>&deg;C
+            <span class="muted">/ <span data-fleet-el="bedTarget">${bedTemp ? bedTemp.target.toFixed(0) : '--'}</span>&deg;C</span>
           </div>
         </div>
 
-        ${progressHtml}
+        <div data-fleet-el="progressBlock">${progressHtml}</div>
         ${materialHtml}
 
         <!-- Quick Actions -->
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <div data-fleet-el="actions" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           ${actionsHtml}
           <button class="secondary fleet-action" data-action="detail" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;margin-left:auto;">Details</button>
           <button class="secondary fleet-action" data-action="estop" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;color:var(--danger);">E-STOP</button>
@@ -249,6 +344,10 @@ function renderPrinterCard(printer) {
 
 // =============== REAL-TIME CARD UPDATES ===============
 
+/**
+ * Targeted DOM update — updates only the dynamic parts of the card without
+ * rebuilding the entire element (preserves the camera snapshot <img>).
+ */
 function updatePrinterCardStatus(data) {
   // data = { printerId, apiUrl, state, temperatures, progress, ... }
   const printer = fleetState.printers.find(p => p.id === data.printerId);
@@ -266,12 +365,55 @@ function updatePrinterCardStatus(data) {
     timestamp: data.timestamp
   };
 
-  // Re-render just this card
   const card = document.getElementById(`fleetCard-${data.printerId}`);
-  if (card) {
-    const temp = document.createElement('div');
-    temp.innerHTML = renderPrinterCard(printer);
-    card.parentElement.replaceChild(temp.firstElementChild, card);
+  if (!card) return;
+
+  const status = printer.status;
+  const displayState = fleetDeriveDisplayState(status);
+  const extTemp = status.temperatures?.extruder;
+  const bedTemp = status.temperatures?.bed;
+
+  // Update state dot + label
+  const stateDot = card.querySelector('[data-fleet-el="stateDot"]');
+  const stateLabel = card.querySelector('[data-fleet-el="stateLabel"]');
+  if (stateDot) stateDot.style.color = displayState.color;
+  if (stateLabel) { stateLabel.style.color = displayState.color; stateLabel.textContent = displayState.label; }
+
+  // Update temperatures
+  const nozzleEl = card.querySelector('[data-fleet-el="nozzleTemp"]');
+  const nozzleTgtEl = card.querySelector('[data-fleet-el="nozzleTarget"]');
+  const bedEl = card.querySelector('[data-fleet-el="bedTemp"]');
+  const bedTgtEl = card.querySelector('[data-fleet-el="bedTarget"]');
+  if (nozzleEl) nozzleEl.textContent = extTemp ? extTemp.current.toFixed(0) : '--';
+  if (nozzleTgtEl) nozzleTgtEl.textContent = extTemp ? extTemp.target.toFixed(0) : '--';
+  if (bedEl) bedEl.textContent = bedTemp ? bedTemp.current.toFixed(0) : '--';
+  if (bedTgtEl) bedTgtEl.textContent = bedTemp ? bedTemp.target.toFixed(0) : '--';
+
+  // Update activity message
+  const activityEl = card.querySelector('[data-fleet-el="activity"]');
+  if (activityEl) {
+    const msg = fleetGetActivityMessage(status);
+    activityEl.textContent = msg;
+    activityEl.style.display = msg ? '' : 'none';
+    activityEl.style.marginBottom = msg ? '8px' : '0';
+  }
+
+  // Update progress block
+  const progressBlock = card.querySelector('[data-fleet-el="progressBlock"]');
+  if (progressBlock) {
+    progressBlock.innerHTML = fleetBuildProgressHtml(status);
+  }
+
+  // Update action buttons
+  const actionsEl = card.querySelector('[data-fleet-el="actions"]');
+  if (actionsEl) {
+    const actionsHtml = fleetBuildActionsHtml(status, data.printerId);
+    // Preserve the Details and E-STOP buttons (they don't change)
+    actionsEl.innerHTML = `
+      ${actionsHtml}
+      <button class="secondary fleet-action" data-action="detail" data-printer="${data.printerId}" style="padding:4px 10px;font-size:0.8rem;margin-left:auto;">Details</button>
+      <button class="secondary fleet-action" data-action="estop" data-printer="${data.printerId}" style="padding:4px 10px;font-size:0.8rem;color:var(--danger);">E-STOP</button>
+    `;
   }
 
   // Update summary counts
@@ -328,6 +470,60 @@ function renderJobsList() {
     </table>`;
 }
 
+// =============== ACE SLOT PICKER ===============
+
+/**
+ * If the printer has a multi-color ACE hub, show a slot picker popup and return the selected slot number.
+ * Returns null if the printer has no ACE, or the user cancels.
+ */
+function fleetPickAceSlot(printer) {
+  return new Promise((resolve) => {
+    let aceSlots = [];
+    try { aceSlots = printer.ace_slots ? JSON.parse(printer.ace_slots) : []; } catch (_) {}
+
+    if (!printer.has_multicolor || !aceSlots.length) {
+      resolve(null);
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--card,#1e293b);border-radius:12px;padding:24px;width:360px;max-width:90vw;';
+    modal.innerHTML = `
+      <h3 style="margin:0 0 12px;">Select Filament Slot</h3>
+      <p class="muted" style="margin:0 0 16px;font-size:0.85rem;">Choose which ACE slot to use for this print.</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;">
+        ${aceSlots.map(s => `
+          <button class="secondary fleet-ace-pick" data-slot="${s.slot}" style="padding:10px 14px;text-align:left;display:flex;justify-content:space-between;align-items:center;">
+            <span><strong>T${s.slot}</strong>: ${fleetEscapeHtml(s.name || s.material || '?')}</span>
+            <span class="muted" style="font-size:0.85rem;">${fleetEscapeHtml(s.color || '')}</span>
+          </button>
+        `).join('')}
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="secondary fleet-ace-cancel" style="padding:6px 16px;">Cancel</button>
+      </div>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    modal.querySelectorAll('.fleet-ace-pick').forEach(btn => {
+      btn.addEventListener('click', () => {
+        overlay.remove();
+        resolve(parseInt(btn.dataset.slot, 10));
+      });
+    });
+    modal.querySelector('.fleet-ace-cancel').addEventListener('click', () => {
+      overlay.remove();
+      resolve(null);
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { overlay.remove(); resolve(null); }
+    });
+  });
+}
+
 // =============== EVENT HANDLERS ===============
 
 async function handlePrinterGridClick(e) {
@@ -349,7 +545,9 @@ async function handlePrinterGridClick(e) {
         const fname = filePath.split(/[\\/]/).pop();
         const confirmed = await printStation.showConfirm(`Start printing "${fname}"?`, 'Start Print');
         if (confirmed) {
-          await printStation.printerFleet.startPrint(printerId, fname);
+          const printer = fleetState.printers.find(p => p.id === printerId);
+          const aceSlot = printer ? await fleetPickAceSlot(printer) : null;
+          await printStation.printerFleet.startPrint(printerId, fname, null, aceSlot);
           showToast('Print started!', 'success');
         }
         loadFleetData();
@@ -458,6 +656,8 @@ function showAddPrinterModal(editPrinter = null) {
                 <option value="ABS"${isEdit && editPrinter.loaded_material === 'ABS' ? ' selected' : ''}>ABS</option>
                 <option value="TPU"${isEdit && editPrinter.loaded_material === 'TPU' ? ' selected' : ''}>TPU</option>
                 <option value="ASA"${isEdit && editPrinter.loaded_material === 'ASA' ? ' selected' : ''}>ASA</option>
+                <option value="RAPID_PLA"${isEdit && editPrinter.loaded_material === 'RAPID_PLA' ? ' selected' : ''}>Rapid PLA</option>
+                <option value="RAPID_PETG"${isEdit && editPrinter.loaded_material === 'RAPID_PETG' ? ' selected' : ''}>Rapid PETG</option>
               </select>
             </div>
             <div>
@@ -491,6 +691,8 @@ function showAddPrinterModal(editPrinter = null) {
                   <option value="ABS"${slot.material === 'ABS' ? ' selected' : ''}>ABS</option>
                   <option value="TPU"${slot.material === 'TPU' ? ' selected' : ''}>TPU</option>
                   <option value="ASA"${slot.material === 'ASA' ? ' selected' : ''}>ASA</option>
+                  <option value="RAPID_PLA"${slot.material === 'RAPID_PLA' ? ' selected' : ''}>Rapid PLA</option>
+                  <option value="RAPID_PETG"${slot.material === 'RAPID_PETG' ? ' selected' : ''}>Rapid PETG</option>
                 </select>
                 <input class="fleet-ace-color" data-slot="${i}" type="text" style="padding:6px 8px;font-size:0.85rem;" value="${fleetEscapeHtml(slot.color || '')}" placeholder="Color">
                 <input class="fleet-ace-name" data-slot="${i}" type="text" style="padding:6px 8px;font-size:0.85rem;" value="${fleetEscapeHtml(slot.name || '')}" placeholder="Label (e.g. White PLA)">
@@ -803,7 +1005,8 @@ async function showPrinterDetailModal(printerId) {
       const confirmed = await printStation.showConfirm(`Start printing "${filename}"?`, 'Start Print');
       if (confirmed) {
         try {
-          await printStation.printerFleet.startPrint(printerId, filename);
+          const aceSlot = await fleetPickAceSlot(printer);
+          await printStation.printerFleet.startPrint(printerId, filename, null, aceSlot);
           showToast('Print started!', 'success');
           modal.remove();
           loadFleetData();

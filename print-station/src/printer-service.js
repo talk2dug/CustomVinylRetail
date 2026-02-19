@@ -247,35 +247,72 @@ class PrinterService {
   }
 
   /**
-   * Home all axes and run bed mesh calibration, then start printing.
-   * Moonraker queues G-code commands, so we send them in sequence with
-   * generous timeouts since homing/leveling can take a while.
+   * Poll the printer until it is truly idle — not processing any G-code.
+   *
+   * Uses Klipper's `idle_timeout` object which reports:
+   *   "Printing" — G-code commands are actively being processed (includes G28, BED_MESH_CALIBRATE, etc.)
+   *   "Ready"    — printer is idle, heaters still on (idle timeout hasn't fired yet)
+   *   "Idle"     — printer has been idle long enough that idle timeout fired (heaters off)
+   *
+   * This is more reliable than `print_stats.state` which only reflects print-job state
+   * and stays "standby" during standalone G-code commands like homing and leveling.
+   *
+   * @param {string} apiUrl
+   * @param {number} timeoutMs  Max time to wait (default 10 minutes)
+   * @param {number} pollMs     Polling interval (default 2 seconds)
+   * @returns {Promise<string>} The idle_timeout state when ready
    */
-  async homeAndPrint(apiUrl, filename, aceSlot = null) {
-    // Select ACE tool before homing if specified
-    if (aceSlot != null && aceSlot >= 0 && aceSlot <= 3) {
-      console.log(`[PrinterService] Selecting ACE slot T${aceSlot}...`);
+  async waitForReady(apiUrl, timeoutMs = 600000, pollMs = 2000) {
+    const start = Date.now();
+
+    // Short initial delay — give Klipper a moment to start processing the command
+    // so we don't read "Ready" before the command has been picked up
+    await new Promise(r => setTimeout(r, 1500));
+
+    while (Date.now() - start < timeoutMs) {
       try {
-        await this.sendGcode(apiUrl, `T${aceSlot}`, 30000);
-      } catch (aceErr) {
-        // Printer may not have an ACE/multi-color hub — log warning and continue
-        console.warn(`[PrinterService] ACE tool change T${aceSlot} failed (printer may not have a filament hub): ${aceErr.message}`);
+        const data = await this._get(apiUrl,
+          '/printer/objects/query?idle_timeout&print_stats'
+        );
+        const objects = data?.result?.status || {};
+        const idleState = objects.idle_timeout?.state || 'unknown';
+        const printState = (objects.print_stats?.state || 'standby').toLowerCase();
+
+        // "Printing" means Klipper is actively processing G-code (any command, not just a print job)
+        // Also check print_stats in case we're mid-print-job (belt-and-suspenders)
+        const busy = idleState === 'Printing' || printState === 'printing';
+
+        if (!busy) {
+          console.log(`[PrinterService] Printer ready (idle_timeout: ${idleState}, print_stats: ${printState})`);
+          return idleState;
+        }
+
+        console.log(`[PrinterService] Waiting for printer... (idle_timeout: ${idleState}, print_stats: ${printState})`);
+      } catch (err) {
+        console.warn('[PrinterService] Status poll error during waitForReady:', err.message);
       }
+
+      await new Promise(r => setTimeout(r, pollMs));
     }
 
-    console.log('[PrinterService] Homing all axes...');
-    await this.sendGcode(apiUrl, 'G28', 60000); // 60s for homing
+    // Timed out but don't throw — let the caller decide what to do
+    console.warn(`[PrinterService] waitForReady timed out after ${timeoutMs / 1000}s`);
+    return 'timeout';
+  }
 
-    console.log('[PrinterService] Running bed mesh calibration...');
-    try {
-      await this.sendGcode(apiUrl, 'BED_MESH_CALIBRATE', 120000); // 2min for bed mesh
-    } catch (meshErr) {
-      // Some printers may not have bed mesh configured — log and continue
-      console.log('[PrinterService] BED_MESH_CALIBRATE not available or failed, skipping:', meshErr.message);
+  /**
+   * Download a G-code file from the printer via Moonraker.
+   * Returns the file content as a Buffer.
+   */
+  async downloadGcode(apiUrl, filename) {
+    const resp = await this.fetch(
+      `${this._apiBase(apiUrl)}/server/files/gcodes/${encodeURIComponent(filename)}`,
+      { signal: AbortSignal.timeout(120000) }
+    );
+    if (!resp.ok) {
+      throw new Error(`Failed to download "${filename}": ${resp.status}`);
     }
-
-    console.log('[PrinterService] Starting print:', filename);
-    return this.startPrint(apiUrl, filename);
+    return Buffer.from(await resp.arrayBuffer());
   }
 
   // ---- Webcam ----
