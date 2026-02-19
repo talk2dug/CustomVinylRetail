@@ -214,15 +214,17 @@ class PrinterService {
     try {
       return await this._post(apiUrl, `/printer/print/start?filename=${encodeURIComponent(filename)}`);
     } catch (err) {
-      // Rinkhals on Anycubic printers routes print-start through MQTT, which fails
-      // with "filament hub not exist" (code 11503) if no ACE hub is connected.
-      // Rinkhals' kobra.py intercepts both the REST API and SDCARD_PRINT_FILE commands,
-      // so we fall back to M23 (select file) + M24 (start print) which are basic G-code
-      // commands handled directly by Klipper's virtual_sdcard without MQTT interception.
+      // Rinkhals firmware routes print-start through MQTT, which fails with
+      // "filament hub not exist" (code 11503) if no ACE hub is connected but
+      // the [mmu_ace] section is enabled in moonraker config. Guide the user
+      // to apply the Rinkhals config fix.
       if (err.message && err.message.includes('filament hub')) {
-        console.log('[PrinterService] No ACE hub — bypassing MQTT with M23/M24...');
-        await this.sendGcode(apiUrl, `M23 ${filename}`, 10000);
-        return this.sendGcode(apiUrl, 'M24', 10000);
+        throw new Error(
+          `Printer has no ACE hub but Rinkhals is configured as if it does. ` +
+          `To fix: SSH into the printer and add "[!mmu_ace]" to /useremain/rinkhals/.../moonraker.custom.conf, ` +
+          `then restart Rinkhals. This disables the hub requirement so prints can start normally. ` +
+          `The G-code file has been uploaded — once fixed, you can start it from the printer.`
+        );
       }
       throw err;
     }

@@ -6306,10 +6306,12 @@ Return ONLY valid JSON, nothing else:
       console.log(`[Fleet] Injecting ACE T${aceSlot} into ${filename} on printer...`);
       const gcodeBuf = await printerService.downloadGcode(printer.api_url, filename);
       const modified = injectAceSlotIntoGcode(gcodeBuf, aceSlot);
-      const tmpPath = path.join(app.getPath('temp'), filename);
+      const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const tmpPath = path.join(tmpDir, filename);
       fs.writeFileSync(tmpPath, modified);
       await printerService.uploadGcode(printer.api_url, tmpPath);
-      try { fs.unlinkSync(tmpPath); } catch {}
+      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
     }
 
     // Start print — the G-code's START_PRINT macro handles homing, leveling, and heating
@@ -6745,7 +6747,8 @@ Return ONLY valid JSON, nothing else:
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`);
     const arrayBuf = await gcodeResp.arrayBuffer();
     const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
-    const tmpDir = app.getPath('temp');
+    const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
     fs.writeFileSync(tmpPath, gcodeBuf);
     console.log(`[Slicer] Plate Step 2 done: ${tmpPath} (${gcodeBuf.length} bytes)`);
@@ -6755,7 +6758,7 @@ Return ONLY valid JSON, nothing else:
     try {
       await printerService.uploadGcode(printer.api_url, tmpPath);
     } catch (uploadErr) {
-      try { fs.unlinkSync(tmpPath); } catch {}
+      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw new Error(`Failed to upload plate G-code to printer "${printer.name}": ${uploadErr.message}`);
     }
     console.log('[Slicer] Plate Step 3 done: uploaded');
@@ -6765,7 +6768,7 @@ Return ONLY valid JSON, nothing else:
     try {
       await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
     } catch (startErr) {
-      try { fs.unlinkSync(tmpPath); } catch {}
+      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw new Error(`Plate G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
     }
     console.log('[Slicer] Plate Step 4 done: print started');
@@ -6779,7 +6782,7 @@ Return ONLY valid JSON, nothing else:
     });
 
     // Clean up temp file
-    try { fs.unlinkSync(tmpPath); } catch {}
+    try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
 
     return { success: true, job, sliceResult };
   });
@@ -6810,7 +6813,8 @@ Return ONLY valid JSON, nothing else:
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`);
     const arrayBuf = await gcodeResp.arrayBuffer();
     const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
-    const tmpDir = app.getPath('temp');
+    const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
     fs.writeFileSync(tmpPath, gcodeBuf);
     console.log(`[Slicer] Step 2 done: ${tmpPath} (${gcodeBuf.length} bytes)`);
@@ -6820,7 +6824,7 @@ Return ONLY valid JSON, nothing else:
     try {
       await printerService.uploadGcode(printer.api_url, tmpPath);
     } catch (uploadErr) {
-      try { fs.unlinkSync(tmpPath); } catch {}
+      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
     }
     console.log('[Slicer] Step 3 done: uploaded');
@@ -6830,7 +6834,7 @@ Return ONLY valid JSON, nothing else:
     try {
       await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
     } catch (startErr) {
-      try { fs.unlinkSync(tmpPath); } catch {}
+      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
     }
     console.log('[Slicer] Step 4 done: print started');
@@ -6844,7 +6848,7 @@ Return ONLY valid JSON, nothing else:
     });
 
     // Clean up temp file
-    try { fs.unlinkSync(tmpPath); } catch {}
+    try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
 
     return { success: true, job, sliceResult };
   });
@@ -6865,7 +6869,8 @@ Return ONLY valid JSON, nothing else:
     const filename = filenameMatch ? filenameMatch[1] : `gcode_${gcodeId}.gcode`;
     const arrayBuf = await gcodeResp.arrayBuffer();
     const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
-    const tmpDir = app.getPath('temp');
+    const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, filename);
     fs.writeFileSync(tmpPath, gcodeBuf);
 
@@ -6873,7 +6878,7 @@ Return ONLY valid JSON, nothing else:
     try {
       await printerService.uploadGcode(printer.api_url, tmpPath);
     } catch (uploadErr) {
-      try { fs.unlinkSync(tmpPath); } catch {}
+      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
     }
 
@@ -6881,7 +6886,7 @@ Return ONLY valid JSON, nothing else:
     try {
       await printerService.startPrint(printer.api_url, filename);
     } catch (startErr) {
-      try { fs.unlinkSync(tmpPath); } catch {}
+      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
     }
 
@@ -6894,7 +6899,7 @@ Return ONLY valid JSON, nothing else:
     });
 
     // Clean up temp file
-    try { fs.unlinkSync(tmpPath); } catch {}
+    try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
 
     return { success: true, job };
   });
