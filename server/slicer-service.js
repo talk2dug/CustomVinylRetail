@@ -654,6 +654,21 @@ function mapOptionsToSlicerArgs(options) {
 }
 
 /**
+ * Get concatenated mtimes of all profile files used for slicing.
+ * Including this in the cache hash ensures profile edits bust cached G-code.
+ */
+function getProfileMtimes(options) {
+  const files = [
+    path.join(PROFILES_DIR, 'printers', (PRINTERS_MAP[options.printer_model] || PRINTERS_MAP.kobra3).profile),
+    path.join(PROFILES_DIR, 'filaments', FILAMENT_PROFILES[options.material] || FILAMENT_PROFILES.pla),
+    path.join(PROFILES_DIR, 'prints', PRINT_PROFILES[options.quality] || PRINT_PROFILES.standard)
+  ];
+  return files.map(f => {
+    try { return fs.statSync(f).mtimeMs; } catch { return '0'; }
+  }).join(':');
+}
+
+/**
  * Generate SHA256 hash from STL file stats + all settings for cache deduplication
  */
 function generateSettingsHash(stlPath, options) {
@@ -665,6 +680,9 @@ function generateSettingsHash(stlPath, options) {
     fileInfo = stlPath;
   }
 
+  // Include profile file mtimes so profile edits bust the cache
+  const profileMtimes = getProfileMtimes(options);
+
   const settingsStr = [
     fileInfo,
     options.printer_model || 'kobra3',
@@ -675,7 +693,8 @@ function generateSettingsHash(stlPath, options) {
     options.texture || 'smooth',
     options.surface || 'standard',
     options.supports || 'none',
-    options.auto_orient ? 'oriented' : 'raw'
+    options.auto_orient ? 'oriented' : 'raw',
+    profileMtimes
   ].join('|');
 
   return crypto.createHash('sha256').update(settingsStr).digest('hex').substring(0, 16);
@@ -694,6 +713,8 @@ function generatePlateHash(stlPaths, options) {
     }
   }).sort();
 
+  const profileMtimes = getProfileMtimes(options);
+
   let settingsStr = [
     fileInfos.join('+'),
     options.printer_model || 'kobra3',
@@ -704,7 +725,8 @@ function generatePlateHash(stlPaths, options) {
     options.texture || 'smooth',
     options.surface || 'standard',
     options.supports || 'none',
-    options.auto_orient ? 'oriented' : 'raw'
+    options.auto_orient ? 'oriented' : 'raw',
+    profileMtimes
   ].join('|');
 
   // Include transforms in hash so different arrangements bust cache
