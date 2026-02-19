@@ -216,10 +216,13 @@ class PrinterService {
     } catch (err) {
       // Rinkhals on Anycubic printers routes print-start through MQTT, which fails
       // with "filament hub not exist" (code 11503) if no ACE hub is connected.
-      // Fall back to Klipper's native SDCARD_PRINT_FILE command to bypass the hub check.
+      // Rinkhals' kobra.py intercepts both the REST API and SDCARD_PRINT_FILE commands,
+      // so we fall back to M23 (select file) + M24 (start print) which are basic G-code
+      // commands handled directly by Klipper's virtual_sdcard without MQTT interception.
       if (err.message && err.message.includes('filament hub')) {
-        console.log('[PrinterService] No ACE hub detected — falling back to SDCARD_PRINT_FILE...');
-        return this.sendGcode(apiUrl, `SDCARD_PRINT_FILE FILENAME="${filename}"`, 30000);
+        console.log('[PrinterService] No ACE hub — bypassing MQTT with M23/M24...');
+        await this.sendGcode(apiUrl, `M23 ${filename}`, 10000);
+        return this.sendGcode(apiUrl, 'M24', 10000);
       }
       throw err;
     }
