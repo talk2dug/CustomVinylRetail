@@ -6672,7 +6672,15 @@ Return ONLY valid JSON, nothing else:
     const lines = text.split('\n');
     const tcodeLine = `T${aceSlot} ; Select ACE filament slot`;
 
-    // Try to insert after START_PRINT line
+    // Try to insert after G92 E0 (extruder reset, end of start gcode sequence)
+    const g92Idx = lines.findIndex(l => /^\s*G92\s+E0/i.test(l.trim()));
+    if (g92Idx >= 0) {
+      lines.splice(g92Idx + 1, 0, tcodeLine);
+      console.log(`[Slicer] Injected T${aceSlot} after G92 E0 (line ${g92Idx + 1})`);
+      return Buffer.from(lines.join('\n'), 'utf-8');
+    }
+
+    // Try to insert after START_PRINT macro call (legacy profiles)
     const startPrintIdx = lines.findIndex(l => l.trim().startsWith('START_PRINT'));
     if (startPrintIdx >= 0) {
       lines.splice(startPrintIdx + 1, 0, tcodeLine);
