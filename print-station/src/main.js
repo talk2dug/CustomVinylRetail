@@ -6316,6 +6316,7 @@ Return ONLY valid JSON, nothing else:
 
     // Start print — the G-code's START_PRINT macro handles homing, leveling, and heating
     await printerService.startPrint(printer.api_url, filename);
+    fleetDb.completeStaleJobs(printerId);
     const job = fleetDb.createJob({
       printer_id: printerId,
       filename,
@@ -6409,6 +6410,17 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('fleet:jobs:stats', () => {
     if (!fleetDb) return {};
     return fleetDb.getJobStats();
+  });
+
+  ipcMain.handle('fleet:jobs:clearStale', () => {
+    if (!fleetDb) return { cleared: 0 };
+    const now = new Date().toISOString();
+    const result = fleetDb.db.prepare(`
+      UPDATE print_jobs SET status = 'completed', completed_at = @now
+      WHERE status IN ('printing', 'paused', 'queued')
+    `).run({ now });
+    console.log(`[Fleet] Manually cleared ${result.changes} stale job(s)`);
+    return { cleared: result.changes };
   });
 
   // ============================================================================
@@ -6771,17 +6783,30 @@ Return ONLY valid JSON, nothing else:
     }
     console.log('[Slicer] Plate Step 3 done: uploaded');
 
-    // Step 4: Start print (START_PRINT macro handles homing, leveling, heating)
-    console.log(`[Slicer] Plate Step 4: Starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ' injected in G-code)' : ''}`);
+    // Step 4: Run bed leveling for Kobra printers
+    const isKobra = (printer.model || '').startsWith('kobra');
+    if (isKobra) {
+      console.log(`[Slicer] Plate Step 4: Running pre-print bed leveling on ${printer.name}...`);
+      try {
+        await printerService.runBedLeveling(printer.api_url);
+      } catch (levelErr) {
+        console.warn(`[Slicer] Bed leveling failed (continuing with saved mesh): ${levelErr.message}`);
+      }
+      console.log('[Slicer] Plate Step 4 done: bed leveling complete');
+    }
+
+    // Step 5: Start print
+    console.log(`[Slicer] Plate Step 5: Starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ' injected in G-code)' : ''}`);
     try {
       await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
     } catch (startErr) {
       try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw new Error(`Plate G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
     }
-    console.log('[Slicer] Plate Step 4 done: print started');
+    console.log('[Slicer] Plate Step 5 done: print started');
 
-    // Step 5: Create fleet job record
+    // Step 6: Create fleet job record (auto-complete any stale jobs first)
+    fleetDb.completeStaleJobs(printerId);
     const job = fleetDb.createJob({
       printer_id: printerId,
       filename: sliceResult.gcode_filename,
@@ -6837,17 +6862,31 @@ Return ONLY valid JSON, nothing else:
     }
     console.log('[Slicer] Step 3 done: uploaded');
 
-    // Step 4: Start print (START_PRINT macro handles homing, leveling, heating)
-    console.log(`[Slicer] Step 4: Starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ' injected in G-code)' : ''}`);
+    // Step 4: Run bed leveling for Kobra printers (must happen BEFORE print start;
+    // the Anycubic firmware blocks all probing during SD-card prints)
+    const isKobra = (printer.model || '').startsWith('kobra');
+    if (isKobra) {
+      console.log(`[Slicer] Step 4: Running pre-print bed leveling on ${printer.name}...`);
+      try {
+        await printerService.runBedLeveling(printer.api_url);
+      } catch (levelErr) {
+        console.warn(`[Slicer] Bed leveling failed (continuing with saved mesh): ${levelErr.message}`);
+      }
+      console.log('[Slicer] Step 4 done: bed leveling complete');
+    }
+
+    // Step 5: Start print
+    console.log(`[Slicer] Step 5: Starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ' injected in G-code)' : ''}`);
     try {
       await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
     } catch (startErr) {
       try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
     }
-    console.log('[Slicer] Step 4 done: print started');
+    console.log('[Slicer] Step 5 done: print started');
 
-    // Step 5: Create fleet job record
+    // Step 6: Create fleet job record (auto-complete any stale jobs first)
+    fleetDb.completeStaleJobs(printerId);
     const job = fleetDb.createJob({
       printer_id: printerId,
       filename: sliceResult.gcode_filename,
@@ -6862,7 +6901,7 @@ Return ONLY valid JSON, nothing else:
   });
 
   // Print existing G-code (download from server + upload to printer)
-  ipcMain.handle('slicer:printGcode', async (_event, { gcodeId, printerId, aceSlot } = {}) => {
+  ipcMain.handle('slicer:printGcode', async (event, { gcodeId, printerId, aceSlot } = {}) => {
     if (!gcodeId || !printerId) throw new Error('gcodeId and printerId required');
     if (!fleetDb) throw new Error('Fleet DB not initialized');
     if (!printerService) throw new Error('Printer service not initialized');
@@ -6870,19 +6909,29 @@ Return ONLY valid JSON, nothing else:
     const printer = fleetDb.getPrinter(printerId);
     if (!printer) throw new Error('Printer not found');
 
-    // Download G-code from server, inject ACE T-code if needed
+    const sendProgress = (step, detail) => {
+      try { event.sender.send('slicer:printProgress', { step, detail }); } catch {}
+    };
+
+    // Step 1: Download G-code from server
+    sendProgress(1, 'Downloading G-code from server...');
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`);
     const contentDisp = gcodeResp.headers.get('content-disposition') || '';
     const filenameMatch = contentDisp.match(/filename="?([^"]+)"?/);
     const filename = filenameMatch ? filenameMatch[1] : `gcode_${gcodeId}.gcode`;
     const arrayBuf = await gcodeResp.arrayBuffer();
+
+    // Step 2: Prepare file (inject ACE slot, write temp)
+    sendProgress(2, 'Preparing G-code file...');
     const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, filename);
     fs.writeFileSync(tmpPath, gcodeBuf);
+    const fileSizeMB = (gcodeBuf.length / (1024 * 1024)).toFixed(1);
 
-    // Upload to printer
+    // Step 3: Upload to printer
+    sendProgress(3, `Uploading ${fileSizeMB} MB to ${printer.name}...`);
     try {
       await printerService.uploadGcode(printer.api_url, tmpPath);
     } catch (uploadErr) {
@@ -6890,7 +6939,19 @@ Return ONLY valid JSON, nothing else:
       throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
     }
 
-    // Start print (START_PRINT macro handles homing, leveling, heating)
+    // Step 4: Run bed leveling for Kobra printers
+    const isKobra = (printer.model || '').startsWith('kobra');
+    if (isKobra) {
+      sendProgress(4, `Running bed leveling on ${printer.name}...`);
+      try {
+        await printerService.runBedLeveling(printer.api_url);
+      } catch (levelErr) {
+        console.warn(`[Slicer] Bed leveling failed (continuing with saved mesh): ${levelErr.message}`);
+      }
+    }
+
+    // Step 5: Start print
+    sendProgress(5, `Starting print on ${printer.name}...`);
     try {
       await printerService.startPrint(printer.api_url, filename);
     } catch (startErr) {
@@ -6898,7 +6959,8 @@ Return ONLY valid JSON, nothing else:
       throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
     }
 
-    // Create fleet job record
+    // Create fleet job record (auto-complete any stale jobs first)
+    fleetDb.completeStaleJobs(printerId);
     const job = fleetDb.createJob({
       printer_id: printerId,
       filename: filename,

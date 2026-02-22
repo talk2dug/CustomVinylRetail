@@ -214,17 +214,70 @@ class PrinterService {
     try {
       return await this._post(apiUrl, `/printer/print/start?filename=${encodeURIComponent(filename)}`);
     } catch (err) {
+      const msg = err.message || '';
+
+      // 10101: "已存在打印任务" — stale print job blocking new one.
+      // Check if printer is actually idle, cancel stale job, retry.
+      if (msg.includes('10101') || msg.includes('\u5df2\u5b58\u5728\u6253\u5370\u4efb\u52a1')) {
+        console.log(`[PrinterService] Print start blocked by existing job (10101), checking printer state...`);
+        try {
+          const statusData = await this._get(apiUrl, '/printer/objects/query?print_stats');
+          const printState = statusData?.result?.status?.print_stats?.state || 'unknown';
+          console.log(`[PrinterService] Printer state: ${printState}`);
+
+          if (printState === 'printing' || printState === 'paused') {
+            throw new Error(
+              `Printer is currently ${printState}. Cancel or finish the current job before starting a new one. ` +
+              `The file has been uploaded — you can start it after the current job completes.`
+            );
+          }
+
+          // Printer is idle/standby/complete/error/cancelled — cancel stale job and retry
+          console.log(`[PrinterService] Cancelling stale job (state: ${printState}) and retrying...`);
+          await this._post(apiUrl, '/printer/print/cancel');
+
+          // Brief pause to let firmware clear state
+          await new Promise(r => setTimeout(r, 1500));
+
+          const retryResult = await this._post(apiUrl, `/printer/print/start?filename=${encodeURIComponent(filename)}`);
+          console.log(`[PrinterService] Retry after cancel succeeded`);
+          return retryResult;
+        } catch (retryErr) {
+          // If retry also fails, try SDCARD_PRINT_BEGIN as last resort
+          console.warn(`[PrinterService] Retry after cancel failed: ${retryErr.message}, trying SDCARD_PRINT_BEGIN...`);
+          try {
+            await this.sendGcode(apiUrl, `SDCARD_PRINT_BEGIN FILENAME="${filename}"`, 15000);
+            console.log(`[PrinterService] SDCARD_PRINT_BEGIN fallback succeeded`);
+            return { result: 'ok', fallback: 'SDCARD_PRINT_BEGIN' };
+          } catch (fallbackErr) {
+            throw new Error(
+              `G-code uploaded but could not start print: existing job blocked it (10101). ` +
+              `Cancel + retry failed: ${retryErr.message}. ` +
+              `The file is on the printer — you can start it from the printer screen.`
+            );
+          }
+        }
+      }
+
       // Rinkhals firmware routes print-start through MQTT, which fails with
       // "filament hub not exist" (code 11503) if no ACE hub is connected but
-      // the [mmu_ace] section is enabled in moonraker config. Guide the user
-      // to apply the Rinkhals config fix.
-      if (err.message && err.message.includes('filament hub')) {
-        throw new Error(
-          `Printer has no ACE hub but Rinkhals is configured as if it does. ` +
-          `To fix: SSH into the printer and add "[!mmu_ace]" to /useremain/rinkhals/.../moonraker.custom.conf, ` +
-          `then restart Rinkhals. This disables the hub requirement so prints can start normally. ` +
-          `The G-code file has been uploaded — once fixed, you can start it from the printer.`
-        );
+      // the [mmu_ace] section is enabled in moonraker config.
+      // Fallback: send SDCARD_PRINT_BEGIN directly via Klipper gcode script
+      // endpoint to bypass Rinkhals MQTT interception.
+      if (msg.includes('filament hub')) {
+        console.log(`[PrinterService] Moonraker print/start failed with hub error, trying SDCARD_PRINT_BEGIN fallback for "${filename}"...`);
+        try {
+          await this.sendGcode(apiUrl, `SDCARD_PRINT_BEGIN FILENAME="${filename}"`, 15000);
+          console.log(`[PrinterService] SDCARD_PRINT_BEGIN fallback succeeded`);
+          return { result: 'ok', fallback: 'SDCARD_PRINT_BEGIN' };
+        } catch (fallbackErr) {
+          console.warn(`[PrinterService] SDCARD_PRINT_BEGIN fallback also failed:`, fallbackErr.message);
+          throw new Error(
+            `G-code uploaded but failed to start print. ` +
+            `Moonraker start failed ("filament hub" error) and Klipper SDCARD_PRINT_BEGIN fallback also failed: ${fallbackErr.message}. ` +
+            `The file is on the printer — you can start it from the printer screen.`
+          );
+        }
       }
       throw err;
     }
@@ -314,6 +367,40 @@ class PrinterService {
     // Timed out but don't throw — let the caller decide what to do
     console.warn(`[PrinterService] waitForReady timed out after ${timeoutMs / 1000}s`);
     return 'timeout';
+  }
+
+  /**
+   * Run bed leveling on an Anycubic Kobra 3 / Kobra 3 V2 printer BEFORE
+   * starting a print.
+   *
+   * The Anycubic Go-Klipper firmware blocks all probing during SD-card
+   * prints, so leveling must happen via Moonraker API while idle.
+   *
+   * BED_MESH_CALIBRATE is a firmware macro that handles the full leviQ3
+   * sequence: heat bed to 60 °C + nozzle to 170 °C, wipe nozzle, cool
+   * nozzle to 140 °C for strain-gauge probing, probe 5×5 grid, then
+   * TURN_OFF_HEATERS + SAVE_CONFIG.  SAVE_CONFIG persists the fresh
+   * mesh to disk (the Go firmware does NOT restart on SAVE_CONFIG).
+   *
+   * After this method returns, the printer's heaters are off but a fresh
+   * bed mesh is saved and active.  The print's start G-code will heat to
+   * print temperatures normally.
+   *
+   * @param {string} apiUrl  Moonraker base URL (e.g. http://192.168.0.120:7125)
+   */
+  async runBedLeveling(apiUrl) {
+    console.log(`[PrinterService] Starting pre-print bed leveling on ${apiUrl}...`);
+
+    // Home first, then run the firmware's full leveling macro.
+    // BED_MESH_CALIBRATE handles: heating → wiping → probing → save.
+    // The full sequence takes ~3–5 min depending on preheat state.
+    await this.sendGcode(apiUrl, 'G28\nBED_MESH_CALIBRATE', 600000);
+
+    // Ensure all queued G-code has finished executing before returning.
+    // The API may return before the macro's sub-commands complete.
+    await this.waitForReady(apiUrl, 600000, 3000);
+
+    console.log(`[PrinterService] Bed leveling complete on ${apiUrl}`);
   }
 
   /**

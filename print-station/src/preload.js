@@ -532,6 +532,7 @@ contextBridge.exposeInMainWorld('printStation', {
     listJobs: (query) => ipcRenderer.invoke('fleet:jobs:list', query || {}),
     getActiveJobs: () => ipcRenderer.invoke('fleet:jobs:active'),
     getJobStats: () => ipcRenderer.invoke('fleet:jobs:stats'),
+    clearStaleJobs: () => ipcRenderer.invoke('fleet:jobs:clearStale'),
 
     // Real-time status events
     onPrinterStatus: (cb) => {
@@ -570,6 +571,13 @@ contextBridge.exposeInMainWorld('printStation', {
     slicePlateAndPrint: (sliceOptions, printerId, aceSlot) => ipcRenderer.invoke('slicer:slicePlateAndPrint', { sliceOptions, printerId, aceSlot }),
     printGcode: (gcodeId, printerId, aceSlot) => ipcRenderer.invoke('slicer:printGcode', { gcodeId, printerId, aceSlot }),
     fetchGcodeText: (gcodeId) => ipcRenderer.invoke('slicer:gcode:fetchText', gcodeId),
+
+    // Progress events from main process (step-by-step print progress)
+    onPrintProgress: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('slicer:printProgress', handler);
+      return () => ipcRenderer.removeListener('slicer:printProgress', handler);
+    },
 
     // G-code cache
     getGcodeForStl: (stlId) => ipcRenderer.invoke('slicer:gcodeForStl', stlId),

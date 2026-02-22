@@ -395,23 +395,44 @@ function bakeTransformToSTL(stlPath, transform, stlId) {
 
   // Build rotation matrix
   const R = buildRotationMatrix(rx, ry, rz);
+  const hasRotation = (rx !== 0 || ry !== 0 || rz !== 0);
 
-  // Apply rotation + scale to vertices
+  // Apply rotation + scale to vertices.
+  //
+  // Coordinate system conversion: Three.js uses Y-up, STL/PrusaSlicer uses Z-up.
+  // When rotation is applied, we need to swap Y↔Z of the rotated result so that
+  // what the user sees in the Three.js preview matches what PrusaSlicer produces.
+  // This is equivalent to: baked = P * R * v, where P swaps rows 1 and 2.
+  //
+  // Without rotation (scale only), no coordinate swap is needed — the model
+  // stays in its original PrusaSlicer orientation, just scaled.
   const bakedVertices = new Float32Array(vertices.length);
-  for (let i = 0; i < vertices.length; i += 3) {
-    const x = vertices[i], y = vertices[i + 1], z = vertices[i + 2];
-    bakedVertices[i]     = (R[0] * x + R[1] * y + R[2] * z) * scale;
-    bakedVertices[i + 1] = (R[3] * x + R[4] * y + R[5] * z) * scale;
-    bakedVertices[i + 2] = (R[6] * x + R[7] * y + R[8] * z) * scale;
+  if (hasRotation) {
+    for (let i = 0; i < vertices.length; i += 3) {
+      const x = vertices[i], y = vertices[i + 1], z = vertices[i + 2];
+      bakedVertices[i]     = (R[0] * x + R[1] * y + R[2] * z) * scale;       // X stays
+      bakedVertices[i + 1] = (R[6] * x + R[7] * y + R[8] * z) * scale;       // Three.js Z → STL Y
+      bakedVertices[i + 2] = (R[3] * x + R[4] * y + R[5] * z) * scale;       // Three.js Y → STL Z
+    }
+  } else {
+    for (let i = 0; i < vertices.length; i += 3) {
+      bakedVertices[i]     = vertices[i] * scale;
+      bakedVertices[i + 1] = vertices[i + 1] * scale;
+      bakedVertices[i + 2] = vertices[i + 2] * scale;
+    }
   }
 
   // Apply rotation to normals (no scale — normals are directions)
   const bakedNormals = new Float32Array(normals.length);
-  for (let i = 0; i < normals.length; i += 3) {
-    const nx = normals[i], ny = normals[i + 1], nz = normals[i + 2];
-    bakedNormals[i]     = R[0] * nx + R[1] * ny + R[2] * nz;
-    bakedNormals[i + 1] = R[3] * nx + R[4] * ny + R[5] * nz;
-    bakedNormals[i + 2] = R[6] * nx + R[7] * ny + R[8] * nz;
+  if (hasRotation) {
+    for (let i = 0; i < normals.length; i += 3) {
+      const nx = normals[i], ny = normals[i + 1], nz = normals[i + 2];
+      bakedNormals[i]     = R[0] * nx + R[1] * ny + R[2] * nz;
+      bakedNormals[i + 1] = R[6] * nx + R[7] * ny + R[8] * nz;       // Y↔Z swap
+      bakedNormals[i + 2] = R[3] * nx + R[4] * ny + R[5] * nz;       // Y↔Z swap
+    }
+  } else {
+    bakedNormals.set(normals);
   }
 
   // Center the model on its own XY footprint (matching what bpLoadAllModels does)
@@ -683,6 +704,10 @@ function generateSettingsHash(stlPath, options) {
   // Include profile file mtimes so profile edits bust the cache
   const profileMtimes = getProfileMtimes(options);
 
+  // Include transform in hash so scaled/rotated models bust the cache
+  const t = options.transform;
+  const transformStr = t ? `${t.rx||0}:${t.ry||0}:${t.rz||0}:${t.scale||1}:${t.posX||0}:${t.posZ||0}` : 'none';
+
   const settingsStr = [
     fileInfo,
     options.printer_model || 'kobra3',
@@ -694,7 +719,8 @@ function generateSettingsHash(stlPath, options) {
     options.surface || 'standard',
     options.supports || 'none',
     options.auto_orient ? 'oriented' : 'raw',
-    profileMtimes
+    profileMtimes,
+    transformStr
   ].join('|');
 
   return crypto.createHash('sha256').update(settingsStr).digest('hex').substring(0, 16);
@@ -822,16 +848,28 @@ async function sliceSTL(stlPath, options, dbInstance) {
   // Ensure output directory exists
   fs.mkdirSync(path.dirname(gcodeAbsPath), { recursive: true });
 
-  // Auto-orient if requested
-  let orientedPath = null;
-  if (options.auto_orient) {
+  // Bake user transform (scale, rotation, position) into a temp STL if provided
+  let bakedPath = null;
+  if (options.transform && hasNonIdentityTransform(options.transform)) {
     try {
-      orientedPath = autoOrientSTL(stlPath);
+      bakedPath = bakeTransformToSTL(stlPath, options.transform, options.stl_id || 'single');
+    } catch (err) {
+      console.warn(`[Slicer] Transform bake failed, using original: ${err.message}`);
+    }
+  }
+
+  // Auto-orient only if user hasn't manually set a rotation
+  const t = options.transform;
+  const userSetRotation = t && ((t.rx || 0) !== 0 || (t.ry || 0) !== 0 || (t.rz || 0) !== 0);
+  let orientedPath = null;
+  if (options.auto_orient && !userSetRotation) {
+    try {
+      orientedPath = autoOrientSTL(bakedPath || stlPath);
     } catch (err) {
       console.warn(`[Slicer] Auto-orient failed, using original: ${err.message}`);
     }
   }
-  const slicePath = orientedPath || stlPath;
+  const slicePath = orientedPath || bakedPath || stlPath;
 
   // Calculate bed center from printer build volume (e.g. '250x250x260')
   const [bedX, bedY] = (printerInfo.build || '220x220x250').split('x').map(Number);
@@ -880,9 +918,12 @@ async function sliceSTL(stlPath, options, dbInstance) {
     });
   });
 
-  // Clean up oriented temp file
+  // Clean up temp files
   if (orientedPath) {
     try { fs.unlinkSync(orientedPath); } catch {}
+  }
+  if (bakedPath) {
+    try { fs.unlinkSync(bakedPath); } catch {}
   }
 
   // Parse output

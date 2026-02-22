@@ -257,6 +257,21 @@ class PrinterFleetDB {
     `).all();
   }
 
+  /**
+   * Mark any active jobs for a printer as completed.
+   * Called before creating a new job so stale records don't pile up.
+   */
+  completeStaleJobs(printerId) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE print_jobs SET status = 'completed', completed_at = @now
+      WHERE printer_id = @printerId AND status IN ('printing', 'paused', 'queued')
+    `).run({ printerId, now });
+    if (result.changes > 0) {
+      console.log(`[FleetDB] Auto-completed ${result.changes} stale job(s) for printer ${printerId}`);
+    }
+  }
+
   getJobHistory(printerId, limit = 20) {
     return this.db.prepare(`
       SELECT * FROM print_jobs

@@ -6440,10 +6440,10 @@
 
         <!-- Slicing Progress Overlay -->
         <div id="slicerProgressOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;">
-          <div style="background:var(--card,#1e293b);border-radius:12px;padding:32px 48px;text-align:center;max-width:400px;">
-            <div style="font-size:2rem;margin-bottom:12px;">⚙️</div>
-            <h3 id="slicerProgressTitle" style="margin:0 0 8px;">Slicing...</h3>
-            <p id="slicerProgressMsg" class="muted" style="margin:0 0 16px;font-size:0.9rem;">PrusaSlicer is processing your model on the server</p>
+          <div style="background:var(--card,#1e293b);border-radius:12px;padding:32px 48px;max-width:440px;width:100%;">
+            <h3 id="slicerProgressTitle" style="margin:0 0 20px;font-size:1.1rem;text-align:center;">Processing...</h3>
+            <div id="slicerProgressSteps" style="margin:0 0 16px;font-size:0.85rem;line-height:2;"></div>
+            <p id="slicerProgressMsg" class="muted" style="margin:0 0 12px;font-size:0.8rem;text-align:center;min-height:1.2em;"></p>
             <div style="height:4px;border-radius:2px;background:var(--bg-secondary);overflow:hidden;">
               <div id="slicerProgressBar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s;"></div>
             </div>

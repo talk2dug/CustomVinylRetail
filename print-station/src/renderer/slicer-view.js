@@ -1389,6 +1389,13 @@ async function slicerSliceAndPrint() {
     }
   }
 
+  // Include transform (scale, rotation, position) if the user modified the model
+  const savedT = slicerState.plateTransforms[item.id];
+  const transform = savedT ? {
+    rx: savedT.rx || 0, ry: savedT.ry || 0, rz: savedT.rz || 0,
+    scale: savedT.scale || 1, posX: savedT.posX || 0, posZ: savedT.posZ || 0
+  } : null;
+
   const sliceOptions = {
     stl_id: item.id,
     printer_model: printerModel || 'kobra3',
@@ -1399,7 +1406,8 @@ async function slicerSliceAndPrint() {
     texture: slicerState.settings.texture,
     surface: slicerState.settings.surface,
     supports: slicerState.settings.supports,
-    auto_orient: slicerState.settings.auto_orient
+    auto_orient: slicerState.settings.auto_orient,
+    transform: transform
   };
 
   // Read ACE slot if visible
@@ -1419,8 +1427,9 @@ async function slicerSliceAndPrint() {
   });
   if (!approved) return;
 
-  // STEP 2: Slice (blocking, with progress)
-  slicerShowProgress('Slicing...', 'PrusaSlicer is processing your model on the server');
+  // STEP 2: Slice (blocking, with step progress)
+  const sliceSteps = ['Slicing model', 'Loading G-code preview'];
+  slicerShowProgress('Slicing...', sliceSteps, 0, 'PrusaSlicer is processing your model on the server');
   let sliceResult;
   try {
     sliceResult = await printStation.slicer.slice(sliceOptions);
@@ -1431,28 +1440,26 @@ async function slicerSliceAndPrint() {
     showToast('Slicing failed: ' + err.message, 'error', 8000);
     return;
   }
-  slicerHideProgress();
 
   const cached = sliceResult.cached ? ' (cache hit)' : '';
-  showToast(`Slicing complete${cached}!`, 'success', 3000);
 
   // STEP 3: Fetch G-code text for visualization
+  slicerUpdateProgress(1, 'Downloading G-code for 3D preview...');
   let gcodeText;
   try {
-    slicerShowProgress('Loading G-code...', 'Downloading G-code for 3D preview');
     gcodeText = await printStation.slicer.fetchGcodeText(sliceResult.gcode_id);
-    slicerHideProgress();
   } catch (err) {
     slicerHideProgress();
     console.error('[Slicer] Fetch G-code text error:', err);
     showToast('Could not load G-code for preview: ' + err.message, 'error', 6000);
-    // G-code is still cached on server — refresh list and return
     try {
       const updated = await printStation.slicer.getCatalogItem(item.id);
       if (updated) { slicerState.gcodeEntries = updated.gcodeEntries || []; slicerRenderGcodeList(slicerState.gcodeEntries); }
     } catch (_) {}
     return;
   }
+  slicerHideProgress();
+  showToast(`Slicing complete${cached}!`, 'success', 3000);
 
   // STEP 4: Show G-code 3D preview
   const action = await slicerShowGcodePreview({
@@ -1464,22 +1471,32 @@ async function slicerSliceAndPrint() {
     printerName
   });
 
-  // STEP 5: Handle user decision
+  // STEP 5: Handle user decision — send to printer with step progress
   if (action === 'print') {
     if (!printerId) {
       showToast('No printer selected. G-code saved but not sent to printer.', 'warning', 6000);
     } else {
-      showToast(`Sending G-code to ${printerName}...`, 'info', 6000);
-      printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10), aceSlot)
-        .then(result => {
-          if (result.success) {
-            showToast(`Print started on ${printerName}: ${item.name || 'model'} (Job #${result.job?.id || ''})`, 'success', 6000);
-          }
-        })
-        .catch(err => {
-          console.error('[Slicer] Print error:', err);
-          showToast('Print failed: ' + err.message, 'error', 8000);
-        });
+      const printSteps = ['Downloading G-code', 'Preparing file', 'Uploading to printer', 'Starting print'];
+      slicerShowProgress('Sending to Printer...', printSteps, 0, 'Downloading G-code from server...');
+
+      // Listen for progress events from main process
+      const offProgress = printStation.slicer.onPrintProgress(({ step, detail }) => {
+        slicerUpdateProgress(step - 1, detail);
+      });
+
+      try {
+        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10), aceSlot);
+        offProgress();
+        slicerHideProgress();
+        if (result.success) {
+          showToast(`Print started on ${printerName}: ${item.name || 'model'} (Job #${result.job?.id || ''})`, 'success', 6000);
+        }
+      } catch (err) {
+        offProgress();
+        slicerHideProgress();
+        console.error('[Slicer] Print error:', err);
+        showToast('Print failed: ' + err.message, 'error', 8000);
+      }
     }
   }
 
@@ -1490,7 +1507,7 @@ async function slicerSliceAndPrint() {
   } catch (_) {}
 }
 
-function slicerPrintExistingGcode(gcodeId) {
+async function slicerPrintExistingGcode(gcodeId) {
   const printerId = document.getElementById('slicerPrinter')?.value;
   if (!printerId) return alert('Please select a printer first');
 
@@ -1500,19 +1517,26 @@ function slicerPrintExistingGcode(gcodeId) {
   const printer = slicerState.printers.find(p => String(p.id) === String(printerId));
   const printerName = printer?.name || 'printer';
 
-  // Fire-and-forget — don't block the UI
-  showToast(`Sending G-code to ${printerName}...`, 'info', 6000);
+  const printSteps = ['Downloading G-code', 'Preparing file', 'Uploading to printer', 'Starting print'];
+  slicerShowProgress('Sending to Printer...', printSteps, 0, 'Downloading G-code from server...');
 
-  printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10), aceSlot)
-    .then(result => {
-      if (result.success) {
-        showToast(`Print started on ${printerName} (Job #${result.job?.id || ''})`, 'success', 6000);
-      }
-    })
-    .catch(err => {
-      console.error('[Slicer] Print existing G-code error:', err);
-      showToast('Print failed: ' + err.message, 'error', 8000);
-    });
+  const offProgress = printStation.slicer.onPrintProgress(({ step, detail }) => {
+    slicerUpdateProgress(step - 1, detail);
+  });
+
+  try {
+    const result = await printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10), aceSlot);
+    offProgress();
+    slicerHideProgress();
+    if (result.success) {
+      showToast(`Print started on ${printerName} (Job #${result.job?.id || ''})`, 'success', 6000);
+    }
+  } catch (err) {
+    offProgress();
+    slicerHideProgress();
+    console.error('[Slicer] Print existing G-code error:', err);
+    showToast('Print failed: ' + err.message, 'error', 8000);
+  }
 }
 
 async function slicerDeleteGcodeEntry(gcodeId) {
@@ -3096,8 +3120,9 @@ async function slicerSlicePlate() {
   });
   if (!approved) return;
 
-  // STEP 2: Slice (blocking, with progress)
-  slicerShowProgress('Slicing Plate...', `PrusaSlicer is processing ${modelCount} models on the server`);
+  // STEP 2: Slice (blocking, with step progress)
+  const sliceSteps = ['Slicing plate', 'Loading G-code preview'];
+  slicerShowProgress('Slicing Plate...', sliceSteps, 0, `PrusaSlicer is processing ${modelCount} models on the server`);
   let sliceResult;
   try {
     sliceResult = await printStation.slicer.slicePlate(sliceOptions);
@@ -3109,23 +3134,22 @@ async function slicerSlicePlate() {
     showToast('Plate slicing failed: ' + msg, 'error', 8000);
     return;
   }
-  slicerHideProgress();
 
   const cached = sliceResult.cached ? ' (cache hit)' : '';
-  showToast(`Plate slicing complete${cached}!`, 'success', 3000);
 
   // STEP 3: Fetch G-code text for visualization
+  slicerUpdateProgress(1, 'Downloading G-code for 3D preview...');
   let gcodeText;
   try {
-    slicerShowProgress('Loading G-code...', 'Downloading G-code for 3D preview');
     gcodeText = await printStation.slicer.fetchGcodeText(sliceResult.gcode_id);
-    slicerHideProgress();
   } catch (err) {
     slicerHideProgress();
     console.error('[Slicer] Fetch G-code text error:', err);
     showToast('Could not load G-code for preview: ' + err.message, 'error', 6000);
     return;
   }
+  slicerHideProgress();
+  showToast(`Plate slicing complete${cached}!`, 'success', 3000);
 
   // STEP 4: Show G-code 3D preview
   const action = await slicerShowGcodePreview({
@@ -3137,23 +3161,32 @@ async function slicerSlicePlate() {
     printerName
   });
 
-  // STEP 5: Handle user decision
+  // STEP 5: Handle user decision — send to printer with step progress
   if (action === 'print') {
     if (!printerId) {
       showToast('No printer selected. G-code saved but not sent to printer.', 'warning', 6000);
     } else {
-      showToast(`Sending plate G-code to ${printerName}...`, 'info', 6000);
-      printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10), aceSlot)
-        .then(result => {
-          if (result.success) {
-            showToast(`Plate print started on ${printerName} (Job #${result.job?.id || ''})`, 'success', 6000);
-          }
-        })
-        .catch(err => {
-          console.error('[Slicer] Print error:', err);
-          const msg = err?.message || err?.error || JSON.stringify(err) || 'Unknown error';
-          showToast('Print failed: ' + msg, 'error', 8000);
-        });
+      const printSteps = ['Downloading G-code', 'Preparing file', 'Uploading to printer', 'Starting print'];
+      slicerShowProgress('Sending to Printer...', printSteps, 0, 'Downloading G-code from server...');
+
+      const offProgress = printStation.slicer.onPrintProgress(({ step, detail }) => {
+        slicerUpdateProgress(step - 1, detail);
+      });
+
+      try {
+        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10), aceSlot);
+        offProgress();
+        slicerHideProgress();
+        if (result.success) {
+          showToast(`Plate print started on ${printerName} (Job #${result.job?.id || ''})`, 'success', 6000);
+        }
+      } catch (err) {
+        offProgress();
+        slicerHideProgress();
+        console.error('[Slicer] Print error:', err);
+        const msg = err?.message || err?.error || JSON.stringify(err) || 'Unknown error';
+        showToast('Print failed: ' + msg, 'error', 8000);
+      }
     }
   }
 }
@@ -3458,21 +3491,94 @@ async function slicerShow3dViewer(stlId) {
 // PROGRESS OVERLAY
 // ============================================================================
 
-function slicerShowProgress(title, msg) {
+/**
+ * Show progress overlay with step indicators.
+ * @param {string} title - Overlay title
+ * @param {string[]} steps - Array of step labels, e.g. ['Slicing model', 'Loading preview']
+ * @param {number} [activeStep=0] - 0-based index of the current step
+ * @param {string} [detail] - Detail text below steps
+ */
+function slicerShowProgress(title, steps, activeStep, detail) {
   const overlay = document.getElementById('slicerProgressOverlay');
   const titleEl = document.getElementById('slicerProgressTitle');
+  const stepsEl = document.getElementById('slicerProgressSteps');
   const msgEl = document.getElementById('slicerProgressMsg');
   const bar = document.getElementById('slicerProgressBar');
 
   if (overlay) overlay.style.display = 'flex';
   if (titleEl) titleEl.textContent = title || 'Processing...';
-  if (msgEl) msgEl.textContent = msg || '';
+
+  // Store steps in state for updates
+  slicerState._progressSteps = steps || [];
+  slicerState._progressActive = typeof activeStep === 'number' ? activeStep : 0;
+
+  slicerRenderProgressSteps();
+
+  if (msgEl) msgEl.textContent = detail || '';
   if (bar) {
-    bar.style.width = '0%';
-    // Animate indeterminate
-    bar.style.animation = 'slicerPulse 2s infinite';
+    if (steps && steps.length > 1) {
+      const pct = Math.round(((slicerState._progressActive) / steps.length) * 100);
+      bar.style.animation = '';
+      bar.style.width = pct + '%';
+    } else {
+      bar.style.width = '0%';
+      bar.style.animation = 'slicerPulse 2s infinite';
+    }
   }
   slicerState.loading = true;
+}
+
+/**
+ * Update the active step and detail text without re-showing the overlay.
+ */
+function slicerUpdateProgress(activeStep, detail) {
+  slicerState._progressActive = activeStep;
+  slicerRenderProgressSteps();
+
+  const msgEl = document.getElementById('slicerProgressMsg');
+  if (msgEl && detail) msgEl.textContent = detail;
+
+  const bar = document.getElementById('slicerProgressBar');
+  const steps = slicerState._progressSteps || [];
+  if (bar && steps.length > 1) {
+    const pct = Math.round(((activeStep) / steps.length) * 100);
+    bar.style.animation = '';
+    bar.style.width = pct + '%';
+  }
+}
+
+/**
+ * Render the step list inside the progress overlay.
+ */
+function slicerRenderProgressSteps() {
+  const stepsEl = document.getElementById('slicerProgressSteps');
+  if (!stepsEl) return;
+  const steps = slicerState._progressSteps || [];
+  const active = slicerState._progressActive || 0;
+
+  if (!steps.length) { stepsEl.innerHTML = ''; return; }
+
+  stepsEl.innerHTML = steps.map((label, i) => {
+    if (i < active) {
+      // Completed
+      return `<div style="display:flex;align-items:center;gap:8px;color:#4ade80;">
+        <span style="font-size:1rem;width:20px;text-align:center;">&#10003;</span>
+        <span style="text-decoration:line-through;opacity:0.7;">${slicerEsc(label)}</span>
+      </div>`;
+    } else if (i === active) {
+      // Current
+      return `<div style="display:flex;align-items:center;gap:8px;color:var(--accent,#60a5fa);font-weight:600;">
+        <span style="font-size:0.7rem;width:20px;text-align:center;animation:slicerStepPulse 1.5s infinite;">&#9679;</span>
+        <span>${slicerEsc(label)}</span>
+      </div>`;
+    } else {
+      // Pending
+      return `<div style="display:flex;align-items:center;gap:8px;color:var(--text-muted,#64748b);">
+        <span style="font-size:0.7rem;width:20px;text-align:center;">&#9675;</span>
+        <span>${slicerEsc(label)}</span>
+      </div>`;
+    }
+  }).join('');
 }
 
 function slicerHideProgress() {
@@ -3481,6 +3587,8 @@ function slicerHideProgress() {
   if (overlay) overlay.style.display = 'none';
   if (bar) bar.style.animation = '';
   slicerState.loading = false;
+  slicerState._progressSteps = [];
+  slicerState._progressActive = 0;
 }
 
 // ============================================================================
