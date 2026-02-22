@@ -413,9 +413,9 @@ async function slicerUploadStl() {
     if (!filePath) return;
 
     // Simple name from filename
-    const basename = filePath.split(/[\\/]/).pop().replace(/\.stl$/i, '').replace(/[_-]/g, ' ');
+    const basename = filePath.split(/[\\/]/).pop().replace(/\.(stl|step|stp)$/i, '').replace(/[_-]/g, ' ');
 
-    slicerShowProgress('Uploading STL...', 'Sending file to server');
+    slicerShowProgress('Uploading 3D model...', 'Sending file to server');
 
     const result = await printStation.slicer.uploadStl({
       filePath,
@@ -455,17 +455,17 @@ async function slicerBulkImport() {
   console.log('[Slicer] Bulk import clicked');
   try {
     // Pick a folder
-    const dirs = await printStation.selectFolder({ title: 'Select folder with STL files' });
+    const dirs = await printStation.selectFolder({ title: 'Select folder with 3D model files' });
     console.log('[Slicer] Folder selection result:', dirs);
     if (!dirs || !dirs.length) return;
     const directory = dirs[0];
 
-    showToast('Scanning directory for STL files...', 'info', 3000);
+    showToast('Scanning directory for 3D model files...', 'info', 3000);
 
     const files = await printStation.slicer.bulkScan(directory);
 
     if (!files || !files.length) {
-      showToast('No STL files found in the selected directory.', 'warning', 4000);
+      showToast('No 3D model files found in the selected directory.', 'warning', 4000);
       return;
     }
 
@@ -484,7 +484,7 @@ function slicerCreateBulkToast(total) {
   toast.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;background:var(--card,#1e293b);border:1px solid var(--border,#334155);border-radius:10px;padding:14px 18px;min-width:300px;max-width:380px;box-shadow:0 8px 24px rgba(0,0,0,0.4);font-size:0.85rem;';
   toast.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-      <strong id="slicerBulkTitle">Uploading 0 / ${total} STL files</strong>
+      <strong id="slicerBulkTitle">Uploading 0 / ${total} files</strong>
       <span id="slicerBulkPct" style="font-size:0.8rem;color:var(--muted);">0%</span>
     </div>
     <div id="slicerBulkFile" style="color:var(--muted);font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px;">Starting...</div>
@@ -509,7 +509,7 @@ async function slicerRunBulkUploadBackground(files) {
   for (const file of files) {
     uploaded++;
     const pct = Math.round((uploaded / total) * 100);
-    if (titleEl) titleEl.textContent = `Uploading ${uploaded} / ${total} STL files`;
+    if (titleEl) titleEl.textContent = `Uploading ${uploaded} / ${total} files`;
     if (pctEl) pctEl.textContent = pct + '%';
     if (fileEl) fileEl.textContent = file.name + (file.source === 'zip' ? ` (${file.zipName})` : '');
     if (barEl) barEl.style.width = pct + '%';

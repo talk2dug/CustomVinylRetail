@@ -6578,7 +6578,7 @@ Return ONLY valid JSON, nothing else:
           await walk(full);
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
-          if (ext === '.stl') {
+          if (ext === '.stl' || ext === '.step' || ext === '.stp') {
             // Category = immediate parent folder name (unless it's the root selected folder)
             const parentDir = path.dirname(full);
             const category = parentDir === rootDir
@@ -6586,7 +6586,7 @@ Return ONLY valid JSON, nothing else:
               : path.basename(parentDir);
             stlFiles.push({
               filePath: full,
-              name: path.basename(entry.name, '.stl').replace(/[_-]/g, ' '),
+              name: path.basename(entry.name, ext).replace(/[_-]/g, ' '),
               category,
               source: 'file'
             });
@@ -6600,13 +6600,14 @@ Return ONLY valid JSON, nothing else:
               for (const zipEntry of zipDir.files) {
                 if (zipEntry.type === 'Directory') continue;
                 const zExt = path.extname(zipEntry.path).toLowerCase();
-                if (zExt !== '.stl') continue;
+                if (zExt !== '.stl' && zExt !== '.step' && zExt !== '.stp') continue;
                 if (zipEntry.path.includes('__MACOSX') || zipEntry.path.includes('/.')) continue;
                 const destName = path.basename(zipEntry.path);
                 let destPath = path.join(tempDir, destName);
                 let counter = 1;
                 while (fs.existsSync(destPath)) {
-                  destPath = path.join(tempDir, `${path.basename(destName, '.stl')}_${counter}.stl`);
+                  const destBase = path.basename(destName, zExt);
+                  destPath = path.join(tempDir, `${destBase}_${counter}${zExt}`);
                   counter++;
                 }
                 await new Promise((resolve, reject) => {
@@ -6617,7 +6618,7 @@ Return ONLY valid JSON, nothing else:
                 });
                 stlFiles.push({
                   filePath: destPath,
-                  name: path.basename(destName, '.stl').replace(/[_-]/g, ' '),
+                  name: path.basename(destName, zExt).replace(/[_-]/g, ' '),
                   category: zipCategory,
                   source: 'zip',
                   zipName: entry.name
@@ -6995,11 +6996,11 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
-  // Select STL file dialog (for upload)
+  // Select 3D model file dialog (for upload)
   ipcMain.handle('slicer:selectStlFile', async () => {
     const result = await dialog.showOpenDialog({
-      title: 'Select STL File',
-      filters: [{ name: '3D Models', extensions: ['stl', 'STL'] }],
+      title: 'Select 3D Model File',
+      filters: [{ name: '3D Models', extensions: ['stl', 'STL', 'step', 'STEP', 'stp', 'STP'] }],
       properties: ['openFile']
     });
     if (result.canceled || !result.filePaths.length) return null;

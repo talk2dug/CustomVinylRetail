@@ -549,9 +549,9 @@ const SURFACE_MAP = {
 
 const SUPPORTS_MAP = {
   none:       { enabled: false, label: 'None',       description: 'No support material' },
-  light:      { enabled: true,  threshold: 55, buildplate_only: true,  style: 'organic', contact_distance: 0.2, interface_layers: 3, bottom_interface_layers: 0, interface_spacing: 0.2, support_spacing: 2.5, label: 'Light',      description: 'Minimal organic supports, easy removal' },
-  full:       { enabled: true,  threshold: 45, buildplate_only: true,  style: 'organic', contact_distance: 0.2, interface_layers: 3, bottom_interface_layers: 0, interface_spacing: 0.2, support_spacing: 2.5, label: 'Full',       description: 'More supports for complex overhangs' },
-  everywhere: { enabled: true,  threshold: 30, buildplate_only: false, style: 'organic', contact_distance: 0.2, interface_layers: 3, bottom_interface_layers: 0, interface_spacing: 0.2, support_spacing: 2.5, label: 'Everywhere', description: 'Supports from all surfaces' }
+  light:      { enabled: true,  threshold: 55, buildplate_only: true,  style: 'organic', contact_distance: 0.3, interface_layers: 2, bottom_interface_layers: 0, interface_spacing: 0.3, support_spacing: 3.5, label: 'Light',      description: 'Minimal organic supports, easy removal' },
+  full:       { enabled: true,  threshold: 45, buildplate_only: true,  style: 'organic', contact_distance: 0.3, interface_layers: 2, bottom_interface_layers: 0, interface_spacing: 0.3, support_spacing: 3.5, label: 'Full',       description: 'More supports for complex overhangs' },
+  everywhere: { enabled: true,  threshold: 30, buildplate_only: false, style: 'organic', contact_distance: 0.3, interface_layers: 2, bottom_interface_layers: 0, interface_spacing: 0.3, support_spacing: 3.5, label: 'Everywhere', description: 'Supports from all surfaces' }
 };
 
 const MATERIALS_MAP = {
@@ -1245,6 +1245,39 @@ function getPresets() {
 }
 
 // ============================================================================
+// STEP → STL CONVERSION
+// ============================================================================
+
+/**
+ * Convert a STEP/STP file to binary STL using PrusaSlicer --export-stl.
+ * @param {string} stepPath  Absolute path to the input STEP file
+ * @param {string} stlPath   Absolute path for the output STL file
+ * @returns {Promise<void>}
+ */
+function convertStepToStl(stepPath, stlPath) {
+  return new Promise((resolve, reject) => {
+    console.log(`[Slicer] Converting STEP → STL: ${stepPath}`);
+    const proc = spawn(SLICER_PATH, [
+      '--export-stl', '--output', stlPath, stepPath
+    ], { timeout: 120000, env: { ...process.env, DISPLAY: '' } });
+
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('close', (code) => {
+      if (code === 0) {
+        console.log(`[Slicer] STEP conversion done: ${stlPath}`);
+        resolve();
+      } else {
+        reject(new Error(`PrusaSlicer STEP conversion exited ${code}: ${stderr.slice(0, 500)}`));
+      }
+    });
+    proc.on('error', (err) => {
+      reject(new Error(`Failed to spawn PrusaSlicer for STEP conversion: ${err.message}`));
+    });
+  });
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -1253,6 +1286,7 @@ module.exports = {
   sliceSTL,
   slicePlate,
   getModelInfo,
+  convertStepToStl,
   generateSettingsHash,
   generatePlateHash,
   mapOptionsToSlicerArgs,
@@ -1269,6 +1303,7 @@ module.exports = {
   MATERIALS_MAP,
   PRINTERS_MAP,
   // Paths
+  SLICER_PATH,
   STL_LIBRARY,
   STL_MODELS,
   STL_THUMBNAILS,

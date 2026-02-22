@@ -211,7 +211,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
       const fileField = files.file || files.stl;
       const file = Array.isArray(fileField) ? fileField[0] : fileField;
       if (!file) {
-        sendError(res, 400, 'No STL file uploaded');
+        sendError(res, 400, 'No 3D model file uploaded');
         return true;
       }
 
@@ -229,6 +229,31 @@ async function handleSlicerRoute(pathname, req, res, db) {
       }
 
       fs.renameSync(file.filepath, finalPath);
+
+      // Convert STEP/STP → STL using PrusaSlicer
+      const uploadExt = path.extname(finalPath).toLowerCase();
+      if (uploadExt === '.step' || uploadExt === '.stp') {
+        const stlBase = path.basename(finalPath, uploadExt);
+        let stlPath = path.join(uploadDir, stlBase + '.stl');
+        if (fs.existsSync(stlPath)) {
+          stlPath = path.join(uploadDir, `${stlBase}_${Date.now()}.stl`);
+        }
+        try {
+          await slicer.convertStepToStl(finalPath, stlPath);
+        } catch (convErr) {
+          try { fs.unlinkSync(finalPath); } catch {}
+          sendError(res, 400, `Failed to convert STEP file to STL: ${convErr.message}`);
+          return true;
+        }
+        if (!fs.existsSync(stlPath)) {
+          try { fs.unlinkSync(finalPath); } catch {}
+          sendError(res, 400, 'STEP to STL conversion produced no output');
+          return true;
+        }
+        // Remove original STEP file, use converted STL going forward
+        try { fs.unlinkSync(finalPath); } catch {}
+        finalPath = stlPath;
+      }
 
       // Parse field values
       const fieldVal = (name) => {
