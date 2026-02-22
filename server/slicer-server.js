@@ -196,7 +196,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
         multiples: false,
         keepExtensions: true,
         allowEmptyFiles: false,
-        maxFileSize: 100 * 1024 * 1024, // 100MB max for STL files
+        maxFileSize: 200 * 1024 * 1024, // 200MB max for 3D model files (STEP files can be large)
         uploadDir: uploadDir
       });
 
@@ -233,7 +233,8 @@ async function handleSlicerRoute(pathname, req, res, db) {
       // Convert STEP/STP → STL using PrusaSlicer
       const uploadExt = path.extname(finalPath).toLowerCase();
       if (uploadExt === '.step' || uploadExt === '.stp') {
-        const stlBase = path.basename(finalPath, uploadExt);
+        // Use the actual extension (preserving case) for basename stripping on Linux
+        const stlBase = path.basename(finalPath, path.extname(finalPath));
         let stlPath = path.join(uploadDir, stlBase + '.stl');
         if (fs.existsSync(stlPath)) {
           stlPath = path.join(uploadDir, `${stlBase}_${Date.now()}.stl`);
