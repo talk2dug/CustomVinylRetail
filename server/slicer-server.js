@@ -431,7 +431,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
   if (req.method === 'POST' && route === '/slice') {
     try {
       const body = await parseBody(req);
-      const { stl_id, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient, transform } = body;
+      const { stl_id, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient, copies, transform } = body;
 
       if (!stl_id) {
         sendError(res, 400, 'stl_id is required');
@@ -462,8 +462,9 @@ async function handleSlicerRoute(pathname, req, res, db) {
         texture: texture || item.default_texture || 'smooth',
         surface: surface || item.default_surface || 'standard',
         supports: supports || item.default_supports || 'none',
-        auto_orient: auto_orient === true,  // Default OFF — most models are already oriented correctly
-        transform: transform || null         // { rx, ry, rz, scale, posX, posZ } from client preview
+        auto_orient: auto_orient === true,
+        copies: parseInt(copies, 10) || 1,
+        transform: transform || null
       }, rawDb);
 
       sendJson(res, 200, result);

@@ -25,7 +25,8 @@ const slicerState = {
     surface: 'standard',
     material: 'pla',
     printer_model: '',
-    auto_orient: false
+    auto_orient: false,
+    copies: 1
   },
   printers: [],
   loading: false,
@@ -168,6 +169,23 @@ function slicerWireEvents() {
   // Slice
   if (sliceBtn) {
     sliceBtn.addEventListener('click', () => slicerSliceAndPrint());
+  }
+
+  // Copies +/- controls (single item)
+  const copiesInput = document.getElementById('slicerCopies');
+  const copiesMinus = document.getElementById('slicerCopiesMinus');
+  const copiesPlus = document.getElementById('slicerCopiesPlus');
+  if (copiesInput && copiesMinus && copiesPlus) {
+    const clampCopies = () => {
+      let v = parseInt(copiesInput.value, 10);
+      if (isNaN(v) || v < 1) v = 1;
+      if (v > 20) v = 20;
+      copiesInput.value = v;
+      slicerState.settings.copies = v;
+    };
+    copiesMinus.addEventListener('click', () => { copiesInput.value = Math.max(1, parseInt(copiesInput.value, 10) - 1); clampCopies(); });
+    copiesPlus.addEventListener('click', () => { copiesInput.value = Math.min(20, parseInt(copiesInput.value, 10) + 1); clampCopies(); });
+    copiesInput.addEventListener('change', clampCopies);
   }
 
   // Auto Orient checkbox (single item)
@@ -710,6 +728,9 @@ function slicerSyncSettingsButtons() {
   if (aoCb) aoCb.checked = settings.auto_orient;
   const plateAoCb = document.getElementById('slicerPlateAutoOrient');
   if (plateAoCb) plateAoCb.checked = settings.auto_orient;
+  // Sync copies input
+  const copiesInput = document.getElementById('slicerCopies');
+  if (copiesInput) copiesInput.value = settings.copies || 1;
 }
 
 function slicerHighlightButtons(container, activeValue) {
@@ -1396,6 +1417,7 @@ async function slicerSliceAndPrint() {
     scale: savedT.scale || 1, posX: savedT.posX || 0, posZ: savedT.posZ || 0
   } : null;
 
+  const copies = slicerState.settings.copies || 1;
   const sliceOptions = {
     stl_id: item.id,
     printer_model: printerModel || 'kobra3',
@@ -1407,6 +1429,7 @@ async function slicerSliceAndPrint() {
     surface: slicerState.settings.surface,
     supports: slicerState.settings.supports,
     auto_orient: slicerState.settings.auto_orient,
+    copies: copies > 1 ? copies : undefined,
     transform: transform
   };
 

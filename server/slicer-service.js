@@ -720,7 +720,8 @@ function generateSettingsHash(stlPath, options) {
     options.supports || 'none',
     options.auto_orient ? 'oriented' : 'raw',
     profileMtimes,
-    transformStr
+    transformStr,
+    `copies:${parseInt(options.copies, 10) || 1}`
   ].join('|');
 
   return crypto.createHash('sha256').update(settingsStr).digest('hex').substring(0, 16);
@@ -877,6 +878,7 @@ async function sliceSTL(stlPath, options, dbInstance) {
   const centerY = bedY / 2;
 
   // Build CLI args
+  const copies = Math.max(1, Math.min(20, parseInt(options.copies, 10) || 1));
   const cliArgs = [
     '--export-gcode',
     '--ensure-on-bed',
@@ -884,9 +886,11 @@ async function sliceSTL(stlPath, options, dbInstance) {
     '--load', filamentProfile,
     '--load', printerProfile,
     ...mapOptionsToSlicerArgs(options),
-    '--center', `${centerX},${centerY}`,
+    // Single copy: center on bed. Multiple copies: let PrusaSlicer auto-arrange.
+    ...(copies <= 1 ? ['--center', `${centerX},${centerY}`] : []),
     '--output', gcodeAbsPath,
-    slicePath
+    // Repeat the STL path N times for N copies
+    ...Array(copies).fill(slicePath)
   ];
 
   console.log(`[Slicer] Slicing: ${path.basename(stlPath)} → ${gcodeFilename}`);
