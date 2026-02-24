@@ -4399,6 +4399,38 @@ textarea:focus {
   font-weight: 600;
 }
 
+/* Print profile dropdown */
+.slicer-profile-select {
+  padding: 8px 12px;
+  width: 100%;
+  font-size: 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.slicer-profile-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.slicer-profile-select.profile-active {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.1);
+  font-weight: 600;
+}
+
+/* Locked settings when a profile is active */
+.slicer-btn-row.profile-locked {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.slicer-btn-row.profile-locked .slicer-opt-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .slicer-gcode-entry:hover {
   border-color: var(--accent) !important;
   background: rgba(99, 102, 241, 0.03);

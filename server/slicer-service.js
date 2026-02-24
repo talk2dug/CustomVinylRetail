@@ -588,15 +588,138 @@ const PRINT_PROFILES = {
   ultra_fine: 'print_ultra_fine.ini'
 };
 
+// Print profile presets — one-click settings bundles (overrides individual settings)
+const PRINT_PROFILE_PRESETS = {
+  custom: {
+    label: 'Custom', description: 'Set each option individually', category: 'general',
+    overrides: null
+  },
+  'multiboard-standard': {
+    label: 'Multiboard — Standard',
+    description: 'Official spec: 3 walls, 15% infill, random seam, no supports',
+    category: 'multiboard',
+    overrides: {
+      layer_height: 0.2, perimeters: 3, top_layers: 4, bottom_layers: 4,
+      infill: 15, fill_pattern: 'gyroid',
+      seam_position: 'random', ironing: false, supports: false,
+      speed_multiplier: 1.0, fuzzy_skin: 'none', brim_width: 0
+    },
+    // Closest existing preset keys for visual button highlighting
+    visual: { quality: 'standard', strength: 'normal', speed: 'normal', texture: 'smooth', surface: 'standard', supports: 'none' }
+  },
+  'multiboard-market': {
+    label: 'Multiboard — Market Grade',
+    description: 'Extra durability for retail: 4 walls, 25% infill',
+    category: 'multiboard',
+    overrides: {
+      layer_height: 0.2, perimeters: 4, top_layers: 5, bottom_layers: 5,
+      infill: 25, fill_pattern: 'gyroid',
+      seam_position: 'random', ironing: false, supports: false,
+      speed_multiplier: 1.0, fuzzy_skin: 'none', brim_width: 0
+    },
+    visual: { quality: 'standard', strength: 'strong', speed: 'normal', texture: 'smooth', surface: 'standard', supports: 'none' }
+  },
+  'multiboard-tile-stack': {
+    label: 'Multiboard — Tile Stack',
+    description: 'Batch tiles with ironing method, 5mm brim',
+    category: 'multiboard',
+    overrides: {
+      layer_height: 0.2, perimeters: 3, top_layers: 4, bottom_layers: 4,
+      infill: 15, fill_pattern: 'gyroid',
+      seam_position: 'random', ironing: true, supports: false,
+      speed_multiplier: 1.0, fuzzy_skin: 'none', brim_width: 5
+    },
+    visual: { quality: 'standard', strength: 'normal', speed: 'normal', texture: 'smooth', surface: 'polished', supports: 'none' }
+  },
+  'multiboard-heavy-duty': {
+    label: 'Multiboard — Heavy Duty',
+    description: 'Max strength: 5 walls, 40% infill, 0.15mm layers',
+    category: 'multiboard',
+    overrides: {
+      layer_height: 0.15, perimeters: 5, top_layers: 6, bottom_layers: 6,
+      infill: 40, fill_pattern: 'gyroid',
+      seam_position: 'random', ironing: false, supports: false,
+      speed_multiplier: 0.7, fuzzy_skin: 'none', brim_width: 0
+    },
+    visual: { quality: 'fine', strength: 'strong', speed: 'slow', texture: 'smooth', surface: 'standard', supports: 'none' }
+  }
+};
+
 // ============================================================================
 // SETTINGS → CLI ARGS
 // ============================================================================
 
 /**
- * Map human-readable options to PrusaSlicer CLI arguments
+ * Map human-readable options to PrusaSlicer CLI arguments.
+ * If options.profile points to a preset with overrides, those values
+ * are used directly instead of the individual preset maps.
  */
 function mapOptionsToSlicerArgs(options) {
   const args = [];
+
+  // ── Profile override: use exact values instead of preset maps ──
+  const profilePreset = PRINT_PROFILE_PRESETS[options.profile];
+  if (profilePreset && profilePreset.overrides) {
+    const o = profilePreset.overrides;
+    const material = MATERIALS_MAP[options.material] || MATERIALS_MAP.pla;
+
+    // Quality
+    args.push('--layer-height', String(o.layer_height));
+
+    // Strength
+    args.push('--fill-density', `${o.infill}%`);
+    args.push('--fill-pattern', o.fill_pattern);
+    args.push('--perimeters', String(o.perimeters));
+    args.push('--top-solid-layers', String(o.top_layers));
+    args.push('--bottom-solid-layers', String(o.bottom_layers));
+
+    // Seam position
+    args.push('--seam-position', o.seam_position);
+
+    // Brim
+    if (o.brim_width > 0) args.push('--brim-width', String(o.brim_width));
+
+    // Speed
+    const basePerimeter = 45;
+    const baseInfill = 80;
+    const baseTravel = 150;
+    const baseSolidInfill = 60;
+    const baseTopSolid = 40;
+    const mult = o.speed_multiplier;
+    const perimeterSpeed = Math.round(basePerimeter * mult);
+    args.push('--perimeter-speed', String(perimeterSpeed));
+    args.push('--external-perimeter-speed', String(Math.round(perimeterSpeed * 0.7)));
+    args.push('--infill-speed', String(Math.round(baseInfill * mult)));
+    args.push('--travel-speed', String(Math.round(baseTravel * mult)));
+    args.push('--solid-infill-speed', String(Math.round(baseSolidInfill * mult)));
+    args.push('--top-solid-infill-speed', String(Math.round(baseTopSolid * mult)));
+
+    // Texture
+    args.push('--fuzzy-skin', o.fuzzy_skin);
+
+    // Surface / Ironing
+    args.push('--top-fill-pattern', 'monotonic');
+    if (o.ironing) {
+      args.push('--ironing');
+      args.push('--ironing-type', 'top');
+      args.push('--ironing-flowrate', '15%');
+      args.push('--ironing-speed', '15');
+      args.push('--ironing-spacing', '0.1');
+    }
+
+    // Supports
+    args.push('--no-support-material');
+
+    // Material (still user-selected)
+    args.push('--temperature', String(material.hotend));
+    args.push('--bed-temperature', String(material.bed));
+    args.push('--retract-length', String(material.retract_length));
+    args.push('--retract-speed', String(material.retract_speed));
+
+    return args;
+  }
+
+  // ── Custom mode: use individual preset maps ──
   const quality = QUALITY_MAP[options.quality] || QUALITY_MAP.standard;
   const strength = STRENGTH_MAP[options.strength] || STRENGTH_MAP.normal;
   const speed = SPEED_MAP[options.speed] || SPEED_MAP.normal;
@@ -710,6 +833,7 @@ function generateSettingsHash(stlPath, options) {
 
   const settingsStr = [
     fileInfo,
+    options.profile || 'custom',
     options.printer_model || 'kobra3',
     options.material || 'pla',
     options.quality || 'standard',
@@ -744,6 +868,7 @@ function generatePlateHash(stlPaths, options) {
 
   let settingsStr = [
     fileInfos.join('+'),
+    options.profile || 'custom',
     options.printer_model || 'kobra3',
     options.material || 'pla',
     options.quality || 'standard',
@@ -1243,6 +1368,10 @@ function getPresets() {
     })),
     printers: Object.entries(PRINTERS_MAP).map(([model, v]) => ({
       model, name: v.name, build: v.build, nozzle: v.nozzle
+    })),
+    profiles: Object.entries(PRINT_PROFILE_PRESETS).map(([key, v]) => ({
+      key, label: v.label, description: v.description, category: v.category,
+      visual: v.visual || null
     }))
   };
 }

@@ -17,6 +17,7 @@ const slicerState = {
   selectedItem: null,
   gcodeEntries: [],
   settings: {
+    profile: 'custom',
     quality: 'standard',
     strength: 'normal',
     speed: 'normal',
@@ -329,6 +330,15 @@ function slicerWireEvents() {
     row.addEventListener('click', (e) => {
       const btn = e.target.closest('.slicer-opt-btn');
       if (!btn) return;
+      // If a profile is active and user clicks an individual setting, revert to Custom
+      if (slicerState.settings.profile && slicerState.settings.profile !== 'custom') {
+        const setting = row.dataset.setting;
+        const lockable = ['quality', 'strength', 'speed', 'texture', 'surface', 'supports'];
+        if (lockable.includes(setting)) {
+          slicerState.settings.profile = 'custom';
+          slicerSyncSettingsButtons();
+        }
+      }
       const setting = row.dataset.setting;
       const value = btn.dataset.value;
       if (setting && value) {
@@ -337,6 +347,39 @@ function slicerWireEvents() {
       }
     });
   });
+
+  // Profile dropdown change handler
+  ['slicerProfile', 'slicerPlateProfile'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.addEventListener('change', () => {
+      slicerApplyProfile(sel.value);
+    });
+  });
+}
+
+/**
+ * Apply a print profile — sets individual settings to match the profile's visual mapping
+ * and stores the profile key so the server uses the exact override values.
+ */
+function slicerApplyProfile(profileKey) {
+  slicerState.settings.profile = profileKey;
+  if (profileKey === 'custom' || !slicerState.presets?.profiles) {
+    slicerSyncSettingsButtons();
+    return;
+  }
+  // Find the profile's visual mapping from presets
+  const profile = slicerState.presets.profiles.find(p => p.key === profileKey);
+  if (profile && profile.visual) {
+    const v = profile.visual;
+    if (v.quality) slicerState.settings.quality = v.quality;
+    if (v.strength) slicerState.settings.strength = v.strength;
+    if (v.speed) slicerState.settings.speed = v.speed;
+    if (v.texture) slicerState.settings.texture = v.texture;
+    if (v.surface) slicerState.settings.surface = v.surface;
+    if (v.supports) slicerState.settings.supports = v.supports;
+  }
+  slicerSyncSettingsButtons();
 }
 
 // ============================================================================
@@ -934,6 +977,18 @@ function slicerBuildSettingsButtons() {
   const presets = slicerState.presets;
   if (!presets) return;
 
+  // Populate profile dropdowns
+  if (presets.profiles) {
+    ['slicerProfile', 'slicerPlateProfile'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      sel.innerHTML = presets.profiles.map(p =>
+        `<option value="${slicerEsc(p.key)}">${slicerEsc(p.label)}</option>`
+      ).join('');
+      sel.value = slicerState.settings.profile || 'custom';
+    });
+  }
+
   const groups = {
     quality: 'slicerQuality',
     strength: 'slicerStrength',
@@ -974,13 +1029,34 @@ function slicerBuildSettingsButtons() {
 
 function slicerSyncSettingsButtons() {
   const settings = slicerState.settings;
+  const isProfileActive = settings.profile && settings.profile !== 'custom';
+
+  // Sync profile dropdowns
+  ['slicerProfile', 'slicerPlateProfile'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) sel.value = settings.profile || 'custom';
+  });
+
+  // Lock/unlock individual setting rows based on profile
+  const lockableSettings = ['quality', 'strength', 'speed', 'texture', 'surface', 'supports'];
   const rows = document.querySelectorAll('.slicer-btn-row');
   rows.forEach(row => {
     const setting = row.dataset.setting;
+    if (!setting) return;
     if (setting && settings[setting]) {
       slicerHighlightButtons(row, settings[setting]);
     }
+    if (lockableSettings.includes(setting)) {
+      row.classList.toggle('profile-locked', isProfileActive);
+    }
   });
+
+  // Style the profile dropdown
+  ['slicerProfile', 'slicerPlateProfile'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) sel.classList.toggle('profile-active', isProfileActive);
+  });
+
   // Sync auto-orient checkboxes
   const aoCb = document.getElementById('slicerAutoOrient');
   if (aoCb) aoCb.checked = settings.auto_orient;
@@ -1678,6 +1754,7 @@ async function slicerSliceAndPrint() {
   const copies = slicerState.settings.copies || 1;
   const sliceOptions = {
     stl_id: item.id,
+    profile: slicerState.settings.profile || 'custom',
     printer_model: printerModel || 'kobra3',
     material: slicerState.settings.material,
     quality: slicerState.settings.quality,
@@ -3371,6 +3448,7 @@ async function slicerSlicePlate() {
   const sliceOptions = {
     stl_ids: slicerState.plateItems.map(i => i.id),
     transforms,
+    profile: slicerState.settings.profile || 'custom',
     printer_model: printerModel || 'kobra3',
     material: slicerState.settings.material,
     quality: slicerState.settings.quality,
