@@ -21652,7 +21652,7 @@ async function handleArtworkUpload(req, res) {
   let createdCategoryDir = null;
 
   try {
-    const { fields, files } = await parseMultipartForm(req);
+    const { fields, files } = await parseMultipartForm(req, { maxFiles: 20 });
     const displayName = fieldValue(fields, 'displayName') || fieldValue(fields, 'name');
     if (!displayName) {
       throw userError('Display name is required.');

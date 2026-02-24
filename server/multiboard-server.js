@@ -8,15 +8,104 @@ const path = require('path');
 const crypto = require('crypto');
 const { parseBody, sendJson, sendError } = require('./utils/http');
 
-// Load parts catalog
+// Load static parts catalog (legacy parts for backwards compatibility)
 const PARTS_PATH = path.join(__dirname, '..', 'data', 'multiboard-parts.json');
-let partsCatalog = null;
+let staticCatalog = null;
 
-function loadCatalog() {
-  if (!partsCatalog) {
-    partsCatalog = JSON.parse(fs.readFileSync(PARTS_PATH, 'utf-8'));
+function loadStaticCatalog() {
+  if (!staticCatalog) {
+    staticCatalog = JSON.parse(fs.readFileSync(PARTS_PATH, 'utf-8'));
   }
-  return partsCatalog;
+  return staticCatalog;
+}
+
+// Type-to-designer-part mapping defaults
+const MB_TYPE_DEFAULTS = {
+  tile:      { attachesTo: 'wall',      snapType: null,        providesSnaps: ['multihole', 'pegboard'], geometry: { type: 'tile', cornerRadius: 0.1 }, thickness: 0.2 },
+  hook:      { attachesTo: 'pegboard',  snapType: 'pegboard',  providesSnaps: [],                        geometry: { type: 'hook', style: 'single-peg', length: 1.5 }, thickness: 2.0 },
+  bin:       { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'bin', depth: 1.5, wallThickness: 0.08 }, thickness: 2.0 },
+  shelf:     { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'shelf', depth: 3.0 }, thickness: 2.5 },
+  peg:       { attachesTo: 'pegboard',  snapType: 'pegboard',  providesSnaps: [],                        geometry: { type: 'hook', style: 'single-peg', length: 2.0 }, thickness: 2.0 },
+  hardware:  { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'snap' }, thickness: 0.4 },
+  accessory: { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'bin', depth: 1.0, wallThickness: 0.06 }, thickness: 1.5 },
+  unknown:   { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'bin', depth: 1.5, wallThickness: 0.08 }, thickness: 2.0 },
+};
+
+// Map mb_type to designer category key
+const MB_TYPE_TO_CATEGORY = {
+  tile: 'tiles', hook: 'hooks', bin: 'bins', shelf: 'shelves',
+  peg: 'pegs', hardware: 'hardware', accessory: 'accessories', unknown: 'bins',
+};
+
+// Default pricing per MU² by type
+const MB_PRICING = {
+  tile:      { costPerMU2: 0.005, pricePerMU2: 0.02, weightPerMU2: 0.5 },
+  hook:      { costPerMU2: 0.10,  pricePerMU2: 0.50, weightPerMU2: 4.0 },
+  bin:       { costPerMU2: 0.04,  pricePerMU2: 0.15, weightPerMU2: 1.5 },
+  shelf:     { costPerMU2: 0.08,  pricePerMU2: 0.30, weightPerMU2: 3.0 },
+  peg:       { costPerMU2: 0.10,  pricePerMU2: 0.50, weightPerMU2: 4.0 },
+  hardware:  { costPerMU2: 0.05,  pricePerMU2: 0.25, weightPerMU2: 1.5 },
+  accessory: { costPerMU2: 0.04,  pricePerMU2: 0.15, weightPerMU2: 1.0 },
+  unknown:   { costPerMU2: 0.04,  pricePerMU2: 0.15, weightPerMU2: 1.5 },
+};
+
+/**
+ * Transform a stl_catalog DB row into the designer part shape.
+ */
+function catalogItemToDesignerPart(row) {
+  const defaults = MB_TYPE_DEFAULTS[row.mb_type] || MB_TYPE_DEFAULTS.unknown;
+  const pricing = MB_PRICING[row.mb_type] || MB_PRICING.unknown;
+  const w = row.mu_width || 2;
+  const h = row.mu_height || 2;
+  const muArea = w * h;
+
+  // Scale geometry depth proportionally for bins/shelves
+  const geometry = { ...defaults.geometry };
+  if (geometry.type === 'bin') {
+    geometry.depth = Math.max(1.0, h * 0.5);
+  } else if (geometry.type === 'shelf') {
+    geometry.depth = Math.max(2.0, h * 0.75);
+  } else if (geometry.type === 'hook') {
+    geometry.length = Math.max(1.0, w * 0.75);
+  }
+
+  return {
+    id: `stl-${row.id}`,
+    name: row.name,
+    category: MB_TYPE_TO_CATEGORY[row.mb_type] || 'bins',
+    gridWidth: w,
+    gridHeight: h,
+    thickness: defaults.thickness,
+    attachesTo: defaults.attachesTo,
+    snapType: defaults.snapType,
+    providesSnaps: [...defaults.providesSnaps],
+    requiresHardware: [],
+    weightGrams: Math.round(muArea * pricing.weightPerMU2),
+    costUSD: Math.round(muArea * pricing.costPerMU2 * 100) / 100,
+    priceUSD: Math.round(muArea * pricing.pricePerMU2 * 100) / 100,
+    colors: ['#333333', '#FFFFFF', '#1B5E20', '#1565C0', '#E65100'],
+    geometry,
+    hidden: false,
+    _stlCatalogId: row.id,
+    _stlPath: row.stl_path,
+    _thumbnailPath: row.thumbnail_path,
+    _mbType: row.mb_type,
+  };
+}
+
+/**
+ * Build dynamic catalog: static legacy parts + STL catalog parts
+ */
+function buildDynamicCatalog(db) {
+  const staticData = loadStaticCatalog();
+  const dbItems = db.listMultiboardParts();
+  const dynamicParts = dbItems.map(catalogItemToDesignerPart);
+
+  return {
+    parts: [...staticData.parts, ...dynamicParts],
+    serviceRates: staticData.serviceRates,
+    colorPresets: staticData.colorPresets,
+  };
 }
 
 /**
@@ -36,12 +125,13 @@ async function handleMultiboardRoute(pathname, req, res, db) {
 
   const route = pathname.slice(basePath.length) || '/';
 
-  // GET /api/multiboard/parts - Return parts catalog
+  // GET /api/multiboard/parts - Return parts catalog (static legacy + dynamic from STL catalog)
   if (req.method === 'GET' && route === '/parts') {
     try {
-      const catalog = loadCatalog();
+      const catalog = buildDynamicCatalog(db);
       sendJson(res, 200, catalog);
     } catch (err) {
+      console.error('[Multiboard] Failed to build catalog:', err);
       sendError(res, 500, 'Failed to load parts catalog');
     }
     return true;

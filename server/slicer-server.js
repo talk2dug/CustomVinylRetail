@@ -53,7 +53,8 @@ async function handleSlicerRoute(pathname, req, res, db) {
     try {
       const items = db.listStlCatalog({
         category: query.category || undefined,
-        search: query.search || undefined
+        search: query.search || undefined,
+        folder: Object.prototype.hasOwnProperty.call(query, 'folder') ? (query.folder || '') : undefined
       });
       sendJson(res, 200, { items });
     } catch (err) {
@@ -162,6 +163,72 @@ async function handleSlicerRoute(pathname, req, res, db) {
       sendJson(res, 200, result);
     } catch (err) {
       console.error('[Slicer] Bulk set category error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // GET /api/slicer/catalog/folders?category=X — list folders in a category
+  if (req.method === 'GET' && route === '/catalog/folders') {
+    try {
+      const folders = db.listStlFolders(query.category || '');
+      sendJson(res, 200, { folders });
+    } catch (err) {
+      console.error('[Slicer] List folders error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/catalog/bulk-folder — set folder for multiple items
+  if (req.method === 'POST' && route === '/catalog/bulk-folder') {
+    try {
+      const body = await parseBody(req);
+      const { stl_ids, folder } = body;
+      if (!Array.isArray(stl_ids) || stl_ids.length === 0) {
+        sendError(res, 400, 'stl_ids array is required');
+        return true;
+      }
+      const result = db.bulkSetFolder(stl_ids, folder || null);
+      sendJson(res, 200, result);
+    } catch (err) {
+      console.error('[Slicer] Bulk set folder error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // PUT /api/slicer/catalog/folders/rename — rename a folder within a category
+  if (req.method === 'PUT' && route === '/catalog/folders/rename') {
+    try {
+      const body = await parseBody(req);
+      const { category, old_name, new_name } = body;
+      if (!category || !old_name || !new_name) {
+        sendError(res, 400, 'category, old_name, and new_name are required');
+        return true;
+      }
+      const result = db.renameStlFolder(category, old_name.trim(), new_name.trim());
+      sendJson(res, 200, result);
+    } catch (err) {
+      console.error('[Slicer] Rename folder error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/catalog/folders/remove — delete folder (items move to root)
+  if (req.method === 'POST' && route === '/catalog/folders/remove') {
+    try {
+      const body = await parseBody(req);
+      const { category, folder } = body;
+      if (!category || !folder) {
+        sendError(res, 400, 'category and folder are required');
+        return true;
+      }
+      const result = db.deleteStlFolder(category, folder);
+      sendJson(res, 200, result);
+    } catch (err) {
+      console.error('[Slicer] Remove folder error:', err);
       sendError(res, 500, err.message);
     }
     return true;

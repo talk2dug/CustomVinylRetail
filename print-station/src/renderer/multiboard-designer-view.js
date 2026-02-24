@@ -114,10 +114,13 @@ const MB_COLORS = {
 
 // Part category display order and labels
 const MB_CATEGORIES = [
-  { key: 'tiles', label: 'Tiles' },
-  { key: 'hooks', label: 'Hooks' },
-  { key: 'bins', label: 'Bins' },
-  { key: 'shelves', label: 'Shelves' }
+  { key: 'tiles',       label: 'Tiles' },
+  { key: 'hooks',       label: 'Hooks' },
+  { key: 'bins',        label: 'Bins & Trays' },
+  { key: 'shelves',     label: 'Shelves' },
+  { key: 'pegs',        label: 'Pegs' },
+  { key: 'accessories', label: 'Accessories' },
+  { key: 'hardware',    label: 'Hardware' },
 ];
 
 // =============== PROCEDURAL TILE TEXTURE ===============

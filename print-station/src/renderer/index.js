@@ -1560,8 +1560,9 @@ function showToast(message, variant = 'info', timeout = 4000) {
     }, 300);
   }, timeout);
 }
-// Export showToast globally for use in other scripts
+// Export showToast and showPrompt globally for use in other scripts
 window.showToast = showToast;
+window.showPrompt = showPrompt;
 
 function setConnectionStatus(connected, message) {
   elements.connectionStatus.textContent = message;
@@ -12174,6 +12175,8 @@ async function refreshQueue({ silent = false } = {}) {
       showToast(error.message || 'Unable to load queue.', 'error', 6000);
     }
     setConnectionStatus(false, 'Connection failed');
+    // Start background recovery monitor if not already running
+    if (typeof startConnectionMonitor === 'function') startConnectionMonitor();
   } finally {
     state.pollInFlight = false;
   }
@@ -13281,11 +13284,7 @@ async function initUploadForm() {
       elements.uploadStatus.className = 'status-bar error';
       return;
     }
-    if (!state.upload.previewPath) {
-      elements.uploadStatus.textContent = 'Choose a preview image before uploading.';
-      elements.uploadStatus.className = 'status-bar error';
-      return;
-    }
+    // Preview is optional — if an SVG source is provided, a PNG preview is auto-generated
     if (isApparel && !apparelType) {
       elements.uploadStatus.textContent = 'Choose an apparel style before uploading.';
       elements.uploadStatus.className = 'status-bar error';
@@ -13375,7 +13374,7 @@ async function initUploadForm() {
     try {
       elements.uploadStatus.textContent = 'Uploading artwork…';
       elements.uploadStatus.className = 'status-bar muted';
-      await printStation.uploadArtwork({
+      const result = await printStation.uploadArtwork({
         previewPath: state.upload.previewPath,
         sourcePaths: state.upload.sourcePaths,
         categoryMode,
@@ -13387,9 +13386,13 @@ async function initUploadForm() {
           ? { enabled: true, productType: apparelType, categoryName: apparelCategoryName }
           : { enabled: false }
       });
-      elements.uploadStatus.textContent = 'Artwork uploaded successfully.';
+      const uploadedCount = result?.uploaded || 1;
+      const msg = uploadedCount > 1
+        ? `${uploadedCount} artworks uploaded successfully.`
+        : 'Artwork uploaded successfully.';
+      elements.uploadStatus.textContent = msg;
       elements.uploadStatus.className = 'status-bar success';
-      showToast('Artwork uploaded and catalog updated.', 'success');
+      showToast(msg, 'success');
       resetUploadForm();
       await loadCatalog({ silent: true });
       ensureApparelCategoriesLoaded({ force: true });
@@ -16406,9 +16409,9 @@ ${targeting.psychographics.lifestyle}
     }
   });
 
-  try {
+  // --- Connection initialization with retry ---
+  async function initServerConnection() {
     state.config = await printStation.getConfig();
-    // Expose config on window for sync functions in other modules
     window.printStationConfig = state.config;
     populateSettingsForm();
     schedulePolling();
@@ -16420,10 +16423,52 @@ ${targeting.psychographics.lifestyle}
     await loadInventory(state.inventoryMaterial, { silent: true });
     refreshCampaignList();
     setConnectionStatus(true, `Connected to ${state.config.serverBaseUrl}`);
-  } catch (error) {
-    setConnectionStatus(false, 'Connection required');
-    showToast(error.message || 'Configure settings to connect to the server.', 'warning', 6000);
   }
+
+  async function connectWithRetry(maxAttempts = 5) {
+    const delays = [0, 2000, 4000, 8000, 15000]; // escalating backoff
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        setConnectionStatus(false, `Reconnecting... (attempt ${attempt + 1}/${maxAttempts})`);
+        await new Promise(r => setTimeout(r, delays[Math.min(attempt, delays.length - 1)]));
+      }
+      try {
+        await initServerConnection();
+        return; // success
+      } catch (error) {
+        console.warn(`[Connection] Attempt ${attempt + 1} failed:`, error.message);
+        if (attempt === maxAttempts - 1) {
+          setConnectionStatus(false, 'Connection failed — retrying in background');
+          showToast('Could not connect to server. Will keep retrying.', 'warning', 6000);
+        }
+      }
+    }
+    // Keep trying in background every 30s
+    startConnectionMonitor();
+  }
+
+  // Heartbeat: periodically verify the server is still reachable
+  let connectionMonitorTimer = null;
+  function startConnectionMonitor() {
+    if (connectionMonitorTimer) return;
+    connectionMonitorTimer = setInterval(async () => {
+      try {
+        await printStation.testInternalApi();
+        // Server is back — reinitialize
+        setConnectionStatus(true, `Connected to ${state.config?.serverBaseUrl || 'server'}`);
+        clearInterval(connectionMonitorTimer);
+        connectionMonitorTimer = null;
+        // Refresh data now that we're connected
+        refreshQueue({ silent: true });
+        refreshQuotes({ silent: true });
+        loadCatalog({ silent: true });
+      } catch (_) {
+        setConnectionStatus(false, 'Server unreachable — retrying...');
+      }
+    }, 30000);
+  }
+
+  await connectWithRetry();
   }
   
   // Marketing wiring

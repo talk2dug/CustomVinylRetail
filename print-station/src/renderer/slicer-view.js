@@ -34,6 +34,8 @@ const slicerState = {
   thumbDiskCache: {},  // stlId -> file:// URL (populated from disk cache)
   stlBytesCache: {},   // stlId -> ArrayBuffer
   selectedPreview: null, // { renderer, scene, camera, controls, animId, resizeObs }
+  folders: [],           // folder names for current category
+  selectedFolder: null,  // currently open folder name (null = root view)
   plateMode: false,      // whether multi-select plate mode is active
   plateItems: [],        // array of catalog item objects on the plate
   platePreview: null,    // { renderer, scene, camera, controls, animId, resizeObs, meshes[], selectedMeshIndex, ... }
@@ -119,7 +121,11 @@ function slicerWireEvents() {
 
   // Category filter
   if (categoryFilter) {
-    categoryFilter.addEventListener('change', () => slicerLoadCatalog());
+    categoryFilter.addEventListener('change', () => {
+      slicerState.selectedFolder = null;
+      slicerLoadFolders();
+      slicerLoadCatalog();
+    });
   }
 
   // Upload STL
@@ -232,6 +238,19 @@ function slicerWireEvents() {
         }
       }
     });
+
+    // Drag-and-drop for catalog cards → folder tiles
+    grid.addEventListener('dragstart', (e) => {
+      const card = e.target.closest('[data-stl-id]');
+      if (!card) return;
+      e.dataTransfer.setData('text/x-stl-id', card.dataset.stlId);
+      e.dataTransfer.effectAllowed = 'move';
+      card.style.opacity = '0.5';
+    });
+    grid.addEventListener('dragend', (e) => {
+      const card = e.target.closest('[data-stl-id]');
+      if (card) card.style.opacity = '';
+    });
   }
 
   // Build Plate toggle button
@@ -332,13 +351,20 @@ async function slicerLoadCatalog() {
   if (!category && !search) {
     slicerState.catalog = [];
     await slicerRenderCatalog();
+    slicerRenderFolderBar();
     return;
   }
 
   try {
-    const result = await printStation.slicer.listCatalog({ search, category });
+    const query = { search, category };
+    // Filter by folder: inside a folder shows that folder's items, root shows only unfiled items
+    if (category && !search) {
+      query.folder = slicerState.selectedFolder || '';
+    }
+    const result = await printStation.slicer.listCatalog(query);
     slicerState.catalog = result.items || [];
     await slicerRenderCatalog();
+    slicerRenderFolderBar();
   } catch (err) {
     console.error('[Slicer] Load catalog error:', err);
   }
@@ -358,6 +384,192 @@ async function slicerLoadCategories() {
     }
   } catch (err) {
     console.warn('[Slicer] Load categories error:', err);
+  }
+}
+
+async function slicerLoadFolders() {
+  const category = document.getElementById('slicerCategoryFilter')?.value || '';
+  if (!category) {
+    slicerState.folders = [];
+    slicerState.selectedFolder = null;
+    slicerRenderFolderBar();
+    return;
+  }
+  try {
+    const result = await printStation.slicer.listFolders(category);
+    slicerState.folders = result.folders || [];
+  } catch (err) {
+    console.warn('[Slicer] Load folders error:', err);
+    slicerState.folders = [];
+  }
+  slicerRenderFolderBar();
+}
+
+// ============================================================================
+// FOLDER BAR
+// ============================================================================
+
+function slicerRenderFolderBar() {
+  const bar = document.getElementById('slicerFolderBar');
+  if (!bar) return;
+
+  const category = document.getElementById('slicerCategoryFilter')?.value || '';
+  if (!category) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  bar.style.display = '';
+  const inFolder = slicerState.selectedFolder;
+  const folders = slicerState.folders || [];
+
+  const breadcrumb = inFolder
+    ? `<span class="slicer-folder-crumb" data-action="root">${slicerEsc(category)}</span>
+       <span style="margin:0 6px;color:var(--muted);">/</span>
+       <span style="font-weight:600;">${slicerEsc(inFolder)}</span>`
+    : `<span style="font-weight:600;">${slicerEsc(category)}</span>`;
+
+  let folderTilesHtml = '';
+  const visibleFolders = inFolder ? folders.filter(f => f !== inFolder) : folders;
+  if (visibleFolders.length > 0) {
+    folderTilesHtml = `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+      ${visibleFolders.map(f => `
+        <div class="slicer-folder-tile" data-folder="${slicerEsc(f)}"
+          style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--border);
+          border-radius:8px;background:var(--bg-secondary,#1e293b);cursor:pointer;min-width:120px;transition:all 0.15s;">
+          <span style="font-size:1.3rem;">&#128193;</span>
+          <span style="font-weight:500;font-size:0.9rem;">${slicerEsc(f)}</span>
+        </div>
+      `).join('')}
+    </div>`;
+  }
+
+  bar.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <div style="font-size:0.9rem;">${breadcrumb}</div>
+      <div style="display:flex;gap:6px;">
+        ${inFolder ? `<button class="slicer-folder-action secondary" data-action="back" style="padding:4px 12px;font-size:0.8rem;">&larr; Back</button>` : ''}
+        <button class="slicer-folder-action secondary" data-action="new" style="padding:4px 12px;font-size:0.8rem;">+ New Folder</button>
+        ${inFolder ? `<button class="slicer-folder-action secondary" data-action="rename" style="padding:4px 12px;font-size:0.8rem;">Rename</button>
+        <button class="slicer-folder-action secondary" data-action="delete" style="padding:4px 12px;font-size:0.8rem;color:#ef4444;">Delete Folder</button>` : ''}
+      </div>
+    </div>
+    ${folderTilesHtml}
+  `;
+
+  // Wire folder tile clicks + drop targets
+  bar.querySelectorAll('.slicer-folder-tile').forEach(tile => {
+    tile.addEventListener('click', () => {
+      slicerState.selectedFolder = tile.dataset.folder;
+      slicerLoadCatalog();
+    });
+    tile.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      tile.classList.add('slicer-folder-drag-over');
+    });
+    tile.addEventListener('dragleave', () => {
+      tile.classList.remove('slicer-folder-drag-over');
+    });
+    tile.addEventListener('drop', (e) => {
+      e.preventDefault();
+      tile.classList.remove('slicer-folder-drag-over');
+      const stlId = e.dataTransfer.getData('text/x-stl-id');
+      if (stlId) slicerMoveItemToFolder(parseInt(stlId, 10), tile.dataset.folder);
+    });
+  });
+
+  // Breadcrumb root click + drop target
+  const rootCrumb = bar.querySelector('[data-action="root"]');
+  if (rootCrumb) {
+    rootCrumb.addEventListener('click', () => {
+      slicerState.selectedFolder = null;
+      slicerLoadCatalog();
+    });
+    rootCrumb.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      rootCrumb.style.textDecoration = 'underline';
+    });
+    rootCrumb.addEventListener('dragleave', () => {
+      rootCrumb.style.textDecoration = '';
+    });
+    rootCrumb.addEventListener('drop', (e) => {
+      e.preventDefault();
+      rootCrumb.style.textDecoration = '';
+      const stlId = e.dataTransfer.getData('text/x-stl-id');
+      if (stlId) slicerMoveItemToFolder(parseInt(stlId, 10), null);
+    });
+  }
+
+  // Action buttons
+  bar.querySelectorAll('.slicer-folder-action').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      if (action === 'back') { slicerState.selectedFolder = null; slicerLoadCatalog(); }
+      if (action === 'new') slicerCreateFolder();
+      if (action === 'rename') slicerRenameFolderPrompt();
+      if (action === 'delete') slicerDeleteFolderPrompt();
+    });
+  });
+}
+
+async function slicerCreateFolder() {
+  const name = typeof window.showPrompt === 'function'
+    ? await window.showPrompt('New folder name:')
+    : prompt('New folder name:');
+  if (!name || !name.trim()) return;
+  const trimmed = name.trim();
+  if (!slicerState.folders.includes(trimmed)) {
+    slicerState.folders.push(trimmed);
+    slicerState.folders.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
+  slicerState.selectedFolder = trimmed;
+  slicerRenderFolderBar();
+  await slicerLoadCatalog();
+  if (typeof showToast === 'function') showToast(`Created folder "${trimmed}"`, 'success', 2000);
+}
+
+async function slicerRenameFolderPrompt() {
+  const category = document.getElementById('slicerCategoryFilter')?.value || '';
+  if (!category || !slicerState.selectedFolder) return;
+  const newName = typeof window.showPrompt === 'function'
+    ? await window.showPrompt(`Rename folder "${slicerState.selectedFolder}" to:`, slicerState.selectedFolder)
+    : prompt(`Rename folder "${slicerState.selectedFolder}" to:`, slicerState.selectedFolder);
+  if (!newName || !newName.trim() || newName.trim() === slicerState.selectedFolder) return;
+  try {
+    await printStation.slicer.renameFolder(category, slicerState.selectedFolder, newName.trim());
+    if (typeof showToast === 'function') showToast(`Renamed folder to "${newName.trim()}"`, 'success', 2000);
+    slicerState.selectedFolder = newName.trim();
+    await slicerLoadFolders();
+    await slicerLoadCatalog();
+  } catch (err) {
+    alert('Rename failed: ' + err.message);
+  }
+}
+
+async function slicerDeleteFolderPrompt() {
+  const category = document.getElementById('slicerCategoryFilter')?.value || '';
+  if (!category || !slicerState.selectedFolder) return;
+  if (!confirm(`Delete folder "${slicerState.selectedFolder}"? Items will be moved to the category root.`)) return;
+  try {
+    await printStation.slicer.removeFolder(category, slicerState.selectedFolder);
+    if (typeof showToast === 'function') showToast(`Deleted folder "${slicerState.selectedFolder}"`, 'success', 2000);
+    slicerState.selectedFolder = null;
+    await slicerLoadFolders();
+    await slicerLoadCatalog();
+  } catch (err) {
+    alert('Delete failed: ' + err.message);
+  }
+}
+
+async function slicerMoveItemToFolder(stlId, folderName) {
+  try {
+    await printStation.slicer.updateCatalogItem(stlId, { folder: folderName || null });
+    if (typeof showToast === 'function') showToast(`Moved to "${folderName || 'root'}"`, 'success', 2000);
+    await slicerLoadFolders();
+    await slicerLoadCatalog();
+  } catch (err) {
+    console.error('[Slicer] Move to folder error:', err);
+    alert('Move failed: ' + err.message);
   }
 }
 
@@ -398,7 +610,7 @@ async function slicerRenderCatalog() {
     const selected = isPlate && plateIds.has(item.id);
     const checkHtml = isPlate ? `<div class="slicer-plate-check">${selected ? '✓' : ''}</div>` : '';
     return `
-    <div class="inventory-card slicer-catalog-card${selected ? ' slicer-plate-selected' : ''}" data-stl-id="${item.id}" style="cursor:pointer;padding:16px;position:relative;">
+    <div class="inventory-card slicer-catalog-card${selected ? ' slicer-plate-selected' : ''}" data-stl-id="${item.id}" draggable="true" style="cursor:pointer;padding:16px;position:relative;">
       ${checkHtml}
       <button class="slicer-catalog-delete" data-stl-id="${item.id}" title="Delete"
         style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:1rem;padding:4px 8px;opacity:0.6;">&times;</button>
@@ -444,6 +656,13 @@ async function slicerUploadStl() {
     slicerHideProgress();
 
     if (result.item) {
+      // Auto-assign to current folder if inside one
+      if (slicerState.selectedFolder && result.item.id) {
+        try {
+          await printStation.slicer.updateCatalogItem(result.item.id, { folder: slicerState.selectedFolder });
+        } catch (_) {}
+      }
+      await slicerLoadFolders();
       await slicerLoadCatalog();
       await slicerLoadCategories();
     }

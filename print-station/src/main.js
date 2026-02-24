@@ -920,11 +920,24 @@ async function httpRequest(pathname, options = {}) {
     }
   }
 
-  const response = await doFetch(url, {
-    method,
-    headers: requestHeaders,
-    body: payload
-  });
+  const timeoutMs = options.timeout || 15000; // 15 second default timeout
+  let response;
+  try {
+    response = await doFetch(url, {
+      method,
+      headers: requestHeaders,
+      body: payload,
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch (fetchErr) {
+    if (fetchErr.name === 'TimeoutError' || fetchErr.code === 'ABORT_ERR') {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s: ${method} ${pathname}`);
+    }
+    if (fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND' || fetchErr.cause?.code === 'ECONNREFUSED') {
+      throw new Error(`Server unreachable: ${fetchErr.message}`);
+    }
+    throw fetchErr;
+  }
 
   // Debug logging for campaign update responses
   if (pathname.includes('/campaigns/')) {
@@ -1415,123 +1428,152 @@ async function uploadArtwork(params) {
     apparelCategory
   } = params || {};
 
+  // Bulk SVG mode: no preview + multiple SVG sources → each SVG becomes its own artwork
+  const svgSources = sourcePaths.filter(p => path.extname(p).toLowerCase() === '.svg');
+  const nonSvgSources = sourcePaths.filter(p => path.extname(p).toLowerCase() !== '.svg');
+
+  if (!previewPath && svgSources.length > 0) {
+    const results = [];
+    for (const svgPath of svgSources) {
+      const svgName = path.basename(svgPath, path.extname(svgPath));
+      const itemName = svgSources.length === 1 && displayName ? displayName : svgName;
+      const result = await uploadSingleArtwork({
+        svgPath,
+        sourcePaths: [svgPath, ...nonSvgSources],
+        categoryMode,
+        existingCategory,
+        newCategoryName,
+        displayName: itemName,
+        apparel,
+        apparelCategory
+      });
+      results.push(result);
+    }
+    return results.length === 1 ? results[0] : { success: true, uploaded: results.length };
+  }
+
   if (!previewPath) {
-    throw new Error('Select a preview image before uploading.');
+    throw new Error('Select a preview image or include SVG source files.');
+  }
+
+  // Standard upload with preview image
+  return uploadSingleArtwork({
+    previewPath,
+    sourcePaths,
+    categoryMode,
+    existingCategory,
+    newCategoryName,
+    displayName,
+    apparel,
+    apparelCategory
+  });
+}
+
+async function uploadSingleArtwork(params) {
+  const {
+    previewPath,
+    svgPath,
+    sourcePaths = [],
+    categoryMode,
+    existingCategory,
+    newCategoryName,
+    displayName,
+    apparel,
+    apparelCategory
+  } = params || {};
+
+  // Convert SVG to PNG for preview if needed
+  let effectivePreviewPath = previewPath;
+  let svgTempPng = null;
+  if (!previewPath && svgPath) {
+    const tempDir = path.join(app.getPath('temp'), 'print-station-assets');
+    try { fs.mkdirSync(tempDir, { recursive: true }); } catch (_) {}
+    svgTempPng = path.join(tempDir, `svg-preview-${Date.now()}.png`);
+    await sharp(svgPath).png().toFile(svgTempPng);
+    effectivePreviewPath = svgTempPng;
   }
 
   const settings = ensureServerConfigured();
   const url = new URL('/api/admin/artwork', settings.serverBaseUrl);
-  const form = new FormData();
-
-  form.append('displayName', displayName || '');
-  form.append('categoryMode', categoryMode || 'existing');
-  if (categoryMode === 'existing' && existingCategory) {
-    form.append('category', existingCategory);
-  }
-  if (categoryMode === 'new' && newCategoryName) {
-    form.append('newCategoryName', newCategoryName);
-  }
-
-  if (apparel?.enabled) {
-    form.append('apparelEnabled', 'true');
-    if (apparel.productType) {
-      form.append('apparelProductType', String(apparel.productType));
-    }
-    if (apparel.categoryName) {
-      form.append('apparelCategory', String(apparel.categoryName));
-    }
-  }
-
-  if (apparelCategory && !apparel?.categoryName) {
-    form.append('apparelCategory', String(apparelCategory));
-  }
-
-  form.append('preview', fs.createReadStream(previewPath));
-  sourcePaths.filter(Boolean).forEach((filePath) => {
-    form.append('sources', fs.createReadStream(filePath));
-  });
-
-  const headers = form.getHeaders();
-  if (settings.apiKey) {
-    headers['X-API-Key'] = settings.apiKey;
-  }
-
   const { fetch: doFetch } = await ensureFetch();
-
-  // Retry logic for connection resets during bulk uploads
   const maxRetries = 3;
   let lastError = null;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      // Recreate form for retry (streams can only be read once)
-      const retryForm = new FormData();
-      retryForm.append('displayName', displayName || '');
-      retryForm.append('categoryMode', categoryMode || 'existing');
-      if (categoryMode === 'existing' && existingCategory) {
-        retryForm.append('category', existingCategory);
-      }
-      if (categoryMode === 'new' && newCategoryName) {
-        retryForm.append('newCategoryName', newCategoryName);
-      }
-      if (apparel?.enabled) {
-        retryForm.append('apparelEnabled', 'true');
-        if (apparel.productType) retryForm.append('apparelProductType', String(apparel.productType));
-        if (apparel.categoryName) retryForm.append('apparelCategory', String(apparel.categoryName));
-      }
-      if (apparelCategory && !apparel?.categoryName) {
-        retryForm.append('apparelCategory', String(apparelCategory));
-      }
-      retryForm.append('preview', fs.createReadStream(previewPath));
-      sourcePaths.filter(Boolean).forEach((filePath) => {
-        retryForm.append('sources', fs.createReadStream(filePath));
-      });
-
-      const retryHeaders = retryForm.getHeaders();
-      if (settings.apiKey) {
-        retryHeaders['X-API-Key'] = settings.apiKey;
-      }
-
-      const response = await doFetch(url, {
-        method: 'POST',
-        body: retryForm,
-        headers: retryHeaders
-      });
-
-      const contentType = response.headers.get('content-type') || '';
-      if (!response.ok) {
-        let detail;
-        if (contentType.includes('application/json')) {
-          detail = await response.json().catch(() => null);
-        } else {
-          detail = await response.text();
+  try {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const form = new FormData();
+        form.append('displayName', displayName || '');
+        form.append('categoryMode', categoryMode || 'existing');
+        if (categoryMode === 'existing' && existingCategory) {
+          form.append('category', existingCategory);
         }
-        const message =
-          detail && typeof detail === 'object' && detail.error
-            ? detail.error
-            : detail || `Upload failed with status ${response.status}`;
-        const error = new Error(message);
-        error.status = response.status;
-        error.detail = detail;
-        throw error;
-      }
-      return response.json();
-    } catch (err) {
-      lastError = err;
-      const isRetryable = err.code === 'ECONNRESET' || err.code === 'EPIPE' ||
-                          err.code === 'ETIMEDOUT' || err.message?.includes('socket hang up') ||
-                          err.message?.includes('connection reset');
+        if (categoryMode === 'new' && newCategoryName) {
+          form.append('newCategoryName', newCategoryName);
+        }
+        if (apparel?.enabled) {
+          form.append('apparelEnabled', 'true');
+          if (apparel.productType) form.append('apparelProductType', String(apparel.productType));
+          if (apparel.categoryName) form.append('apparelCategory', String(apparel.categoryName));
+        }
+        if (apparelCategory && !apparel?.categoryName) {
+          form.append('apparelCategory', String(apparelCategory));
+        }
+        form.append('preview', fs.createReadStream(effectivePreviewPath));
+        sourcePaths.filter(Boolean).forEach((filePath) => {
+          form.append('sources', fs.createReadStream(filePath));
+        });
 
-      if (isRetryable && attempt < maxRetries - 1) {
-        const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-        console.log(`[Upload] Connection error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise(r => setTimeout(r, delay));
-        continue;
+        const headers = form.getHeaders();
+        if (settings.apiKey) {
+          headers['X-API-Key'] = settings.apiKey;
+        }
+
+        const response = await doFetch(url, {
+          method: 'POST',
+          body: form,
+          headers
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!response.ok) {
+          let detail;
+          if (contentType.includes('application/json')) {
+            detail = await response.json().catch(() => null);
+          } else {
+            detail = await response.text();
+          }
+          const message =
+            detail && typeof detail === 'object' && detail.error
+              ? detail.error
+              : detail || `Upload failed with status ${response.status}`;
+          const error = new Error(message);
+          error.status = response.status;
+          error.detail = detail;
+          throw error;
+        }
+        return response.json();
+      } catch (err) {
+        lastError = err;
+        const isRetryable = err.code === 'ECONNRESET' || err.code === 'EPIPE' ||
+                            err.code === 'ETIMEDOUT' || err.message?.includes('socket hang up') ||
+                            err.message?.includes('connection reset');
+
+        if (isRetryable && attempt < maxRetries - 1) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.log(`[Upload] Connection error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        throw err;
       }
-      throw err;
+    }
+    throw lastError;
+  } finally {
+    if (svgTempPng) {
+      try { fs.unlinkSync(svgTempPng); } catch (_) {}
     }
   }
-  throw lastError;
 }
 
 function createWindow() {
@@ -4779,6 +4821,7 @@ Return ONLY valid JSON, nothing else:
     // Send to server for tile generation
     return httpRequest('/api/custom-art/tiles/generate', {
       method: 'POST',
+      timeout: 60000,
       body: {
         artworkId,
         cols,
@@ -5225,40 +5268,40 @@ Return ONLY valid JSON, nothing else:
   );
 
   ipcMain.handle('gdrive:sync-custom-art', (_event, fileIds) =>
-    httpRequest('/api/gdrive/sync-custom-art', { method: 'POST', body: { fileIds } })
+    httpRequest('/api/gdrive/sync-custom-art', { method: 'POST', timeout: 120000, body: { fileIds } })
   );
 
   ipcMain.handle('gdrive:sync-catalog', (_event, items) =>
-    httpRequest('/api/gdrive/sync-catalog', { method: 'POST', body: { items } })
+    httpRequest('/api/gdrive/sync-catalog', { method: 'POST', timeout: 120000, body: { items } })
   );
 
   ipcMain.handle('gdrive:sync-mockups', (_event, filenames) =>
-    httpRequest('/api/gdrive/sync-mockups', { method: 'POST', body: { filenames } })
+    httpRequest('/api/gdrive/sync-mockups', { method: 'POST', timeout: 120000, body: { filenames } })
   );
 
   ipcMain.handle('gdrive:sync-rooms', (_event, filenames) =>
-    httpRequest('/api/gdrive/sync-rooms', { method: 'POST', body: { filenames } })
+    httpRequest('/api/gdrive/sync-rooms', { method: 'POST', timeout: 120000, body: { filenames } })
   );
 
   ipcMain.handle('gdrive:sync', (_event, files) =>
-    httpRequest('/api/gdrive/sync', { method: 'POST', body: { files } })
+    httpRequest('/api/gdrive/sync', { method: 'POST', timeout: 120000, body: { files } })
   );
 
   // Google Drive Pull (reverse sync) handlers
   ipcMain.handle('gdrive:pull-collection', (_event, categories) =>
-    httpRequest('/api/gdrive/pull-collection', { method: 'POST', body: { categories: categories || [] } })
+    httpRequest('/api/gdrive/pull-collection', { method: 'POST', timeout: 120000, body: { categories: categories || [] } })
   );
 
   ipcMain.handle('gdrive:pull-custom-art', () =>
-    httpRequest('/api/gdrive/pull-custom-art', { method: 'POST', body: {} })
+    httpRequest('/api/gdrive/pull-custom-art', { method: 'POST', timeout: 120000, body: {} })
   );
 
   ipcMain.handle('gdrive:pull-mockups', () =>
-    httpRequest('/api/gdrive/pull-mockups', { method: 'POST', body: {} })
+    httpRequest('/api/gdrive/pull-mockups', { method: 'POST', timeout: 120000, body: {} })
   );
 
   ipcMain.handle('gdrive:pull-rooms', () =>
-    httpRequest('/api/gdrive/pull-rooms', { method: 'POST', body: {} })
+    httpRequest('/api/gdrive/pull-rooms', { method: 'POST', timeout: 120000, body: {} })
   );
 
   // Silhouette Cameo local handlers - uses sendto_silhouette.py script
@@ -5560,7 +5603,7 @@ Return ONLY valid JSON, nothing else:
   // Human Models - AI Metadata Analysis
   ipcMain.handle('human-models:analyze-metadata', async (_event, modelId) => {
     try {
-      const result = await httpRequest(`/api/human-models/${encodeURIComponent(modelId)}/analyze`, { method: 'POST' });
+      const result = await httpRequest(`/api/human-models/${encodeURIComponent(modelId)}/analyze`, { method: 'POST', timeout: 60000 });
       return result;
     } catch (e) {
       console.error('[Human Models AI] Analyze error:', e);
@@ -5574,6 +5617,7 @@ Return ONLY valid JSON, nothing else:
       console.log(`[Human Models Recolor] Request: ${modelId} -> ${color} (${garmentType || 't-shirt'})`);
       const result = await httpRequest(`/api/human-models/${encodeURIComponent(modelId)}/recolor`, {
         method: 'POST',
+        timeout: 60000,
         body: { color, garmentType: garmentType || 't-shirt', force: !!force }
       });
       return result;
@@ -6435,7 +6479,19 @@ Return ONLY valid JSON, nothing else:
     if (settings.apiKey) {
       headers['X-API-Key'] = settings.apiKey;
     }
-    const resp = await doFetch(url, { ...options, headers });
+    const timeoutMs = options.timeout || 15000;
+    let resp;
+    try {
+      resp = await doFetch(url, { ...options, headers, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (fetchErr) {
+      if (fetchErr.name === 'TimeoutError' || fetchErr.code === 'ABORT_ERR') {
+        throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s: ${endpoint}`);
+      }
+      if (fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND' || fetchErr.cause?.code === 'ECONNREFUSED') {
+        throw new Error(`Slicer server unreachable: ${fetchErr.message}`);
+      }
+      throw fetchErr;
+    }
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       throw new Error(text || `Server returned ${resp.status}`);
@@ -6454,6 +6510,7 @@ Return ONLY valid JSON, nothing else:
     const params = new URLSearchParams();
     if (query.category) params.set('category', query.category);
     if (query.search) params.set('search', query.search);
+    if (query.folder !== undefined) params.set('folder', query.folder || '');
     const qs = params.toString();
     const resp = await slicerFetch(`/api/slicer/catalog${qs ? '?' + qs : ''}`);
     return resp.json();
@@ -6501,6 +6558,38 @@ Return ONLY valid JSON, nothing else:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stl_ids, category })
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:folders', async (_event, category) => {
+    const resp = await slicerFetch(`/api/slicer/catalog/folders?category=${encodeURIComponent(category || '')}`);
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:bulk-folder', async (_event, { stl_ids, folder }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/bulk-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stl_ids, folder })
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:folders:rename', async (_event, { category, old_name, new_name }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/folders/rename', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, old_name, new_name })
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:folders:remove', async (_event, { category, folder }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/folders/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, folder })
     });
     return resp.json();
   });
@@ -6662,14 +6751,14 @@ Return ONLY valid JSON, nothing else:
 
   // STL file download (for 3D preview in renderer)
   ipcMain.handle('slicer:stl:fetch', async (_event, stlId) => {
-    const resp = await slicerFetch(`/api/slicer/stl/${stlId}/download`);
+    const resp = await slicerFetch(`/api/slicer/stl/${stlId}/download`, { timeout: 60000 });
     const buf = await resp.arrayBuffer();
     return Buffer.from(buf).toString('base64');
   });
 
   // Fetch raw G-code text (for renderer-side visualization)
   ipcMain.handle('slicer:gcode:fetchText', async (_event, gcodeId) => {
-    const resp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`);
+    const resp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 60000 });
     const buf = await resp.arrayBuffer();
     return Buffer.from(buf).toString('utf-8');
   });
@@ -6724,7 +6813,8 @@ Return ONLY valid JSON, nothing else:
     const resp = await slicerFetch('/api/slicer/slice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options)
+      body: JSON.stringify(options),
+      timeout: 120000 // slicing can take up to 2 minutes
     });
     return resp.json();
   });
@@ -6735,7 +6825,8 @@ Return ONLY valid JSON, nothing else:
     const resp = await slicerFetch('/api/slicer/slice-plate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options)
+      body: JSON.stringify(options),
+      timeout: 120000
     });
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
@@ -6756,7 +6847,8 @@ Return ONLY valid JSON, nothing else:
     const sliceResp = await slicerFetch('/api/slicer/slice-plate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sliceOptions)
+      body: JSON.stringify(sliceOptions),
+      timeout: 120000
     });
     const sliceResult = await sliceResp.json();
     if (sliceResult.error) throw new Error(`Server slicing error: ${sliceResult.error}`);
@@ -6765,7 +6857,7 @@ Return ONLY valid JSON, nothing else:
 
     // Step 2: Download G-code from server, inject ACE T-code if needed, write to temp
     console.log('[Slicer] Plate Step 2: Downloading G-code...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`);
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
     const arrayBuf = await gcodeResp.arrayBuffer();
     const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -6844,7 +6936,7 @@ Return ONLY valid JSON, nothing else:
 
     // Step 2: Download G-code from server, inject ACE T-code if needed, write to temp
     console.log('[Slicer] Step 2: Downloading G-code...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`);
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
     const arrayBuf = await gcodeResp.arrayBuffer();
     const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -6916,7 +7008,7 @@ Return ONLY valid JSON, nothing else:
 
     // Step 1: Download G-code from server
     sendProgress(1, 'Downloading G-code from server...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`);
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 60000 });
     const contentDisp = gcodeResp.headers.get('content-disposition') || '';
     const filenameMatch = contentDisp.match(/filename="?([^"]+)"?/);
     const filename = filenameMatch ? filenameMatch[1] : `gcode_${gcodeId}.gcode`;
@@ -7067,76 +7159,128 @@ app.on('ready', async () => {
   const mainWindow = createWindow();
 
   // ==================== Webview Download Interception ====================
-  // Intercept downloads from <webview> tags (Multiboard Parts Browser)
-  app.on('web-contents-created', (_event, contents) => {
-    if (contents.getType() === 'webview') {
-      contents.session.on('will-download', (_dlEvent, item, _webContents) => {
-        const filename = item.getFilename();
-        const ext = path.extname(filename).toLowerCase();
-        const isStl = ext === '.stl';
-        const is3mf = ext === '.3mf';
-        const isStep = ext === '.step' || ext === '.stp';
+  // Intercept downloads from <webview> tags AND popup windows they spawn
+  // (Multiboard Parts Browser uses partition 'persist:multiboard-browser')
 
-        if (isStl || is3mf || isStep) {
-          // Auto-save to multiboard-parts folder
-          const partsDir = path.join(app.getPath('userData'), 'multiboard-parts');
-          fs.mkdirSync(partsDir, { recursive: true });
+  function handleMultiboardDownload(item) {
+    const filename = item.getFilename();
+    const ext = path.extname(filename).toLowerCase();
+    const isModel = ext === '.stl' || ext === '.3mf' || ext === '.step' || ext === '.stp';
+    if (!isModel) return false;
 
-          // Avoid filename collisions
-          let savePath = path.join(partsDir, filename);
-          let counter = 1;
-          while (fs.existsSync(savePath)) {
-            const base = path.basename(filename, ext);
-            savePath = path.join(partsDir, `${base}_${counter}${ext}`);
-            counter++;
-          }
+    const partsDir = path.join(app.getPath('userData'), 'multiboard-parts');
+    fs.mkdirSync(partsDir, { recursive: true });
 
-          item.setSavePath(savePath);
+    let savePath = path.join(partsDir, filename);
+    let counter = 1;
+    while (fs.existsSync(savePath)) {
+      const base = path.basename(filename, ext);
+      savePath = path.join(partsDir, `${base}_${counter}${ext}`);
+      counter++;
+    }
 
-          // Notify renderer of download start
-          const win = BrowserWindow.getAllWindows()[0];
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('multiboard:download-start', {
-              filename,
-              savePath,
-              totalBytes: item.getTotalBytes()
-            });
-          }
+    item.setSavePath(savePath);
 
-          item.on('updated', (_updateEvent, state) => {
-            const win2 = BrowserWindow.getAllWindows()[0];
-            if (win2 && !win2.isDestroyed()) {
-              win2.webContents.send('multiboard:download-progress', {
-                filename,
-                receivedBytes: item.getReceivedBytes(),
-                totalBytes: item.getTotalBytes(),
-                state
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('multiboard:download-start', {
+        filename, savePath, totalBytes: item.getTotalBytes()
+      });
+    }
+
+    item.on('updated', (_updateEvent, state) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      if (w && !w.isDestroyed()) {
+        w.webContents.send('multiboard:download-progress', {
+          filename,
+          receivedBytes: item.getReceivedBytes(),
+          totalBytes: item.getTotalBytes(),
+          state
+        });
+      }
+    });
+
+    item.once('done', async (_doneEvent, state) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      if (state === 'completed') {
+        console.log(`[Multiboard] Downloaded: ${savePath}`);
+
+        // Auto-import into STL catalog under "Multiboard" category
+        try {
+          const modelName = path.basename(filename, ext).replace(/[-_]+/g, ' ');
+          const { fetch: doFetch } = await ensureFetch();
+          const settings = ensureServerConfigured();
+          const form = new FormData();
+          form.append('file', fs.createReadStream(savePath), path.basename(savePath));
+          form.append('name', modelName);
+          form.append('category', 'Multiboard');
+          const headers = form.getHeaders();
+          if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+          const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
+            method: 'POST', headers, body: form
+          });
+          if (resp.ok) {
+            const result = await resp.json();
+            console.log(`[Multiboard] Cataloged: ${modelName} (id=${result.item?.id || '?'})`);
+            if (w && !w.isDestroyed()) {
+              w.webContents.send('multiboard:download-complete', {
+                filename, savePath, success: true, format: ext.replace('.', ''),
+                catalogId: result.item?.id
               });
             }
-          });
-
-          item.once('done', (_doneEvent, state) => {
-            const win3 = BrowserWindow.getAllWindows()[0];
-            if (state === 'completed') {
-              console.log(`[Multiboard] Downloaded: ${savePath}`);
-
-              // Notify download complete
-              if (win3 && !win3.isDestroyed()) {
-                win3.webContents.send('multiboard:download-complete', {
-                  filename, savePath, success: true, format: ext.replace('.', '')
-                });
-              }
-            } else {
-              console.warn(`[Multiboard] Download failed: ${filename} (${state})`);
-              if (win3 && !win3.isDestroyed()) {
-                win3.webContents.send('multiboard:download-complete', {
-                  filename, success: false, error: state
-                });
-              }
+          } else {
+            console.warn(`[Multiboard] Catalog upload failed: ${resp.status}`);
+            if (w && !w.isDestroyed()) {
+              w.webContents.send('multiboard:download-complete', {
+                filename, savePath, success: true, format: ext.replace('.', '')
+              });
             }
+          }
+        } catch (catalogErr) {
+          console.warn(`[Multiboard] Auto-catalog error:`, catalogErr.message);
+          if (w && !w.isDestroyed()) {
+            w.webContents.send('multiboard:download-complete', {
+              filename, savePath, success: true, format: ext.replace('.', '')
+            });
+          }
+        }
+      } else {
+        console.warn(`[Multiboard] Download failed: ${filename} (${state})`);
+        if (w && !w.isDestroyed()) {
+          w.webContents.send('multiboard:download-complete', {
+            filename, success: false, error: state
           });
         }
-        // Non-STL/3MF/STEP files: default Electron download behavior
+      }
+    });
+
+    return true;
+  }
+
+  // Track sessions we've already attached the will-download listener to
+  const multiboardSessions = new WeakSet();
+
+  app.on('web-contents-created', (_event, contents) => {
+    const session = contents.session;
+
+    // Attach will-download to any session from the multiboard partition (webview or popup)
+    if (!multiboardSessions.has(session)) {
+      const partitionUrl = session.storagePath || '';
+      // Also attach to webview contents directly
+      if (contents.getType() === 'webview' || partitionUrl.includes('multiboard')) {
+        multiboardSessions.add(session);
+        session.on('will-download', (_dlEvent, item) => {
+          handleMultiboardDownload(item);
+        });
+      }
+    }
+
+    // Catch popup windows spawned by webview — redirect downloads back through interception
+    if (contents.getType() === 'webview') {
+      contents.setWindowOpenHandler(({ url }) => {
+        // Load popup URLs in the webview itself instead of opening a new window
+        contents.loadURL(url);
+        return { action: 'deny' };
       });
     }
   });

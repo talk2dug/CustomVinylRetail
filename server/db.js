@@ -3403,6 +3403,12 @@ function initCustomArtTables() {
   ensureColumn('stl_catalog', 'default_speed', "TEXT DEFAULT 'normal'");
   ensureColumn('gcode_cache', 'surface', "TEXT DEFAULT 'standard'");
   ensureColumn('gcode_cache', 'plate_stl_ids', "TEXT DEFAULT NULL");
+  ensureColumn('stl_catalog', 'folder', 'TEXT DEFAULT NULL');
+
+  // Multiboard metadata columns
+  ensureColumn('stl_catalog', 'mb_type', 'TEXT DEFAULT NULL');
+  ensureColumn('stl_catalog', 'mu_width', 'INTEGER DEFAULT NULL');
+  ensureColumn('stl_catalog', 'mu_height', 'INTEGER DEFAULT NULL');
 
   // Calibration log table (for future calibration wizard)
   db.exec(`
@@ -3420,6 +3426,9 @@ function initCustomArtTables() {
   `);
 
   console.log('[Slicer] ✅ Tables initialized successfully');
+
+  // Auto-classify existing Multiboard items that lack metadata
+  migrateMultiboardItems();
 }
 
 function seedCustomArtMaterials() {
@@ -6316,6 +6325,12 @@ function createStlCatalogItem(item) {
     est_weight_g: item.est_weight_g || null,
     est_time_min: item.est_time_min || null
   });
+
+  // Auto-extract Multiboard metadata when category is 'Multiboard'
+  if ((item.category || '').trim() === 'Multiboard') {
+    applyMultiboardMetadata(info.lastInsertRowid);
+  }
+
   return getStlCatalogItem(info.lastInsertRowid);
 }
 
@@ -6323,12 +6338,20 @@ function getStlCatalogItem(id) {
   return db.prepare('SELECT * FROM stl_catalog WHERE id = ?').get(id) || null;
 }
 
-function listStlCatalog({ category, search } = {}) {
+function listStlCatalog({ category, search, folder } = {}) {
   const clauses = [];
   const params = {};
   if (category) {
     clauses.push('category = @category');
     params.category = category;
+  }
+  if (folder !== undefined) {
+    if (folder === '' || folder === null) {
+      clauses.push("(folder IS NULL OR folder = '')");
+    } else {
+      clauses.push('folder = @folder');
+      params.folder = folder;
+    }
   }
   if (search) {
     clauses.push('(name LIKE @q OR category LIKE @q OR notes LIKE @q)');
@@ -6382,14 +6405,57 @@ function bulkSetCategory(stlIds, category) {
   if (!Array.isArray(stlIds) || stlIds.length === 0) throw new Error('stlIds array is required');
   const placeholders = stlIds.map(() => '?').join(', ');
   const result = db.prepare(`UPDATE stl_catalog SET category = ? WHERE id IN (${placeholders})`).run(category, ...stlIds);
+
+  // Auto-apply Multiboard metadata when bulk-assigning to Multiboard
+  if (category.trim() === 'Multiboard') {
+    for (const id of stlIds) {
+      applyMultiboardMetadata(id);
+    }
+  }
+
   return { updated: result.changes, category };
 }
 
+function listStlFolders(category) {
+  if (!category) return [];
+  return db.prepare(
+    `SELECT DISTINCT folder FROM stl_catalog
+     WHERE category = ? AND folder IS NOT NULL AND folder != ''
+     ORDER BY folder COLLATE NOCASE`
+  ).all(category).map(r => r.folder);
+}
+
+function bulkSetFolder(stlIds, folder) {
+  if (!Array.isArray(stlIds) || stlIds.length === 0) throw new Error('stlIds array is required');
+  const placeholders = stlIds.map(() => '?').join(', ');
+  const result = db.prepare(
+    `UPDATE stl_catalog SET folder = ? WHERE id IN (${placeholders})`
+  ).run(folder || null, ...stlIds);
+  return { updated: result.changes, folder: folder || null };
+}
+
+function renameStlFolder(category, oldFolder, newFolder) {
+  if (!category || !oldFolder || !newFolder) throw new Error('category, oldFolder, newFolder required');
+  const result = db.prepare(
+    'UPDATE stl_catalog SET folder = ? WHERE category = ? AND folder = ?'
+  ).run(newFolder.trim(), category, oldFolder);
+  return { updated: result.changes };
+}
+
+function deleteStlFolder(category, folderName) {
+  if (!category || !folderName) throw new Error('category and folderName required');
+  const result = db.prepare(
+    'UPDATE stl_catalog SET folder = NULL WHERE category = ? AND folder = ?'
+  ).run(category, folderName);
+  return { updated: result.changes };
+}
+
 function updateStlCatalogItem(id, updates) {
-  const allowed = ['name', 'category', 'stl_path', 'thumbnail_path',
+  const allowed = ['name', 'category', 'folder', 'stl_path', 'thumbnail_path',
     'default_quality', 'default_strength', 'default_material', 'default_texture', 'default_supports',
     'default_surface', 'default_speed',
-    'notes', 'file_size', 'triangle_count', 'dim_x', 'dim_y', 'dim_z', 'est_weight_g', 'est_time_min'];
+    'notes', 'file_size', 'triangle_count', 'dim_x', 'dim_y', 'dim_z', 'est_weight_g', 'est_time_min',
+    'mb_type', 'mu_width', 'mu_height'];
   const set = [];
   const params = { id };
   for (const key of allowed) {
@@ -6400,13 +6466,182 @@ function updateStlCatalogItem(id, updates) {
   }
   if (!set.length) return getStlCatalogItem(id);
   db.prepare(`UPDATE stl_catalog SET ${set.join(', ')} WHERE id = @id`).run(params);
-  return getStlCatalogItem(id);
+
+  // Re-apply Multiboard metadata if category changed to Multiboard or name changed while in Multiboard
+  const updated = getStlCatalogItem(id);
+  if (updated && updated.category === 'Multiboard' && (params.category === 'Multiboard' || params.name)) {
+    applyMultiboardMetadata(id);
+    return getStlCatalogItem(id);
+  }
+  return updated;
 }
 
 function deleteStlCatalogItem(id) {
   // Delete associated G-code cache entries
   db.prepare('DELETE FROM gcode_cache WHERE stl_catalog_id = ?').run(id);
   return db.prepare('DELETE FROM stl_catalog WHERE id = ?').run(id);
+}
+
+// ============================================================================
+// MULTIBOARD METADATA (Auto-classification for STL catalog items)
+// ============================================================================
+
+/**
+ * Parse a Multiboard STL name to extract grid dimensions and part type.
+ * @param {string} name - The STL catalog item name
+ * @returns {{ mb_type: string, mu_width: number, mu_height: number, folder: string }}
+ */
+function parseMultiboardMetadata(name) {
+  if (!name) return { mb_type: 'unknown', mu_width: 2, mu_height: 2, folder: 'Uncategorized' };
+
+  // --- Part Type Detection (keyword priority order) ---
+  const TYPE_RULES = [
+    { pattern: /\b(Tile|Plate|Board)\b/i,        type: 'tile',      folder: 'Tiles' },
+    { pattern: /\bShelf\b/i,                      type: 'shelf',     folder: 'Shelves' },
+    { pattern: /\b(Bin|Tray|Drawer|Shell)\b/i,   type: 'bin',       folder: 'Bins & Trays' },
+    { pattern: /\b(Hook|Click[\s-]?Hook)\b/i,    type: 'hook',      folder: 'Hooks' },
+    { pattern: /\bPeg\b/i,                        type: 'peg',       folder: 'Pegs' },
+    { pattern: /\b(Snap|Insert|Adapter)\b/i,      type: 'hardware',  folder: 'Hardware' },
+    { pattern: /\b(Mount|Standoff)\b/i,           type: 'hardware',  folder: 'Hardware' },
+    { pattern: /\b(Label|Holder)\b/i,             type: 'accessory', folder: 'Accessories' },
+    { pattern: /\b(Bolt|Thread)\b/i,              type: 'hardware',  folder: 'Hardware' },
+  ];
+
+  let mb_type = 'unknown';
+  let folder = 'Uncategorized';
+  for (const rule of TYPE_RULES) {
+    if (rule.pattern.test(name)) {
+      mb_type = rule.type;
+      folder = rule.folder;
+      break;
+    }
+  }
+
+  let mu_width = null;
+  let mu_height = null;
+
+  // --- Grid Unit Extraction (first match wins) ---
+
+  // NxM MU  (e.g., "2x4 MU", "6x6 MU")
+  const muMatch = name.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*MU\b/i);
+  if (muMatch) {
+    mu_width = Math.round(parseFloat(muMatch[1]));
+    mu_height = Math.round(parseFloat(muMatch[2]));
+    return { mb_type, mu_width, mu_height, folder };
+  }
+
+  // NxM LU or NxM CU  (e.g., "3x3 LU", "2x4 LU" — LU/CU = 50mm = 2 MU)
+  const luMatch = name.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*(?:LU|CU)\b/i);
+  if (luMatch) {
+    mu_width = Math.round(parseFloat(luMatch[1]) * 2);
+    mu_height = Math.round(parseFloat(luMatch[2]) * 2);
+    return { mb_type, mu_width, mu_height, folder };
+  }
+
+  // N CU  (single dimension, e.g., "2 CU Magnetic Label Holder")
+  const cuSingleMatch = name.match(/(\d+(?:\.\d+)?)\s*CU\b/i);
+  if (cuSingleMatch) {
+    mu_width = Math.round(parseFloat(cuSingleMatch[1]) * 2);
+    mu_height = mu_width;
+    return { mb_type, mu_width, mu_height, folder };
+  }
+
+  // NxM mm or N x M mm  (e.g., "15 x 7.5 mm" hook)
+  const mmDualMatch = name.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*mm\b/i);
+  if (mmDualMatch) {
+    mu_width = Math.max(1, Math.round(parseFloat(mmDualMatch[1]) / 25));
+    mu_height = Math.max(1, Math.round(parseFloat(mmDualMatch[2]) / 25));
+    return { mb_type, mu_width, mu_height, folder };
+  }
+
+  // N mm or Nmm  (single dimension, e.g., "100 mm Peg")
+  const mmSingleMatch = name.match(/(\d+(?:\.\d+)?)\s*mm\b/i);
+  if (mmSingleMatch) {
+    mu_width = Math.max(1, Math.round(parseFloat(mmSingleMatch[1]) / 25));
+    mu_height = 1;
+    return { mb_type, mu_width, mu_height, folder };
+  }
+
+  // Bare NxM with no unit suffix (e.g., "2x1 Tray")
+  const bareMatch = name.match(/(\d+)\s*x\s*(\d+)/i);
+  if (bareMatch && mb_type !== 'unknown') {
+    mu_width = parseInt(bareMatch[1], 10);
+    mu_height = parseInt(bareMatch[2], 10);
+    // If type is bin/tray, bare numbers are likely LU — double them
+    if (mb_type === 'bin') {
+      mu_width *= 2;
+      mu_height *= 2;
+    }
+    return { mb_type, mu_width, mu_height, folder };
+  }
+
+  // Default for unmatched items
+  return { mb_type, mu_width: mu_width || 2, mu_height: mu_height || 2, folder };
+}
+
+/**
+ * Apply Multiboard metadata to a single catalog item.
+ * Parses the name and sets mb_type, mu_width, mu_height, and folder (if not already set).
+ * @param {number} itemId
+ * @returns {object|null} The updated item, or null if not found
+ */
+function applyMultiboardMetadata(itemId) {
+  const item = getStlCatalogItem(itemId);
+  if (!item) return null;
+
+  const meta = parseMultiboardMetadata(item.name);
+
+  db.prepare(`
+    UPDATE stl_catalog
+    SET mb_type = ?, mu_width = ?, mu_height = ?, folder = COALESCE(folder, ?)
+    WHERE id = ?
+  `).run(meta.mb_type, meta.mu_width, meta.mu_height, meta.folder, itemId);
+
+  return getStlCatalogItem(itemId);
+}
+
+/**
+ * One-time migration: apply metadata to all Multiboard items missing mb_type.
+ * Safe to call multiple times (idempotent).
+ */
+function migrateMultiboardItems() {
+  const items = db.prepare(
+    "SELECT id FROM stl_catalog WHERE category = 'Multiboard' AND mb_type IS NULL"
+  ).all();
+
+  if (items.length === 0) return;
+
+  console.log(`[Multiboard] Migrating ${items.length} items with metadata...`);
+
+  const updateStmt = db.prepare(`
+    UPDATE stl_catalog
+    SET mb_type = ?, mu_width = ?, mu_height = ?, folder = COALESCE(folder, ?)
+    WHERE id = ?
+  `);
+
+  const runMigration = db.transaction(() => {
+    for (const row of items) {
+      const full = getStlCatalogItem(row.id);
+      if (!full) continue;
+      const meta = parseMultiboardMetadata(full.name);
+      updateStmt.run(meta.mb_type, meta.mu_width, meta.mu_height, meta.folder, row.id);
+    }
+  });
+
+  runMigration();
+  console.log(`[Multiboard] Migration complete: ${items.length} items processed`);
+}
+
+/**
+ * List all Multiboard parts with metadata for the designer.
+ * @returns {Array} Catalog items with category='Multiboard' and mb_type set
+ */
+function listMultiboardParts() {
+  return db.prepare(`
+    SELECT * FROM stl_catalog
+    WHERE category = 'Multiboard' AND mb_type IS NOT NULL
+    ORDER BY mb_type, name COLLATE NOCASE
+  `).all();
 }
 
 // ============================================================================
@@ -6718,8 +6953,17 @@ module.exports = {
   renameStlCategory,
   deleteStlCategory,
   bulkSetCategory,
+  listStlFolders,
+  bulkSetFolder,
+  renameStlFolder,
+  deleteStlFolder,
   updateStlCatalogItem,
   deleteStlCatalogItem,
+  // Multiboard metadata
+  parseMultiboardMetadata,
+  applyMultiboardMetadata,
+  migrateMultiboardItems,
+  listMultiboardParts,
   // G-code Cache
   getGcodeCache,
   listGcodeCacheForStl,

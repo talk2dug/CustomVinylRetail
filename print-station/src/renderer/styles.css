@@ -4459,6 +4459,36 @@ textarea:focus {
   box-shadow: 0 -2px 12px rgba(0,0,0,0.3);
 }
 
+/* Folder tiles */
+.slicer-folder-tile:hover {
+  border-color: var(--accent) !important;
+  transform: translateY(-1px);
+}
+
+.slicer-folder-drag-over {
+  border-color: var(--accent) !important;
+  background: rgba(99, 102, 241, 0.15) !important;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.slicer-folder-crumb {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.slicer-folder-crumb:hover {
+  text-decoration: underline;
+}
+
+.slicer-catalog-card[draggable="true"] {
+  cursor: grab;
+}
+
+.slicer-catalog-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
 .slicer-plate-item-row {
   display: flex;
   align-items: center;

@@ -886,11 +886,10 @@ async function sliceSTL(stlPath, options, dbInstance) {
     '--load', filamentProfile,
     '--load', printerProfile,
     ...mapOptionsToSlicerArgs(options),
-    // Single copy: center on bed. Multiple copies: let PrusaSlicer auto-arrange.
-    ...(copies <= 1 ? ['--center', `${centerX},${centerY}`] : []),
+    // Single copy: center on bed. Multiple copies: use --duplicate to auto-arrange.
+    ...(copies <= 1 ? ['--center', `${centerX},${centerY}`] : ['--duplicate', String(copies)]),
     '--output', gcodeAbsPath,
-    // Repeat the STL path N times for N copies
-    ...Array(copies).fill(slicePath)
+    slicePath
   ];
 
   console.log(`[Slicer] Slicing: ${path.basename(stlPath)} → ${gcodeFilename}`);
