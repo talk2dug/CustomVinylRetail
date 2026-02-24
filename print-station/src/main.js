@@ -7209,11 +7209,82 @@ app.on('ready', async () => {
   // Intercept downloads from <webview> tags AND popup windows they spawn
   // (Multiboard Parts Browser uses partition 'persist:multiboard-browser')
 
+  /**
+   * Import a single STL/STEP file into the Multiboard catalog.
+   * Returns the catalog result or null on failure.
+   */
+  async function catalogMultiboardFile(filePath, modelName) {
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePath), path.basename(filePath));
+    form.append('name', modelName);
+    form.append('category', 'Multiboard');
+    const headers = form.getHeaders();
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+    const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
+      method: 'POST', headers, body: form
+    });
+    if (resp.ok) {
+      const result = await resp.json();
+      console.log(`[Multiboard] Cataloged: ${modelName} (id=${result.item?.id || '?'})`);
+      return result;
+    }
+    console.warn(`[Multiboard] Catalog upload failed: ${resp.status}`);
+    return null;
+  }
+
+  /**
+   * Extract STL/STEP files from a ZIP, catalog each, and return count.
+   */
+  async function catalogMultiboardZip(zipPath, zipFilename) {
+    const unzipper = require('unzipper');
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `mb-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    fs.mkdirSync(tempDir, { recursive: true });
+
+    let imported = 0;
+    try {
+      const zipDir = await unzipper.Open.file(zipPath);
+      for (const entry of zipDir.files) {
+        if (entry.type === 'Directory') continue;
+        const zExt = path.extname(entry.path).toLowerCase();
+        if (zExt !== '.stl' && zExt !== '.step' && zExt !== '.stp') continue;
+        if (entry.path.includes('__MACOSX') || entry.path.includes('/.')) continue;
+
+        const destName = path.basename(entry.path);
+        let destPath = path.join(tempDir, destName);
+        let counter = 1;
+        while (fs.existsSync(destPath)) {
+          const base = path.basename(destName, zExt);
+          destPath = path.join(tempDir, `${base}_${counter}${zExt}`);
+          counter++;
+        }
+        await new Promise((resolve, reject) => {
+          entry.stream().pipe(fs.createWriteStream(destPath)).on('finish', resolve).on('error', reject);
+        });
+
+        const modelName = path.basename(destName, zExt).replace(/[-_]+/g, ' ');
+        try {
+          await catalogMultiboardFile(destPath, modelName);
+          imported++;
+        } catch (err) {
+          console.warn(`[Multiboard] Failed to catalog ${destName} from ZIP:`, err.message);
+        }
+      }
+    } finally {
+      try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
+    }
+    console.log(`[Multiboard] ZIP ${zipFilename}: imported ${imported} models`);
+    return imported;
+  }
+
   function handleMultiboardDownload(item) {
     const filename = item.getFilename();
     const ext = path.extname(filename).toLowerCase();
     const isModel = ext === '.stl' || ext === '.3mf' || ext === '.step' || ext === '.stp';
-    if (!isModel) return false;
+    const isZip = ext === '.zip';
+    if (!isModel && !isZip) return false;
 
     const partsDir = path.join(app.getPath('userData'), 'multiboard-parts');
     fs.mkdirSync(partsDir, { recursive: true });
@@ -7252,43 +7323,49 @@ app.on('ready', async () => {
       if (state === 'completed') {
         console.log(`[Multiboard] Downloaded: ${savePath}`);
 
-        // Auto-import into STL catalog under "Multiboard" category
-        try {
-          const modelName = path.basename(filename, ext).replace(/[-_]+/g, ' ');
-          const { fetch: doFetch } = await ensureFetch();
-          const settings = ensureServerConfigured();
-          const form = new FormData();
-          form.append('file', fs.createReadStream(savePath), path.basename(savePath));
-          form.append('name', modelName);
-          form.append('category', 'Multiboard');
-          const headers = form.getHeaders();
-          if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
-          const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
-            method: 'POST', headers, body: form
-          });
-          if (resp.ok) {
-            const result = await resp.json();
-            console.log(`[Multiboard] Cataloged: ${modelName} (id=${result.item?.id || '?'})`);
+        if (isZip) {
+          // ZIP: extract and catalog each model inside
+          try {
+            if (w && !w.isDestroyed()) {
+              w.webContents.send('multiboard:download-progress', {
+                filename, receivedBytes: 0, totalBytes: 0, state: 'extracting'
+              });
+            }
+            const importCount = await catalogMultiboardZip(savePath, filename);
+            // Clean up the ZIP file after extraction
+            try { fs.unlinkSync(savePath); } catch (_) {}
+            if (w && !w.isDestroyed()) {
+              w.webContents.send('multiboard:download-complete', {
+                filename, savePath, success: true, format: 'zip',
+                model: { importCount }
+              });
+            }
+          } catch (zipErr) {
+            console.warn(`[Multiboard] ZIP extraction error:`, zipErr.message);
+            if (w && !w.isDestroyed()) {
+              w.webContents.send('multiboard:download-complete', {
+                filename, success: false, error: 'ZIP extraction failed: ' + zipErr.message
+              });
+            }
+          }
+        } else {
+          // Single model file: catalog directly
+          try {
+            const modelName = path.basename(filename, ext).replace(/[-_]+/g, ' ');
+            const result = await catalogMultiboardFile(savePath, modelName);
             if (w && !w.isDestroyed()) {
               w.webContents.send('multiboard:download-complete', {
                 filename, savePath, success: true, format: ext.replace('.', ''),
-                catalogId: result.item?.id
+                catalogId: result?.item?.id, model: result?.item || null
               });
             }
-          } else {
-            console.warn(`[Multiboard] Catalog upload failed: ${resp.status}`);
+          } catch (catalogErr) {
+            console.warn(`[Multiboard] Auto-catalog error:`, catalogErr.message);
             if (w && !w.isDestroyed()) {
               w.webContents.send('multiboard:download-complete', {
                 filename, savePath, success: true, format: ext.replace('.', '')
               });
             }
-          }
-        } catch (catalogErr) {
-          console.warn(`[Multiboard] Auto-catalog error:`, catalogErr.message);
-          if (w && !w.isDestroyed()) {
-            w.webContents.send('multiboard:download-complete', {
-              filename, savePath, success: true, format: ext.replace('.', '')
-            });
           }
         }
       } else {
