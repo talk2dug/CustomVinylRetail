@@ -7092,11 +7092,58 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('slicer:selectStlFile', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Select 3D Model File',
-      filters: [{ name: '3D Models', extensions: ['stl', 'STL', 'step', 'STEP', 'stp', 'STP'] }],
+      filters: [
+        { name: '3D Models & Archives', extensions: ['stl', 'step', 'stp', 'zip'] },
+        { name: '3D Models', extensions: ['stl', 'step', 'stp'] },
+        { name: 'ZIP Archives', extensions: ['zip'] }
+      ],
       properties: ['openFile']
     });
     if (result.canceled || !result.filePaths.length) return null;
     return result.filePaths[0];
+  });
+
+  // Extract STL/STEP files from a ZIP archive into a temp directory
+  ipcMain.handle('slicer:extractZip', async (_event, zipPath) => {
+    const unzipper = require('unzipper');
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `stl-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    fs.mkdirSync(tempDir, { recursive: true });
+    const zipDir = await unzipper.Open.file(zipPath);
+    const extracted = [];
+    for (const entry of zipDir.files) {
+      if (entry.type === 'Directory') continue;
+      const ext = path.extname(entry.path).toLowerCase();
+      if (ext !== '.stl' && ext !== '.step' && ext !== '.stp') continue;
+      if (entry.path.includes('__MACOSX') || entry.path.includes('/.')) continue;
+      const destName = path.basename(entry.path);
+      let destPath = path.join(tempDir, destName);
+      let counter = 1;
+      while (fs.existsSync(destPath)) {
+        const base = path.basename(destName, ext);
+        destPath = path.join(tempDir, `${base}_${counter}${ext}`);
+        counter++;
+      }
+      await new Promise((resolve, reject) => {
+        entry.stream()
+          .pipe(fs.createWriteStream(destPath))
+          .on('finish', resolve)
+          .on('error', reject);
+      });
+      extracted.push({
+        filePath: destPath,
+        name: path.basename(destName, ext).replace(/[_-]/g, ' ')
+      });
+    }
+    console.log(`[Slicer] Extracted ${extracted.length} models from ZIP: ${path.basename(zipPath)}`);
+    return { tempDir, files: extracted };
+  });
+
+  // Clean up a temp directory after ZIP extraction uploads complete
+  ipcMain.handle('slicer:cleanupTemp', async (_event, dirPath) => {
+    try {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    } catch (_) {}
   });
 }
 

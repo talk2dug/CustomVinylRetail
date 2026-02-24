@@ -642,7 +642,40 @@ async function slicerUploadStl() {
     const filePath = await printStation.slicer.selectStlFile();
     if (!filePath) return;
 
-    // Simple name from filename
+    const ext = filePath.split('.').pop().toLowerCase();
+
+    // ZIP flow: extract and upload each model inside
+    if (ext === 'zip') {
+      slicerShowProgress('Extracting ZIP archive...', 'Finding 3D models');
+      let result;
+      try {
+        result = await printStation.slicer.extractZip(filePath);
+      } catch (err) {
+        slicerHideProgress();
+        alert('Failed to extract ZIP: ' + err.message);
+        return;
+      }
+      slicerHideProgress();
+
+      if (!result.files.length) {
+        showToast('No 3D model files found in ZIP.', 'warning', 4000);
+        try { await printStation.slicer.cleanupTemp(result.tempDir); } catch (_) {}
+        return;
+      }
+
+      const category = document.getElementById('slicerCategoryFilter')?.value || '';
+      const uploadFiles = result.files.map(f => ({
+        filePath: f.filePath,
+        name: f.name,
+        category,
+        source: 'zip',
+        zipName: filePath.split(/[\\/]/).pop()
+      }));
+      slicerRunBulkUploadBackground(uploadFiles, result.tempDir);
+      return;
+    }
+
+    // Normal single-file flow
     const basename = filePath.split(/[\\/]/).pop().replace(/\.(stl|step|stp)$/i, '').replace(/[_-]/g, ' ');
 
     slicerShowProgress('Uploading 3D model...', 'Sending file to server');
@@ -732,7 +765,7 @@ function slicerCreateBulkToast(total) {
   return toast;
 }
 
-async function slicerRunBulkUploadBackground(files) {
+async function slicerRunBulkUploadBackground(files, tempDir = null) {
   const total = files.length;
   const toast = slicerCreateBulkToast(total);
   const titleEl = toast.querySelector('#slicerBulkTitle');
@@ -763,6 +796,11 @@ async function slicerRunBulkUploadBackground(files) {
     }
   }
 
+  // Clean up temp directory from ZIP extraction
+  if (tempDir) {
+    try { await printStation.slicer.cleanupTemp(tempDir); } catch (_) {}
+  }
+
   // Done — update toast to show result, then fade out
   const successCount = total - failed;
   if (titleEl) titleEl.textContent = `Import complete: ${successCount} / ${total}`;
@@ -772,6 +810,7 @@ async function slicerRunBulkUploadBackground(files) {
 
   // Refresh catalog if user is on slicer view
   try {
+    await slicerLoadFolders();
     await slicerLoadCatalog();
     await slicerLoadCategories();
   } catch (_) {}

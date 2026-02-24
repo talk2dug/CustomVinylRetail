@@ -591,6 +591,8 @@ contextBridge.exposeInMainWorld('printStation', {
 
     // File dialog
     selectStlFile: () => ipcRenderer.invoke('slicer:selectStlFile'),
+    extractZip: (zipPath) => ipcRenderer.invoke('slicer:extractZip', zipPath),
+    cleanupTemp: (dirPath) => ipcRenderer.invoke('slicer:cleanupTemp', dirPath),
 
     // Bulk import
     bulkScan: (directory) => ipcRenderer.invoke('slicer:stl:bulkScan', directory),
