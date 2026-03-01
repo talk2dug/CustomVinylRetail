@@ -381,9 +381,12 @@ function minDistanceToPath(point, path) {
 
 /**
  * Train on a collection of Studio3 files and save the style profile
+ * @param {Array} studio3Files - Parsed studio3 data
+ * @param {Object} db - better-sqlite3 database instance
+ * @param {string} profileId - Profile identifier ('sticker', 'decal', or 'default')
  */
-async function trainFromStudio3Collection(studio3Files, db) {
-  console.log(`[ContourTrainer] Training on ${studio3Files.length} Studio3 files...`);
+async function trainFromStudio3Collection(studio3Files, db, profileId = 'default') {
+  console.log(`[ContourTrainer] Training profile '${profileId}' on ${studio3Files.length} Studio3 files...`);
 
   const allMetrics = [];
   const errors = [];
@@ -407,7 +410,7 @@ async function trainFromStudio3Collection(studio3Files, db) {
   const profile = createStyleProfile(allMetrics);
 
   if (profile.valid) {
-    console.log('[ContourTrainer] Style Profile:');
+    console.log(`[ContourTrainer] Style Profile '${profileId}':`);
     console.log(`  - Corner Sharpness: ${(profile.cornerSharpness * 100).toFixed(1)}%`);
     console.log(`  - Detail Level: ${profile.detailLevel.toFixed(3)}`);
     console.log(`  - Smoothness: ${(profile.smoothness * 100).toFixed(1)}%`);
@@ -421,13 +424,13 @@ async function trainFromStudio3Collection(studio3Files, db) {
   if (db) {
     try {
       const profileJson = JSON.stringify(profile);
-      db.run(`
+      db.prepare(`
         INSERT OR REPLACE INTO contour_style_profile (id, profile_data, sample_count, created_at)
-        VALUES ('default', ?, ?, datetime('now'))
-      `, [profileJson, allMetrics.length]);
-      console.log('[ContourTrainer] Profile saved to database');
+        VALUES (?, ?, ?, datetime('now'))
+      `).run(profileId, profileJson, allMetrics.length);
+      console.log(`[ContourTrainer] Profile '${profileId}' saved to database`);
     } catch (err) {
-      console.error('[ContourTrainer] Failed to save profile:', err.message);
+      console.error(`[ContourTrainer] Failed to save profile '${profileId}':`, err.message);
     }
   }
 
@@ -439,16 +442,56 @@ async function trainFromStudio3Collection(studio3Files, db) {
 }
 
 /**
- * Load saved style profile from database
+ * Train separate sticker and decal profiles from tagged Studio3 catalog entries
+ * @param {Object} db - better-sqlite3 database instance
  */
-function loadStyleProfile(db) {
+async function trainBothProfiles(db) {
+  const toFiles = (rows) => rows.map(row => ({
+    paths: JSON.parse(row.paths || '[]'),
+    images: [],
+    metadata: { ...JSON.parse(row.metadata || '{}'), filename: row.filename }
+  }));
+
+  const stickerRows = db.prepare(`SELECT * FROM studio3_catalog WHERE path_count > 0 AND type = 'sticker'`).all();
+  const decalRows = db.prepare(`SELECT * FROM studio3_catalog WHERE path_count > 0 AND type = 'decal'`).all();
+
+  console.log(`[ContourTrainer] Training: ${stickerRows.length} sticker files, ${decalRows.length} decal files`);
+
+  const results = { sticker: null, decal: null };
+
+  if (stickerRows.length > 0) {
+    results.sticker = await trainFromStudio3Collection(toFiles(stickerRows), db, 'sticker');
+  } else {
+    console.log('[ContourTrainer] No sticker-tagged files with paths, skipping sticker profile');
+  }
+
+  if (decalRows.length > 0) {
+    results.decal = await trainFromStudio3Collection(toFiles(decalRows), db, 'decal');
+  } else {
+    console.log('[ContourTrainer] No decal-tagged files with paths, skipping decal profile');
+  }
+
+  // Clean up old 'default' profile
   try {
-    const row = db.get(`SELECT profile_data FROM contour_style_profile WHERE id = 'default'`);
+    db.prepare(`DELETE FROM contour_style_profile WHERE id = 'default'`).run();
+  } catch (e) { /* ignore */ }
+
+  return results;
+}
+
+/**
+ * Load saved style profile from database
+ * @param {Object} db - better-sqlite3 database instance
+ * @param {string} profileId - Profile identifier ('sticker', 'decal', or 'default')
+ */
+function loadStyleProfile(db, profileId = 'default') {
+  try {
+    const row = db.prepare(`SELECT profile_data FROM contour_style_profile WHERE id = ?`).get(profileId);
     if (row?.profile_data) {
       return JSON.parse(row.profile_data);
     }
   } catch (err) {
-    console.error('[ContourTrainer] Failed to load profile:', err.message);
+    console.error(`[ContourTrainer] Failed to load profile '${profileId}':`, err.message);
   }
   return null;
 }
@@ -461,6 +504,7 @@ module.exports = {
   compareContours,
   parseSvgPath,
   trainFromStudio3Collection,
+  trainBothProfiles,
   loadStyleProfile,
   calculateBounds
 };

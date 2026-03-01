@@ -1647,6 +1647,19 @@ function switchView(viewId) {
     if (['catalogView', 'customArtView', 'fbScheduleManagerView'].includes(previousView)) {
       clearPreviewCache();
     }
+    // Reset fixed positioning when leaving designer
+    if (previousView === 'multiboardDesignerView') {
+      const ds = document.getElementById('multiboardDesignerView');
+      if (ds) {
+        ds.style.position = '';
+        ds.style.top = '';
+        ds.style.left = '';
+        ds.style.right = '';
+        ds.style.bottom = '';
+        ds.style.height = '';
+        ds.style.zIndex = '';
+      }
+    }
   }
 
   elements.views.forEach((view) => {
@@ -12347,6 +12360,17 @@ function renderCatalog() {
             title="Click to download preview"
           />
           <h3>${safeName}</h3>
+          ${design.isStudio3 ? `
+            <div style="margin:4px 0;display:flex;align-items:center;gap:6px;">
+              <span style="background:${design.type === 'decal' ? '#e74c3c' : '#27ae60'};color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">
+                ${design.type === 'decal' ? 'DECAL' : 'STICKER'}
+              </span>
+              <button type="button" class="secondary studio3-retype" data-design-id="${designIdAttr}" data-current-type="${design.type || 'sticker'}"
+                style="font-size:11px;padding:2px 8px;border-radius:4px;">
+                Switch to ${design.type === 'decal' ? 'Sticker' : 'Decal'}
+              </button>
+            </div>
+          ` : ''}
           <p class="hint">
             ${safeCategory}
             ${safeDescription ? `<br /><span class="catalog-meta">${safeDescription}</span>` : ''}
@@ -12403,6 +12427,37 @@ function renderCatalog() {
       switchView('campaignsView');
       renderCampaignItems();
       showToast('Added to campaign.', 'success');
+    });
+  });
+
+  // Handle Studio3 type re-tagging (sticker <-> decal)
+  elements.catalogGrid.querySelectorAll('.studio3-retype').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const designId = button.dataset.designId || '';
+      const currentType = button.dataset.currentType || 'sticker';
+      const newType = currentType === 'decal' ? 'sticker' : 'decal';
+
+      try {
+        const config = await window.printStation?.getConfig() || {};
+        const serverBase = (config.serverBaseUrl?.trim() || window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com').replace(/\/$/, '');
+        const apiKey = config.apiKey || '';
+
+        const response = await fetch(`${serverBase}/api/studio3/catalog/${encodeURIComponent(designId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+          body: JSON.stringify({ type: newType })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          showToast(`Changed to ${newType}`, 'success');
+          loadCatalog({ silent: true, catalogType: 'studio3' });
+        } else {
+          showToast('Failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+      } catch (err) {
+        showToast('Failed to update type: ' + err.message, 'error');
+      }
     });
   });
 
@@ -12790,12 +12845,11 @@ async function loadStudio3CatalogFromServer() {
  * Group Studio3 items into category structure for catalog display
  */
 function groupStudio3ByCategory(items) {
-  // Group by date (month/year) or just put all in "Uploaded"
+  // Group by type (Stickers vs Decals)
   const categoryMap = {};
 
   for (const item of items) {
-    // Use "Uploaded" as the category, or extract from metadata
-    const categoryName = item.metadata?.category || 'Uploaded';
+    const categoryName = (item.type === 'decal') ? 'Decals' : 'Stickers';
     const slug = categoryName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
     if (!categoryMap[slug]) {
@@ -12815,6 +12869,7 @@ function groupStudio3ByCategory(items) {
       preview: item.thumbnail ? `data:image/png;base64,${item.thumbnail}` : null,
       pathCount: item.pathCount || 0,
       imageCount: item.imageCount || 0,
+      type: item.type || 'sticker',
       createdAt: item.createdAt,
       isStudio3: true // Mark as Studio3 item for special handling
     });
@@ -28263,14 +28318,11 @@ async function openStickerSheetsBrowser() {
       return;
     }
 
-    // Use blueridgecustomco.com with /api/library/ route to avoid HTTP/2 issues
-    const serverUrl = 'https://blueridgecustomco.com';
+    const serverUrl = window.printStationConfig?.serverBaseUrl || window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
 
-    // Convert /library/ URLs to /api/library/ to go through Node.js instead of nginx
-    // This avoids HTTP/2 protocol errors with large files
     const toApiUrl = (url) => {
       if (!url) return '';
-      return serverUrl + url.replace(/^\/library\//, '/api/library/');
+      return serverUrl + url;
     };
 
     content.innerHTML = result.batches.map(batch => {

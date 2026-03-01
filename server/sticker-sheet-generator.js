@@ -56,8 +56,8 @@ const DEFAULT_OFFSET_MM = 0.25; // Offset from sticker edge to cut line (tight c
 // Loaded from database based on analysis of Jack's manual Studio3 cut paths
 // Falls back to defaults if no trained profile exists
 // ============================================================================
-let _learnedStyleProfile = null;
-let _styleProfileLoaded = false;
+let _learnedProfiles = {};   // { sticker: profile, decal: profile }
+let _profilesLoaded = false;
 
 /**
  * Get learned potrace parameters from trained style profile
@@ -65,23 +65,46 @@ let _styleProfileLoaded = false;
  * @returns {Object} Potrace parameters
  */
 function getLearnedPotraceParams(mode = 'sticker') {
-  // Try to load profile from database if not already loaded
-  if (!_styleProfileLoaded) {
+  // Try to load profiles from database if not already loaded
+  if (!_profilesLoaded) {
     try {
       const db = require('./db');
-      _learnedStyleProfile = contourTrainer.loadStyleProfile(db.getDb());
-      _styleProfileLoaded = true;
-      if (_learnedStyleProfile) {
-        console.log('[ContourStyle] Loaded trained style profile:', {
-          sampleCount: _learnedStyleProfile.sampleCount,
-          cornerSharpness: _learnedStyleProfile.cornerSharpness?.toFixed(2),
-          detailLevel: _learnedStyleProfile.detailLevel?.toFixed(3),
-          smoothness: _learnedStyleProfile.smoothness?.toFixed(2)
+      const dbInstance = db.getDb();
+
+      // Load separate sticker and decal profiles
+      _learnedProfiles.sticker = contourTrainer.loadStyleProfile(dbInstance, 'sticker');
+      _learnedProfiles.decal = contourTrainer.loadStyleProfile(dbInstance, 'decal');
+
+      // Fallback: try old 'default' profile if neither type-specific profile exists
+      if (!_learnedProfiles.sticker && !_learnedProfiles.decal) {
+        const defaultProfile = contourTrainer.loadStyleProfile(dbInstance, 'default');
+        if (defaultProfile) {
+          _learnedProfiles.sticker = defaultProfile;
+          _learnedProfiles.decal = defaultProfile;
+        }
+      }
+
+      _profilesLoaded = true;
+
+      if (_learnedProfiles.sticker) {
+        console.log('[ContourStyle] Loaded STICKER profile:', {
+          sampleCount: _learnedProfiles.sticker.sampleCount,
+          cornerSharpness: _learnedProfiles.sticker.cornerSharpness?.toFixed(2),
+          detailLevel: _learnedProfiles.sticker.detailLevel?.toFixed(3),
+          smoothness: _learnedProfiles.sticker.smoothness?.toFixed(2)
+        });
+      }
+      if (_learnedProfiles.decal) {
+        console.log('[ContourStyle] Loaded DECAL profile:', {
+          sampleCount: _learnedProfiles.decal.sampleCount,
+          cornerSharpness: _learnedProfiles.decal.cornerSharpness?.toFixed(2),
+          detailLevel: _learnedProfiles.decal.detailLevel?.toFixed(3),
+          smoothness: _learnedProfiles.decal.smoothness?.toFixed(2)
         });
       }
     } catch (err) {
-      console.warn('[ContourStyle] Could not load style profile:', err.message);
-      _styleProfileLoaded = true; // Don't retry
+      console.warn('[ContourStyle] Could not load style profiles:', err.message);
+      _profilesLoaded = true; // Don't retry
     }
   }
 
@@ -107,9 +130,13 @@ function getLearnedPotraceParams(mode = 'sticker') {
 
   const baseParams = defaults[mode] || defaults.sticker;
 
+  // Map mode to profile key: 'vinyl' mode uses 'decal' training, 'sticker' uses 'sticker' training
+  const profileKey = (mode === 'vinyl') ? 'decal' : 'sticker';
+  const profile = _learnedProfiles[profileKey];
+
   // Override with learned parameters if available
-  if (_learnedStyleProfile?.valid && _learnedStyleProfile.recommendedParams) {
-    const learned = _learnedStyleProfile.recommendedParams;
+  if (profile?.valid && profile.recommendedParams) {
+    const learned = profile.recommendedParams;
     return {
       ...baseParams,
       turdSize: learned.turdSize ?? baseParams.turdSize,
@@ -123,11 +150,11 @@ function getLearnedPotraceParams(mode = 'sticker') {
 }
 
 /**
- * Force reload of style profile (call after training)
+ * Force reload of style profiles (call after training)
  */
 function reloadStyleProfile() {
-  _styleProfileLoaded = false;
-  _learnedStyleProfile = null;
+  _profilesLoaded = false;
+  _learnedProfiles = {};
   console.log('[ContourStyle] Style profile cache cleared');
 }
 
@@ -4094,6 +4121,217 @@ function truncateText(text, maxLen) {
 }
 
 // ============================================================================
+// AVERY 5160 LABEL GENERATION (1" x 2.625", 30 per sheet)
+// ============================================================================
+
+const AVERY_5160 = {
+  labelWidth: 788,   // 2.625" @ 300 DPI
+  labelHeight: 300,  // 1.0" @ 300 DPI
+  cols: 3,
+  rows: 10,
+  marginTop: 150,    // 0.5"
+  marginLeft: 57,    // ~0.19"
+  colGap: 38,        // ~0.125" gutter between columns
+  rowGap: 0
+};
+
+/**
+ * Generate a single Avery 5160 label PNG (788x300px = 2.625"x1" @ 300 DPI)
+ * Layout: [QR 200x200] [Name + Price]
+ */
+async function generateAvery5160Label(product, baseUrl) {
+  await fs.promises.mkdir(LABEL_TEMP_DIR, { recursive: true });
+  const labelPath = path.join(LABEL_TEMP_DIR, `avery_${product.id}_${Date.now()}.png`);
+
+  const productUrl = `${baseUrl}/web/product.html?id=${product.id}`;
+  const qrBuffer = await QRCode.toBuffer(productUrl, {
+    width: 200,
+    margin: 0,
+    color: { dark: '#000000', light: '#ffffff' }
+  });
+
+  const composites = [];
+  // QR code on the left, vertically centered
+  composites.push({ input: qrBuffer, left: 20, top: 50 });
+
+  // Text: name + price
+  const title = escSvg(truncateText(product.title || 'Untitled', 25));
+  const price = '$' + ((product.priceCents || 0) / 100).toFixed(2);
+
+  const svgOverlay = Buffer.from(`<svg width="${AVERY_5160.labelWidth}" height="${AVERY_5160.labelHeight}" xmlns="http://www.w3.org/2000/svg">
+    <text x="240" y="130" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="bold" fill="#111">${title}</text>
+    <text x="240" y="175" font-family="Arial,Helvetica,sans-serif" font-size="24" fill="#16a34a" font-weight="600">${escSvg(price)}</text>
+  </svg>`);
+  composites.push({ input: svgOverlay, left: 0, top: 0 });
+
+  await sharp({
+    create: {
+      width: AVERY_5160.labelWidth,
+      height: AVERY_5160.labelHeight,
+      channels: 4,
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    }
+  })
+    .composite(composites)
+    .png()
+    .toFile(labelPath);
+
+  return labelPath;
+}
+
+/**
+ * Generate Avery 5160 label sheets (30 labels per 8.5"x11" page)
+ */
+async function generateAvery5160Sheets(products, baseUrl, photoDir, outputDir, filenamePrefix = 'avery-5160') {
+  console.log(`[Avery5160] Generating labels for ${products.length} products`);
+  await fs.promises.mkdir(outputDir, { recursive: true });
+
+  // Build flat list of labels (respecting quantity)
+  const labelPaths = [];
+  const tempFiles = [];
+  for (const product of products) {
+    try {
+      const labelPath = await generateAvery5160Label(product, baseUrl);
+      tempFiles.push(labelPath);
+      const qty = Math.max(1, parseInt(product.quantity) || 1);
+      for (let i = 0; i < qty; i++) labelPaths.push(labelPath);
+    } catch (err) {
+      console.error(`[Avery5160] Failed label for "${product.title}":`, err.message);
+    }
+  }
+
+  if (labelPaths.length === 0) throw new Error('No Avery 5160 labels could be generated');
+
+  const labelsPerSheet = AVERY_5160.cols * AVERY_5160.rows; // 30
+  const sheetCount = Math.ceil(labelPaths.length / labelsPerSheet);
+  const sheets = [];
+
+  for (let s = 0; s < sheetCount; s++) {
+    const sheetLabels = labelPaths.slice(s * labelsPerSheet, (s + 1) * labelsPerSheet);
+    const composites = [];
+
+    for (let i = 0; i < sheetLabels.length; i++) {
+      const col = i % AVERY_5160.cols;
+      const row = Math.floor(i / AVERY_5160.cols);
+      const x = AVERY_5160.marginLeft + col * (AVERY_5160.labelWidth + AVERY_5160.colGap);
+      const y = AVERY_5160.marginTop + row * (AVERY_5160.labelHeight + AVERY_5160.rowGap);
+      composites.push({ input: sheetLabels[i], left: x, top: y });
+    }
+
+    const sheetNum = String(s + 1).padStart(2, '0');
+    const filename = `${filenamePrefix}_Sheet${sheetNum}_PRINT.png`;
+    const sheetPath = path.join(outputDir, filename);
+
+    await sharp({
+      create: {
+        width: SHEET_CONFIG.widthPx,
+        height: SHEET_CONFIG.heightPx,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
+      }
+    })
+      .composite(composites)
+      .png()
+      .toFile(sheetPath);
+
+    sheets.push({
+      printFile: sheetPath,
+      printFilename: filename,
+      labelsOnSheet: sheetLabels.length
+    });
+    console.log(`[Avery5160] Sheet ${s + 1}/${sheetCount} — ${sheetLabels.length} labels`);
+  }
+
+  // Cleanup temp files
+  for (const f of tempFiles) { try { fs.unlinkSync(f); } catch (_) {} }
+  try { fs.rmdirSync(LABEL_TEMP_DIR); } catch (_) {}
+
+  return { sheets, totalSheets: sheetCount, totalStickers: labelPaths.length, outputDir };
+}
+
+// ============================================================================
+// SILHOUETTE GRID SHEET GENERATION (3"x1.5" labels, clean PNG grid)
+// ============================================================================
+
+const SILHOUETTE_GRID = {
+  cols: 2,
+  rows: 7,
+  marginLeft: 375,  // center 2 x 900px labels on 2550px sheet
+  marginTop: 75     // 0.25" top margin
+};
+
+/**
+ * Generate Silhouette-ready grid sheets — clean PNG with 3"x1.5" labels in a 2x7 grid
+ * No cut marks or SVG output — just a print-ready PNG for Silhouette Studio
+ */
+async function generateSilhouetteGridSheets(products, baseUrl, photoDir, outputDir, filenamePrefix = 'silhouette-grid') {
+  console.log(`[SilhouetteGrid] Generating labels for ${products.length} products`);
+  await fs.promises.mkdir(outputDir, { recursive: true });
+
+  // Generate individual 3"x1.5" labels using existing function
+  const labelPaths = [];
+  const tempFiles = [];
+  for (const product of products) {
+    try {
+      const labelPath = await generateProductLabel(product, baseUrl, photoDir);
+      tempFiles.push(labelPath);
+      const qty = Math.max(1, parseInt(product.quantity) || 1);
+      for (let i = 0; i < qty; i++) labelPaths.push(labelPath);
+    } catch (err) {
+      console.error(`[SilhouetteGrid] Failed label for "${product.title}":`, err.message);
+    }
+  }
+
+  if (labelPaths.length === 0) throw new Error('No labels could be generated');
+
+  const labelsPerSheet = SILHOUETTE_GRID.cols * SILHOUETTE_GRID.rows; // 14
+  const sheetCount = Math.ceil(labelPaths.length / labelsPerSheet);
+  const sheets = [];
+
+  for (let s = 0; s < sheetCount; s++) {
+    const sheetLabels = labelPaths.slice(s * labelsPerSheet, (s + 1) * labelsPerSheet);
+    const composites = [];
+
+    for (let i = 0; i < sheetLabels.length; i++) {
+      const col = i % SILHOUETTE_GRID.cols;
+      const row = Math.floor(i / SILHOUETTE_GRID.cols);
+      const x = SILHOUETTE_GRID.marginLeft + col * LABEL_WIDTH;
+      const y = SILHOUETTE_GRID.marginTop + row * LABEL_HEIGHT;
+      composites.push({ input: sheetLabels[i], left: x, top: y });
+    }
+
+    const sheetNum = String(s + 1).padStart(2, '0');
+    const filename = `${filenamePrefix}_Sheet${sheetNum}_PRINT.png`;
+    const sheetPath = path.join(outputDir, filename);
+
+    await sharp({
+      create: {
+        width: SHEET_CONFIG.widthPx,
+        height: SHEET_CONFIG.heightPx,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
+      }
+    })
+      .composite(composites)
+      .png()
+      .toFile(sheetPath);
+
+    sheets.push({
+      printFile: sheetPath,
+      printFilename: filename,
+      labelsOnSheet: sheetLabels.length
+    });
+    console.log(`[SilhouetteGrid] Sheet ${s + 1}/${sheetCount} — ${sheetLabels.length} labels`);
+  }
+
+  // Cleanup temp files
+  for (const f of tempFiles) { try { fs.unlinkSync(f); } catch (_) {} }
+  try { fs.rmdirSync(LABEL_TEMP_DIR); } catch (_) {}
+
+  return { sheets, totalSheets: sheetCount, totalStickers: labelPaths.length, outputDir };
+}
+
+// ============================================================================
 // END PRODUCT LABEL GENERATION
 // ============================================================================
 
@@ -4154,5 +4392,8 @@ module.exports = {
   reloadStyleProfile,       // Force reload of style profile after training
   // Product label generation
   generateProductLabel,      // Generate single 3"x1.5" label PNG
-  generateProductLabelSheets // Generate labels + pack onto sticker sheets
+  generateProductLabelSheets, // Generate labels + pack onto sticker sheets
+  generateAvery5160Label,    // Generate single Avery 5160 label PNG
+  generateAvery5160Sheets,   // Generate Avery 5160 label sheets (30/page)
+  generateSilhouetteGridSheets // Generate clean PNG grid sheets for Silhouette
 };

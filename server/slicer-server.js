@@ -358,12 +358,28 @@ async function handleSlicerRoute(pathname, req, res, db) {
         dim_y: modelInfo?.dim_y || null,
         dim_z: modelInfo?.dim_z || null,
         est_weight_g: null,
-        est_time_min: null
+        est_time_min: null,
+        description: fieldVal('description') || null,
+        source_url: fieldVal('source_url') || null
       });
 
       sendJson(res, 201, { item: catalogItem });
     } catch (err) {
       console.error('[Slicer] Upload STL error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/catalog/parse-part — run hardware parser on name + description
+  if (req.method === 'POST' && route === '/catalog/parse-part') {
+    try {
+      const body = await parseBody(req);
+      const { parsePart } = require('./multiboard-part-parser');
+      const result = parsePart(body.name || '', body.description || '');
+      sendJson(res, 200, result);
+    } catch (err) {
+      console.error('[Slicer] Parse part error:', err);
       sendError(res, 500, err.message);
     }
     return true;

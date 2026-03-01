@@ -1583,6 +1583,33 @@ async function importStudio3Files() {
       return;
     }
 
+    // Ask user to classify these files as sticker or decal
+    const importType = await new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML = `
+        <div style="background:var(--bg-secondary,#1a1a2e);border:1px solid var(--border,#333);border-radius:12px;padding:28px;max-width:400px;width:90%;text-align:center;">
+          <h3 style="margin:0 0 8px;color:var(--text,#eee);">Import Type</h3>
+          <p style="margin:0 0 20px;color:var(--text-muted,#888);font-size:14px;">How should these ${files.length} file(s) be classified for contour training?</p>
+          <div style="display:flex;gap:12px;justify-content:center;">
+            <button id="s3TypeSticker" style="flex:1;padding:14px 12px;border-radius:8px;border:2px solid #27ae60;background:rgba(39,174,96,0.1);color:#27ae60;cursor:pointer;font-size:14px;font-weight:600;">
+              Sticker<br><small style="opacity:0.7;font-weight:400;">Print & cut contours</small>
+            </button>
+            <button id="s3TypeDecal" style="flex:1;padding:14px 12px;border-radius:8px;border:2px solid #e74c3c;background:rgba(231,76,60,0.1);color:#e74c3c;cursor:pointer;font-size:14px;font-weight:600;">
+              Decal<br><small style="opacity:0.7;font-weight:400;">Vector color cuts</small>
+            </button>
+          </div>
+          <button id="s3TypeCancel" style="margin-top:14px;width:100%;padding:8px;border-radius:6px;border:1px solid var(--border,#444);background:transparent;color:var(--text-muted,#888);cursor:pointer;font-size:13px;">Cancel</button>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#s3TypeSticker').onclick = () => { overlay.remove(); resolve('sticker'); };
+      overlay.querySelector('#s3TypeDecal').onclick = () => { overlay.remove(); resolve('decal'); };
+      overlay.querySelector('#s3TypeCancel').onclick = () => { overlay.remove(); resolve(null); };
+    });
+
+    if (!importType) return; // User canceled
+
     vinylShowToast(`Parsing ${files.length} Studio3 file(s)...`, 'info');
     updateVinylStatus('Parsing Studio3 files...');
 
@@ -1602,7 +1629,7 @@ async function importStudio3Files() {
         }
 
         // Upload to server for contour training (in background)
-        uploadStudio3ToServer(result, filepath).then(uploaded => {
+        uploadStudio3ToServer(result, filepath, importType).then(uploaded => {
           if (uploaded) uploadedCount++;
         }).catch(err => {
           console.warn('[Studio3 Import] Server upload failed:', err.message);
@@ -1652,7 +1679,7 @@ async function importStudio3Files() {
  * @param {string} filepath - Original file path
  * @returns {Promise<boolean>} Success status
  */
-async function uploadStudio3ToServer(result, filepath) {
+async function uploadStudio3ToServer(result, filepath, type = 'sticker') {
   // Get config from preload API
   const config = await window.printStation?.getConfig() || {};
   const serverBase = (config.serverBaseUrl?.trim() || 'https://blueridgecustomco.com').replace(/\/$/, '');
@@ -1675,7 +1702,8 @@ async function uploadStudio3ToServer(result, filepath) {
     paths: result.paths || [],
     pathCount: result.paths?.length || 0,
     imageCount: result.images?.length || 0,
-    thumbnail
+    thumbnail,
+    type
   };
 
   console.log('[Studio3 Upload] Sending to server:', filename, 'paths:', payload.pathCount, 'images:', payload.imageCount);

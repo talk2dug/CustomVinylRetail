@@ -520,8 +520,8 @@ contextBridge.exposeInMainWorld('printStation', {
     getWebcamUrls: (printerId) => ipcRenderer.invoke('fleet:webcam:urls', printerId),
 
     // Print control
-    startPrint: (printerId, filename, shopifyOrderId, aceSlot) =>
-      ipcRenderer.invoke('fleet:print:start', { printerId, filename, shopifyOrderId, aceSlot }),
+    startPrint: (printerId, filename, shopifyOrderId) =>
+      ipcRenderer.invoke('fleet:print:start', { printerId, filename, shopifyOrderId }),
     pausePrint: (printerId) => ipcRenderer.invoke('fleet:print:pause', { printerId }),
     resumePrint: (printerId) => ipcRenderer.invoke('fleet:print:resume', { printerId }),
     cancelPrint: (printerId) => ipcRenderer.invoke('fleet:print:cancel', { printerId }),
@@ -566,14 +566,15 @@ contextBridge.exposeInMainWorld('printStation', {
     uploadStl: (opts) => ipcRenderer.invoke('slicer:catalog:create', opts),
     updateCatalogItem: (id, updates) => ipcRenderer.invoke('slicer:catalog:update', { id, updates }),
     deleteCatalogItem: (id) => ipcRenderer.invoke('slicer:catalog:delete', id),
+    parsePartInfo: (name, description) => ipcRenderer.invoke('slicer:catalog:parsePartInfo', { name, description }),
     fetchStlBytes: (stlId) => ipcRenderer.invoke('slicer:stl:fetch', stlId),
 
     // Slicing
     slice: (options) => ipcRenderer.invoke('slicer:slice', options),
-    sliceAndPrint: (sliceOptions, printerId, aceSlot) => ipcRenderer.invoke('slicer:sliceAndPrint', { sliceOptions, printerId, aceSlot }),
+    sliceAndPrint: (sliceOptions, printerId) => ipcRenderer.invoke('slicer:sliceAndPrint', { sliceOptions, printerId }),
     slicePlate: (options) => ipcRenderer.invoke('slicer:slicePlate', options),
-    slicePlateAndPrint: (sliceOptions, printerId, aceSlot) => ipcRenderer.invoke('slicer:slicePlateAndPrint', { sliceOptions, printerId, aceSlot }),
-    printGcode: (gcodeId, printerId, aceSlot) => ipcRenderer.invoke('slicer:printGcode', { gcodeId, printerId, aceSlot }),
+    slicePlateAndPrint: (sliceOptions, printerId) => ipcRenderer.invoke('slicer:slicePlateAndPrint', { sliceOptions, printerId }),
+    printGcode: (gcodeId, printerId) => ipcRenderer.invoke('slicer:printGcode', { gcodeId, printerId }),
     fetchGcodeText: (gcodeId) => ipcRenderer.invoke('slicer:gcode:fetchText', gcodeId),
 
     // Progress events from main process (step-by-step print progress)

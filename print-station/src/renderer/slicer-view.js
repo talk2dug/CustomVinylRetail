@@ -173,6 +173,15 @@ function slicerWireEvents() {
     });
   }
 
+  // Update Info — opens scrape modal
+  const updateInfoBtn = document.getElementById('slicerUpdateInfoBtn');
+  if (updateInfoBtn) {
+    updateInfoBtn.addEventListener('click', () => {
+      if (!slicerState.selectedItem) return;
+      slicerOpenUpdateInfoModal(slicerState.selectedItem);
+    });
+  }
+
   // Slice
   if (sliceBtn) {
     sliceBtn.addEventListener('click', () => slicerSliceAndPrint());
@@ -186,12 +195,12 @@ function slicerWireEvents() {
     const clampCopies = () => {
       let v = parseInt(copiesInput.value, 10);
       if (isNaN(v) || v < 1) v = 1;
-      if (v > 20) v = 20;
+      if (v > 100) v = 100;
       copiesInput.value = v;
       slicerState.settings.copies = v;
     };
     copiesMinus.addEventListener('click', () => { copiesInput.value = Math.max(1, parseInt(copiesInput.value, 10) - 1); clampCopies(); });
-    copiesPlus.addEventListener('click', () => { copiesInput.value = Math.min(20, parseInt(copiesInput.value, 10) + 1); clampCopies(); });
+    copiesPlus.addEventListener('click', () => { copiesInput.value = Math.min(100, parseInt(copiesInput.value, 10) + 1); clampCopies(); });
     copiesInput.addEventListener('change', clampCopies);
   }
 
@@ -365,6 +374,7 @@ function slicerWireEvents() {
 function slicerApplyProfile(profileKey) {
   slicerState.settings.profile = profileKey;
   if (profileKey === 'custom' || !slicerState.presets?.profiles) {
+    slicerUpdateProfileHint(null);
     slicerSyncSettingsButtons();
     return;
   }
@@ -379,7 +389,20 @@ function slicerApplyProfile(profileKey) {
     if (v.surface) slicerState.settings.surface = v.surface;
     if (v.supports) slicerState.settings.supports = v.supports;
   }
+  slicerUpdateProfileHint(profile?.hint || null);
   slicerSyncSettingsButtons();
+}
+
+function slicerUpdateProfileHint(hint) {
+  const el = document.getElementById('slicerProfileHint');
+  if (!el) return;
+  if (hint) {
+    el.textContent = hint;
+    el.style.display = 'block';
+  } else {
+    el.textContent = '';
+    el.style.display = 'none';
+  }
 }
 
 // ============================================================================
@@ -930,6 +953,26 @@ function slicerRenderSelectedInfo(item) {
     dimsEl.textContent = parts.join(' \u00B7 ');
   }
   if (notesEl) notesEl.textContent = item.notes || '';
+
+  // Show mount info if available
+  const mountEl = document.getElementById('slicerSelectedMountInfo');
+  if (mountEl) {
+    const parts = [];
+    if (item.mount_type) parts.push(`Mount: ${item.mount_type}`);
+    if (item.mount_hardware) {
+      try {
+        const hw = JSON.parse(item.mount_hardware);
+        hw.forEach(h => {
+          if (h.type === 'magnet') parts.push(`${h.qty || '?'}x ${h.size || 'magnets'}`);
+          else if (h.type === 'screw') parts.push(`${h.qty || '?'}x ${h.spec || 'screws'}`);
+          else if (h.type === 'insert') parts.push(`${h.spec || '?'} inserts`);
+        });
+      } catch (_) {}
+    }
+    if (item.requires_tray) parts.push(`Tray: ${item.tray_size || 'yes'}`);
+    if (item.source_url) parts.push('Has source URL');
+    mountEl.textContent = parts.length ? parts.join(' · ') : '';
+  }
 }
 
 function slicerRenderGcodeList(entries) {
@@ -1084,51 +1127,6 @@ function slicerPopulatePrinterDropdown() {
       return `<option value="${p.id}">${slicerEsc(label)}</option>`;
     }).join('');
 
-  // Wire ACE slot picker to printer selection changes
-  select.removeEventListener('change', slicerOnPrinterChange);
-  select.addEventListener('change', slicerOnPrinterChange);
-  // Reset slot picker
-  slicerOnPrinterChange();
-}
-
-function slicerOnPrinterChange() {
-  const printerId = document.getElementById('slicerPrinter')?.value;
-  const slotGroup = document.getElementById('slicerAceSlotGroup');
-  const slotSelect = document.getElementById('slicerAceSlot');
-  if (!slotGroup || !slotSelect) return;
-
-  if (!printerId) {
-    slotGroup.style.display = 'none';
-    slotSelect.value = '';
-    return;
-  }
-
-  const printer = slicerState.printers.find(p => String(p.id) === String(printerId));
-  if (!printer || !printer.has_multicolor) {
-    slotGroup.style.display = 'none';
-    slotSelect.value = '';
-    return;
-  }
-
-  let aceSlots = [];
-  try { aceSlots = printer.ace_slots ? JSON.parse(printer.ace_slots) : []; } catch (_) {}
-
-  if (!aceSlots.length) {
-    slotGroup.style.display = 'none';
-    slotSelect.value = '';
-    return;
-  }
-
-  slotGroup.style.display = '';
-  slotSelect.innerHTML = '<option value="">Select filament slot...</option>' +
-    aceSlots.map(s => {
-      const label = `T${s.slot}: ${s.name || s.material || '?'}${s.color ? ' (' + s.color + ')' : ''}`;
-      return `<option value="${s.slot}" data-material="${slicerEsc((s.material || 'PLA').toLowerCase())}">${slicerEsc(label)}</option>`;
-    }).join('');
-
-  // ACE slot selection — don't override the user's manual material choice.
-  // The slot just determines which physical filament bay (T0-T3) to use.
-  slotSelect.onchange = () => {};
 }
 
 // ============================================================================
@@ -1154,7 +1152,7 @@ function slicerGetSettingInfo(category, key) {
  * Show a pre-slice approval modal with a 3D preview and settings summary.
  * Returns a Promise that resolves true (user confirmed) or false (cancelled).
  */
-function slicerShowApprovalModal({ items, settings, printerName, printerModel, aceSlotLabel, isPlate, andPrint }) {
+function slicerShowApprovalModal({ items, settings, printerName, printerModel, isPlate, andPrint }) {
   return new Promise((resolve) => {
     const existing = document.getElementById('slicerApprovalModal');
     if (existing) existing.remove();
@@ -1213,7 +1211,6 @@ function slicerShowApprovalModal({ items, settings, printerName, printerModel, a
           <div style="margin-bottom:18px;padding:10px 12px;border:1px solid rgba(56,189,248,0.3);border-radius:8px;background:rgba(56,189,248,0.08);">
             <div style="font-size:0.8rem;color:rgba(255,255,255,0.5);margin-bottom:2px;">Printer</div>
             <div style="font-weight:600;color:#38bdf8;">${slicerEsc(printerName)}${printerModel ? ' <span class="muted" style="font-weight:400;">(' + slicerEsc(printerModel) + ')</span>' : ''}</div>
-            ${aceSlotLabel ? '<div style="font-size:0.85rem;color:rgba(255,255,255,0.7);margin-top:4px;">ACE Slot: <strong>' + slicerEsc(aceSlotLabel) + '</strong></div>' : ''}
           </div>` : ''}
           <div style="font-weight:600;font-size:0.9rem;color:#fff;margin-bottom:10px;">Slice Settings</div>
           ${settingRows.map(row => `
@@ -1323,6 +1320,9 @@ function slicerShowApprovalModal({ items, settings, printerName, printerModel, a
           const buf = await slicerFetchStlBuffer(item.id);
           const geometry = loader.parse(buf);
           geometry.computeVertexNormals();
+
+          // Convert from STL Z-up to Three.js Y-up so preview matches PrusaSlicer output
+          geometry.rotateX(-Math.PI / 2);
 
           // Apply saved transforms
           const savedT = slicerState.plateTransforms[item.id];
@@ -1515,7 +1515,7 @@ function slicerParseGcode(text) {
  * Show a full-screen G-code visualization modal with layer navigation.
  * Returns 'print' if user clicks Send to Printer, 'close' otherwise.
  */
-function slicerShowGcodePreview({ gcodeText, gcodeId, sliceResult, printerId, aceSlot, printerName }) {
+function slicerShowGcodePreview({ gcodeText, gcodeId, sliceResult, printerId, printerName }) {
   return new Promise((resolve) => {
     const existing = document.getElementById('gcodePreviewModal');
     if (existing) existing.remove();
@@ -1768,18 +1768,12 @@ async function slicerSliceAndPrint() {
     transform: transform
   };
 
-  // Read ACE slot if visible
-  const aceSlotVal = document.getElementById('slicerAceSlot')?.value;
-  const aceSlot = (aceSlotVal !== '' && aceSlotVal != null) ? parseInt(aceSlotVal, 10) : null;
-  const aceSlotLabel = aceSlot != null ? document.getElementById('slicerAceSlot')?.selectedOptions?.[0]?.textContent || `T${aceSlot}` : '';
-
   // STEP 1: Pre-slice approval modal (with temperatures)
   const approved = await slicerShowApprovalModal({
     items: [item],
     settings: slicerState.settings,
     printerName: printerName,
     printerModel: printerModel,
-    aceSlotLabel,
     isPlate: false,
     andPrint: false
   });
@@ -1817,7 +1811,12 @@ async function slicerSliceAndPrint() {
     return;
   }
   slicerHideProgress();
-  showToast(`Slicing complete${cached}!`, 'success', 3000);
+  const requestedCopies = slicerState.settings.copies || 1;
+  const actualCopies = sliceResult.actual_copies;
+  const copiesNote = (actualCopies && actualCopies < requestedCopies)
+    ? ` (${actualCopies} of ${requestedCopies} copies fit on the bed)`
+    : '';
+  showToast(`Slicing complete${cached}!${copiesNote}`, 'success', copiesNote ? 6000 : 3000);
 
   // STEP 4: Show G-code 3D preview
   const action = await slicerShowGcodePreview({
@@ -1825,7 +1824,6 @@ async function slicerSliceAndPrint() {
     gcodeId: sliceResult.gcode_id,
     sliceResult,
     printerId: printerId ? parseInt(printerId, 10) : null,
-    aceSlot,
     printerName
   });
 
@@ -1843,7 +1841,7 @@ async function slicerSliceAndPrint() {
       });
 
       try {
-        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10), aceSlot);
+        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10));
         offProgress();
         slicerHideProgress();
         if (result.success) {
@@ -1869,9 +1867,6 @@ async function slicerPrintExistingGcode(gcodeId) {
   const printerId = document.getElementById('slicerPrinter')?.value;
   if (!printerId) return alert('Please select a printer first');
 
-  const aceSlotVal = document.getElementById('slicerAceSlot')?.value;
-  const aceSlot = (aceSlotVal !== '' && aceSlotVal != null) ? parseInt(aceSlotVal, 10) : null;
-
   const printer = slicerState.printers.find(p => String(p.id) === String(printerId));
   const printerName = printer?.name || 'printer';
 
@@ -1883,7 +1878,7 @@ async function slicerPrintExistingGcode(gcodeId) {
   });
 
   try {
-    const result = await printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10), aceSlot);
+    const result = await printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10));
     offProgress();
     slicerHideProgress();
     if (result.success) {
@@ -2446,12 +2441,22 @@ async function bpLoadAllModels(bedDims) {
   if (statusText) statusText.textContent = `Loading ${items.length} models...`;
 
   // Fetch all STL buffers in parallel
+  const failedNames = [];
   const buffers = await Promise.all(
     items.map(item => slicerFetchStlBuffer(item.id).catch(err => {
-      console.warn('[BuildPlate] Failed to load STL for', item.name, err.message);
+      console.error('[BuildPlate] Failed to load STL for', item.name, '(id:', item.id, ')', err.message);
+      failedNames.push(item.name || `ID ${item.id}`);
       return null;
     }))
   );
+  if (failedNames.length > 0 && failedNames.length === items.length) {
+    // ALL models failed to load
+    if (statusText) statusText.textContent = `Failed to load all ${items.length} models — check server connection`;
+    console.error('[BuildPlate] All models failed to load. Items:', JSON.stringify(items.map(i => ({ id: i.id, name: i.name }))));
+    return;
+  } else if (failedNames.length > 0) {
+    console.warn(`[BuildPlate] ${failedNames.length} model(s) failed to load:`, failedNames.join(', '));
+  }
 
   const loader = new THREE.STLLoader();
   const modelInfos = [];
@@ -2463,6 +2468,9 @@ async function bpLoadAllModels(bedDims) {
     const item = items[i];
     const geometry = loader.parse(buf);
     geometry.computeVertexNormals();
+
+    // Convert from STL Z-up to Three.js Y-up so preview matches PrusaSlicer output
+    geometry.rotateX(-Math.PI / 2);
 
     // Apply any previously saved transforms
     const savedT = slicerState.plateTransforms[item.id];
@@ -2678,6 +2686,9 @@ function bpResetRotation() {
     const loader = new THREE.STLLoader();
     const geometry = loader.parse(buf);
     geometry.computeVertexNormals();
+
+    // Convert from STL Z-up to Three.js Y-up so preview matches PrusaSlicer output
+    geometry.rotateX(-Math.PI / 2);
 
     // Re-apply scale if any
     if (savedScale !== 1) geometry.scale(savedScale, savedScale, savedScale);
@@ -3183,9 +3194,11 @@ function bpClosePreview() {
 
 async function slicerShowBuildPlatePreview(itemsOverride) {
   // itemsOverride: optional array of catalog items (for single-item preview)
-  const items = itemsOverride || slicerState.plateItems;
+  // Guard: when called as an event handler, itemsOverride is a MouseEvent — ignore it
+  const validOverride = Array.isArray(itemsOverride) ? itemsOverride : null;
+  const items = validOverride || slicerState.plateItems;
   if (!items || items.length === 0) return alert('No models to preview');
-  const isSingleItem = !!itemsOverride;
+  const isSingleItem = !!validOverride;
 
   // Clean up any existing preview
   if (slicerState.platePreview) bpClosePreview();
@@ -3375,47 +3388,6 @@ function slicerPopulatePlatePrinterDropdown() {
       return `<option value="${p.id}">${slicerEsc(label)}</option>`;
     }).join('');
 
-  // Wire ACE slot picker
-  select.onchange = () => {
-    const printerId = select.value;
-    const slotGroup = document.getElementById('slicerPlateAceSlotGroup');
-    const slotSelect = document.getElementById('slicerPlateAceSlot');
-    if (!slotGroup || !slotSelect) return;
-
-    if (!printerId) {
-      slotGroup.style.display = 'none';
-      slotSelect.value = '';
-      return;
-    }
-
-    const printer = slicerState.printers.find(p => String(p.id) === String(printerId));
-    if (!printer || !printer.has_multicolor) {
-      slotGroup.style.display = 'none';
-      slotSelect.value = '';
-      return;
-    }
-
-    let aceSlots = [];
-    try { aceSlots = printer.ace_slots ? JSON.parse(printer.ace_slots) : []; } catch (_) {}
-
-    if (!aceSlots.length) {
-      slotGroup.style.display = 'none';
-      slotSelect.value = '';
-      return;
-    }
-
-    slotGroup.style.display = '';
-    slotSelect.innerHTML = '<option value="">Select filament slot...</option>' +
-      aceSlots.map(s => {
-        const label = `T${s.slot}: ${s.name || s.material || '?'}${s.color ? ' (' + s.color + ')' : ''}`;
-        return `<option value="${s.slot}" data-material="${slicerEsc((s.material || 'PLA').toLowerCase())}">${slicerEsc(label)}</option>`;
-      }).join('');
-
-    // ACE slot selection — don't override the user's manual material choice.
-    slotSelect.onchange = () => {};
-  };
-  // Reset slot picker
-  select.onchange();
 }
 
 async function slicerSlicePlate() {
@@ -3460,11 +3432,6 @@ async function slicerSlicePlate() {
     auto_orient: slicerState.settings.auto_orient
   };
 
-  // Read ACE slot
-  const aceSlotVal = document.getElementById('slicerPlateAceSlot')?.value;
-  const aceSlot = (aceSlotVal !== '' && aceSlotVal != null) ? parseInt(aceSlotVal, 10) : null;
-  const aceSlotLabel = aceSlot != null ? document.getElementById('slicerPlateAceSlot')?.selectedOptions?.[0]?.textContent || `T${aceSlot}` : '';
-
   const modelCount = slicerState.plateItems.length;
 
   // STEP 1: Pre-slice approval modal (with temperatures)
@@ -3473,7 +3440,6 @@ async function slicerSlicePlate() {
     settings: slicerState.settings,
     printerName,
     printerModel,
-    aceSlotLabel,
     isPlate: true,
     andPrint: false
   });
@@ -3516,7 +3482,6 @@ async function slicerSlicePlate() {
     gcodeId: sliceResult.gcode_id,
     sliceResult,
     printerId: printerId ? parseInt(printerId, 10) : null,
-    aceSlot,
     printerName
   });
 
@@ -3533,7 +3498,7 @@ async function slicerSlicePlate() {
       });
 
       try {
-        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10), aceSlot);
+        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10));
         offProgress();
         slicerHideProgress();
         if (result.success) {
@@ -3996,4 +3961,309 @@ function slicerMapPrinterModel(modelName) {
   if (lower.includes('ke') || lower.includes('v3')) return 'ender3_v3_ke';
   if (lower.includes('ender')) return 'ender3_s1pro';
   return 'kobra3';
+}
+
+// ============================================================================
+// UPDATE INFO MODAL — Scrape part description from Thangs page
+// ============================================================================
+
+let _slicerUpdateInfoItem = null;
+let _slicerUpdateInfoWebview = null;
+let _slicerUpdateScrapedData = null;
+
+function slicerOpenUpdateInfoModal(item) {
+  _slicerUpdateInfoItem = item;
+  _slicerUpdateScrapedData = null;
+
+  const modal = document.getElementById('slicerUpdateInfoModal');
+  if (!modal) return;
+  modal.style.display = '';
+
+  // Set title
+  const title = document.getElementById('slicerUpdateInfoTitle');
+  if (title) title.textContent = `Update Info: ${item.name}`;
+
+  // Reset results panel
+  const empty = document.getElementById('slicerUpdateScrapedEmpty');
+  const results = document.getElementById('slicerUpdateScrapedResults');
+  if (empty) empty.style.display = '';
+  if (results) results.style.display = 'none';
+
+  // Create webview if needed
+  const container = document.getElementById('slicerUpdateWebviewContainer');
+  if (!container) return;
+
+  // Remove old webview
+  if (_slicerUpdateInfoWebview) {
+    try { _slicerUpdateInfoWebview.remove(); } catch (_) {}
+    _slicerUpdateInfoWebview = null;
+  }
+
+  const wv = document.createElement('webview');
+  const searchName = encodeURIComponent(item.name.replace(/\s+/g, ' ').trim());
+  const searchUrl = item.source_url || `https://thangs.com/search/${searchName}?view=list&searchScope=thangs`;
+  wv.setAttribute('src', searchUrl);
+  wv.setAttribute('partition', 'persist:multiboard-browser');
+  wv.setAttribute('allowpopups', '');
+  wv.style.cssText = 'width:100%;height:100%;border:none;';
+
+  wv.addEventListener('did-navigate', (e) => {
+    const urlBar = document.getElementById('slicerUpdateUrlBar');
+    if (urlBar) urlBar.value = e.url;
+  });
+  wv.addEventListener('did-navigate-in-page', (e) => {
+    if (e.isMainFrame) {
+      const urlBar = document.getElementById('slicerUpdateUrlBar');
+      if (urlBar) urlBar.value = e.url;
+    }
+  });
+
+  container.appendChild(wv);
+  _slicerUpdateInfoWebview = wv;
+
+  // Wire buttons (use event delegation to avoid double-binding)
+  const scrapeBtn = document.getElementById('slicerUpdateScrapeBtn');
+  const closeBtn = document.getElementById('slicerUpdateCloseBtn');
+  const approveBtn = document.getElementById('slicerUpdateApproveBtn');
+  const discardBtn = document.getElementById('slicerUpdateDiscardBtn');
+
+  // Replace elements to remove old listeners
+  if (scrapeBtn) {
+    const newBtn = scrapeBtn.cloneNode(true);
+    scrapeBtn.parentNode.replaceChild(newBtn, scrapeBtn);
+    newBtn.addEventListener('click', slicerUpdateScrape);
+  }
+  if (closeBtn) {
+    const newBtn = closeBtn.cloneNode(true);
+    closeBtn.parentNode.replaceChild(newBtn, closeBtn);
+    newBtn.addEventListener('click', slicerCloseUpdateInfoModal);
+  }
+  if (approveBtn) {
+    const newBtn = approveBtn.cloneNode(true);
+    approveBtn.parentNode.replaceChild(newBtn, approveBtn);
+    newBtn.addEventListener('click', slicerUpdateApprove);
+  }
+  if (discardBtn) {
+    const newBtn = discardBtn.cloneNode(true);
+    discardBtn.parentNode.replaceChild(newBtn, discardBtn);
+    newBtn.addEventListener('click', () => {
+      _slicerUpdateScrapedData = null;
+      const empty = document.getElementById('slicerUpdateScrapedEmpty');
+      const results = document.getElementById('slicerUpdateScrapedResults');
+      if (empty) empty.style.display = '';
+      if (results) results.style.display = 'none';
+    });
+  }
+}
+
+function slicerCloseUpdateInfoModal() {
+  const modal = document.getElementById('slicerUpdateInfoModal');
+  if (modal) modal.style.display = 'none';
+
+  if (_slicerUpdateInfoWebview) {
+    try { _slicerUpdateInfoWebview.remove(); } catch (_) {}
+    _slicerUpdateInfoWebview = null;
+  }
+  _slicerUpdateInfoItem = null;
+  _slicerUpdateScrapedData = null;
+}
+
+async function slicerUpdateScrape() {
+  if (!_slicerUpdateInfoWebview) return;
+
+  const scrapeBtn = document.getElementById('slicerUpdateScrapeBtn');
+  if (scrapeBtn) {
+    scrapeBtn.textContent = 'Scraping...';
+    scrapeBtn.disabled = true;
+  }
+
+  try {
+    // Get the current page URL
+    const pageUrl = await _slicerUpdateInfoWebview.executeJavaScript('window.location.href');
+
+    // Scrape description from the page — gather text from ALL matching elements
+    const description = await _slicerUpdateInfoWebview.executeJavaScript(`
+      (function() {
+        try {
+          var seen = new Set();
+          var parts = [];
+
+          // Collect text from all elements matching these selectors
+          var selectors = [
+            '[class*="description" i]',
+            '[data-testid*="description"]',
+            '.model-page-description',
+            'article',
+            '[class*="about" i]',
+            '[class*="detail" i]',
+            '[class*="specs" i]',
+            '[class*="info" i]',
+            '[class*="content" i]',
+            '[class*="body" i]',
+            '[class*="text" i]',
+            '[class*="readme" i]',
+            '[class*="summary" i]'
+          ];
+
+          for (var i = 0; i < selectors.length; i++) {
+            var els = document.querySelectorAll(selectors[i]);
+            for (var j = 0; j < els.length; j++) {
+              var el = els[j];
+              // Skip tiny elements, nav bars, headers, footers, buttons
+              var tag = el.tagName.toLowerCase();
+              if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'nav' || tag === 'footer' || tag === 'header') continue;
+              // Skip if element is not visible
+              var rect = el.getBoundingClientRect();
+              if (rect.width < 50 || rect.height < 10) continue;
+              var text = (el.innerText || '').trim();
+              // Skip short or duplicate text
+              if (text.length < 15) continue;
+              if (seen.has(text)) continue;
+              // Skip if this text is a subset of something we already have
+              var isSubset = false;
+              for (var k = 0; k < parts.length; k++) {
+                if (parts[k].includes(text)) { isSubset = true; break; }
+              }
+              if (isSubset) continue;
+              // Remove any existing parts that are subsets of this text
+              parts = parts.filter(function(p) { return !text.includes(p); });
+              seen = new Set(parts);
+              seen.add(text);
+              parts.push(text);
+            }
+          }
+
+          if (parts.length > 0) {
+            return parts.join('\\n\\n---\\n\\n').slice(0, 8000);
+          }
+
+          // Fallback: meta description
+          var meta = document.querySelector('meta[name="description"]')
+            || document.querySelector('meta[property="og:description"]');
+          if (meta && meta.content && meta.content.trim().length > 10) {
+            return meta.content.trim().slice(0, 8000);
+          }
+          return null;
+        } catch(e) { return null; }
+      })()
+    `);
+
+    // Run the parser on the scraped description + item name
+    // We do this server-side via an IPC call
+    const parsed = await printStation.slicer.parsePartInfo(
+      _slicerUpdateInfoItem.name,
+      description || ''
+    );
+
+    _slicerUpdateScrapedData = {
+      source_url: pageUrl,
+      description: description,
+      mount_type: parsed?.mount_type || 'unknown',
+      mount_hardware: parsed?.mount_hardware || null,
+      requires_tray: parsed?.requires_tray || 0,
+      tray_size: parsed?.tray_size || null,
+      tray_notes: parsed?.tray_notes || null
+    };
+
+    // Show results
+    slicerUpdateShowScrapedResults();
+
+  } catch (err) {
+    console.warn('[UpdateInfo] Scrape error:', err);
+    if (typeof window.showToast === 'function') {
+      window.showToast('Scrape failed: ' + (err.message || 'unknown error'), 'error');
+    }
+  } finally {
+    const btn = document.getElementById('slicerUpdateScrapeBtn');
+    if (btn) {
+      btn.textContent = 'Scrape This Page';
+      btn.disabled = false;
+    }
+  }
+}
+
+function slicerUpdateShowScrapedResults() {
+  const data = _slicerUpdateScrapedData;
+  if (!data) return;
+
+  const empty = document.getElementById('slicerUpdateScrapedEmpty');
+  const results = document.getElementById('slicerUpdateScrapedResults');
+  if (empty) empty.style.display = 'none';
+  if (results) results.style.display = '';
+
+  // Fill in fields
+  const urlEl = document.getElementById('slicerUpdateSourceUrl');
+  if (urlEl) urlEl.textContent = data.source_url || 'N/A';
+
+  const descEl = document.getElementById('slicerUpdateDescription');
+  if (descEl) descEl.textContent = data.description || '(no description found)';
+
+  const mountSel = document.getElementById('slicerUpdateMountType');
+  if (mountSel) mountSel.value = data.mount_type || 'unknown';
+
+  const hwEl = document.getElementById('slicerUpdateHardware');
+  if (hwEl) {
+    if (data.mount_hardware) {
+      try {
+        const hw = JSON.parse(data.mount_hardware);
+        hwEl.innerHTML = hw.map(h => {
+          if (h.type === 'magnet') return `<div>Magnet: ${h.qty || '?'}x ${h.size || 'unknown size'}</div>`;
+          if (h.type === 'screw') return `<div>Screw: ${h.qty || '?'}x ${h.spec || 'unknown'}</div>`;
+          if (h.type === 'insert') return `<div>Insert: ${h.spec || 'unknown'}</div>`;
+          return `<div>${h.type}: ${JSON.stringify(h)}</div>`;
+        }).join('');
+      } catch (_) {
+        hwEl.textContent = data.mount_hardware;
+      }
+    } else {
+      hwEl.textContent = 'None detected';
+    }
+  }
+
+  const trayEl = document.getElementById('slicerUpdateTray');
+  if (trayEl) {
+    if (data.requires_tray) {
+      trayEl.textContent = `Yes${data.tray_size ? ` (${data.tray_size})` : ''}${data.tray_notes ? ` — ${data.tray_notes}` : ''}`;
+    } else {
+      trayEl.textContent = 'No';
+    }
+  }
+}
+
+async function slicerUpdateApprove() {
+  if (!_slicerUpdateInfoItem || !_slicerUpdateScrapedData) return;
+
+  const data = _slicerUpdateScrapedData;
+  const id = _slicerUpdateInfoItem.id;
+
+  // Allow user to override mount type from dropdown
+  const mountSel = document.getElementById('slicerUpdateMountType');
+  if (mountSel) data.mount_type = mountSel.value;
+
+  try {
+    await printStation.slicer.updateCatalogItem(id, {
+      source_url: data.source_url || null,
+      description: data.description || null,
+      mount_type: data.mount_type || null,
+      mount_hardware: data.mount_hardware || null,
+      requires_tray: data.requires_tray || 0,
+      tray_size: data.tray_size || null,
+      tray_notes: data.tray_notes || null
+    });
+
+    if (typeof window.showToast === 'function') {
+      window.showToast('Part info updated!', 'success');
+    }
+
+    // Update the local item data and re-render
+    Object.assign(_slicerUpdateInfoItem, data);
+    slicerRenderSelectedInfo(_slicerUpdateInfoItem);
+
+    slicerCloseUpdateInfoModal();
+  } catch (err) {
+    console.warn('[UpdateInfo] Save error:', err);
+    if (typeof window.showToast === 'function') {
+      window.showToast('Save failed: ' + (err.message || 'unknown error'), 'error');
+    }
+  }
 }

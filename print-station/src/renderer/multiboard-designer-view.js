@@ -79,6 +79,7 @@ const mbState = {
   isPlacing: false,
   placingPart: null,
   previewMesh: null,
+  _movingComp: null,  // saved state when moving a component
   hoveredTileId: null,  // tile currently hovered during accessory placement
   raycaster: null,
   mouse: null,
@@ -251,6 +252,8 @@ function initMultiboardDesignerView() {
     mbState.initialized = true;
     setupMultiboardEventListeners();
     loadMultiboardCatalog();
+    // Re-fit on window resize
+    window.addEventListener('resize', mbFitDesignerToViewport);
   }
   if (mbState.scene && !mbState.animFrameId) {
     mbAnimate();
@@ -258,6 +261,24 @@ function initMultiboardDesignerView() {
   if (!mbState.scene) {
     setTimeout(() => mbInitScene(), 50);
   }
+  // Lock section to fill exactly the remaining viewport
+  mbFitDesignerToViewport();
+}
+
+function mbFitDesignerToViewport() {
+  const section = document.getElementById('multiboardDesignerView');
+  if (!section || !section.classList.contains('active')) return;
+  // Find where the nav ends
+  const nav = document.querySelector('.tab-bar');
+  const navBottom = nav ? nav.getBoundingClientRect().bottom : 0;
+  // Position the designer fixed, filling from nav bottom to viewport bottom
+  section.style.position = 'fixed';
+  section.style.top = navBottom + 'px';
+  section.style.left = '0';
+  section.style.right = '0';
+  section.style.bottom = '0';
+  section.style.height = 'auto';
+  section.style.zIndex = '5';
 }
 
 async function loadMultiboardCatalog() {
@@ -306,13 +327,30 @@ function renderMbPartsList() {
       const sizeLabel = part.gridWidth > 0 ? `${part.gridWidth}x${part.gridHeight}` : '';
       const typeIcon = mbGetPartIcon(part);
 
+      // Build badge indicators for hardware/tray requirements
+      const badges = [];
+      if (part._mountHardware && part._mountHardware.length) {
+        const hw = part._mountHardware[0];
+        badges.push(`<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#5d4037;color:#ffcc80;">${hw.type === 'magnet' ? 'magnet' : hw.type === 'screw' ? 'screw' : hw.type}</span>`);
+      }
+      if (part._requiresTray) {
+        badges.push('<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#4a148c;color:#ce93d8;">tray</span>');
+      }
+      if (part._hasMethodChoice) {
+        badges.push('<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#1565c0;color:#90caf9;">A/B</span>');
+      } else if (part.requiresHardware && part.requiresHardware.length) {
+        const hwCount = part.requiresHardware.reduce((sum, h) => sum + h.qty, 0);
+        badges.push(`<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#37474f;color:#b0bec5;">\u00d7${hwCount} hw</span>`);
+      }
+      const badgeHtml = badges.length ? `<span style="margin-left:4px;">${badges.join(' ')}</span>` : '';
+
       card.innerHTML = `
         <div style="background:${previewColor};width:44px;height:44px;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           <span style="color:#fff;font-size:${sizeLabel ? '11' : '16'}px;font-weight:600;">${sizeLabel || typeIcon}</span>
         </div>
         <div style="flex:1;min-width:0;">
           <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${part.name}</div>
-          <div style="font-size:12px;color:#888;">$${part.priceUSD.toFixed(2)}</div>
+          <div style="font-size:12px;color:#888;">$${part.priceUSD.toFixed(2)}${badgeHtml}</div>
         </div>
       `;
       card.style.cssText = 'display:flex;gap:10px;align-items:center;padding:8px;border-radius:6px;cursor:pointer;border:2px solid transparent;margin-bottom:4px;transition:all 0.15s;';
@@ -480,6 +518,276 @@ function mbAnimate() {
   if (mbState.renderer && mbState.scene && mbState.camera) {
     mbState.renderer.render(mbState.scene, mbState.camera);
   }
+}
+
+// =============== STL MESH LOADING ===============
+
+const _mbStlGeoCache = {};  // stlCatalogId -> THREE.BufferGeometry (already oriented)
+
+/**
+ * Find the mount normal — the direction the snap / mount surface faces.
+ *
+ * Combined strategy using three independent signals:
+ *   1. PROTRUSION DETECTION — For each of the 6 bounding-box faces, count how
+ *      many vertices are within a thin slab at that face. Snap pins / hook tips
+ *      are sparse geometry at the extremes. The face with far fewer vertices
+ *      than its opposite = the snap side (mount normal points outward from there).
+ *   2. FLAT-FACE AREA — Sum area-weighted normals per axis-direction. The
+ *      direction with the most flat-face area is typically the back plate
+ *      (mount surface).
+ *   3. THIN-AXIS TIEBREAK — The thinnest bounding-box axis is the wall-mount
+ *      axis for most parts (hooks, labels, brackets).
+ *
+ * Each method votes with a confidence score; the direction with the highest
+ * combined score wins.
+ */
+function mbFindMountNormal(geometry) {
+  const positions = geometry.getAttribute('position');
+  const normals = geometry.getAttribute('normal');
+  if (!positions || !normals) return [0, 0, -1];
+
+  geometry.computeBoundingBox();
+  const bb = geometry.boundingBox;
+  const extents = [
+    bb.max.x - bb.min.x,
+    bb.max.y - bb.min.y,
+    bb.max.z - bb.min.z
+  ];
+  const maxExtent = Math.max(...extents);
+  if (maxExtent < 1e-6) return [0, 0, -1];
+
+  const vtxCount = positions.count;
+
+  // ── 1. Protrusion detection: vertex density near each bounding-box face ──
+  const slabFraction = 0.08; // 8% of axis extent
+  const faceCounts = []; // [minCount, maxCount] per axis
+  for (let axis = 0; axis < 3; axis++) {
+    const lo = axis === 0 ? bb.min.x : axis === 1 ? bb.min.y : bb.min.z;
+    const hi = axis === 0 ? bb.max.x : axis === 1 ? bb.max.y : bb.max.z;
+    const slab = (hi - lo) * slabFraction;
+    let minCount = 0, maxCount = 0;
+    for (let v = 0; v < vtxCount; v++) {
+      const val = axis === 0 ? positions.getX(v) : axis === 1 ? positions.getY(v) : positions.getZ(v);
+      if (val <= lo + slab) minCount++;
+      if (val >= hi - slab) maxCount++;
+    }
+    faceCounts.push([minCount, maxCount]);
+  }
+
+  // Score each of 6 directions: +X, -X, +Y, -Y, +Z, -Z
+  const scores = new Float64Array(6);
+  for (let axis = 0; axis < 3; axis++) {
+    const [minC, maxC] = faceCounts[axis];
+    const total = minC + maxC || 1;
+    const asymmetry = Math.abs(maxC - minC) / total;
+    if (asymmetry > 0.15) {
+      if (maxC < minC) {
+        // Fewer vertices at max end = protrusion there = mount normal is +axis
+        scores[axis * 2] += asymmetry * 3.0;
+      } else {
+        scores[axis * 2 + 1] += asymmetry * 3.0;
+      }
+    }
+  }
+
+  // ── 2. Flat-face area analysis ──
+  const triCount = positions.count / 3;
+  const areaByDir = new Float64Array(6);
+  for (let i = 0; i < triCount; i++) {
+    const i0 = i * 3, i1 = i * 3 + 1, i2 = i * 3 + 2;
+    const nx = normals.getX(i0), ny = normals.getY(i0), nz = normals.getZ(i0);
+    const anx = Math.abs(nx), any = Math.abs(ny), anz = Math.abs(nz);
+    let dirIdx;
+    if (anx >= any && anx >= anz) dirIdx = nx > 0 ? 0 : 1;
+    else if (any >= anx && any >= anz) dirIdx = ny > 0 ? 2 : 3;
+    else dirIdx = nz > 0 ? 4 : 5;
+
+    const alignment = [anx, anx, any, any, anz, anz][dirIdx];
+    if (alignment < 0.7) continue;
+
+    const ax = positions.getX(i0), ay = positions.getY(i0), az = positions.getZ(i0);
+    const bx = positions.getX(i1), by = positions.getY(i1), bz = positions.getZ(i1);
+    const cx = positions.getX(i2), cy = positions.getY(i2), cz = positions.getZ(i2);
+    const ex = bx - ax, ey = by - ay, ez = bz - az;
+    const fx = cx - ax, fy = cy - ay, fz = cz - az;
+    const cpx = ey * fz - ez * fy, cpy = ez * fx - ex * fz, cpz = ex * fy - ey * fx;
+    const area = 0.5 * Math.sqrt(cpx * cpx + cpy * cpy + cpz * cpz);
+    areaByDir[dirIdx] += area;
+  }
+
+  let maxArea = 0;
+  for (let d = 0; d < 6; d++) if (areaByDir[d] > maxArea) maxArea = areaByDir[d];
+  if (maxArea > 0) {
+    for (let d = 0; d < 6; d++) {
+      scores[d] += (areaByDir[d] / maxArea) * 2.0;
+    }
+  }
+
+  // ── 3. Thin-axis tiebreak ──
+  const sortedAxes = [0, 1, 2].sort((a, b) => extents[a] - extents[b]);
+  const thinAxis = sortedAxes[0];
+  const thinRatio = extents[thinAxis] / maxExtent;
+  if (thinRatio < 0.5) {
+    const boost = (1.0 - thinRatio) * 1.5;
+    scores[thinAxis * 2] += boost;
+    scores[thinAxis * 2 + 1] += boost;
+  }
+
+  // ── Pick the winner ──
+  let bestDir = 5; // default -Z
+  let bestScore = -1;
+  for (let d = 0; d < 6; d++) {
+    if (scores[d] > bestScore) {
+      bestScore = scores[d];
+      bestDir = d;
+    }
+  }
+
+  const dirVectors = [
+    [1, 0, 0], [-1, 0, 0],
+    [0, 1, 0], [0, -1, 0],
+    [0, 0, 1], [0, 0, -1],
+  ];
+  return dirVectors[bestDir];
+}
+
+/**
+ * Apply rotation to a BufferGeometry so that vector `from` aligns with `to`.
+ * Uses Rodrigues' rotation formula.
+ */
+function mbOrientGeometry(geometry, from, to) {
+  const cx = from[1] * to[2] - from[2] * to[1];
+  const cy = from[2] * to[0] - from[0] * to[2];
+  const cz = from[0] * to[1] - from[1] * to[0];
+  const sinA = Math.sqrt(cx * cx + cy * cy + cz * cz);
+  const cosA = from[0] * to[0] + from[1] * to[1] + from[2] * to[2];
+
+  if (sinA < 1e-8) {
+    if (cosA > 0) return; // already aligned
+    // Opposite — rotate 180° around a perpendicular axis
+    let ax = 1, ay = 0, az = 0;
+    if (Math.abs(from[0]) > 0.9) { ax = 0; ay = 1; }
+    const px = from[1] * az - from[2] * ay;
+    const py = from[2] * ax - from[0] * az;
+    const pz = from[0] * ay - from[1] * ax;
+    const pl = Math.sqrt(px * px + py * py + pz * pz);
+    const m = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(px / pl, py / pl, pz / pl), Math.PI);
+    geometry.applyMatrix4(m);
+    return;
+  }
+
+  const axis = new THREE.Vector3(cx / sinA, cy / sinA, cz / sinA);
+  const angle = Math.atan2(sinA, cosA);
+  const m = new THREE.Matrix4().makeRotationAxis(axis, angle);
+  geometry.applyMatrix4(m);
+}
+
+/**
+ * Fetch and parse an STL file, returning a THREE.BufferGeometry.
+ * If savedMountNormal is provided (from DB), use it directly; otherwise auto-detect.
+ * Results are cached so each STL is only fetched once per orientation.
+ */
+async function mbFetchStlGeometry(stlCatalogId, savedMountNormal) {
+  // Cache key includes saved normal so a manual override gets its own cache entry
+  const cacheKey = savedMountNormal ? `${stlCatalogId}_${savedMountNormal.join(',')}` : stlCatalogId;
+  if (_mbStlGeoCache[cacheKey]) return _mbStlGeoCache[cacheKey].clone();
+  try {
+    const base64 = await printStation.slicer.fetchStlBytes(stlCatalogId);
+    const bin = atob(base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const loader = new THREE.STLLoader();
+    const geometry = loader.parse(bytes.buffer);
+    geometry.computeVertexNormals();
+
+    // Use saved orientation if available, otherwise auto-detect
+    const mountNormal = savedMountNormal || mbFindMountNormal(geometry);
+    mbOrientGeometry(geometry, mountNormal, [0, 0, -1]);
+    geometry.computeVertexNormals();
+
+    _mbStlGeoCache[cacheKey] = geometry;
+    return geometry.clone();
+  } catch (err) {
+    console.warn('[Multiboard] STL load failed for id', stlCatalogId, err.message);
+    return null;
+  }
+}
+
+/**
+ * After a component is placed with a procedural mesh, asynchronously load
+ * the real STL and swap it in. The STL is auto-oriented so the snap/mount
+ * surface faces the wall, then scaled to fit the part's grid area.
+ */
+function mbLoadRealStlForComponent(comp) {
+  const part = mbFindPart(comp.partId);
+  if (!part || !part._stlCatalogId) return;
+
+  mbFetchStlGeometry(part._stlCatalogId, part._mountNormal).then(geometry => {
+    if (!geometry) return;
+    // Verify the component still exists (might have been deleted)
+    if (!mbState.tiles.find(t => t.id === comp.id)) return;
+
+    // After orientation, compute bounds (STL files are in mm)
+    geometry.computeBoundingBox();
+    const bb = geometry.boundingBox;
+    const stlW = bb.max.x - bb.min.x;  // mm
+    const stlH = bb.max.y - bb.min.y;  // mm
+
+    // Compute real MU dimensions from STL (1 MU = 25mm = 1 grid unit)
+    const realMuW = Math.max(1, Math.round(stlW / 25));
+    const realMuH = Math.max(1, Math.round(stlH / 25));
+
+    // Update part grid dimensions if STL reveals a different size
+    if (realMuW !== part.gridWidth || realMuH !== part.gridHeight) {
+      console.log(`[Multiboard] Correcting "${part.name}" from ${part.gridWidth}x${part.gridHeight} to ${realMuW}x${realMuH} MU`);
+      part.gridWidth = realMuW;
+      part.gridHeight = realMuH;
+    }
+
+    // Scale STL to fit computed MU grid area exactly (no padding)
+    const scale = Math.min(realMuW / stlW, realMuH / stlH);
+
+    geometry.scale(scale, scale, scale);
+    geometry.computeBoundingBox();
+    const bb2 = geometry.boundingBox;
+
+    // Center X/Y, sit on wall surface (Z=0 is the wall)
+    const cx = (bb2.max.x + bb2.min.x) / 2;
+    const cy = (bb2.max.y + bb2.min.y) / 2;
+    const cz = bb2.min.z;  // align back face to Z=0
+    geometry.translate(-cx, -cy, -cz);
+
+    const material = new THREE.MeshPhongMaterial({
+      color: comp.color,
+      specular: 0x222222,
+      shininess: 40
+    });
+
+    const stlMesh = new THREE.Mesh(geometry, material);
+    stlMesh.userData.tileId = comp.id;
+    stlMesh.userData.isTile = true;
+    stlMesh.userData._materials = [material];
+    stlMesh.userData._isStl = true;
+
+    // Position at correct center using real dimensions
+    const isAccessory = part.attachesTo !== 'wall';
+    stlMesh.position.set(
+      comp.gridX + realMuW / 2,
+      comp.gridY + realMuH / 2,
+      isAccessory ? 0.2 : 0
+    );
+
+    // Swap out the old mesh
+    mbDisposeObject(comp.mesh);
+    mbState.scene.remove(comp.mesh);
+    mbState.scene.add(stlMesh);
+    comp.mesh = stlMesh;
+
+    // Re-apply selection highlight if this component is selected
+    if (mbState.selectedTile && mbState.selectedTile.id === comp.id) {
+      mbSetMeshEmissive(comp.mesh, 0x113355);
+    }
+  });
 }
 
 // =============== GEOMETRY FACTORY ===============
@@ -675,6 +983,23 @@ function mbStartPlacing(part) {
 }
 
 function mbCancelPlacing() {
+  // If we were moving a tile and cancelled, restore it to original position
+  if (mbState._movingComp) {
+    const mc = mbState._movingComp;
+    const part = mbFindPart(mc.partId);
+    if (part) {
+      const restored = mbPlaceComponent(mc.gridX, mc.gridY, part, mc.color, mc.attachedToId);
+      // Restore attached accessories too
+      if (mc._attachedAccessories) {
+        mc._attachedAccessories.forEach(a => {
+          const aPart = mbFindPart(a.partId);
+          if (aPart) mbPlaceComponent(a.gridX, a.gridY, aPart, a.color, restored.id);
+        });
+      }
+    }
+    mbState._movingComp = null;
+  }
+
   mbState.isPlacing = false;
   mbState.placingPart = null;
 
@@ -690,6 +1015,42 @@ function mbCancelPlacing() {
   if (hint) hint.style.display = 'none';
 
   document.querySelectorAll('.mb-part-card').forEach(c => c.style.borderColor = 'transparent');
+}
+
+/**
+ * Start moving a placed component — picks it up and enters placement mode.
+ * Escape restores it to the original position.
+ */
+function mbStartMoving(comp) {
+  const part = mbFindPart(comp.partId);
+  if (!part) return;
+
+  // Save original state so we can restore on cancel
+  const attachedAccessories = mbState.tiles
+    .filter(t => t.attachedToId === comp.id)
+    .map(a => ({ partId: a.partId, gridX: a.gridX, gridY: a.gridY, color: a.color }));
+
+  mbState._movingComp = {
+    partId: comp.partId,
+    gridX: comp.gridX,
+    gridY: comp.gridY,
+    color: comp.color,
+    attachedToId: comp.attachedToId,
+    _attachedAccessories: attachedAccessories,
+  };
+
+  // Remove the component (and its accessories) from the scene
+  mbRemoveComponent(comp.id);
+
+  // Enter placement mode with the same part
+  mbStartPlacing(part);
+
+  // Update hint text
+  const hint = document.getElementById('mbPlacementHint');
+  if (hint) {
+    hint.textContent = 'Click to place at new position. Press Escape to cancel move.';
+    hint.style.display = '';
+  }
 }
 
 function mbSnapToGrid(x, y) {
@@ -724,30 +1085,34 @@ function mbCheckOverlap(gridX, gridY, part, excludeId) {
   });
 }
 
-// Find which tile (wall-attached) covers a grid position
+// Find which tile (wall-attached) covers a single grid point
 function mbFindTileAt(gridX, gridY, snapType) {
   return mbState.tiles.find(t => {
     const tp = mbFindPart(t.partId);
     if (!tp || tp.attachesTo !== 'wall') return false;
-    // Check snap compatibility
     if (snapType && (!tp.providesSnaps || !tp.providesSnaps.includes(snapType))) return false;
-    // Check if position is within tile bounds
     return gridX >= t.gridX && gridX < t.gridX + tp.gridWidth &&
            gridY >= t.gridY && gridY < t.gridY + tp.gridHeight;
   });
 }
 
-// Check if an accessory fully fits within a single tile's area
-function mbAccessoryFitsOnTile(gridX, gridY, part, tile) {
-  const tp = mbFindPart(tile.partId);
-  if (!tp) return false;
-  return gridX >= tile.gridX &&
-         gridY >= tile.gridY &&
-         gridX + part.gridWidth <= tile.gridX + tp.gridWidth &&
-         gridY + part.gridHeight <= tile.gridY + tp.gridHeight;
+/**
+ * Check if every grid cell the accessory covers sits on a compatible tile.
+ * The accessory can span multiple tiles. Returns the tile under the
+ * top-left corner (for attachedToId), or null if any cell is uncovered.
+ */
+function mbAccessoryCoversValidTiles(gridX, gridY, part) {
+  const snapType = part.snapType;
+  for (let x = gridX; x < gridX + part.gridWidth; x++) {
+    for (let y = gridY; y < gridY + part.gridHeight; y++) {
+      if (!mbFindTileAt(x, y, snapType)) return null;
+    }
+  }
+  return mbFindTileAt(gridX, gridY, snapType);
 }
 
-function mbPlaceComponent(gridX, gridY, part, color, attachedToId) {
+function mbPlaceComponent(gridX, gridY, part, color, attachedToId, options) {
+  options = options || {};
   const hexColor = color || parseInt((part.colors[0] || '#333333').replace('#', '0x'));
   const mesh = mbCreatePartMesh(part, hexColor);
 
@@ -781,10 +1146,18 @@ function mbPlaceComponent(gridX, gridY, part, color, attachedToId) {
     gridY,
     mesh,
     color: hexColor,
-    attachedToId: attachedToId || null
+    attachedToId: attachedToId || null,
+    mountMethodId: options.mountMethodId || null,
+    _resolvedHardware: options.resolvedHardware || null
   };
   mbState.tiles.push(comp);
   mbUpdateBom();
+
+  // Async: load real STL model and swap in once ready
+  if (part._stlCatalogId) {
+    mbLoadRealStlForComponent(comp);
+  }
+
   return comp;
 }
 
@@ -880,16 +1253,69 @@ function mbUpdateSelectionPanel() {
         ${isAccessory ? 'Accessory' : 'Tile'} at (${comp.gridX}, ${comp.gridY})<br>
         Price: $${part.priceUSD.toFixed(2)}
         ${attachedCount > 0 ? `<br><span style="color:#f0ad4e;">${attachedCount} accessori${attachedCount === 1 ? 'y' : 'es'} attached</span>` : ''}
+        ${part._mountType ? `<br>Mount: <span style="color:#64b5f6;">${part._mountType}</span>` : ''}
       </div>
     </div>
+    ${part._mountHardware && part._mountHardware.length ? `
+    <div style="padding:6px 8px;border:1px solid #555;border-radius:6px;margin-bottom:8px;background:rgba(255,152,0,0.08);">
+      <div style="font-size:11px;font-weight:600;color:#ffb74d;margin-bottom:2px;">Hardware Required:</div>
+      ${part._mountHardware.map(hw => {
+        if (hw.type === 'magnet') return `<div style="font-size:11px;color:#ccc;">${hw.qty ? hw.qty + 'x ' : ''}${hw.size || ''} magnet${hw.qty !== 1 ? 's' : ''}</div>`;
+        if (hw.type === 'screw') return `<div style="font-size:11px;color:#ccc;">${hw.qty ? hw.qty + 'x ' : ''}${hw.spec || ''} screw${hw.qty !== 1 ? 's' : ''}</div>`;
+        if (hw.type === 'insert') return `<div style="font-size:11px;color:#ccc;">${hw.spec || ''} heat-set insert</div>`;
+        return `<div style="font-size:11px;color:#ccc;">${hw.type}: ${hw.spec || hw.size || ''}</div>`;
+      }).join('')}
+    </div>` : ''}
+    ${part._requiresTray ? `
+    <div style="padding:6px 8px;border:1px solid #555;border-radius:6px;margin-bottom:8px;background:rgba(156,39,176,0.08);">
+      <div style="font-size:11px;font-weight:600;color:#ce93d8;margin-bottom:2px;">Requires Base Structure:</div>
+      <div style="font-size:11px;color:#ccc;">
+        This part needs a <b>Drawer Shell</b> or <b>Bolt-Locked Bracket</b> to mount.
+        ${part._traySize ? `<br>Tray size: ${part._traySize}` : ''}
+      </div>
+    </div>` : ''}
+    ${(() => {
+      const hw = comp._resolvedHardware || part.requiresHardware || [];
+      if (!hw.length) return '';
+      const methodName = comp.mountMethodId && part._mountMethods
+        ? (part._mountMethods.find(m => m.id === comp.mountMethodId) || {}).name || comp.mountMethodId
+        : null;
+      return `
+      <div style="padding:6px 8px;border:1px solid #555;border-radius:6px;margin-bottom:8px;background:rgba(33,150,243,0.08);">
+        <div style="font-size:11px;font-weight:600;color:#64b5f6;margin-bottom:2px;">
+          Mounting Dependencies${methodName ? ` <span style="color:#90caf9;font-weight:400;">(${methodName})</span>` : ''}
+        </div>
+        ${hw.map(h => `<div style="font-size:11px;color:#ccc;">${h.qty}x ${h.partId.replace(/-/g, ' ')}</div>`).join('')}
+        ${part._hasMethodChoice ? '<button id="mbChangeMethodBtn" class="secondary" style="width:100%;padding:3px 6px;font-size:10px;margin-top:4px;color:#90caf9;">Change Method</button>' : ''}
+      </div>`;
+    })()}
     <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">
       ${part.colors.map(c => `
         <div class="mb-color-swatch" data-color="${c}" style="width:24px;height:24px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${comp.color === parseInt(c.replace('#', '0x')) ? '#2196f3' : '#444'};" title="${c}"></div>
       `).join('')}
     </div>
-    <button id="mbDeleteTileBtn" class="secondary" style="width:100%;padding:6px;color:var(--danger);">
-      Delete ${isAccessory ? 'Accessory' : 'Tile'}${attachedCount > 0 ? ` (+${attachedCount})` : ''}
-    </button>
+    ${part._stlCatalogId ? `
+    <div style="margin-bottom:8px;">
+      <div style="font-size:11px;color:#888;margin-bottom:4px;">Rotate STL orientation:</div>
+      <div style="display:flex;gap:4px;">
+        <button class="secondary mb-rotate-btn" data-axis="x" style="flex:1;padding:4px 6px;font-size:11px;" title="Rotate 90° around X axis">X 90°</button>
+        <button class="secondary mb-rotate-btn" data-axis="y" style="flex:1;padding:4px 6px;font-size:11px;" title="Rotate 90° around Y axis">Y 90°</button>
+        <button class="secondary mb-rotate-btn" data-axis="z" style="flex:1;padding:4px 6px;font-size:11px;" title="Rotate 90° around Z axis">Z 90°</button>
+      </div>
+      <button id="mbSaveOrientBtn" class="secondary" style="width:100%;padding:4px 6px;font-size:11px;margin-top:4px;color:#4caf50;" title="Save this orientation for all future placements of this part">Save Orientation</button>
+    </div>` : ''}
+    <div style="display:flex;gap:6px;margin-bottom:${part._stlCatalogId ? '6px' : '0'};">
+      <button id="mbMoveTileBtn" class="secondary" style="flex:1;padding:6px;">
+        Move
+      </button>
+      <button id="mbDeleteTileBtn" class="secondary" style="flex:1;padding:6px;color:var(--danger);">
+        Delete${attachedCount > 0 ? ` (+${attachedCount})` : ''}
+      </button>
+    </div>
+    ${part._stlCatalogId ? `
+    <button id="mbUpdateInfoBtn" class="secondary" style="width:100%;padding:6px;font-size:12px;color:#64b5f6;" title="Open Thangs page to scrape description and hardware info">
+      Update Part Info
+    </button>` : ''}
   `;
 
   // Color swatches
@@ -903,11 +1329,187 @@ function mbUpdateSelectionPanel() {
     });
   });
 
+  // Rotation buttons — rotate the STL mesh 90° around the clicked axis
+  panel.querySelectorAll('.mb-rotate-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!mbState.selectedTile) return;
+      const mesh = mbState.selectedTile.mesh;
+      if (!mesh || !mesh.userData._isStl) {
+        mbShowToast('STL not loaded yet — wait a moment', 'info');
+        return;
+      }
+      const axis = btn.dataset.axis;
+      const angle = Math.PI / 2;
+      const rotAxis = axis === 'x' ? new THREE.Vector3(1, 0, 0)
+                    : axis === 'y' ? new THREE.Vector3(0, 1, 0)
+                    : new THREE.Vector3(0, 0, 1);
+      mesh.geometry.applyMatrix4(new THREE.Matrix4().makeRotationAxis(rotAxis, angle));
+      mesh.geometry.computeVertexNormals();
+      mesh.geometry.computeBoundingBox();
+
+      // Re-center after rotation
+      const bb = mesh.geometry.boundingBox;
+      const cx = (bb.max.x + bb.min.x) / 2;
+      const cy = (bb.max.y + bb.min.y) / 2;
+      const cz = bb.min.z;
+      mesh.geometry.translate(-cx, -cy, -cz);
+
+      mbState.renderer?.render(mbState.scene, mbState.camera);
+    });
+  });
+
+  // Save Orientation — persist the current rotation for all future placements
+  document.getElementById('mbSaveOrientBtn')?.addEventListener('click', async () => {
+    if (!mbState.selectedTile) return;
+    const p = mbFindPart(mbState.selectedTile.partId);
+    if (!p || !p._stlCatalogId) return;
+
+    // We need to figure out what mount_normal produces the current orientation.
+    // The geometry has been rotated so mount→-Z, then possibly manually rotated.
+    // Re-compute: take the auto-detected normal, apply the same manual rotations.
+    // Simpler approach: just re-load the raw STL, find what direction in the
+    // original STL now maps to -Z in the current geometry.
+    //
+    // Practical shortcut: record the effective mount-normal by reading the
+    // geometry's current state. After all rotations, the -Z direction in the
+    // current geometry came from some direction in the original. We track
+    // cumulative rotations on the mesh's userData.
+    //
+    // Simplest: just clear the old cache, re-detect from the raw STL,
+    // and store as a 6-direction enum that we reverse-map.
+    //
+    // ACTUALLY: The most reliable approach is to reload the raw STL, try all 6
+    // orientations, and see which one best matches the current geometry. But
+    // that's expensive. Let's just save the current rotation as a matrix and
+    // re-apply it on future loads.
+
+    // Save the geometry's bounding box orientation signature
+    const mesh = mbState.selectedTile.mesh;
+    if (!mesh.userData._isStl) {
+      mbShowToast('STL not loaded yet', 'info');
+      return;
+    }
+
+    // Fetch the raw (unrotated) STL to determine what mount_normal to save
+    try {
+      const base64 = await printStation.slicer.fetchStlBytes(p._stlCatalogId);
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const loader = new THREE.STLLoader();
+      const rawGeo = loader.parse(bytes.buffer);
+      rawGeo.computeVertexNormals();
+
+      // Try all 6 cardinal mount normals and pick the one whose oriented
+      // bounding box proportions best match the current mesh's proportions
+      const currentBB = mesh.geometry.boundingBox;
+      const curW = currentBB.max.x - currentBB.min.x;
+      const curH = currentBB.max.y - currentBB.min.y;
+      const curD = currentBB.max.z - currentBB.min.z;
+
+      const candidates = [
+        [1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1]
+      ];
+      let bestNormal = [0, 0, -1];
+      let bestError = Infinity;
+
+      for (const mn of candidates) {
+        const testGeo = rawGeo.clone();
+        mbOrientGeometry(testGeo, mn, [0, 0, -1]);
+        testGeo.computeBoundingBox();
+        const tb = testGeo.boundingBox;
+        const tw = tb.max.x - tb.min.x;
+        const th = tb.max.y - tb.min.y;
+        const td = tb.max.z - tb.min.z;
+        // Compare proportions (scale-independent)
+        const err = Math.abs(tw/curW - 1) + Math.abs(th/curH - 1) + Math.abs(td/curD - 1);
+        if (err < bestError) {
+          bestError = err;
+          bestNormal = mn;
+        }
+        testGeo.dispose();
+      }
+      rawGeo.dispose();
+
+      // Save to DB
+      await printStation.slicer.updateCatalogItem(p._stlCatalogId, {
+        mount_normal: JSON.stringify(bestNormal)
+      });
+
+      // Update the part in memory
+      p._mountNormal = bestNormal;
+
+      // Clear the old cache entries for this STL so future loads use the new normal
+      for (const key of Object.keys(_mbStlGeoCache)) {
+        if (String(key).startsWith(String(p._stlCatalogId))) {
+          _mbStlGeoCache[key].dispose();
+          delete _mbStlGeoCache[key];
+        }
+      }
+
+      mbShowToast('Orientation saved for ' + p.name, 'success');
+    } catch (err) {
+      console.error('[Multiboard] Save orientation failed:', err);
+      mbShowToast('Failed to save orientation: ' + err.message, 'danger');
+    }
+  });
+
+  // Move button
+  document.getElementById('mbMoveTileBtn')?.addEventListener('click', () => {
+    if (mbState.selectedTile) {
+      mbStartMoving(mbState.selectedTile);
+    }
+  });
+
   // Delete button
   document.getElementById('mbDeleteTileBtn')?.addEventListener('click', () => {
     if (mbState.selectedTile) {
       mbRemoveComponent(mbState.selectedTile.id);
     }
+  });
+
+  // Update Part Info — open the scrape modal from slicer-view.js
+  document.getElementById('mbUpdateInfoBtn')?.addEventListener('click', () => {
+    if (!mbState.selectedTile) return;
+    const p = mbFindPart(mbState.selectedTile.partId);
+    if (!p || !p._stlCatalogId) return;
+
+    // Build a minimal item object matching what slicerOpenUpdateInfoModal expects
+    const item = { id: p._stlCatalogId, name: p.name, source_url: null };
+
+    // slicerOpenUpdateInfoModal is defined in slicer-view.js (loaded globally)
+    if (typeof slicerOpenUpdateInfoModal === 'function') {
+      slicerOpenUpdateInfoModal(item);
+
+      // After the modal closes and data is saved, refresh the part in our catalog
+      // so the selection panel shows updated info. We poll for modal close.
+      const checkClosed = setInterval(() => {
+        const modal = document.getElementById('slicerUpdateInfoModal');
+        if (!modal || modal.style.display === 'none') {
+          clearInterval(checkClosed);
+          // Reload catalog to pick up changes
+          loadMultiboardCatalog().then(() => {
+            if (mbState.selectedTile) mbUpdateSelectionPanel();
+          });
+        }
+      }, 500);
+    } else {
+      mbShowToast('Update Info modal not available', 'info');
+    }
+  });
+
+  // Change Method — re-open the method chooser for this component
+  document.getElementById('mbChangeMethodBtn')?.addEventListener('click', () => {
+    if (!mbState.selectedTile) return;
+    const p = mbFindPart(mbState.selectedTile.partId);
+    if (!p || !p._hasMethodChoice) return;
+    mbShowMethodChooser(p).then(choice => {
+      if (!choice) return;
+      mbState.selectedTile.mountMethodId = choice.methodId;
+      mbState.selectedTile._resolvedHardware = choice.hardware;
+      mbUpdateBom();
+      mbUpdateSelectionPanel();
+    });
   });
 }
 
@@ -976,18 +1578,16 @@ function mbOnMouseMoveAccessory(part) {
   const gridX = snapped.x;
   const gridY = snapped.y;
 
-  // Check all corners of the accessory to find if it sits fully on a compatible tile
-  const tile = mbFindTileAt(gridX, gridY, part.snapType);
-  const valid = tile &&
-    mbAccessoryFitsOnTile(gridX, gridY, part, tile) &&
-    !mbCheckOverlap(gridX, gridY, part);
+  // Check if every cell the accessory covers is on a compatible tile
+  const parentTile = mbAccessoryCoversValidTiles(gridX, gridY, part);
+  const valid = parentTile && !mbCheckOverlap(gridX, gridY, part);
 
   // Show snap points on hovered tile
-  if (tile && tile.id !== mbState.hoveredTileId) {
+  if (parentTile && parentTile.id !== mbState.hoveredTileId) {
     mbClearSnapMarkers();
-    mbShowSnapPoints(tile, part.snapType);
-    mbState.hoveredTileId = tile.id;
-  } else if (!tile) {
+    mbShowSnapPoints(parentTile, part.snapType);
+    mbState.hoveredTileId = parentTile.id;
+  } else if (!parentTile) {
     mbClearSnapMarkers();
   }
 
@@ -1000,6 +1600,73 @@ function mbOnMouseMoveAccessory(part) {
     mbState.previewMesh.position.set(gridX + part.gridWidth / 2, gridY + part.gridHeight / 2, 0.2 + thickness / 2);
   }
   mbSetMeshColor(mbState.previewMesh, valid ? MB_COLORS.tileHover : MB_COLORS.tileInvalid);
+}
+
+/**
+ * Show mounting method chooser dialog for parts with multiple methods (e.g. trays).
+ * Returns Promise<{ methodId, hardware }> or null if cancelled.
+ */
+function mbShowMethodChooser(part) {
+  return new Promise(resolve => {
+    const methods = part._mountMethods || [];
+    if (!methods.length) return resolve(null);
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:center;justify-content:center;';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:#1e1e1e;border:1px solid #555;border-radius:10px;padding:20px;max-width:420px;width:90%;color:#ddd;font-family:inherit;';
+
+    let selectedIdx = 0;
+    const render = () => {
+      dialog.innerHTML = `
+        <div style="font-size:16px;font-weight:600;margin-bottom:4px;">Choose Mounting Method</div>
+        <div style="font-size:12px;color:#888;margin-bottom:14px;">${part.name}</div>
+        ${methods.map((m, i) => `
+          <label style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:2px solid ${i === selectedIdx ? '#2196f3' : '#444'};border-radius:8px;margin-bottom:8px;cursor:pointer;background:${i === selectedIdx ? 'rgba(33,150,243,0.08)' : 'transparent'};">
+            <input type="radio" name="mbMethod" value="${i}" ${i === selectedIdx ? 'checked' : ''} style="margin-top:3px;">
+            <div>
+              <div style="font-weight:600;font-size:13px;">${m.name}</div>
+              <div style="font-size:11px;color:#aaa;margin-top:2px;">${m.description || ''}</div>
+              <div style="font-size:10px;color:#888;margin-top:4px;">${m.hardware.map(h => `${h.qty}x ${h.partId.replace(/-/g, ' ')}`).join(', ')}</div>
+            </div>
+          </label>
+        `).join('')}
+        <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+          <button id="mbMethodCancel" class="secondary" style="padding:8px 16px;font-size:13px;">Cancel</button>
+          <button id="mbMethodConfirm" style="padding:8px 16px;font-size:13px;background:#2196f3;color:#fff;border:none;border-radius:6px;cursor:pointer;">Place Part</button>
+        </div>
+      `;
+      dialog.querySelectorAll('input[name="mbMethod"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+          selectedIdx = parseInt(radio.value);
+          render();
+        });
+      });
+      dialog.querySelectorAll('label').forEach((lbl, i) => {
+        lbl.addEventListener('click', () => {
+          selectedIdx = i;
+          render();
+        });
+      });
+      dialog.querySelector('#mbMethodCancel').addEventListener('click', () => {
+        overlay.remove();
+        resolve(null);
+      });
+      dialog.querySelector('#mbMethodConfirm').addEventListener('click', () => {
+        overlay.remove();
+        const chosen = methods[selectedIdx];
+        resolve({ methodId: chosen.id, hardware: chosen.hardware });
+      });
+    };
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { overlay.remove(); resolve(null); }
+    });
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    render();
+  });
 }
 
 function mbOnClick(e) {
@@ -1021,21 +1688,39 @@ function mbOnClick(e) {
     const gridX = snapped.x;
     const gridY = snapped.y;
 
+    // Preserve color if moving an existing component
+    const moveColor = mbState._movingComp ? mbState._movingComp.color : null;
+
+    // Validate position first
     if (isAccessory) {
-      // Accessory placement
-      const tile = mbFindTileAt(gridX, gridY, part.snapType);
-      if (!tile) return;
-      if (!mbAccessoryFitsOnTile(gridX, gridY, part, tile)) return;
+      const parentTile = mbAccessoryCoversValidTiles(gridX, gridY, part);
+      if (!parentTile) return;
       if (mbCheckOverlap(gridX, gridY, part)) return;
-      mbPlaceComponent(gridX, gridY, part, null, tile.id);
-      console.log('[Multiboard] Accessory placed on tile', tile.id, 'Total components:', mbState.tiles.length);
+
+      // If part has method choice (e.g. trays), show chooser before placing
+      if (part._hasMethodChoice && !mbState._movingComp) {
+        mbShowMethodChooser(part).then(choice => {
+          if (!choice) return; // user cancelled
+          mbPlaceComponent(gridX, gridY, part, moveColor, parentTile.id, {
+            mountMethodId: choice.methodId,
+            resolvedHardware: choice.hardware
+          });
+          console.log('[Multiboard] Accessory placed (method:', choice.methodId, ') on tile', parentTile.id, 'Total:', mbState.tiles.length);
+          mbState._movingComp = null;
+        });
+        return;
+      }
+
+      mbPlaceComponent(gridX, gridY, part, moveColor, parentTile.id);
+      console.log('[Multiboard] Accessory placed on tile', parentTile.id, 'Total components:', mbState.tiles.length);
     } else {
       // Tile placement
       if (!mbIsInBounds(gridX, gridY, part)) return;
       if (mbCheckOverlap(gridX, gridY, part)) return;
-      mbPlaceComponent(gridX, gridY, part);
+      mbPlaceComponent(gridX, gridY, part, moveColor);
       console.log('[Multiboard] Tile placed! Total components:', mbState.tiles.length);
     }
+    mbState._movingComp = null;  // Clear move state on successful placement
     return;
   }
 
@@ -1076,8 +1761,10 @@ function mbCalculatePricing() {
   const hardwareCounts = {};
   mbState.tiles.forEach(t => {
     const part = mbFindPart(t.partId);
-    if (!part || !part.requiresHardware) return;
-    part.requiresHardware.forEach(hw => {
+    if (!part) return;
+    // Use per-instance hardware (from method choice) or part default
+    const hardware = t._resolvedHardware || part.requiresHardware || [];
+    hardware.forEach(hw => {
       hardwareCounts[hw.partId] = (hardwareCounts[hw.partId] || 0) + hw.qty;
     });
   });
@@ -1175,7 +1862,9 @@ async function mbSaveDesign() {
     gridX: t.gridX,
     gridY: t.gridY,
     color: t.color,
-    attachedToId: t.attachedToId || null
+    attachedToId: t.attachedToId || null,
+    mountMethodId: t.mountMethodId || null,
+    resolvedHardware: t._resolvedHardware || null
   }));
 
   const partsList = [];
@@ -1264,7 +1953,10 @@ async function mbLoadDesign() {
       tiles.forEach((c, i) => {
         const part = mbFindPart(c.partId);
         if (part) {
-          const placed = mbPlaceComponent(c.gridX, c.gridY, part, c.color);
+          const placed = mbPlaceComponent(c.gridX, c.gridY, part, c.color, null, {
+            mountMethodId: c.mountMethodId,
+            resolvedHardware: c.resolvedHardware
+          });
           // Store mapping from save index to new ID
           idMap[i] = placed.id;
         }
@@ -1275,7 +1967,10 @@ async function mbLoadDesign() {
         if (part) {
           // Find parent tile at this position
           const parentTile = mbFindTileAt(c.gridX, c.gridY, part.snapType);
-          mbPlaceComponent(c.gridX, c.gridY, part, c.color, parentTile ? parentTile.id : null);
+          mbPlaceComponent(c.gridX, c.gridY, part, c.color, parentTile ? parentTile.id : null, {
+            mountMethodId: c.mountMethodId,
+            resolvedHardware: c.resolvedHardware
+          });
         }
       });
     }
@@ -1609,6 +2304,114 @@ function mbOpenPrintableQuote() {
   }
 }
 
+// =============== BUILD INSTRUCTIONS ===============
+
+async function mbGenerateBuildInstructions() {
+  if (mbState.tiles.length === 0) {
+    mbShowToast('Place some parts before generating build instructions', 'info');
+    return;
+  }
+
+  const pricing = mbCalculatePricing();
+  const projectName = document.getElementById('mbProjectName')?.value || 'Untitled Design';
+
+  // Build parts list for the document
+  const partsList = [];
+  const seen = new Set();
+
+  Object.entries(pricing.partCounts).forEach(([partId, qty]) => {
+    const part = mbFindPart(partId);
+    if (!part || part.hidden) return;
+    if (!seen.has(partId)) {
+      seen.add(partId);
+      partsList.push({ partId: part.id, name: part.name, qty, unitPrice: part.priceUSD });
+    }
+  });
+
+  Object.entries(pricing.hardwareCounts).forEach(([partId, qty]) => {
+    const part = mbFindPart(partId);
+    if (!part) return;
+    if (!seen.has(partId)) {
+      seen.add(partId);
+      partsList.push({ partId: part.id, name: part.name, qty, unitPrice: part.priceUSD });
+    }
+  });
+
+  // Derive howto tags from placed part types
+  const tags = new Set();
+  tags.add('assembly'); // always include general assembly info
+  mbState.tiles.forEach(t => {
+    const part = mbFindPart(t.partId);
+    if (!part) return;
+    const name = (part.name || '').toLowerCase();
+    const mbType = part._mbType || '';
+
+    // Tiles always need wall mounting instructions
+    if (mbType === 'tile' || /\btile\b/.test(name)) {
+      tags.add('wall-mount'); tags.add('tiles');
+    }
+    // Trays need snap + bracket instructions
+    if (/\btray\b/.test(name) || /\blu\b/.test(name)) {
+      tags.add('snaps'); tags.add('bolt-lock'); tags.add('multipoint'); tags.add('shells');
+    }
+    // Bins/shells
+    if (mbType === 'bin' || /\bbin\b/.test(name) || /\bshell\b/.test(name)) {
+      tags.add('snaps'); tags.add('shells'); tags.add('multipoint');
+    }
+    // Shelves
+    if (mbType === 'shelf' || /\bshelf\b/.test(name) || /\bshelve\b/.test(name)) {
+      tags.add('snaps'); tags.add('bolt-lock');
+    }
+    // Hooks / Peg Click
+    if (mbType === 'hook' || mbType === 'peg' || /\bhook\b/.test(name) || /\bpeg\b/.test(name)) {
+      tags.add('peg-click');
+    }
+    // Snap-based accessories
+    if (/\bsnap\b/.test(name) || /\bbracket\b/.test(name)) {
+      tags.add('snaps');
+    }
+    // Drawers / inserts
+    if (/\bdrawer\b/.test(name) || /\binsert\b/.test(name)) {
+      tags.add('shells'); tags.add('multipoint');
+    }
+    // Check requiresHardware for clues
+    const hw = t._resolvedHardware || part.requiresHardware || [];
+    hw.forEach(h => {
+      if (/snap/.test(h.partId)) tags.add('snaps');
+      if (/bolt/.test(h.partId) || /bracket/.test(h.partId)) tags.add('bolt-lock');
+      if (/multipoint/.test(h.partId) || /rail/.test(h.partId)) tags.add('multipoint');
+    });
+  });
+
+  mbShowToast('Generating build instructions...', 'info');
+
+  try {
+    const result = await mbApi.post('/api/howtos/build-doc', {
+      parts_list: partsList,
+      design_name: projectName,
+      tags: Array.from(tags),
+      format: 'html'
+    });
+
+    if (!result.document) {
+      mbShowToast('No build instructions available for these parts', 'info');
+      return;
+    }
+
+    // Open in a new window
+    const docWindow = window.open('', '_blank', 'width=900,height=1100');
+    if (docWindow) {
+      docWindow.document.write(result.document);
+      docWindow.document.close();
+    } else {
+      mbShowToast('Pop-up blocked. Please allow pop-ups for build instructions.', 'danger');
+    }
+  } catch (err) {
+    console.error('[BuildInstructions] Error:', err);
+    mbShowToast('Failed to generate build instructions: ' + err.message, 'danger');
+  }
+}
+
 // =============== ORDERS + STATUS ===============
 
 const MB_STATUS_CONFIG = {
@@ -1826,6 +2629,7 @@ function setupMultiboardEventListeners() {
   document.getElementById('mbSaveBtn')?.addEventListener('click', mbSaveDesign);
   document.getElementById('mbLoadBtn')?.addEventListener('click', mbLoadDesign);
   document.getElementById('mbQuoteBtn')?.addEventListener('click', mbGenerateQuote);
+  document.getElementById('mbBuildInstructionsBtn')?.addEventListener('click', mbGenerateBuildInstructions);
   document.getElementById('mbOrderBtn')?.addEventListener('click', mbCreateOrder);
   document.getElementById('mbOrdersListBtn')?.addEventListener('click', mbShowOrdersPanel);
 

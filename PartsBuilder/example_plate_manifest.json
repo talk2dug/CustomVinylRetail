@@ -1,0 +1,62 @@
+{
+  "plateId": "Actobotics_Rover_ASA_STRUCTURAL_plate_1",
+  "kitName": "Actobotics Rover",
+  "materialProfile": "ASA_STRUCTURAL",
+  "materialLabel": "ASA – Structural",
+  "printSettings": {
+    "filament": "ASA",
+    "nozzle_temp": 255,
+    "bed_temp": 100,
+    "layer_height": 0.2,
+    "perimeters": 5,
+    "top_bottom_layers": 6,
+    "infill_percent": 50,
+    "infill_pattern": "gyroid",
+    "print_speed_perimeters": 45,
+    "cooling": false,
+    "notes": "Enclosure recommended. Glue stick on PEI for adhesion."
+  },
+  "parts": [
+    {
+      "partNumber": "82062",
+      "instanceLabel": "82062 [1/6]",
+      "name": "Revolver Wheels",
+      "stlPath": "/home/ubuntu/vinylApp/stl_catalog/82062.stl"
+    },
+    {
+      "partNumber": "82062",
+      "instanceLabel": "82062 [2/6]",
+      "name": "Revolver Wheels",
+      "stlPath": "/home/ubuntu/vinylApp/stl_catalog/82062.stl"
+    },
+    {
+      "partNumber": "545532",
+      "instanceLabel": "545532 [1/4]",
+      "name": "Channel Connector Plates",
+      "stlPath": "/home/ubuntu/vinylApp/stl_catalog/545532.stl"
+    },
+    {
+      "partNumber": "545532",
+      "instanceLabel": "545532 [2/4]",
+      "name": "Channel Connector Plates",
+      "stlPath": "/home/ubuntu/vinylApp/stl_catalog/545532.stl"
+    },
+    {
+      "partNumber": "555192",
+      "instanceLabel": "555192 [1/6]",
+      "name": "Planetary Gearmotor Mount D",
+      "stlPath": "/home/ubuntu/vinylApp/stl_catalog/555192.stl"
+    },
+    {
+      "partNumber": "555192",
+      "instanceLabel": "555192 [2/6]",
+      "name": "Planetary Gearmotor Mount D",
+      "stlPath": "/home/ubuntu/vinylApp/stl_catalog/555192.stl"
+    }
+  ],
+  "partCount": 6,
+  "status": "queued",
+  "createdAt": "2026-02-22T12:00:00.000Z",
+  "assignedPrinter": null,
+  "estimatedPrintTime": null
+}

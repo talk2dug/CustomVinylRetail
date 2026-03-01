@@ -275,14 +275,7 @@ function renderPrinterCard(printer) {
   const actionsHtml = fleetBuildActionsHtml(status, printer.id);
 
   let materialHtml = '';
-  let aceSlots = [];
-  try { aceSlots = printer.ace_slots ? JSON.parse(printer.ace_slots) : []; } catch (_) {}
-  if (printer.has_multicolor && aceSlots.length) {
-    const slotDots = aceSlots.map(s =>
-      `<span style="font-size:0.8rem;" title="T${s.slot}: ${fleetEscapeHtml(s.name || '')}">T${s.slot}: ${fleetEscapeHtml(s.material || '?')} <span class="muted">(${fleetEscapeHtml(s.color || '?')})</span></span>`
-    ).join(' &middot; ');
-    materialHtml = `<div style="font-size:0.85rem;margin-bottom:10px;">${slotDots}</div>`;
-  } else if (printer.loaded_material) {
+  if (printer.loaded_material) {
     materialHtml = `
       <div style="font-size:0.85rem;margin-bottom:10px;">
         <span class="muted">Material:</span> ${fleetEscapeHtml(printer.loaded_material)}
@@ -298,7 +291,6 @@ function renderPrinterCard(printer) {
           <span class="muted" style="font-size:0.75rem;">${fleetEscapeHtml(printer.model || '')}</span>
         </div>
         <span data-fleet-el="stateBlock" style="display:flex;align-items:center;gap:6px;">
-          ${printer.has_multicolor ? '<span style="font-size:0.65rem;background:rgba(56,189,248,0.2);color:var(--accent);padding:2px 6px;border-radius:10px;">ACE</span>' : ''}
           <span data-fleet-el="stateDot" style="color:${displayState.color};font-size:1.1rem;">&#9679;</span>
           <span data-fleet-el="stateLabel" style="color:${displayState.color};font-size:0.85rem;text-transform:capitalize;">${displayState.label}</span>
         </span>
@@ -472,58 +464,6 @@ function renderJobsList() {
 
 // =============== ACE SLOT PICKER ===============
 
-/**
- * If the printer has a multi-color ACE hub, show a slot picker popup and return the selected slot number.
- * Returns null if the printer has no ACE, or the user cancels.
- */
-function fleetPickAceSlot(printer) {
-  return new Promise((resolve) => {
-    let aceSlots = [];
-    try { aceSlots = printer.ace_slots ? JSON.parse(printer.ace_slots) : []; } catch (_) {}
-
-    if (!printer.has_multicolor || !aceSlots.length) {
-      resolve(null);
-      return;
-    }
-
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
-    const modal = document.createElement('div');
-    modal.style.cssText = 'background:var(--card,#1e293b);border-radius:12px;padding:24px;width:360px;max-width:90vw;';
-    modal.innerHTML = `
-      <h3 style="margin:0 0 12px;">Select Filament Slot</h3>
-      <p class="muted" style="margin:0 0 16px;font-size:0.85rem;">Choose which ACE slot to use for this print.</p>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;">
-        ${aceSlots.map(s => `
-          <button class="secondary fleet-ace-pick" data-slot="${s.slot}" style="padding:10px 14px;text-align:left;display:flex;justify-content:space-between;align-items:center;">
-            <span><strong>T${s.slot}</strong>: ${fleetEscapeHtml(s.name || s.material || '?')}</span>
-            <span class="muted" style="font-size:0.85rem;">${fleetEscapeHtml(s.color || '')}</span>
-          </button>
-        `).join('')}
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button class="secondary fleet-ace-cancel" style="padding:6px 16px;">Cancel</button>
-      </div>
-    `;
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    modal.querySelectorAll('.fleet-ace-pick').forEach(btn => {
-      btn.addEventListener('click', () => {
-        overlay.remove();
-        resolve(parseInt(btn.dataset.slot, 10));
-      });
-    });
-    modal.querySelector('.fleet-ace-cancel').addEventListener('click', () => {
-      overlay.remove();
-      resolve(null);
-    });
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) { overlay.remove(); resolve(null); }
-    });
-  });
-}
-
 // =============== EVENT HANDLERS ===============
 
 async function handlePrinterGridClick(e) {
@@ -545,9 +485,7 @@ async function handlePrinterGridClick(e) {
         const fname = filePath.split(/[\\/]/).pop();
         const confirmed = await printStation.showConfirm(`Start printing "${fname}"?`, 'Start Print');
         if (confirmed) {
-          const printer = fleetState.printers.find(p => p.id === printerId);
-          const aceSlot = printer ? await fleetPickAceSlot(printer) : null;
-          await printStation.printerFleet.startPrint(printerId, fname, null, aceSlot);
+          await printStation.printerFleet.startPrint(printerId, fname);
           showToast('Print started!', 'success');
         }
         loadFleetData();
@@ -665,40 +603,6 @@ function showAddPrinterModal(editPrinter = null) {
               <input id="fleetAddColor" type="text" style="width:100%;" value="${fleetEscapeHtml(isEdit ? (editPrinter.loaded_color || '') : 'White')}" placeholder="e.g. White">
             </div>
           </div>
-          <div>
-            <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;cursor:pointer;">
-              <input id="fleetAddMulticolor" type="checkbox"${isEdit ? (editPrinter.has_multicolor ? ' checked' : '') : ''}>
-              Multi-Color (ACE unit)
-            </label>
-          </div>
-          <div id="fleetAceSlots" style="display:${isEdit && editPrinter.has_multicolor ? 'block' : 'none'};border:1px solid var(--border);border-radius:8px;padding:12px;">
-            <label style="font-size:0.85rem;color:var(--muted);display:block;margin-bottom:8px;">ACE Filament Slots</label>
-            ${[0,1,2,3].map(i => {
-              let slot = { material: 'PLA', color: 'White', name: '' };
-              if (isEdit) {
-                try {
-                  const slots = JSON.parse(editPrinter.ace_slots || '[]');
-                  const found = slots.find(s => s.slot === i);
-                  if (found) slot = found;
-                } catch (_) {}
-              }
-              return `
-              <div style="display:grid;grid-template-columns:auto 1fr 80px 1fr;gap:6px;align-items:center;margin-bottom:6px;">
-                <span style="font-size:0.85rem;font-weight:600;min-width:28px;">T${i}</span>
-                <select class="fleet-ace-material" data-slot="${i}" style="padding:6px 8px;font-size:0.85rem;">
-                  <option value="PLA"${slot.material === 'PLA' ? ' selected' : ''}>PLA</option>
-                  <option value="PETG"${slot.material === 'PETG' ? ' selected' : ''}>PETG</option>
-                  <option value="ABS"${slot.material === 'ABS' ? ' selected' : ''}>ABS</option>
-                  <option value="TPU"${slot.material === 'TPU' ? ' selected' : ''}>TPU</option>
-                  <option value="ASA"${slot.material === 'ASA' ? ' selected' : ''}>ASA</option>
-                  <option value="RAPID_PLA"${slot.material === 'RAPID_PLA' ? ' selected' : ''}>Rapid PLA</option>
-                  <option value="RAPID_PETG"${slot.material === 'RAPID_PETG' ? ' selected' : ''}>Rapid PETG</option>
-                </select>
-                <input class="fleet-ace-color" data-slot="${i}" type="text" style="padding:6px 8px;font-size:0.85rem;" value="${fleetEscapeHtml(slot.color || '')}" placeholder="Color">
-                <input class="fleet-ace-name" data-slot="${i}" type="text" style="padding:6px 8px;font-size:0.85rem;" value="${fleetEscapeHtml(slot.name || '')}" placeholder="Label (e.g. White PLA)">
-              </div>`;
-            }).join('')}
-          </div>
           <div id="fleetTestResult" style="display:none;"></div>
         </div>
       </div>
@@ -710,11 +614,6 @@ function showAddPrinterModal(editPrinter = null) {
     </div>`;
 
   document.body.appendChild(modal);
-
-  // Toggle ACE slots visibility when multicolor checkbox changes
-  document.getElementById('fleetAddMulticolor').addEventListener('change', (e) => {
-    document.getElementById('fleetAceSlots').style.display = e.target.checked ? 'block' : 'none';
-  });
 
   // Close
   modal.querySelectorAll('.fleet-modal-close').forEach(btn => {
@@ -767,7 +666,7 @@ function showAddPrinterModal(editPrinter = null) {
       name,
       model: document.getElementById('fleetAddModel').value,
       api_url: apiUrl.startsWith('http') ? apiUrl : `http://${apiUrl}`,
-      has_multicolor: document.getElementById('fleetAddMulticolor').checked,
+      has_multicolor: false,
       build_width: parseInt(document.getElementById('fleetAddWidth').value) || 220,
       build_depth: parseInt(document.getElementById('fleetAddDepth').value) || 220,
       build_height: parseInt(document.getElementById('fleetAddHeight').value) || 250,
@@ -775,19 +674,6 @@ function showAddPrinterModal(editPrinter = null) {
       loaded_color: document.getElementById('fleetAddColor').value.trim(),
       active: true
     };
-
-    // Collect ACE slot data if multicolor is checked
-    if (printer.has_multicolor) {
-      const aceSlots = [0,1,2,3].map(i => ({
-        slot: i,
-        material: modal.querySelector(`.fleet-ace-material[data-slot="${i}"]`)?.value || 'PLA',
-        color: modal.querySelector(`.fleet-ace-color[data-slot="${i}"]`)?.value.trim() || '',
-        name: modal.querySelector(`.fleet-ace-name[data-slot="${i}"]`)?.value.trim() || ''
-      }));
-      printer.ace_slots = JSON.stringify(aceSlots);
-    } else {
-      printer.ace_slots = '[]';
-    }
 
     try {
       if (isEdit) {
@@ -1005,8 +891,7 @@ async function showPrinterDetailModal(printerId) {
       const confirmed = await printStation.showConfirm(`Start printing "${filename}"?`, 'Start Print');
       if (confirmed) {
         try {
-          const aceSlot = await fleetPickAceSlot(printer);
-          await printStation.printerFleet.startPrint(printerId, filename, null, aceSlot);
+          await printStation.printerFleet.startPrint(printerId, filename);
           showToast('Print started!', 'success');
           modal.remove();
           loadFleetData();

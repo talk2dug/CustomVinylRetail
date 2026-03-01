@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { parseBody, sendJson, sendError } = require('./utils/http');
+const { resolvePartDependencies } = require('./multiboard-dependency-recipes');
 
 // Load static parts catalog (legacy parts for backwards compatibility)
 const PARTS_PATH = path.join(__dirname, '..', 'data', 'multiboard-parts.json');
@@ -27,8 +28,8 @@ const MB_TYPE_DEFAULTS = {
   shelf:     { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'shelf', depth: 3.0 }, thickness: 2.5 },
   peg:       { attachesTo: 'pegboard',  snapType: 'pegboard',  providesSnaps: [],                        geometry: { type: 'hook', style: 'single-peg', length: 2.0 }, thickness: 2.0 },
   hardware:  { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'snap' }, thickness: 0.4 },
-  accessory: { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'bin', depth: 1.0, wallThickness: 0.06 }, thickness: 1.5 },
-  unknown:   { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'bin', depth: 1.5, wallThickness: 0.08 }, thickness: 2.0 },
+  accessory: { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'tile', cornerRadius: 0.05 }, thickness: 0.3 },
+  unknown:   { attachesTo: 'multihole', snapType: 'multihole', providesSnaps: [],                        geometry: { type: 'snap' }, thickness: 0.4 },
 };
 
 // Map mb_type to designer category key
@@ -69,7 +70,7 @@ function catalogItemToDesignerPart(row) {
     geometry.length = Math.max(1.0, w * 0.75);
   }
 
-  return {
+  const partObj = {
     id: `stl-${row.id}`,
     name: row.name,
     category: MB_TYPE_TO_CATEGORY[row.mb_type] || 'bins',
@@ -90,7 +91,23 @@ function catalogItemToDesignerPart(row) {
     _stlPath: row.stl_path,
     _thumbnailPath: row.thumbnail_path,
     _mbType: row.mb_type,
+    _mountType: row.mount_type || null,
+    _mountNormal: row.mount_normal ? JSON.parse(row.mount_normal) : null,
+    _mountHardware: row.mount_hardware ? JSON.parse(row.mount_hardware) : null,
+    _requiresTray: row.requires_tray ? true : false,
+    _traySize: row.tray_size || null,
+    _trayNotes: row.tray_notes || null,
   };
+
+  // Resolve hardware dependencies from recipe engine
+  const deps = resolvePartDependencies(partObj);
+  partObj.requiresHardware = deps.requiresHardware;
+  if (deps.methods) {
+    partObj._hasMethodChoice = true;
+    partObj._mountMethods = deps.methods;
+  }
+
+  return partObj;
 }
 
 /**

@@ -34,6 +34,7 @@ const { classifyMarketingProfile } = require('./utils/classifier');
 const metalPrints = require('./metal-prints-server');
 const { handleLeonardoRoute } = require('./leonardo-server');
 const { handleMultiboardRoute } = require('./multiboard-server');
+const { handleHowtoRoute } = require('./multiboard-howto-server');
 const { handleSlicerRoute } = require('./slicer-server');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
@@ -4927,38 +4928,26 @@ const requestHandler = async (req, res) => {
       try {
         const notification = JSON.parse(body || '{}');
 
-        console.log('[eBay] Marketplace account deletion notification received:', JSON.stringify(notification, null, 2));
+        console.log('[eBay] Marketplace account deletion notification received for user:', notification.notification?.data?.username || 'unknown');
 
-        // Log the deletion request for compliance
+        // Log the deletion request for compliance (append-only JSONL to avoid reading entire file)
         const fs = require('fs');
         const path = require('path');
         const logDir = path.join(__dirname, '..', 'data');
-        const logFile = path.join(logDir, 'ebay-account-deletions.json');
+        const logFile = path.join(logDir, 'ebay-account-deletions.jsonl');
 
         // Ensure data directory exists
         if (!fs.existsSync(logDir)) {
           fs.mkdirSync(logDir, { recursive: true });
         }
 
-        // Load existing log or create new
-        let deletionLog = [];
-        if (fs.existsSync(logFile)) {
-          try {
-            deletionLog = JSON.parse(fs.readFileSync(logFile, 'utf8'));
-          } catch (e) {
-            deletionLog = [];
-          }
-        }
-
-        // Add this notification
-        deletionLog.push({
+        // Append single JSON line (no need to read/parse/rewrite entire file)
+        const logEntry = JSON.stringify({
           timestamp: new Date().toISOString(),
           notification: notification,
           processed: true
         });
-
-        // Save log
-        fs.writeFileSync(logFile, JSON.stringify(deletionLog, null, 2));
+        fs.appendFileSync(logFile, logEntry + '\n');
 
         // If we have stored tokens for this user, we should clean them up
         // The notification contains userId which we can match against stored tokens
@@ -7230,7 +7219,8 @@ const requestHandler = async (req, res) => {
 
       try {
         const data = JSON.parse(body);
-        const { filename, metadata, pathCount, imageCount, thumbnail, paths } = data;
+        const { filename, metadata, pathCount, imageCount, thumbnail, paths, type } = data;
+        const validType = (type === 'decal') ? 'decal' : 'sticker';
 
         if (!filename) {
           sendJson(res, 400, { success: false, error: 'filename is required' });
@@ -7242,11 +7232,11 @@ const requestHandler = async (req, res) => {
         const id = `studio3_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
         dbInstance.prepare(`
-          INSERT INTO studio3_catalog (id, filename, metadata, path_count, image_count, thumbnail, paths, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        `).run(id, filename, JSON.stringify(metadata || {}), pathCount || 0, imageCount || 0, thumbnail || null, JSON.stringify(paths || []));
+          INSERT INTO studio3_catalog (id, filename, metadata, path_count, image_count, thumbnail, paths, type, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `).run(id, filename, JSON.stringify(metadata || {}), pathCount || 0, imageCount || 0, thumbnail || null, JSON.stringify(paths || []), validType);
 
-        console.log(`[Studio3 Catalog] Added: ${filename} (${pathCount} paths, ${imageCount} images)`);
+        console.log(`[Studio3 Catalog] Added: ${filename} (${pathCount} paths, ${imageCount} images, type: ${validType})`);
         sendJson(res, 200, { success: true, id, filename });
 
       } catch (err) {
@@ -7264,7 +7254,7 @@ const requestHandler = async (req, res) => {
     try {
       const db = require('./db').getDb();
       const rows = db.prepare(`
-        SELECT id, filename, metadata, path_count, image_count, thumbnail, created_at
+        SELECT id, filename, metadata, path_count, image_count, thumbnail, type, created_at
         FROM studio3_catalog
         ORDER BY created_at DESC
         LIMIT 500
@@ -7280,6 +7270,7 @@ const requestHandler = async (req, res) => {
           pathCount: row.path_count,
           imageCount: row.image_count,
           thumbnail: row.thumbnail,
+          type: row.type || 'sticker',
           createdAt: row.created_at
         }))
       });
@@ -7315,6 +7306,7 @@ const requestHandler = async (req, res) => {
           pathCount: row.path_count,
           imageCount: row.image_count,
           thumbnail: row.thumbnail,
+          type: row.type || 'sticker',
           paths: JSON.parse(row.paths || '[]'),
           createdAt: row.created_at
         }
@@ -7346,6 +7338,73 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Bulk update Studio3 catalog entry types (sticker/decal)
+  if (req.method === 'PATCH' && parsedUrl.pathname === '/api/studio3/catalog') {
+    if (!requireInternalKey(req, res)) return;
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const { ids, type } = data;
+        const validType = (type === 'decal') ? 'decal' : 'sticker';
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+          sendJson(res, 400, { success: false, error: 'ids array is required' });
+          return;
+        }
+
+        const db = require('./db').getDb();
+        const stmt = db.prepare(`UPDATE studio3_catalog SET type = ? WHERE id = ?`);
+        const updateMany = db.transaction((items) => {
+          for (const id of items) stmt.run(validType, id);
+        });
+        updateMany(ids);
+
+        console.log(`[Studio3 Catalog] Bulk updated ${ids.length} items to type: ${validType}`);
+        sendJson(res, 200, { success: true, count: ids.length, type: validType });
+
+      } catch (err) {
+        console.error('[Studio3 Catalog] Bulk patch error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Update a single Studio3 catalog entry type (sticker/decal)
+  if (req.method === 'PATCH' && parsedUrl.pathname.startsWith('/api/studio3/catalog/')) {
+    if (!requireInternalKey(req, res)) return;
+
+    const id = decodeURIComponent(parsedUrl.pathname.replace('/api/studio3/catalog/', ''));
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const validType = (data.type === 'decal') ? 'decal' : 'sticker';
+
+        const db = require('./db').getDb();
+        db.prepare(`UPDATE studio3_catalog SET type = ? WHERE id = ?`).run(validType, id);
+        console.log(`[Studio3 Catalog] Updated type: ${id} -> ${validType}`);
+        sendJson(res, 200, { success: true, id, type: validType });
+
+      } catch (err) {
+        console.error('[Studio3 Catalog] Patch error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
   // ===== CONTOUR TRAINING API =====
   // Train contour style from Studio3 catalog
   if (req.method === 'POST' && parsedUrl.pathname === '/api/contour/train') {
@@ -7357,33 +7416,35 @@ const requestHandler = async (req, res) => {
       const contourTrainer = require('./lib/contour-trainer');
       const stickerGen = require('./sticker-sheet-generator');
 
-      // Get all Studio3 files from catalog
-      const rows = db.prepare(`SELECT * FROM studio3_catalog WHERE path_count > 0`).all();
-
-      if (rows.length === 0) {
+      // Check that we have any files to train on
+      const totalWithPaths = db.prepare(`SELECT COUNT(*) as cnt FROM studio3_catalog WHERE path_count > 0`).get();
+      if (totalWithPaths.cnt === 0) {
         sendJson(res, 400, { success: false, error: 'No Studio3 files with paths in catalog. Import .studio3 files first.' });
         return;
       }
 
-      // Parse stored data back into training format
-      const studio3Files = rows.map(row => ({
-        paths: JSON.parse(row.paths || '[]'),
-        images: [], // Not needed for training
-        metadata: { ...JSON.parse(row.metadata || '{}'), filename: row.filename }
-      }));
+      // Train separate sticker and decal profiles
+      const results = await contourTrainer.trainBothProfiles(db);
 
-      // Train and save profile
-      const result = await contourTrainer.trainFromStudio3Collection(studio3Files, db);
-
-      // Reload profile in sticker generator
+      // Reload profiles in sticker generator
       stickerGen.reloadStyleProfile();
 
-      console.log(`[Contour Training] Trained on ${result.sampleCount} files`);
+      const stickerCount = results.sticker?.sampleCount || 0;
+      const decalCount = results.decal?.sampleCount || 0;
+      console.log(`[Contour Training] Trained sticker (${stickerCount} files) and decal (${decalCount} files)`);
+
       sendJson(res, 200, {
         success: true,
-        sampleCount: result.sampleCount,
-        profile: result.profile,
-        errors: result.errors
+        sticker: results.sticker ? {
+          sampleCount: results.sticker.sampleCount,
+          profile: results.sticker.profile,
+          errors: results.sticker.errors
+        } : null,
+        decal: results.decal ? {
+          sampleCount: results.decal.sampleCount,
+          profile: results.decal.profile,
+          errors: results.decal.errors
+        } : null
       });
 
     } catch (err) {
@@ -7400,15 +7461,21 @@ const requestHandler = async (req, res) => {
     try {
       const db = require('./db');
       const contourTrainer = require('./lib/contour-trainer');
+      const dbInstance = db.getDb();
 
-      const profile = contourTrainer.loadStyleProfile(db.getDb());
+      const stickerProfile = contourTrainer.loadStyleProfile(dbInstance, 'sticker');
+      const decalProfile = contourTrainer.loadStyleProfile(dbInstance, 'decal');
 
-      if (!profile) {
-        sendJson(res, 404, { success: false, error: 'No style profile found. Run training first.' });
+      if (!stickerProfile && !decalProfile) {
+        sendJson(res, 404, { success: false, error: 'No style profiles found. Run training first.' });
         return;
       }
 
-      sendJson(res, 200, { success: true, profile });
+      sendJson(res, 200, {
+        success: true,
+        sticker: stickerProfile || null,
+        decal: decalProfile || null
+      });
 
     } catch (err) {
       console.error('[Contour Profile] Error:', err);
@@ -8411,10 +8478,17 @@ const requestHandler = async (req, res) => {
     if (req.method === 'POST' && parsedUrl.pathname === '/api/products/generate-labels') {
       try {
         const body = await getReqBodyJson(req);
-        const { productIds } = body;
+        const { productIds, format } = body;
 
         if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
           sendJson(res, 400, { error: 'productIds array is required' });
+          return;
+        }
+
+        const labelFormat = format || 'sticker-sheet';
+        const validFormats = ['sticker-sheet', 'avery-5160', 'silhouette-grid'];
+        if (!validFormats.includes(labelFormat)) {
+          sendJson(res, 400, { error: `Invalid format. Must be one of: ${validFormats.join(', ')}` });
           return;
         }
 
@@ -8439,34 +8513,38 @@ const requestHandler = async (req, res) => {
         const photoDir = path.join(LIBRARY_ROOT, 'uploads', 'products');
 
         // Generate timestamp-based output directory
+        const prefix = labelFormat === 'avery-5160' ? 'avery-labels' : labelFormat === 'silhouette-grid' ? 'silhouette-labels' : 'product-labels';
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const outputDir = path.join(STICKER_OUTPUT_DIR, `product-labels-${timestamp}`);
+        const outputDir = path.join(STICKER_OUTPUT_DIR, `${prefix}-${timestamp}`);
         await fs.promises.mkdir(outputDir, { recursive: true });
 
-        console.log(`[Labels] Generating label sheets for ${products.length} products -> ${outputDir}`);
+        console.log(`[Labels] Generating ${labelFormat} sheets for ${products.length} products -> ${outputDir}`);
 
-        const result = await stickerSheets.generateProductLabelSheets(
-          products, baseUrl, photoDir, outputDir, 'product-labels'
-        );
+        let result;
+        if (labelFormat === 'avery-5160') {
+          result = await stickerSheets.generateAvery5160Sheets(products, baseUrl, photoDir, outputDir, prefix);
+        } else if (labelFormat === 'silhouette-grid') {
+          result = await stickerSheets.generateSilhouetteGridSheets(products, baseUrl, photoDir, outputDir, prefix);
+        } else {
+          result = await stickerSheets.generateProductLabelSheets(products, baseUrl, photoDir, outputDir, prefix);
+        }
 
         // Build web-accessible URLs for sheets
         const sheets = (result.sheets || []).map(sheet => {
-          const webBasePath = sheet.printFile.includes('/web/')
-            ? sheet.printFile.split('/web/')[1]
-            : path.basename(path.dirname(sheet.printFile)) + '/' + path.basename(sheet.printFile);
           return {
             ...sheet,
-            printUrl: `/sticker-sheets/product-labels-${timestamp}/${sheet.printFilename}`,
-            cutUrl: `/sticker-sheets/product-labels-${timestamp}/${sheet.cutFilename}`,
-            cricutUrl: `/sticker-sheets/product-labels-${timestamp}/${sheet.cricutFilename}`
+            printUrl: `/sticker-sheets/${prefix}-${timestamp}/${sheet.printFilename}`,
+            cutUrl: sheet.cutFilename ? `/sticker-sheets/${prefix}-${timestamp}/${sheet.cutFilename}` : undefined,
+            cricutUrl: sheet.cricutFilename ? `/sticker-sheets/${prefix}-${timestamp}/${sheet.cricutFilename}` : undefined
           };
         });
 
         sendJson(res, 200, {
           success: true,
+          format: labelFormat,
           totalSheets: result.totalSheets,
           totalStickers: result.totalStickers,
-          batchName: `product-labels-${timestamp}`,
+          batchName: `${prefix}-${timestamp}`,
           sheets,
           outputDir: result.outputDir
         });
@@ -8527,6 +8605,18 @@ const requestHandler = async (req, res) => {
     if (!requireInternalKey(req, res)) return;
     handleMultiboardRoute(parsedUrl.pathname, req, res, db).catch(err => {
       console.error('[Multiboard API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Multiboard How-To API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/howtos')) {
+    // Allow image requests without API key (used in build doc browser windows)
+    const isImageReq = parsedUrl.pathname.startsWith('/api/howtos/images/');
+    if (!isImageReq && !requireInternalKey(req, res)) return;
+    handleHowtoRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Howtos API Error]', err);
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;

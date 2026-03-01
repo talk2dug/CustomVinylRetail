@@ -3025,6 +3025,10 @@ function initCustomArtTables() {
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_studio3_catalog_filename ON studio3_catalog(filename)`); } catch (e) { /* ignore */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_studio3_catalog_created ON studio3_catalog(created_at)`); } catch (e) { /* ignore */ }
 
+  // Migration: add type column for sticker vs decal classification
+  ensureColumn('studio3_catalog', 'type', "TEXT DEFAULT 'sticker'");
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_studio3_catalog_type ON studio3_catalog(type)`); } catch (e) { /* ignore */ }
+
   // Contour Style Profile - learned preferences from Studio3 files
   db.exec(`
     CREATE TABLE IF NOT EXISTS contour_style_profile (
@@ -3410,6 +3414,20 @@ function initCustomArtTables() {
   ensureColumn('stl_catalog', 'mu_width', 'INTEGER DEFAULT NULL');
   ensureColumn('stl_catalog', 'mu_height', 'INTEGER DEFAULT NULL');
 
+  // Part description & source tracking
+  ensureColumn('stl_catalog', 'description', 'TEXT DEFAULT NULL');
+  ensureColumn('stl_catalog', 'source_url', 'TEXT DEFAULT NULL');
+
+  // Hardware/mount parsing results (populated by multiboard-part-parser)
+  ensureColumn('stl_catalog', 'mount_type', 'TEXT DEFAULT NULL');
+  ensureColumn('stl_catalog', 'mount_hardware', 'TEXT DEFAULT NULL');
+  ensureColumn('stl_catalog', 'requires_tray', 'INTEGER DEFAULT 0');
+  ensureColumn('stl_catalog', 'tray_size', 'TEXT DEFAULT NULL');
+  ensureColumn('stl_catalog', 'tray_notes', 'TEXT DEFAULT NULL');
+
+  // Saved orientation for designer (JSON string like "[0,0,-1]" — user-confirmed mount normal)
+  ensureColumn('stl_catalog', 'mount_normal', 'TEXT DEFAULT NULL');
+
   // Calibration log table (for future calibration wizard)
   db.exec(`
     CREATE TABLE IF NOT EXISTS calibration_log (
@@ -3425,10 +3443,69 @@ function initCustomArtTables() {
     CREATE INDEX IF NOT EXISTS idx_calibration_log_printer ON calibration_log(printer_model);
   `);
 
+  // Multiboard How-To System
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS multiboard_howtos (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug        TEXT NOT NULL UNIQUE,
+      title       TEXT NOT NULL,
+      category    TEXT NOT NULL DEFAULT 'general',
+      level       TEXT NOT NULL DEFAULT 'section',
+      parent      TEXT,
+      content     TEXT,
+      source_url  TEXT,
+      tags        TEXT,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS multiboard_howto_images (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      howto_slug  TEXT NOT NULL,
+      filename    TEXT NOT NULL,
+      local_path  TEXT NOT NULL,
+      source_url  TEXT,
+      caption     TEXT,
+      alt         TEXT,
+      sort_order  INTEGER DEFAULT 0,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (howto_slug) REFERENCES multiboard_howtos(slug)
+    )
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS multiboard_howto_videos (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug        TEXT NOT NULL UNIQUE,
+      title       TEXT NOT NULL,
+      url         TEXT NOT NULL,
+      description TEXT,
+      tags        TEXT,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS multiboard_part_howtos (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      part_id     INTEGER NOT NULL,
+      howto_slug  TEXT NOT NULL,
+      relevance   TEXT DEFAULT 'related',
+      UNIQUE(part_id, howto_slug)
+    )
+  `);
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_howto_images_slug ON multiboard_howto_images(howto_slug)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_part_howtos_part ON multiboard_part_howtos(part_id)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_part_howtos_slug ON multiboard_part_howtos(howto_slug)`); } catch (e) { /* ignore */ }
+
   console.log('[Slicer] ✅ Tables initialized successfully');
+  console.log('[Howtos] ✅ Tables initialized successfully');
 
   // Auto-classify existing Multiboard items that lack metadata
   migrateMultiboardItems();
+  // Backfill hardware/mount parsing for items that haven't been parsed yet
+  backfillMultiboardHardware();
+  // Seed how-to content from JSON if tables are empty
+  seedMultiboardHowtos();
 }
 
 function seedCustomArtMaterials() {
@@ -6298,11 +6375,13 @@ function createStlCatalogItem(item) {
     INSERT INTO stl_catalog (name, category, stl_path, thumbnail_path,
       default_quality, default_strength, default_material, default_texture, default_supports,
       default_surface, default_speed,
-      notes, file_size, triangle_count, dim_x, dim_y, dim_z, est_weight_g, est_time_min)
+      notes, file_size, triangle_count, dim_x, dim_y, dim_z, est_weight_g, est_time_min,
+      description, source_url)
     VALUES (@name, @category, @stl_path, @thumbnail_path,
       @default_quality, @default_strength, @default_material, @default_texture, @default_supports,
       @default_surface, @default_speed,
-      @notes, @file_size, @triangle_count, @dim_x, @dim_y, @dim_z, @est_weight_g, @est_time_min)
+      @notes, @file_size, @triangle_count, @dim_x, @dim_y, @dim_z, @est_weight_g, @est_time_min,
+      @description, @source_url)
   `);
   const info = ins.run({
     name: item.name || 'Unnamed',
@@ -6323,7 +6402,9 @@ function createStlCatalogItem(item) {
     dim_y: item.dim_y || null,
     dim_z: item.dim_z || null,
     est_weight_g: item.est_weight_g || null,
-    est_time_min: item.est_time_min || null
+    est_time_min: item.est_time_min || null,
+    description: item.description || null,
+    source_url: item.source_url || null
   });
 
   // Auto-extract Multiboard metadata when category is 'Multiboard'
@@ -6455,7 +6536,9 @@ function updateStlCatalogItem(id, updates) {
     'default_quality', 'default_strength', 'default_material', 'default_texture', 'default_supports',
     'default_surface', 'default_speed',
     'notes', 'file_size', 'triangle_count', 'dim_x', 'dim_y', 'dim_z', 'est_weight_g', 'est_time_min',
-    'mb_type', 'mu_width', 'mu_height'];
+    'mb_type', 'mu_width', 'mu_height',
+    'description', 'source_url', 'mount_type', 'mount_hardware', 'requires_tray', 'tray_size', 'tray_notes',
+    'mount_normal'];
   const set = [];
   const params = { id };
   for (const key of allowed) {
@@ -6501,10 +6584,12 @@ function parseMultiboardMetadata(name) {
     { pattern: /\b(Bin|Tray|Drawer|Shell)\b/i,   type: 'bin',       folder: 'Bins & Trays' },
     { pattern: /\b(Hook|Click[\s-]?Hook)\b/i,    type: 'hook',      folder: 'Hooks' },
     { pattern: /\bPeg\b/i,                        type: 'peg',       folder: 'Pegs' },
-    { pattern: /\b(Snap|Insert|Adapter)\b/i,      type: 'hardware',  folder: 'Hardware' },
-    { pattern: /\b(Mount|Standoff)\b/i,           type: 'hardware',  folder: 'Hardware' },
+    { pattern: /\b(Snaps?|Insert|Adapter)\b/i,     type: 'hardware',  folder: 'Hardware' },
+    { pattern: /\b(Mount|Standoff|Pillar|Foot)\b/i, type: 'hardware',  folder: 'Hardware' },
+    { pattern: /\b(Hinge|Beam|Bracket|Clip)\b/i, type: 'hardware',  folder: 'Hardware' },
     { pattern: /\b(Label|Holder)\b/i,             type: 'accessory', folder: 'Accessories' },
-    { pattern: /\b(Bolt|Thread)\b/i,              type: 'hardware',  folder: 'Hardware' },
+    { pattern: /\b(Bolt|Thread|Spacer)\b/i,       type: 'hardware',  folder: 'Hardware' },
+    { pattern: /\bGridfinity\b/i,                  type: 'bin',       folder: 'Bins & Trays' },
   ];
 
   let mb_type = 'unknown';
@@ -6591,11 +6676,28 @@ function applyMultiboardMetadata(itemId) {
 
   const meta = parseMultiboardMetadata(item.name);
 
+  // Run hardware/mount parser on name + description
+  const { parsePart } = require('./multiboard-part-parser');
+  const parsed = parsePart(item.name, item.description || '');
+
   db.prepare(`
     UPDATE stl_catalog
-    SET mb_type = ?, mu_width = ?, mu_height = ?, folder = COALESCE(folder, ?)
+    SET mb_type = ?, mu_width = ?, mu_height = ?, folder = COALESCE(folder, ?),
+        mount_type = COALESCE(mount_type, ?),
+        mount_hardware = COALESCE(mount_hardware, ?),
+        requires_tray = COALESCE(NULLIF(requires_tray, 0), ?),
+        tray_size = COALESCE(tray_size, ?),
+        tray_notes = COALESCE(tray_notes, ?)
     WHERE id = ?
-  `).run(meta.mb_type, meta.mu_width, meta.mu_height, meta.folder, itemId);
+  `).run(
+    meta.mb_type, meta.mu_width, meta.mu_height, meta.folder,
+    parsed.mount_type !== 'unknown' ? parsed.mount_type : null,
+    parsed.mount_hardware,
+    parsed.requires_tray,
+    parsed.tray_size,
+    parsed.tray_notes,
+    itemId
+  );
 
   return getStlCatalogItem(itemId);
 }
@@ -6633,6 +6735,38 @@ function migrateMultiboardItems() {
 }
 
 /**
+ * Backfill mount_type/hardware for existing Multiboard items that haven't been parsed yet.
+ * Parses from name + description. Safe to call multiple times (idempotent).
+ */
+function backfillMultiboardHardware() {
+  const { parsePart } = require('./multiboard-part-parser');
+  const items = db.prepare(`
+    SELECT id, name, description FROM stl_catalog
+    WHERE category = 'Multiboard' AND mount_type IS NULL
+  `).all();
+
+  if (items.length === 0) return;
+
+  console.log(`[Multiboard] Backfilling hardware metadata for ${items.length} items...`);
+
+  const update = db.prepare(`
+    UPDATE stl_catalog
+    SET mount_type = ?, mount_hardware = ?, requires_tray = ?, tray_size = ?, tray_notes = ?
+    WHERE id = ?
+  `);
+
+  const tx = db.transaction(() => {
+    for (const item of items) {
+      const p = parsePart(item.name, item.description || '');
+      update.run(p.mount_type, p.mount_hardware, p.requires_tray, p.tray_size, p.tray_notes, item.id);
+    }
+  });
+
+  tx();
+  console.log(`[Multiboard] Hardware backfill complete: ${items.length} items processed`);
+}
+
+/**
  * List all Multiboard parts with metadata for the designer.
  * @returns {Array} Catalog items with category='Multiboard' and mb_type set
  */
@@ -6642,6 +6776,237 @@ function listMultiboardParts() {
     WHERE category = 'Multiboard' AND mb_type IS NOT NULL
     ORDER BY mb_type, name COLLATE NOCASE
   `).all();
+}
+
+// ============================================================================
+// MULTIBOARD HOW-TO SYSTEM
+// ============================================================================
+
+/**
+ * Seed multiboard_howtos, multiboard_howto_images, and multiboard_howto_videos
+ * from the JSON file generated by the scraper. Uses upsert — safe to re-run.
+ */
+function seedMultiboardHowtos() {
+  const fs = require('fs');
+  const path = require('path');
+  const seedPath = path.join(__dirname, '..', 'MultiBoardScraper', 'multiboard-howtos-seed.json');
+  if (!fs.existsSync(seedPath)) {
+    console.log('[Howtos] Seed file not found, skipping');
+    return;
+  }
+
+  // Check seed version — re-seed if JSON version is newer
+  db.prepare('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)').run();
+  const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+  const seedVersion = seedData.meta?.version || 1;
+  const currentVersion = (() => {
+    try {
+      const row = db.prepare("SELECT value FROM app_settings WHERE key = 'howto_seed_version'").get();
+      return row ? parseInt(row.value) : 0;
+    } catch (e) { return 0; }
+  })();
+  if (currentVersion >= seedVersion) return;
+
+  console.log(`[Howtos] Seeding v${seedVersion} from multiboard-howtos-seed.json (was v${currentVersion})...`);
+  const seed = seedData;
+
+  // Clear old data before re-seeding
+  db.prepare('DELETE FROM multiboard_howto_images').run();
+  db.prepare('DELETE FROM multiboard_howto_videos').run();
+  db.prepare('DELETE FROM multiboard_howtos').run();
+
+  const upsertHowto = db.prepare(`
+    INSERT INTO multiboard_howtos (slug, title, category, level, parent, content, source_url, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(slug) DO UPDATE SET
+      title=excluded.title, category=excluded.category, level=excluded.level,
+      parent=excluded.parent, content=excluded.content, source_url=excluded.source_url,
+      tags=excluded.tags, updated_at=datetime('now')
+  `);
+
+  const insertImage = db.prepare(`
+    INSERT INTO multiboard_howto_images (howto_slug, filename, local_path, source_url, caption, alt, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const upsertVideo = db.prepare(`
+    INSERT INTO multiboard_howto_videos (slug, title, url, description, tags)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(slug) DO UPDATE SET
+      title=excluded.title, url=excluded.url, description=excluded.description, tags=excluded.tags
+  `);
+
+  const tx = db.transaction(() => {
+    // 1. Howtos
+    for (const h of seed.howtos || []) {
+      const tags = Array.isArray(h.tags) ? JSON.stringify(h.tags) : (h.tags || null);
+      upsertHowto.run(h.slug, h.title, h.category || 'general', h.level || 'section',
+                       h.parent || null, h.content || null, h.source_url || null, tags);
+    }
+
+    // 2. Images
+    for (const img of seed.images || []) {
+      insertImage.run(
+        img.topic, img.filename, img.local_path || img.filename,
+        img.source_url || null, img.caption || null, img.alt || null, 0
+      );
+    }
+
+    // 3. YouTube videos
+    for (const v of seed.youtube_links || []) {
+      const tags = Array.isArray(v.topic_tags) ? JSON.stringify(v.topic_tags) : (v.tags || null);
+      upsertVideo.run(v.slug, v.title, v.url, v.description || null, tags);
+    }
+  });
+
+  tx();
+
+  // Store the seed version so we don't re-seed unnecessarily
+  try {
+    db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('howto_seed_version', ?)").run(String(seedVersion));
+  } catch (e) { /* app_settings table may not exist in all setups */ }
+
+  const howtoCount = (seed.howtos || []).length;
+  const imgCount = (seed.images || []).length;
+  const vidCount = (seed.youtube_links || []).length;
+  console.log(`[Howtos] Seeded ${howtoCount} howtos, ${imgCount} images, ${vidCount} videos`);
+}
+
+/** List all howtos, optionally filtered by category, tag, or slug */
+function listHowtos(filters = {}) {
+  let sql = 'SELECT * FROM multiboard_howtos WHERE 1=1';
+  const params = [];
+  if (filters.category) { sql += ' AND category = ?'; params.push(filters.category); }
+  if (filters.slug) { sql += ' AND slug = ?'; params.push(filters.slug); }
+  if (filters.tag) { sql += " AND tags LIKE ?"; params.push(`%"${filters.tag}"%`); }
+  sql += ' ORDER BY slug';
+  return db.prepare(sql).all(...params);
+}
+
+/** Get a single howto by slug with its images and matching videos */
+function getHowtoBySlug(slug) {
+  const howto = db.prepare('SELECT * FROM multiboard_howtos WHERE slug = ?').get(slug);
+  if (!howto) return null;
+
+  const images = db.prepare(
+    'SELECT * FROM multiboard_howto_images WHERE howto_slug = ? ORDER BY sort_order, id'
+  ).all(slug);
+
+  // Match videos by tag overlap
+  const howtoTags = JSON.parse(howto.tags || '[]');
+  let videos = [];
+  if (howtoTags.length > 0) {
+    const allVideos = db.prepare('SELECT * FROM multiboard_howto_videos').all();
+    videos = allVideos.filter(v => {
+      const vTags = JSON.parse(v.tags || '[]');
+      return vTags.some(t => howtoTags.includes(t));
+    });
+  }
+
+  return { howto, images, videos };
+}
+
+/** Find howtos relevant to a specific STL catalog part */
+function getHowtosForPart(partId) {
+  // 1. Check junction table first
+  const direct = db.prepare(`
+    SELECT h.*, ph.relevance FROM multiboard_howtos h
+    JOIN multiboard_part_howtos ph ON ph.howto_slug = h.slug
+    WHERE ph.part_id = ?
+    ORDER BY ph.relevance DESC, h.slug
+  `).all(partId);
+  if (direct.length > 0) return direct;
+
+  // 2. Fallback: tag matching based on mount_type
+  const MOUNT_TYPE_TO_TAGS = {
+    snap:      ['snaps', 'bolt-lock', 'friction-fit', 'assembly'],
+    magnet:    ['magnets', 'assembly'],
+    screw:     ['threads', 'heat-set', 'assembly'],
+    rail:      ['multipoint', 'rail-pop-ins', 'assembly'],
+    pegboard:  ['peg-click', 'assembly'],
+  };
+
+  const part = db.prepare('SELECT mount_type, mount_hardware FROM stl_catalog WHERE id = ?').get(partId);
+  if (!part) return [];
+
+  const searchTags = new Set();
+  if (part.mount_type && MOUNT_TYPE_TO_TAGS[part.mount_type]) {
+    MOUNT_TYPE_TO_TAGS[part.mount_type].forEach(t => searchTags.add(t));
+  }
+
+  // Parse mount_hardware JSON for additional tag hints
+  try {
+    const hw = JSON.parse(part.mount_hardware || '[]');
+    for (const item of hw) {
+      if (item.type === 'magnet') searchTags.add('magnets');
+      if (item.type === 'screw') { searchTags.add('threads'); searchTags.add('heat-set'); }
+      if (item.type === 'insert') searchTags.add('heat-set');
+    }
+  } catch (e) { /* ignore */ }
+
+  if (searchTags.size === 0) return [];
+
+  const allHowtos = db.prepare('SELECT * FROM multiboard_howtos').all();
+  return allHowtos.filter(h => {
+    const hTags = JSON.parse(h.tags || '[]');
+    return hTags.some(t => searchTags.has(t));
+  });
+}
+
+/** Get deduplicated howtos + images + videos for an array of part IDs */
+function getHowtosForDesign(partIds) {
+  const seenSlugs = new Set();
+  const howtos = [];
+  for (const pid of partIds) {
+    const matches = getHowtosForPart(pid);
+    for (const h of matches) {
+      if (!seenSlugs.has(h.slug)) {
+        seenSlugs.add(h.slug);
+        howtos.push(h);
+      }
+    }
+  }
+
+  // Gather images and videos for all matched howtos
+  const images = [];
+  const videoMap = {};
+  for (const h of howtos) {
+    const detail = getHowtoBySlug(h.slug);
+    if (detail) {
+      images.push(...detail.images);
+      for (const v of detail.videos) {
+        videoMap[v.slug] = v;
+      }
+    }
+  }
+
+  return { howtos, images, videos: Object.values(videoMap) };
+}
+
+/** Get howtos matching any of the given tags — used by build-doc generator */
+function getHowtosForTags(tags) {
+  if (!tags || tags.length === 0) return { howtos: [], images: [], videos: [] };
+
+  const allHowtos = db.prepare("SELECT * FROM multiboard_howtos WHERE level = 'page'").all();
+  const matched = allHowtos.filter(h => {
+    const hTags = JSON.parse(h.tags || '[]');
+    return hTags.some(t => tags.includes(t));
+  });
+
+  // Gather images and videos for all matched howtos
+  const images = [];
+  const videoMap = {};
+  for (const h of matched) {
+    const detail = getHowtoBySlug(h.slug);
+    if (detail) {
+      images.push(...detail.images);
+      for (const v of detail.videos) {
+        videoMap[v.slug] = v;
+      }
+    }
+  }
+
+  return { howtos: matched, images, videos: Object.values(videoMap) };
 }
 
 // ============================================================================
@@ -6963,7 +7328,15 @@ module.exports = {
   parseMultiboardMetadata,
   applyMultiboardMetadata,
   migrateMultiboardItems,
+  backfillMultiboardHardware,
   listMultiboardParts,
+  // How-To System
+  seedMultiboardHowtos,
+  listHowtos,
+  getHowtoBySlug,
+  getHowtosForPart,
+  getHowtosForDesign,
+  getHowtosForTags,
   // G-code Cache
   getGcodeCache,
   listGcodeCacheForStl,

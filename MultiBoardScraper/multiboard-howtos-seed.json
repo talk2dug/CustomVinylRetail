@@ -1,0 +1,370 @@
+{
+  "meta": {
+    "generated_at": "2026-02-25T16:30:00.000Z",
+    "source": "multiboard-reference.pdf + docs.multiboard.io",
+    "version": 2,
+    "description": "Multiboard build instruction content for print-station designer build guides. Written from the Blue Ridge Custom Co reference PDF.",
+    "image_dir": "./multiboard-images/"
+  },
+  "howtos": [
+    {
+      "slug": "measurement-system",
+      "title": "Multiboard Measurement System",
+      "category": "reference",
+      "tags": ["assembly", "overview"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Everything in Multiboard is based on two unit types:\n\n• MU (Multi Unit) = 25 mm — Used for tiles, snaps, brackets, shelves, trays. Example: 2×4 MU = 50 mm × 100 mm.\n• CU (Cell Unit) = 50 mm — Used for Multibin shells, plates, drawers. Example: 1×2 CU = 50 mm × 100 mm.\n\nConversion: 2×2 MU = 1×1 CU. A 4 CU tile = 8×8 MU tile.\n\nDimension order is always: Width (front) × Depth (side) × Height."
+    },
+    {
+      "slug": "tile-hole-types",
+      "title": "Tile Hole Types",
+      "category": "reference",
+      "tags": ["tiles", "snaps", "peg-click", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Multiboard Tiles have three hole types:\n\n1. Small Holes — Accept Peg Click hooks, Small Threads, and standard pegboard accessories. Used for quick-attach hooks and lightweight accessories.\n\n2. Large Holes (Multiholes) — Accept Snaps and Large Threads. This is the primary mounting point for most accessories.\n\n3. Mid Holes (on Snaps) — Accept Bolt-Locked Inserts, Friction-Fit Inserts, and Mid Threads. Used for shelves, brackets, and hooks that mount via a snap."
+    },
+    {
+      "slug": "snap-installation",
+      "title": "Snap Types & Installation",
+      "category": "howto",
+      "tags": ["snaps", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Snaps are the primary connector between Multiboard Tiles and accessories. Most accessories don't attach directly to the tile — they attach to a Snap seated in the tile's Large Hole.\n\nSnap Types:\n\n1. Regular Snap — Press straight into the Large Hole. Symmetrical, light-duty. Use for lightweight hooks, labels, and light accessories.\n\n2. Moderate Weight-Bearing Snap — Insert at an angle into the Large Hole. This is the most commonly used snap. Required for shelves, brackets, bins, and most accessories. Holds medium to heavy weight in ONE direction.\n\n3. Heavy Weight-Bearing Hook Snap — Insert at an angle. Holds the most weight but only works with tiles that are offset from the wall (DS Snap mount). Weight-bearing in one direction only.\n\n4. DS Snap Part A (Offset) — Goes on the BACK of the tile. Has a wall screw hole. Creates a 6.25 mm offset from the mounting surface. Used for wall-mounted tiles with the advanced mounting method.\n\n5. DS Snap Part B — Goes on the FRONT of the tile. Snaps to Part A through the tile. Used for freestanding or removable tile setups.\n\nInstallation Steps:\n1. Identify which Large Hole position you need the snap in.\n2. For Regular Snaps: press straight in until it clicks.\n3. For Moderate/Heavy Snaps: tilt the snap at an angle, insert one side first, then press the other side in until it clicks. Make sure the weight-bearing direction points DOWN (toward the floor).\n4. The snap's Mid Hole is now exposed and ready for accessories (inserts, brackets, bolts)."
+    },
+    {
+      "slug": "bolt-locked-inserts",
+      "title": "Bolt-Locked & Friction-Fit Inserts",
+      "category": "howto",
+      "tags": ["snaps", "bolt-lock", "friction-fit", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "These are the two primary methods of attaching accessories to Multiboard Tiles using Snaps:\n\nBolt-Locked Inserts:\n1. First seat a Snap in the tile's Large Hole.\n2. Slide the Bolt-Locked Insert into the Snap's Mid Hole.\n3. Insert a Locking Bolt (T-Bolt) to lock the insert in place.\n4. The insert CANNOT be pulled out — it's mechanically locked.\n5. Use for: heavy-duty hooks, pegs, shelves, and brackets.\n\nFriction-Fit Inserts:\n1. First seat a Snap in the tile's Large Hole.\n2. Slide the Friction-Fit Insert into the Snap's Mid Hole.\n3. No locking bolt needed — held by friction alone.\n4. Can be pulled out and repositioned easily.\n5. Use for: light-weight accessories like hooks and pegs only.\n\nCommon insert variations: hooks, pegs, shelves, and brackets. Bolt-Locked is recommended for anything load-bearing."
+    },
+    {
+      "slug": "tray-mounting-method-a",
+      "title": "Tray Mounting — Method A (Light Duty)",
+      "category": "howto",
+      "tags": ["snaps", "assembly", "shells", "multipoint"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Method A uses a Drawer Shell + Rail Pop-Ins for lighter loads. This is simpler and faster to assemble — good for lighter loads and items you'll swap often.\n\nParts Needed (for a 2×1 LU Tray):\n• 1× Multibin Drawer Shell (horizontal orientation)\n• 2× Multipoint Rail Pop-Ins\n• 2× Moderate Weight-Bearing Snaps\n• 1× Drawer Stopper Pin\n• 1× 2×1 LU Tray\n\nAssembly Steps:\n1. Seat Moderate Weight-Bearing Snaps into the tile's Large Holes at the mounting positions. Insert at an angle with weight-bearing direction pointing down.\n2. Take the Multibin Drawer Shell and orient it horizontally (open side facing out).\n3. Snap the Rail Pop-Ins into the Shell's Multipoint Rail Wall on each side. The Pop-Ins unfold and \"pop\" into place — they lock securely and do not slide.\n4. Connect the Pop-Ins to your tile snaps — the Pop-In end connects to the Snap's Mid Hole.\n5. Place the LU Tray on top of the horizontal Shell.\n6. Insert the Drawer Stopper Pin to prevent the tray from sliding out.\n\nTip: Method A is best for lightweight items and trays you'll remove/replace often. For heavier items or permanent installations, use Method B."
+    },
+    {
+      "slug": "tray-mounting-method-b",
+      "title": "Tray Mounting — Method B (Heavy Duty)",
+      "category": "howto",
+      "tags": ["snaps", "bolt-lock", "assembly", "multipoint"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Method B uses Bolt-Locked Brackets for heavier loads. More secure and better for heavy items or permanent installs. For retail demo boards, Method B looks more professional.\n\nParts Needed (for a 2×1 LU Tray):\n• 2× Bolt-Locked Brackets (L-shaped)\n• 1× Heavy Weight-Bearing Hook Snap (top position)\n• 1× Regular Snap (bottom position)\n• 2× Locking Bolts (T-Bolts)\n• 2× Bracket-Multipoint Adapters\n• 2× Multipoint Connectors\n• 1× 2×1 LU Tray\n\nAssembly Steps:\n1. Insert the Heavy Weight-Bearing Hook Snap into the TOP Large Hole position. Insert at an angle — this snap takes the most load.\n2. Insert a Regular Snap into the BOTTOM Large Hole position. Press straight in.\n3. Slide the Bolt-Locked Bracket onto both snaps via the bracket's Mid Holes. The L-shape should face outward to support the tray.\n4. Insert Locking Bolts (T-Bolts) into each bracket-to-snap connection to prevent pull-out. This mechanically locks the bracket to the tile.\n5. Attach Bracket-Multipoint Adapters to the bracket arms.\n6. Connect Multipoint Connectors from the adapters to the tray's Multipoint holes.\n7. Slide the tray onto the Multipoint Connectors.\n\nTip: For the 2×1 LU Tray specifically, use a Moderate Weight-Bearing Snap at the TOP and a Regular Snap at the bottom for the standard bracket+tray setup."
+    },
+    {
+      "slug": "bin-assembly",
+      "title": "Bin & Shell Assembly",
+      "category": "howto",
+      "tags": ["snaps", "shells", "multipoint", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Multibin Shells are modular containers that connect to tiles via snaps or multipoint connectors.\n\nBasic Bin Mounting (Snap Method):\n1. Seat Moderate Weight-Bearing Snaps in the tile's Large Holes at each mounting position.\n2. The number of snaps depends on the bin size — typically ceil(width × height / 4) snaps.\n3. Connect the bin's base Multipoint holes to the snaps using Multipoint Connectors.\n4. The bin should click securely into place.\n\nShell Features:\n• Shells can be paired with Multibin Tops or Inserts to adapt them to different needs.\n• Dimensions are based on Cell Units (CU). 1 CU = 50 mm.\n• Stacking: Place a 1 CU high Shell on another Shell to increase height by 50 mm.\n• The Multipoint Holes on the Bin Base are directed towards the width (front) of the bin.\n• Multipoint Rail Walls on the shell sides accept Rail Click Connectors and Rail Pop-Ins for bin-to-bin or bin-to-tile connections.\n\nVertical Plate Mounting:\n• Bins can be placed on Multibin Plates.\n• If the plate is vertical, use Bar Clips to hold the bin in place.\n• Plates connect together using Dual Clips.\n\nInserts & Tops:\n• Inserts are placed inside Multibin Shells to add dividers or organization.\n• Tops attach using Top Click Rims — they click onto the rim, not directly to the shell.\n• Simple Drawers insert into shells in horizontal orientation. Use Drawer Stopper Pins to prevent fallout."
+    },
+    {
+      "slug": "shelf-bolt-locked",
+      "title": "Shelf Assembly (Bolt-Locked)",
+      "category": "howto",
+      "tags": ["snaps", "bolt-lock", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Shelves use Bolt-Locked Brackets for secure, load-bearing mounting.\n\nParts Needed:\n• 2× Shelf Support Brackets\n• 2× Heavy Weight-Bearing Hook Snaps (top mount points)\n• 2× Regular Snaps (bottom mount points)\n• 4× Locking Bolts (T-Bolts)\n• 1× Shelf\n\nAssembly Steps:\n1. Determine the shelf position on your tile wall. You need two mounting points — one on each side of the shelf.\n2. At each mounting point, insert a Heavy Weight-Bearing Hook Snap into the TOP Large Hole. Insert at an angle with the weight-bearing direction pointing down.\n3. Insert a Regular Snap into the BOTTOM Large Hole at each mounting point.\n4. Slide a Shelf Support Bracket onto each pair of snaps (top + bottom) via the bracket's Mid Holes.\n5. Insert Locking Bolts into all four snap-to-bracket connections (2 per bracket × 2 brackets = 4 total). This locks the brackets and prevents any pull-out.\n6. Place the shelf onto the support brackets.\n\nTip: Make sure both brackets are level before tightening. The shelf should sit flat on both brackets."
+    },
+    {
+      "slug": "peg-click-hooks",
+      "title": "Peg Click Hook Installation",
+      "category": "howto",
+      "tags": ["peg-click", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Peg Click Hooks are the simplest way to attach a hook to a Multiboard Tile. They require NO additional hardware.\n\nHow It Works:\n• A Peg Click connects to two Small Holes on the Multiboard Tile, just like a standard pegboard accessory.\n• No snaps, bolts, or adapters needed — the pegs are built into the hook.\n\nInstallation:\n1. Identify two vertically-aligned Small Holes on the tile where you want the hook.\n2. Align the Peg Click Hook's two pegs with the Small Holes.\n3. Push the pegs into the holes until they click into place.\n4. The hook is now secure and ready to use.\n\nRemoval:\n• Pull the hook straight out to remove it. Peg Click hooks are designed to be easily repositioned.\n\nBest For: Lightweight items, tool holders, quick-attach accessories. For heavier items, use snap-mounted hooks instead."
+    },
+    {
+      "slug": "multipoint-connections",
+      "title": "Multipoint Connections",
+      "category": "howto",
+      "tags": ["multipoint", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Multipoints allow \"slide-on\" installation and removal of accessory parts while remaining strong.\n\nMultipoint Types:\n• Regular Multipoint — Connects to a Multipoint Hole. Standard connection for most accessories.\n• Lite Multipoint — 1 mm thinner than Regular. Connects to Multipoint Rails (Negative).\n\nHow Multipoints Connect to Tiles:\n• Through Threads: Small, Mid, or Large Thread connectors\n• Through Bolt-Locking: Multipoint seated in a bolt-locked bracket\n• Through Rail Pop-Ins: Pop-In connector on shell rail wall connects to snap\n\nBin-to-Tile Connections:\n1. Rail Click Connector — Simple way to connect a Shell to another Shell or to a tile. Slides onto the Shell Rail Wall and clicks into place.\n2. Rail Pop-In — Securely attaches to the Shell Rail Wall by unfolding and \"popping\" in place. Locks securely and does NOT slide. Can add connection types to a shell: Multipoint, Peg Click, or Bolt-Locked Insert.\n\nMultipoint is used in tray assemblies (both Method A and Method B) and for connecting bins directly to tiles."
+    },
+    {
+      "slug": "wall-mounting-tiles",
+      "title": "Wall Mounting & Tile Setup",
+      "category": "howto",
+      "tags": ["wall-mount", "tiles", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Before mounting any accessories, you need to set up your tile wall.\n\nOption 1 — Simple Direct Mount:\n1. Mark your wall where tiles will go.\n2. Drill pilot holes through the tile's corner Large Holes into the wall.\n3. Secure with screws (40-60 mm screws recommended).\n4. Connect adjacent tiles using Dual Snaps for alignment.\n\nOption 2 — Advanced (DS Snap Offset Mount):\n1. Insert DS Snap Part A (Offset) into the back of each tile — 4 per tile (one in each corner Large Hole). These create a 6.25 mm offset from the wall.\n2. Screw DS Snap Part A to the wall through its built-in screw hole.\n3. Assemble tiles into 3×3 tile sets first — connect 9 tiles together using Dual Snaps before mounting.\n4. Begin with the bottom-left 3×3 tile set. Mount the set as a unit.\n5. DS Snap Part B goes on the front of the tile if needed for removable setups.\n\nOptional: MDF Backing Board\nTo avoid drilling many holes in your wall:\n• Mount a 12 mm thick MDF board first (18 mm for heavier loads).\n• Secure the board with 40-60 mm screws, spaced 30-40 cm apart.\n• Then mount your Multiboard tiles to the MDF.\n\nTile Quantity: Use the tile planner or your design layout to calculate how many tiles you need. Standard tile is 8×8 MU (200 mm × 200 mm)."
+    },
+    {
+      "slug": "mount-type-reference",
+      "title": "Mount Type Quick Reference",
+      "category": "reference",
+      "tags": ["snaps", "bolt-lock", "peg-click", "multipoint", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Quick reference for which companion parts each mount type requires:\n\nDirect Snap Mount:\n• Parts: Moderate Weight-Bearing Snap — quantity depends on part size\n• Used by: Hooks, small shelves, tool holders, light bins\n\nPeg Click Mount:\n• Parts: None — part has integrated pegs\n• Used by: Peg Click Hooks, pegboard-style accessories\n\nMultipoint (Bin-to-Tile):\n• Parts: Multipoint Connector + Snap or Large Thread in tile\n• Used by: Multibin Shells, Base Plates\n\nRail Pop-In (Bin-to-Tile):\n• Parts: Snap in tile + Pop-In connector\n• Used by: Shells mounted horizontally, drawers, tray assemblies\n\nBolt-Locked Bracket:\n• Parts: Hook Snap (top) + Regular Snap (bottom) + Locking Bolts + Bracket\n• Used by: Shelves, trays, heavy tool holders\n\nThread (Small/Mid/Large):\n• Parts: Matching thread screw into tile or snap hole\n• Used by: Remix parts, custom accessories\n\nMagnet Mount:\n• Parts: Disc magnets (usually 20×3 mm) pressed into printed pockets\n• Used by: Removable accessories, magnetic hooks\n\nScrew / Heat-Set Insert:\n• Parts: M3 or M4 hardware + heat-set inserts\n• Used by: Heavy-load custom brackets, AMS shelf mounts"
+    },
+    {
+      "slug": "dependency-chart",
+      "title": "Part Dependency Chart",
+      "category": "reference",
+      "tags": ["snaps", "bolt-lock", "shells", "multipoint", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Many Multiboard parts cannot be used alone — they need companion hardware. Here's what requires what:\n\nLU Tray (1×1 to 4×4):\n→ Requires: Bolt-Locked Brackets + Adapters (Method B) OR Drawer Shell + Rail Pop-Ins (Method A)\n→ See tray mounting instructions for full assembly.\n\nMultibin Shell:\n→ Requires: Multipoint connectors to attach to tile. Can also sit on a Multibin Plate.\n\nMultibin Insert:\n→ Requires: Multibin Shell of matching CU size. Insert goes inside the shell.\n\nSimple Drawer:\n→ Requires: Multibin Shell (horizontal orientation). Add Drawer Stopper Pins to prevent fallout.\n\nMultibin Top:\n→ Requires: Top Click Rim + Multibin Shell. Tops click onto the rim, not directly to the shell.\n\nMultibin Plate (vertical):\n→ Requires: Bar Clips to hold shell in place + Plate Snaps for tile mount.\n\nBase Plate:\n→ Requires: Bolt-Locked Bracket or direct tile screws. Has built-in connection holes.\n\nShelf (Bolt-Locked):\n→ Requires: Shelf Support Brackets underneath + Heavy Hook Snaps + Regular Snaps + Locking Bolts.\n\nBolt-Locked Insert (hook/peg/shelf):\n→ Requires: Snap already seated in tile. Insert slides into Snap Mid Hole, bolt locks it.\n\nFriction-Fit Insert:\n→ Requires: Snap already seated in tile. No bolt — held by friction only. Light use only."
+    },
+    {
+      "slug": "printing-guidelines-ref",
+      "title": "Printing Guidelines",
+      "category": "printing",
+      "tags": ["print-settings", "assembly"],
+      "source_url": "multiboard-reference.pdf",
+      "level": "page",
+      "parent": null,
+      "content": "Blue Ridge Custom Co Print Profiles:\n\n• multiboard-standard: 3 walls, 15% infill, Matte PLA, no ironing. For personal use parts.\n• multiboard-market: 4 walls, 25% infill, Matte PLA, no ironing. For parts sold at markets/shows.\n• multiboard-tile-stack: 3 walls, 15% infill, Matte PLA, ironing ON. For batch tile printing.\n• multiboard-heavy-duty: 5 walls, 40% infill, PETG, no ironing. For tool holders and load-bearing parts.\n\nAll profiles use: 0.2 mm layer height, 0.4 mm nozzle, no supports, seam = random.\n\nGeneral Settings:\n• Material: Matte PLA (stronger than regular PLA).\n• Tolerance: 0.25 mm, angles close to 45° (sometimes 50-60°).\n• Stack Printing: Use ironing for top surfaces with 0.2 mm gap between stacked prints. Set seam to random for strength.\n\nMaterial Shrinkage:\n• Tall Multibin parts (>2 CU / 100 mm) may need z-axis scaling.\n• PLA Multibins: scale z-axis by 100.5% to compensate for shrinkage."
+    }
+  ],
+  "images": [
+    {
+      "filename": "multiboard_1-multiboard_tile-655f60acf9bcdee82d2a5b358351b0d1.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_1-multiboard_tile-655f60acf9bcdee82d2a5b358351b0d1.png",
+      "local_path": "multiboard_1-multiboard_tile-655f60acf9bcdee82d2a5b358351b0d1.png",
+      "alt": "Multiboard Tile with hole types labeled",
+      "topic": "tile-hole-types",
+      "caption": "Multiboard Tile — Small Holes, Large Holes (Multiholes), and hole layout",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_2-snaps-b-640750d0e2b392393ba1d82002579d5a.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_2-snaps-b-640750d0e2b392393ba1d82002579d5a.png",
+      "local_path": "multiboard_2-snaps-b-640750d0e2b392393ba1d82002579d5a.png",
+      "alt": "Snap types — Regular, Moderate, Heavy, DS Snap",
+      "topic": "snap-installation",
+      "caption": "Snap types: Regular, Moderate Weight-Bearing, Heavy Weight-Bearing, and DS Snaps",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_3-bolt-locked-friction-fit-921de339879fcaf9e2a92cfcb438568b.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_3-bolt-locked-friction-fit-921de339879fcaf9e2a92cfcb438568b.png",
+      "local_path": "multiboard_3-bolt-locked-friction-fit-921de339879fcaf9e2a92cfcb438568b.png",
+      "alt": "Bolt-Locked vs Friction-Fit insert comparison",
+      "topic": "bolt-locked-inserts",
+      "caption": "Bolt-Locked Insert (locked with T-Bolt) vs Friction-Fit Insert (held by friction)",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_4-peg-click-0fd61d53683097c8ccfd6a508986aa33.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_4-peg-click-0fd61d53683097c8ccfd6a508986aa33.png",
+      "local_path": "multiboard_4-peg-click-0fd61d53683097c8ccfd6a508986aa33.png",
+      "alt": "Peg Click Hook — inserts into small holes",
+      "topic": "peg-click-hooks",
+      "caption": "Peg Click Hook — pushes into two Small Holes on the tile, no extra hardware needed",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_6-1-6-2-shell-7f599f6fd4f5317862c8de2ecfc9b377.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_6-1-6-2-shell-7f599f6fd4f5317862c8de2ecfc9b377.png",
+      "local_path": "multiboard_6-1-6-2-shell-7f599f6fd4f5317862c8de2ecfc9b377.png",
+      "alt": "Multibin Shell dimensions and structure",
+      "topic": "bin-assembly",
+      "caption": "Multibin Shell — modular container with Multipoint Rail Walls and base connection holes",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_6-3-shell-8da119a205dcba6bb29fd50528487081.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_6-3-shell-8da119a205dcba6bb29fd50528487081.png",
+      "local_path": "multiboard_6-3-shell-8da119a205dcba6bb29fd50528487081.png",
+      "alt": "Shell base and Multipoint connection",
+      "topic": "bin-assembly",
+      "caption": "Shell base showing Multipoint holes and plate connection",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_6-4-shell-2-04b0dd73694662134a3a118c1bc70c9f.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_6-4-shell-2-04b0dd73694662134a3a118c1bc70c9f.png",
+      "local_path": "multiboard_6-4-shell-2-04b0dd73694662134a3a118c1bc70c9f.png",
+      "alt": "Shell rail wall connectors",
+      "topic": "bin-assembly",
+      "caption": "Shell Multipoint Rail Wall — accepts Rail Click Connectors and Rail Pop-Ins",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_7-multibin-plates-0e579d21af1c9dde7b14f9ff0e1b58f3.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_7-multibin-plates-0e579d21af1c9dde7b14f9ff0e1b58f3.png",
+      "local_path": "multiboard_7-multibin-plates-0e579d21af1c9dde7b14f9ff0e1b58f3.png",
+      "alt": "Multibin Plates for shell mounting",
+      "topic": "bin-assembly",
+      "caption": "Multibin Plates — shells sit on plates, connect with Dual Clips, use Bar Clips for vertical mounting",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_8-inserts-9b5c31ae1225db9b55c79ed5dc51e8ff.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_8-inserts-9b5c31ae1225db9b55c79ed5dc51e8ff.png",
+      "local_path": "multiboard_8-inserts-9b5c31ae1225db9b55c79ed5dc51e8ff.png",
+      "alt": "Multibin Inserts inside shells",
+      "topic": "bin-assembly",
+      "caption": "Inserts are placed inside Multibin Shells to add dividers and organization",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_9.-tops-4a1e9d95ed28975f2b2473e937a5d742.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_9.-tops-4a1e9d95ed28975f2b2473e937a5d742.png",
+      "local_path": "multiboard_9.-tops-4a1e9d95ed28975f2b2473e937a5d742.png",
+      "alt": "Multibin Tops with click rims",
+      "topic": "bin-assembly",
+      "caption": "Tops click onto Top Click Rims attached to the shell",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_10-simple-drawers-ff9d8b14cb3c12a6bc5270123d6bbf42.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_10-simple-drawers-ff9d8b14cb3c12a6bc5270123d6bbf42.png",
+      "local_path": "multiboard_10-simple-drawers-ff9d8b14cb3c12a6bc5270123d6bbf42.png",
+      "alt": "Simple Drawers in Multibin Shell",
+      "topic": "bin-assembly",
+      "caption": "Simple Drawers slide into horizontal Multibin Shells — use Drawer Stopper Pins to prevent fallout",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_11-1-multipoint-f65ecbd82386f2897981513fdb45fd4d.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_11-1-multipoint-f65ecbd82386f2897981513fdb45fd4d.png",
+      "local_path": "multiboard_11-1-multipoint-f65ecbd82386f2897981513fdb45fd4d.png",
+      "alt": "Multipoint connector types",
+      "topic": "multipoint-connections",
+      "caption": "Multipoint types: Regular and Lite — slide-on connection for accessories",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_11-2-multipoint-2-baf917b49211c98adecfe43f62c68da0.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_11-2-multipoint-2-baf917b49211c98adecfe43f62c68da0.png",
+      "local_path": "multiboard_11-2-multipoint-2-baf917b49211c98adecfe43f62c68da0.png",
+      "alt": "Multipoint connection methods to tiles",
+      "topic": "multipoint-connections",
+      "caption": "How Multipoints connect to tiles: via Threads, Bolt-Locking, or Rail Pop-Ins",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_12-bin-connections-3da2991d7c7be7e9db3020ba9f8e683e.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_12-bin-connections-3da2991d7c7be7e9db3020ba9f8e683e.png",
+      "local_path": "multiboard_12-bin-connections-3da2991d7c7be7e9db3020ba9f8e683e.png",
+      "alt": "Bin connections — Rail Click and Rail Pop-In",
+      "topic": "multipoint-connections",
+      "caption": "Rail Click Connector (slides on) and Rail Pop-In (locks in place) for bin-to-bin and bin-to-tile",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_common-connections-4b433970f396897c7f5d5432da71b3f1.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_common-connections-4b433970f396897c7f5d5432da71b3f1.png",
+      "local_path": "multiboard_common-connections-4b433970f396897c7f5d5432da71b3f1.png",
+      "alt": "Common Multiboard connections diagram",
+      "topic": "mount-type-reference",
+      "caption": "Common Connections — overview of how all Multiboard parts connect together",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_5-threads-d5883d597a863d340b1bc1b8500f730c.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_5-threads-d5883d597a863d340b1bc1b8500f730c.png",
+      "local_path": "multiboard_5-threads-d5883d597a863d340b1bc1b8500f730c.png",
+      "alt": "Thread types — Small, Mid, Large",
+      "topic": "mount-type-reference",
+      "caption": "Threads: Small (tile small holes), Mid (snap mid holes), Large (tile large holes)",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_poster-test-11-1--68a307f05b82b1b8e8355b77c81b898f.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_poster-test-11-1--68a307f05b82b1b8e8355b77c81b898f.png",
+      "local_path": "multiboard_poster-test-11-1--68a307f05b82b1b8e8355b77c81b898f.png",
+      "alt": "Multiboard Core Parts Reference Poster",
+      "topic": "dependency-chart",
+      "caption": "Core Parts poster — complete overview of all Multiboard part types and connections",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_2-installation-option-1-simple-1--7435504ff0da488608155332fddfc41a.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_2-installation-option-1-simple-1--7435504ff0da488608155332fddfc41a.png",
+      "local_path": "multiboard_2-installation-option-1-simple-1--7435504ff0da488608155332fddfc41a.png",
+      "alt": "Simple wall mounting — direct screw method",
+      "topic": "wall-mounting-tiles",
+      "caption": "Option 1: Simple Direct Mount — screw tiles directly to wall through corner holes",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_2-installation-option-2-advanced-1-2-665a465840507031530f2cc2ef813132.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_2-installation-option-2-advanced-1-2-665a465840507031530f2cc2ef813132.png",
+      "local_path": "multiboard_2-installation-option-2-advanced-1-2-665a465840507031530f2cc2ef813132.png",
+      "alt": "Advanced mounting — DS Snap offset method steps 1-2",
+      "topic": "wall-mounting-tiles",
+      "caption": "Option 2: Advanced Mount — DS Snap Part A creates offset, assemble tiles into 3×3 sets",
+      "downloaded": true
+    },
+    {
+      "filename": "multiboard_2-installation-option-2-advanced-4-mount-daddc33c2e5af45c35a88be469814828.png",
+      "source_url": "https://docs.multiboard.io/assets/images/multiboard_2-installation-option-2-advanced-4-mount-daddc33c2e5af45c35a88be469814828.png",
+      "local_path": "multiboard_2-installation-option-2-advanced-4-mount-daddc33c2e5af45c35a88be469814828.png",
+      "alt": "Advanced mounting — final mount step",
+      "topic": "wall-mounting-tiles",
+      "caption": "Advanced Mount — mount assembled tile set to wall with DS Snap offsets",
+      "downloaded": true
+    }
+  ],
+  "youtube_links": [
+    {
+      "slug": "tile-learning-pack-assembly",
+      "title": "Multiboard Tile Learning Pack — Assembly Tutorial",
+      "url": "https://youtu.be/Oge0fgVxRHY",
+      "topic_tags": ["tiles", "snaps", "assembly", "bolt-lock", "friction-fit"],
+      "description": "Official video walkthrough of the Tile Learning Pack. Covers snaps, inserts, peg clicks, and tile wall mounting."
+    },
+    {
+      "slug": "multibin-learning-pack-assembly",
+      "title": "Multibin Learning Pack — Assembly Tutorial",
+      "url": "https://youtu.be/hd5f1XGMeTs",
+      "topic_tags": ["multibin", "shells", "inserts", "multipoint", "assembly"],
+      "description": "Official video walkthrough of the Multibin Learning Pack. Covers shells, inserts, drawers, tops, and multipoint connections."
+    },
+    {
+      "slug": "stack-printing-ironing",
+      "title": "Stack Printing — Ironing Method",
+      "url": "https://www.youtube.com/watch?v=xs2urfM0MRM",
+      "topic_tags": ["printing", "stack-printing", "ironing", "tiles"],
+      "description": "How to set up and tune ironing stack printing for batch tile production."
+    },
+    {
+      "slug": "on-grid-update-overview",
+      "title": "On-Grid Update Overview",
+      "url": "https://youtu.be/me-3o1WuwBw",
+      "topic_tags": ["update", "grid", "offset-snaps", "beams", "border-tiles"],
+      "description": "Overview of the major On-Grid update — new parts, updated snaps, beams, border tiles."
+    },
+    {
+      "slug": "weight-bearing-bolt-lock-setup",
+      "title": "Weight-Bearing Bolt-Lock Setup",
+      "url": "https://www.multiboard.io/knowledge-hub",
+      "topic_tags": ["bolt-lock", "snaps", "shelves", "assembly"],
+      "description": "How to set up bolt-locked brackets for heavy weight-bearing shelves and trays."
+    }
+  ]
+}

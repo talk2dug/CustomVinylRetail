@@ -6340,23 +6340,10 @@ Return ONLY valid JSON, nothing else:
   });
 
   // --- Print Job Control ---
-  ipcMain.handle('fleet:print:start', async (_event, { printerId, filename, shopifyOrderId, aceSlot }) => {
+  ipcMain.handle('fleet:print:start', async (_event, { printerId, filename, shopifyOrderId }) => {
     if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
     const printer = fleetDb.getPrinter(printerId);
     if (!printer) throw new Error('Printer not found');
-
-    // If ACE slot specified, download G-code from printer, inject T-code, re-upload
-    if (aceSlot != null && aceSlot >= 0 && aceSlot <= 3) {
-      console.log(`[Fleet] Injecting ACE T${aceSlot} into ${filename} on printer...`);
-      const gcodeBuf = await printerService.downloadGcode(printer.api_url, filename);
-      const modified = injectAceSlotIntoGcode(gcodeBuf, aceSlot);
-      const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-      fs.mkdirSync(tmpDir, { recursive: true });
-      const tmpPath = path.join(tmpDir, filename);
-      fs.writeFileSync(tmpPath, modified);
-      await printerService.uploadGcode(printer.api_url, tmpPath);
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-    }
 
     // Start print — the G-code's START_PRINT macro handles homing, leveling, and heating
     await printerService.startPrint(printer.api_url, filename);
@@ -6484,7 +6471,7 @@ Return ONLY valid JSON, nothing else:
     try {
       resp = await doFetch(url, { ...options, headers, signal: AbortSignal.timeout(timeoutMs) });
     } catch (fetchErr) {
-      if (fetchErr.name === 'TimeoutError' || fetchErr.code === 'ABORT_ERR') {
+      if (fetchErr.name === 'TimeoutError' || fetchErr.name === 'AbortError' || fetchErr.code === 'ABORT_ERR') {
         throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s: ${endpoint}`);
       }
       if (fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND' || fetchErr.cause?.code === 'ECONNREFUSED') {
@@ -6645,6 +6632,16 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
+  // Parse part name + description through the hardware parser via server API
+  ipcMain.handle('slicer:catalog:parsePartInfo', async (_event, { name, description } = {}) => {
+    const resp = await slicerFetch('/api/slicer/catalog/parse-part', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name || '', description: description || '' })
+    });
+    return resp.json();
+  });
+
   // Bulk STL import — scan directory recursively for .stl files + extract from ZIPs
   ipcMain.handle('slicer:stl:bulkScan', async (_event, directory) => {
     if (!directory) throw new Error('No directory specified');
@@ -6758,55 +6755,18 @@ Return ONLY valid JSON, nothing else:
 
   // Fetch raw G-code text (for renderer-side visualization)
   ipcMain.handle('slicer:gcode:fetchText', async (_event, gcodeId) => {
-    const resp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 60000 });
-    const buf = await resp.arrayBuffer();
+    const resp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 180000 });
+    let buf;
+    try {
+      buf = await resp.arrayBuffer();
+    } catch (err) {
+      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+        throw new Error('G-code download timed out — file may be too large');
+      }
+      throw err;
+    }
     return Buffer.from(buf).toString('utf-8');
   });
-
-  /**
-   * Inject an ACE filament slot T-code into G-code text.
-   * Inserts after the START_PRINT macro line so it runs after homing/leveling.
-   * If no START_PRINT found, inserts before the first G0/G1 move command.
-   */
-  function injectAceSlotIntoGcode(gcodeBuffer, aceSlot) {
-    if (aceSlot == null || aceSlot < 0 || aceSlot > 3) return gcodeBuffer;
-    const text = gcodeBuffer.toString('utf-8');
-    const lines = text.split('\n');
-    const tcodeLine = `T${aceSlot} ; Select ACE filament slot`;
-
-    // Try to insert after G92 E0 (extruder reset, end of start gcode sequence)
-    const g92Idx = lines.findIndex(l => /^\s*G92\s+E0/i.test(l.trim()));
-    if (g92Idx >= 0) {
-      lines.splice(g92Idx + 1, 0, tcodeLine);
-      console.log(`[Slicer] Injected T${aceSlot} after G92 E0 (line ${g92Idx + 1})`);
-      return Buffer.from(lines.join('\n'), 'utf-8');
-    }
-
-    // Try to insert after START_PRINT macro call (legacy profiles)
-    const startPrintIdx = lines.findIndex(l => l.trim().startsWith('START_PRINT'));
-    if (startPrintIdx >= 0) {
-      lines.splice(startPrintIdx + 1, 0, tcodeLine);
-      console.log(`[Slicer] Injected T${aceSlot} after START_PRINT (line ${startPrintIdx + 1})`);
-      return Buffer.from(lines.join('\n'), 'utf-8');
-    }
-
-    // Fallback: insert before first G0/G1 movement command
-    const moveIdx = lines.findIndex(l => /^\s*G[01]\s/i.test(l));
-    if (moveIdx >= 0) {
-      lines.splice(moveIdx, 0, tcodeLine);
-      console.log(`[Slicer] Injected T${aceSlot} before first move (line ${moveIdx})`);
-      return Buffer.from(lines.join('\n'), 'utf-8');
-    }
-
-    // Last resort: insert after initial comments
-    let insertAt = 0;
-    while (insertAt < lines.length && (lines[insertAt].trim().startsWith(';') || lines[insertAt].trim() === '')) {
-      insertAt++;
-    }
-    lines.splice(insertAt, 0, tcodeLine);
-    console.log(`[Slicer] Injected T${aceSlot} at line ${insertAt} (no START_PRINT or moves found)`);
-    return Buffer.from(lines.join('\n'), 'utf-8');
-  }
 
   // Slicing
   ipcMain.handle('slicer:slice', async (_event, options) => {
@@ -6834,7 +6794,7 @@ Return ONLY valid JSON, nothing else:
   });
 
   // Slice plate + Download + Upload to printer + Start print
-  ipcMain.handle('slicer:slicePlateAndPrint', async (_event, { sliceOptions, printerId, aceSlot } = {}) => {
+  ipcMain.handle('slicer:slicePlateAndPrint', async (_event, { sliceOptions, printerId } = {}) => {
     if (!printerId) throw new Error('printerId is required');
     if (!fleetDb) throw new Error('Fleet DB not initialized');
     if (!printerService) throw new Error('Printer service not initialized');
@@ -6855,11 +6815,11 @@ Return ONLY valid JSON, nothing else:
     if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
     console.log(`[Slicer] Plate Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
 
-    // Step 2: Download G-code from server, inject ACE T-code if needed, write to temp
+    // Step 2: Download G-code from server, write to temp
     console.log('[Slicer] Plate Step 2: Downloading G-code...');
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
     const arrayBuf = await gcodeResp.arrayBuffer();
-    const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
+    const gcodeBuf = Buffer.from(arrayBuf);
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
@@ -6889,7 +6849,7 @@ Return ONLY valid JSON, nothing else:
     }
 
     // Step 5: Start print
-    console.log(`[Slicer] Plate Step 5: Starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ' injected in G-code)' : ''}`);
+    console.log('[Slicer] Plate Step 5: Starting print...');
     try {
       await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
     } catch (startErr) {
@@ -6914,7 +6874,7 @@ Return ONLY valid JSON, nothing else:
   });
 
   // Slice + Download + Upload to printer + Start print
-  ipcMain.handle('slicer:sliceAndPrint', async (_event, { sliceOptions, printerId, aceSlot } = {}) => {
+  ipcMain.handle('slicer:sliceAndPrint', async (_event, { sliceOptions, printerId } = {}) => {
     if (!printerId) throw new Error('printerId is required');
     if (!fleetDb) throw new Error('Fleet DB not initialized');
     if (!printerService) throw new Error('Printer service not initialized');
@@ -6934,11 +6894,11 @@ Return ONLY valid JSON, nothing else:
     if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
     console.log(`[Slicer] Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
 
-    // Step 2: Download G-code from server, inject ACE T-code if needed, write to temp
+    // Step 2: Download G-code from server, write to temp
     console.log('[Slicer] Step 2: Downloading G-code...');
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
     const arrayBuf = await gcodeResp.arrayBuffer();
-    const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
+    const gcodeBuf = Buffer.from(arrayBuf);
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
@@ -6969,7 +6929,7 @@ Return ONLY valid JSON, nothing else:
     }
 
     // Step 5: Start print
-    console.log(`[Slicer] Step 5: Starting print...${aceSlot != null ? ' (ACE slot T' + aceSlot + ' injected in G-code)' : ''}`);
+    console.log('[Slicer] Step 5: Starting print...');
     try {
       await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
     } catch (startErr) {
@@ -6994,7 +6954,7 @@ Return ONLY valid JSON, nothing else:
   });
 
   // Print existing G-code (download from server + upload to printer)
-  ipcMain.handle('slicer:printGcode', async (event, { gcodeId, printerId, aceSlot } = {}) => {
+  ipcMain.handle('slicer:printGcode', async (event, { gcodeId, printerId } = {}) => {
     if (!gcodeId || !printerId) throw new Error('gcodeId and printerId required');
     if (!fleetDb) throw new Error('Fleet DB not initialized');
     if (!printerService) throw new Error('Printer service not initialized');
@@ -7008,15 +6968,23 @@ Return ONLY valid JSON, nothing else:
 
     // Step 1: Download G-code from server
     sendProgress(1, 'Downloading G-code from server...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 60000 });
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 180000 });
     const contentDisp = gcodeResp.headers.get('content-disposition') || '';
     const filenameMatch = contentDisp.match(/filename="?([^"]+)"?/);
     const filename = filenameMatch ? filenameMatch[1] : `gcode_${gcodeId}.gcode`;
-    const arrayBuf = await gcodeResp.arrayBuffer();
+    let arrayBuf;
+    try {
+      arrayBuf = await gcodeResp.arrayBuffer();
+    } catch (err) {
+      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+        throw new Error('G-code download timed out — file may be too large');
+      }
+      throw err;
+    }
 
-    // Step 2: Prepare file (inject ACE slot, write temp)
+    // Step 2: Prepare file, write temp
     sendProgress(2, 'Preparing G-code file...');
-    const gcodeBuf = injectAceSlotIntoGcode(Buffer.from(arrayBuf), aceSlot);
+    const gcodeBuf = Buffer.from(arrayBuf);
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, filename);
@@ -7213,13 +7181,15 @@ app.on('ready', async () => {
    * Import a single STL/STEP file into the Multiboard catalog.
    * Returns the catalog result or null on failure.
    */
-  async function catalogMultiboardFile(filePath, modelName) {
+  async function catalogMultiboardFile(filePath, modelName, metadata = {}) {
     const { fetch: doFetch } = await ensureFetch();
     const settings = ensureServerConfigured();
     const form = new FormData();
     form.append('file', fs.createReadStream(filePath), path.basename(filePath));
     form.append('name', modelName);
     form.append('category', 'Multiboard');
+    if (metadata.description) form.append('description', metadata.description);
+    if (metadata.sourceUrl) form.append('source_url', metadata.sourceUrl);
     const headers = form.getHeaders();
     if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
     const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
@@ -7237,7 +7207,7 @@ app.on('ready', async () => {
   /**
    * Extract STL/STEP files from a ZIP, catalog each, and return count.
    */
-  async function catalogMultiboardZip(zipPath, zipFilename) {
+  async function catalogMultiboardZip(zipPath, zipFilename, metadata = {}) {
     const unzipper = require('unzipper');
     const os = require('os');
     const tempDir = path.join(os.tmpdir(), `mb-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -7266,7 +7236,8 @@ app.on('ready', async () => {
 
         const modelName = path.basename(destName, zExt).replace(/[-_]+/g, ' ');
         try {
-          await catalogMultiboardFile(destPath, modelName);
+          // ZIP items share the same source URL but not the page description (it describes the pack)
+          await catalogMultiboardFile(destPath, modelName, { sourceUrl: metadata.sourceUrl });
           imported++;
         } catch (err) {
           console.warn(`[Multiboard] Failed to catalog ${destName} from ZIP:`, err.message);
@@ -7279,12 +7250,73 @@ app.on('ready', async () => {
     return imported;
   }
 
-  function handleMultiboardDownload(item) {
+  function handleMultiboardDownload(item, webContents) {
     const filename = item.getFilename();
     const ext = path.extname(filename).toLowerCase();
     const isModel = ext === '.stl' || ext === '.3mf' || ext === '.step' || ext === '.stp';
     const isZip = ext === '.zip';
     if (!isModel && !isZip) return false;
+
+    // Capture the page URL immediately (before navigation might change it)
+    const sourceUrl = (webContents && !webContents.isDestroyed()) ? webContents.getURL() : null;
+    if (sourceUrl) console.log(`[Multiboard] Source page: ${sourceUrl}`);
+
+    // Start async description scrape (non-blocking — download proceeds in parallel)
+    let descriptionPromise = Promise.resolve(null);
+    if (webContents && !webContents.isDestroyed()) {
+      descriptionPromise = webContents.executeJavaScript(`
+        (function() {
+          try {
+            var seen = new Set();
+            var parts = [];
+            var selectors = [
+              '[class*="description" i]',
+              '[data-testid*="description"]',
+              '.model-page-description',
+              'article',
+              '[class*="about" i]',
+              '[class*="detail" i]',
+              '[class*="specs" i]',
+              '[class*="info" i]',
+              '[class*="content" i]',
+              '[class*="body" i]',
+              '[class*="text" i]',
+              '[class*="readme" i]',
+              '[class*="summary" i]'
+            ];
+            for (var i = 0; i < selectors.length; i++) {
+              var els = document.querySelectorAll(selectors[i]);
+              for (var j = 0; j < els.length; j++) {
+                var el = els[j];
+                var tag = el.tagName.toLowerCase();
+                if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'nav' || tag === 'footer' || tag === 'header') continue;
+                var rect = el.getBoundingClientRect();
+                if (rect.width < 50 || rect.height < 10) continue;
+                var text = (el.innerText || '').trim();
+                if (text.length < 15) continue;
+                if (seen.has(text)) continue;
+                var isSubset = false;
+                for (var k = 0; k < parts.length; k++) {
+                  if (parts[k].includes(text)) { isSubset = true; break; }
+                }
+                if (isSubset) continue;
+                parts = parts.filter(function(p) { return !text.includes(p); });
+                seen = new Set(parts);
+                seen.add(text);
+                parts.push(text);
+              }
+            }
+            if (parts.length > 0) return parts.join('\\n\\n---\\n\\n').slice(0, 8000);
+            var meta = document.querySelector('meta[name="description"]')
+              || document.querySelector('meta[property="og:description"]');
+            if (meta && meta.content && meta.content.trim().length > 10) {
+              return meta.content.trim().slice(0, 8000);
+            }
+            return null;
+          } catch(e) { return null; }
+        })()
+      `).catch(() => null);
+    }
 
     const partsDir = path.join(app.getPath('userData'), 'multiboard-parts');
     fs.mkdirSync(partsDir, { recursive: true });
@@ -7323,6 +7355,12 @@ app.on('ready', async () => {
       if (state === 'completed') {
         console.log(`[Multiboard] Downloaded: ${savePath}`);
 
+        // Resolve the scraped description (should be ready by now)
+        const description = await descriptionPromise;
+        if (description) console.log(`[Multiboard] Scraped description (${description.length} chars)`);
+
+        const metadata = { description, sourceUrl };
+
         if (isZip) {
           // ZIP: extract and catalog each model inside
           try {
@@ -7331,7 +7369,7 @@ app.on('ready', async () => {
                 filename, receivedBytes: 0, totalBytes: 0, state: 'extracting'
               });
             }
-            const importCount = await catalogMultiboardZip(savePath, filename);
+            const importCount = await catalogMultiboardZip(savePath, filename, metadata);
             // Clean up the ZIP file after extraction
             try { fs.unlinkSync(savePath); } catch (_) {}
             if (w && !w.isDestroyed()) {
@@ -7352,7 +7390,7 @@ app.on('ready', async () => {
           // Single model file: catalog directly
           try {
             const modelName = path.basename(filename, ext).replace(/[-_]+/g, ' ');
-            const result = await catalogMultiboardFile(savePath, modelName);
+            const result = await catalogMultiboardFile(savePath, modelName, metadata);
             if (w && !w.isDestroyed()) {
               w.webContents.send('multiboard:download-complete', {
                 filename, savePath, success: true, format: ext.replace('.', ''),
@@ -7393,8 +7431,8 @@ app.on('ready', async () => {
       // Also attach to webview contents directly
       if (contents.getType() === 'webview' || partitionUrl.includes('multiboard')) {
         multiboardSessions.add(session);
-        session.on('will-download', (_dlEvent, item) => {
-          handleMultiboardDownload(item);
+        session.on('will-download', (_dlEvent, item, webContents) => {
+          handleMultiboardDownload(item, webContents);
         });
       }
     }

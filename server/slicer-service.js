@@ -393,26 +393,41 @@ function bakeTransformToSTL(stlPath, transform, stlId) {
   const posX = transform.posX || 0;
   const posZ = transform.posZ || 0;
 
-  // Build rotation matrix
-  const R = buildRotationMatrix(rx, ry, rz);
+  // Build rotation matrix.
+  //
+  // The Three.js preview converts STL Z-up → Three.js Y-up via rotateX(-PI/2).
+  // User rotations in that Y-up space need to be converted back to STL Z-up.
+  // The conjugation Rx(PI/2) * R_threejs * Rx(-PI/2) gives:
+  //   R_stl = Ry(threejs_rz) * Rz(threejs_ry) * Rx(threejs_rx)
+  // Applied directly to raw STL vertices (no Y↔Z swap needed).
   const hasRotation = (rx !== 0 || ry !== 0 || rz !== 0);
+  let R;
+  if (hasRotation) {
+    // Build Rx(rx), Rz(ry), Ry(rz) and multiply: R = Ry(rz) * Rz(ry) * Rx(rx)
+    const cx1 = Math.cos(rx), sx1 = Math.sin(rx);
+    const cz1 = Math.cos(ry), sz1 = Math.sin(ry);
+    const cy1 = Math.cos(rz), sy1 = Math.sin(rz);
+    const Rx1 = [1, 0, 0, 0, cx1, -sx1, 0, sx1, cx1];
+    const Rz1 = [cz1, -sz1, 0, sz1, cz1, 0, 0, 0, 1];
+    const Ry1 = [cy1, 0, sy1, 0, 1, 0, -sy1, 0, cy1];
+    function mul(A, B) {
+      const C = new Array(9);
+      for (let r = 0; r < 3; r++)
+        for (let c = 0; c < 3; c++)
+          C[r * 3 + c] = A[r * 3] * B[c] + A[r * 3 + 1] * B[3 + c] + A[r * 3 + 2] * B[6 + c];
+      return C;
+    }
+    R = mul(Ry1, mul(Rz1, Rx1));
+  }
 
-  // Apply rotation + scale to vertices.
-  //
-  // Coordinate system conversion: Three.js uses Y-up, STL/PrusaSlicer uses Z-up.
-  // When rotation is applied, we need to swap Y↔Z of the rotated result so that
-  // what the user sees in the Three.js preview matches what PrusaSlicer produces.
-  // This is equivalent to: baked = P * R * v, where P swaps rows 1 and 2.
-  //
-  // Without rotation (scale only), no coordinate swap is needed — the model
-  // stays in its original PrusaSlicer orientation, just scaled.
+  // Apply rotation + scale to vertices (no coordinate swap — R_stl is already in STL space)
   const bakedVertices = new Float32Array(vertices.length);
   if (hasRotation) {
     for (let i = 0; i < vertices.length; i += 3) {
       const x = vertices[i], y = vertices[i + 1], z = vertices[i + 2];
-      bakedVertices[i]     = (R[0] * x + R[1] * y + R[2] * z) * scale;       // X stays
-      bakedVertices[i + 1] = (R[6] * x + R[7] * y + R[8] * z) * scale;       // Three.js Z → STL Y
-      bakedVertices[i + 2] = (R[3] * x + R[4] * y + R[5] * z) * scale;       // Three.js Y → STL Z
+      bakedVertices[i]     = (R[0] * x + R[1] * y + R[2] * z) * scale;
+      bakedVertices[i + 1] = (R[3] * x + R[4] * y + R[5] * z) * scale;
+      bakedVertices[i + 2] = (R[6] * x + R[7] * y + R[8] * z) * scale;
     }
   } else {
     for (let i = 0; i < vertices.length; i += 3) {
@@ -422,14 +437,14 @@ function bakeTransformToSTL(stlPath, transform, stlId) {
     }
   }
 
-  // Apply rotation to normals (no scale — normals are directions)
+  // Apply rotation to normals (no scale, no coordinate swap)
   const bakedNormals = new Float32Array(normals.length);
   if (hasRotation) {
     for (let i = 0; i < normals.length; i += 3) {
       const nx = normals[i], ny = normals[i + 1], nz = normals[i + 2];
       bakedNormals[i]     = R[0] * nx + R[1] * ny + R[2] * nz;
-      bakedNormals[i + 1] = R[6] * nx + R[7] * ny + R[8] * nz;       // Y↔Z swap
-      bakedNormals[i + 2] = R[3] * nx + R[4] * ny + R[5] * nz;       // Y↔Z swap
+      bakedNormals[i + 1] = R[3] * nx + R[4] * ny + R[5] * nz;
+      bakedNormals[i + 2] = R[6] * nx + R[7] * ny + R[8] * nz;
     }
   } else {
     bakedNormals.set(normals);
@@ -507,6 +522,60 @@ function bakeTransformToSTL(stlPath, transform, stlId) {
   fs.writeFileSync(tmpPath, outputBuffer);
 
   console.log(`[Slicer] Transform bake: ${path.basename(stlPath)} → ${tmpPath} (rx=${rx.toFixed(2)} ry=${ry.toFixed(2)} rz=${rz.toFixed(2)} scale=${scale.toFixed(2)} pos=${posX.toFixed(1)},${posZ.toFixed(1)})`);
+  return tmpPath;
+}
+
+/**
+ * Merge multiple binary STL files into a single binary STL.
+ * Combines all triangles and updates the triangle count in the header.
+ * This preserves absolute vertex positions, so models baked at different
+ * bed locations remain correctly placed relative to each other.
+ *
+ * @param {string[]} stlPaths - Array of paths to binary STL files
+ * @returns {string} Path to the merged temp STL file
+ */
+function mergeSTLFiles(stlPaths) {
+  if (stlPaths.length === 1) return stlPaths[0];
+
+  let totalTriangles = 0;
+  const allTriangleData = [];
+
+  for (const p of stlPaths) {
+    const buf = fs.readFileSync(p);
+    if (buf.length < 84) {
+      console.warn(`[Slicer] mergeSTL: skipping too-small file ${path.basename(p)}`);
+      continue;
+    }
+    const triCount = buf.readUInt32LE(80);
+    const expectedSize = 84 + triCount * 50;
+    if (buf.length < expectedSize) {
+      console.warn(`[Slicer] mergeSTL: file truncated ${path.basename(p)} (expected ${expectedSize}, got ${buf.length})`);
+      continue;
+    }
+    totalTriangles += triCount;
+    allTriangleData.push(buf.slice(84, 84 + triCount * 50));
+  }
+
+  const outputSize = 84 + totalTriangles * 50;
+  const outputBuffer = Buffer.alloc(outputSize);
+
+  // Header: 80 bytes (copy from first file)
+  const firstBuf = fs.readFileSync(stlPaths[0]);
+  firstBuf.copy(outputBuffer, 0, 0, 80);
+
+  // Triangle count
+  outputBuffer.writeUInt32LE(totalTriangles, 80);
+
+  // Concatenate triangle data
+  let offset = 84;
+  for (const triData of allTriangleData) {
+    triData.copy(outputBuffer, offset);
+    offset += triData.length;
+  }
+
+  const tmpPath = path.join(os.tmpdir(), `merged_plate_${Date.now()}.stl`);
+  fs.writeFileSync(tmpPath, outputBuffer);
+  console.log(`[Slicer] Merged ${stlPaths.length} STLs → ${tmpPath} (${totalTriangles} triangles, ${(outputSize / 1024 / 1024).toFixed(1)}MB)`);
   return tmpPath;
 }
 
@@ -642,6 +711,20 @@ const PRINT_PROFILE_PRESETS = {
       speed_multiplier: 0.7, fuzzy_skin: 'none', brim_width: 0
     },
     visual: { quality: 'fine', strength: 'strong', speed: 'slow', texture: 'smooth', surface: 'standard', supports: 'none' }
+  },
+  'multiboard-stack': {
+    label: 'Multiboard — Stack',
+    description: 'Standard spec + ironing for stackable tile separation',
+    hint: 'Stack printing requires ironing so the tiles separate cleanly after printing.',
+    category: 'multiboard',
+    overrides: {
+      layer_height: 0.2, perimeters: 3, top_layers: 4, bottom_layers: 4,
+      infill: 15, fill_pattern: 'gyroid',
+      seam_position: 'random', ironing: true, supports: false,
+      speed_multiplier: 1.0, fuzzy_skin: 'none', brim_width: 0,
+      ironing_type: 'top', ironing_flowrate: 15, ironing_spacing: 0.1, ironing_speed: 15
+    },
+    visual: { quality: 'standard', strength: 'normal', speed: 'normal', texture: 'smooth', surface: 'polished', supports: 'none' }
   }
 };
 
@@ -701,10 +784,10 @@ function mapOptionsToSlicerArgs(options) {
     args.push('--top-fill-pattern', 'monotonic');
     if (o.ironing) {
       args.push('--ironing');
-      args.push('--ironing-type', 'top');
-      args.push('--ironing-flowrate', '15%');
-      args.push('--ironing-speed', '15');
-      args.push('--ironing-spacing', '0.1');
+      args.push('--ironing-type', o.ironing_type || 'top');
+      args.push('--ironing-flowrate', `${o.ironing_flowrate || 15}%`);
+      args.push('--ironing-speed', String(o.ironing_speed || 15));
+      args.push('--ironing-spacing', String(o.ironing_spacing || 0.1));
     }
 
     // Supports
@@ -975,10 +1058,14 @@ async function sliceSTL(stlPath, options, dbInstance) {
   fs.mkdirSync(path.dirname(gcodeAbsPath), { recursive: true });
 
   // Bake user transform (scale, rotation, position) into a temp STL if provided
+  const copies = Math.max(1, Math.min(100, parseInt(options.copies, 10) || 1));
   let bakedPath = null;
   if (options.transform && hasNonIdentityTransform(options.transform)) {
     try {
-      bakedPath = bakeTransformToSTL(stlPath, options.transform, options.stl_id || 'single');
+      // Strip position from the bake — --center handles bed placement for single items,
+      // and for copies PrusaSlicer needs the model centered for grid arrangement.
+      const bakeTransform = { ...options.transform, posX: 0, posZ: 0 };
+      bakedPath = bakeTransformToSTL(stlPath, bakeTransform, options.stl_id || 'single');
     } catch (err) {
       console.warn(`[Slicer] Transform bake failed, using original: ${err.message}`);
     }
@@ -1002,49 +1089,145 @@ async function sliceSTL(stlPath, options, dbInstance) {
   const centerX = bedX / 2;
   const centerY = bedY / 2;
 
-  // Build CLI args
-  const copies = Math.max(1, Math.min(20, parseInt(options.copies, 10) || 1));
+  // For multiple copies, build a merged STL with copies pre-arranged in a grid.
+  // PrusaSlicer's --duplicate is unreliable in CLI mode (places items off-bed),
+  // so we handle arrangement ourselves and slice the merged result as one model.
+  let actualCopies = copies;
+  let mergedCopiesPath = null;
+  if (copies > 1) {
+    try {
+      const stlBuf = fs.readFileSync(slicePath);
+      const { triangleCount, normals, vertices } = parseSTLBinary(stlBuf);
+
+      // Compute model XY bounding box
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity;
+      for (let i = 0; i < vertices.length; i += 3) {
+        if (vertices[i] < minX) minX = vertices[i];
+        if (vertices[i] > maxX) maxX = vertices[i];
+        if (vertices[i + 1] < minY) minY = vertices[i + 1];
+        if (vertices[i + 1] > maxY) maxY = vertices[i + 1];
+        if (vertices[i + 2] < minZ) minZ = vertices[i + 2];
+      }
+      const modelW = maxX - minX;
+      const modelH = maxY - minY;
+      const modelCX = (minX + maxX) / 2;
+      const modelCY = (minY + maxY) / 2;
+
+      // Calculate grid that fits on bed
+      const gap = 3; // mm between copies
+      const margin = 3; // mm from bed edge
+      const usableX = bedX - margin * 2;
+      const usableY = bedY - margin * 2;
+      const maxCols = Math.max(1, Math.floor((usableX + gap) / (modelW + gap)));
+      const maxRows = Math.max(1, Math.floor((usableY + gap) / (modelH + gap)));
+      actualCopies = Math.min(copies, maxCols * maxRows);
+
+      // Determine cols/rows for the actual count
+      let cols = Math.min(maxCols, actualCopies);
+      let rows = Math.ceil(actualCopies / cols);
+      if (rows > maxRows) { rows = maxRows; cols = Math.ceil(actualCopies / rows); actualCopies = cols * rows; }
+
+      // Calculate grid cell positions centered on the bed
+      const gridW = cols * modelW + (cols - 1) * gap;
+      const gridH = rows * modelH + (rows - 1) * gap;
+      const startX = (bedX - gridW) / 2 + modelW / 2;
+      const startY = (bedY - gridH) / 2 + modelH / 2;
+
+      console.log(`[Slicer] Pre-arranging ${actualCopies} copies in ${cols}x${rows} grid (model ${modelW.toFixed(1)}x${modelH.toFixed(1)}mm, bed ${bedX}x${bedY}mm, requested ${copies})`);
+
+      // Build merged binary STL with all copies offset to grid positions
+      const totalTriangles = triangleCount * actualCopies;
+      const outputSize = 84 + totalTriangles * 50;
+      const outputBuffer = Buffer.alloc(outputSize);
+      stlBuf.copy(outputBuffer, 0, 0, 80); // copy header
+      outputBuffer.writeUInt32LE(totalTriangles, 80);
+
+      const dv = new DataView(outputBuffer.buffer, outputBuffer.byteOffset);
+      let triIdx = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (triIdx / triangleCount >= actualCopies) break;
+          const offsetX = startX + c * (modelW + gap) - modelCX;
+          const offsetY = startY + r * (modelH + gap) - modelCY;
+          const offsetZ = -minZ; // floor to Z=0
+          for (let t = 0; t < triangleCount; t++) {
+            const outOff = 84 + triIdx * 50;
+            // Normal (unchanged)
+            dv.setFloat32(outOff, normals[t * 3], true);
+            dv.setFloat32(outOff + 4, normals[t * 3 + 1], true);
+            dv.setFloat32(outOff + 8, normals[t * 3 + 2], true);
+            // Vertices (offset to grid position)
+            for (let v = 0; v < 3; v++) {
+              const si = t * 9 + v * 3;
+              dv.setFloat32(outOff + 12 + v * 12,     vertices[si]     + offsetX, true);
+              dv.setFloat32(outOff + 12 + v * 12 + 4, vertices[si + 1] + offsetY, true);
+              dv.setFloat32(outOff + 12 + v * 12 + 8, vertices[si + 2] + offsetZ, true);
+            }
+            // Attribute byte count
+            outputBuffer.writeUInt16LE(0, outOff + 48);
+            triIdx++;
+          }
+        }
+      }
+
+      mergedCopiesPath = path.join(os.tmpdir(), `grid_${actualCopies}_${path.basename(slicePath)}`);
+      fs.writeFileSync(mergedCopiesPath, outputBuffer);
+    } catch (err) {
+      console.warn(`[Slicer] Grid pre-arrange failed, falling back to --duplicate: ${err.message}`);
+      mergedCopiesPath = null;
+    }
+  }
+
+  // Build CLI args — if we pre-arranged, slice the merged STL as one object (no --duplicate)
+  const finalSlicePath = mergedCopiesPath || slicePath;
   const cliArgs = [
     '--export-gcode',
+    '--dont-arrange',
     '--ensure-on-bed',
+    '--center', `${centerX},${centerY}`,
     '--load', printProfile,
     '--load', filamentProfile,
     '--load', printerProfile,
     ...mapOptionsToSlicerArgs(options),
-    // Single copy: center on bed. Multiple copies: use --duplicate to auto-arrange.
-    ...(copies <= 1 ? ['--center', `${centerX},${centerY}`] : ['--duplicate', String(copies)]),
+    ...(!mergedCopiesPath && copies > 1 ? ['--duplicate', String(copies)] : []),
     '--output', gcodeAbsPath,
-    slicePath
+    finalSlicePath
   ];
 
-  console.log(`[Slicer] Slicing: ${path.basename(stlPath)} → ${gcodeFilename}`);
+  console.log(`[Slicer] Slicing: ${path.basename(stlPath)} → ${gcodeFilename} (${actualCopies} copies${mergedCopiesPath ? ', pre-arranged grid' : ''})`);
   console.log(`[Slicer] CLI: ${SLICER_PATH} ${cliArgs.join(' ')}`);
 
   // Spawn PrusaSlicer
   const result = await new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
-
     const proc = spawn(SLICER_PATH, cliArgs, {
       timeout: 300000, // 5 minute timeout
       env: { ...process.env, DISPLAY: '' } // Headless
     });
-
     proc.stdout.on('data', (data) => { stdout += data.toString(); });
     proc.stderr.on('data', (data) => { stderr += data.toString(); });
-
     proc.on('close', (code) => {
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
-        reject(new Error(`PrusaSlicer exited with code ${code}: ${stderr || stdout}`));
+        const output = stderr || stdout;
+        if (output.includes('gcode path conflicts')) {
+          reject(new Error(`Models overlap on the build plate — ${actualCopies > 1 ? `${actualCopies} copies won't fit. Try fewer copies or a smaller model.` : 'the model may be too large for the bed.'}`));
+        } else {
+          reject(new Error(`PrusaSlicer exited with code ${code}: ${output}`));
+        }
       }
     });
-
     proc.on('error', (err) => {
       reject(new Error(`Failed to spawn PrusaSlicer: ${err.message}`));
     });
   });
+
+  // Clean up merged grid STL
+  if (mergedCopiesPath) {
+    try { fs.unlinkSync(mergedCopiesPath); } catch {}
+  }
 
   // Clean up temp files
   if (orientedPath) {
@@ -1094,7 +1277,7 @@ async function sliceSTL(stlPath, options, dbInstance) {
     fileSize
   );
 
-  console.log(`[Slicer] Done: ${gcodeFilename} (${estimates.est_weight_g || '?'}g, ${estimates.est_time_min || '?'}min)`);
+  console.log(`[Slicer] Done: ${gcodeFilename} (${estimates.est_weight_g || '?'}g, ${estimates.est_time_min || '?'}min, ${actualCopies} copies)`);
 
   return {
     gcode_id: info.lastInsertRowid,
@@ -1103,7 +1286,8 @@ async function sliceSTL(stlPath, options, dbInstance) {
     est_weight_g: estimates.est_weight_g,
     est_time_min: estimates.est_time_min,
     file_size: fileSize,
-    cached: false
+    cached: false,
+    actual_copies: actualCopies
   };
 }
 
@@ -1195,17 +1379,60 @@ async function slicePlate(stlPaths, options, dbInstance) {
     });
   }
 
-  // CLI args — use --dont-arrange when transforms are baked (user positioned models)
+  // When user transforms are present, models have been baked with absolute bed positions.
+  // PrusaSlicer re-centers each STL on import, so passing them as separate files loses
+  // the relative positioning. Merge all baked STLs into a single binary STL so PrusaSlicer
+  // treats them as one object — the relative positions are preserved in the vertex data.
+  let mergedTmpPath = null;
+  let finalSlicePaths = slicePaths;
+  if (hasTransforms && slicePaths.length > 1) {
+    mergedTmpPath = mergeSTLFiles(slicePaths);
+    finalSlicePaths = [mergedTmpPath];
+  }
+
+  // Compute center of the combined model bounding box for --center
+  // This tells PrusaSlicer exactly where to place the merged object on the bed
+  const [bedX, bedY] = (printerInfo.build || '220x220x250').split('x').map(Number);
+  let centerArg = [];
+  if (hasTransforms && mergedTmpPath) {
+    // Read the merged STL to find its XY center
+    try {
+      const mergedBuf = fs.readFileSync(mergedTmpPath);
+      const triCount = mergedBuf.readUInt32LE(80);
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (let i = 0; i < triCount; i++) {
+        const base = 84 + i * 50 + 12; // skip normal (12 bytes)
+        for (let v = 0; v < 3; v++) {
+          const off = base + v * 12;
+          const x = mergedBuf.readFloatLE(off);
+          const y = mergedBuf.readFloatLE(off + 4);
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      centerArg = ['--center', `${cx.toFixed(1)},${cy.toFixed(1)}`];
+      console.log(`[Slicer] Merged model center: ${cx.toFixed(1)},${cy.toFixed(1)} (bounds X ${minX.toFixed(1)}-${maxX.toFixed(1)}, Y ${minY.toFixed(1)}-${maxY.toFixed(1)})`);
+    } catch (err) {
+      console.warn(`[Slicer] Could not compute merged center, using bed center: ${err.message}`);
+      centerArg = ['--center', `${bedX / 2},${bedY / 2}`];
+    }
+  }
+
   const cliArgs = [
     '--export-gcode',
+    '--dont-arrange',
     '--ensure-on-bed',
-    ...(hasTransforms ? ['--dont-arrange'] : []),
+    ...centerArg,
     '--load', printProfile,
     '--load', filamentProfile,
     '--load', printerProfile,
     ...mapOptionsToSlicerArgs(options),
     '--output', gcodeAbsPath,
-    ...slicePaths
+    ...finalSlicePaths
   ];
 
   console.log(`[Slicer] Plating ${stlPaths.length} STLs → ${gcodeFilename}`);
@@ -1238,6 +1465,10 @@ async function slicePlate(stlPaths, options, dbInstance) {
     // Clean up baked transform temp files
     for (const tmp of bakedTempFiles) {
       try { fs.unlinkSync(tmp); } catch {}
+    }
+    // Clean up merged temp file
+    if (mergedTmpPath) {
+      try { fs.unlinkSync(mergedTmpPath); } catch {}
     }
   }
 
@@ -1371,7 +1602,7 @@ function getPresets() {
     })),
     profiles: Object.entries(PRINT_PROFILE_PRESETS).map(([key, v]) => ({
       key, label: v.label, description: v.description, category: v.category,
-      visual: v.visual || null
+      hint: v.hint || null, visual: v.visual || null
     }))
   };
 }
