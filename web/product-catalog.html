@@ -71,6 +71,18 @@
             background: #333; border-radius: 4px; margin-top: 4px; color: #aaa;
         }
 
+        .inventory-summary {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 16px; background: #161622; border-bottom: 1px solid #222;
+            font-size: 0.85rem; color: #aaa;
+        }
+        .inventory-summary .total-value {
+            font-size: 1.1rem; font-weight: 700; color: #22c55e;
+        }
+        .inventory-summary .total-items {
+            color: #888;
+        }
+
         .empty-state {
             text-align: center; padding: 60px 20px; color: #666;
         }
@@ -164,6 +176,11 @@
         <select id="categoryFilter">
             <option value="">All Categories</option>
         </select>
+    </div>
+
+    <div class="inventory-summary" id="inventorySummary" style="display:none;">
+        <span class="total-items" id="inventoryCount"></span>
+        <span>Inventory Value: <span class="total-value" id="inventoryValue">$0.00</span></span>
     </div>
 
     <div id="productGrid" class="product-grid"></div>
@@ -320,8 +337,27 @@
             return '$' + (cents / 100).toFixed(2);
         }
 
+        function updateInventorySummary() {
+            const summary = $('inventorySummary');
+            if (products.length === 0) {
+                summary.style.display = 'none';
+                return;
+            }
+            let totalUnits = 0;
+            let totalValueCents = 0;
+            products.forEach(p => {
+                const qty = p.quantity || 1;
+                totalUnits += qty;
+                totalValueCents += p.priceCents * qty;
+            });
+            $('inventoryCount').textContent = `${products.length} product${products.length !== 1 ? 's' : ''} (${totalUnits} unit${totalUnits !== 1 ? 's' : ''})`;
+            $('inventoryValue').textContent = formatPrice(totalValueCents);
+            summary.style.display = 'flex';
+        }
+
         function renderProducts() {
             const grid = $('productGrid');
+            updateInventorySummary();
             if (products.length === 0) {
                 grid.innerHTML = '';
                 $('emptyState').style.display = 'block';

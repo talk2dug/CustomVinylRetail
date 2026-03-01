@@ -129,8 +129,17 @@ async function loadProductList() {
     const data = await productApi.get(`/api/products${qs}`);
     productCatalogState.products = data.products || [];
     renderProductList();
+    const totalProducts = productCatalogState.products.length;
+    let totalUnits = 0;
+    let totalValueCents = 0;
+    productCatalogState.products.forEach(p => {
+      const qty = p.quantity || 1;
+      totalUnits += qty;
+      totalValueCents += p.priceCents * qty;
+    });
+    const valueFmt = '$' + (totalValueCents / 100).toFixed(2);
     document.getElementById('productStatusText').textContent =
-      `${productCatalogState.products.length} product${productCatalogState.products.length !== 1 ? 's' : ''}`;
+      `${totalProducts} product${totalProducts !== 1 ? 's' : ''} · ${totalUnits} unit${totalUnits !== 1 ? 's' : ''} · Inventory: ${valueFmt}`;
   } catch (err) {
     console.error('[Products] Load error:', err);
     document.getElementById('productStatusText').textContent = 'Failed to load';
@@ -452,9 +461,53 @@ function updateLabelSelectionUI() {
   }
 }
 
+function showLabelFormatModal() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('labelFormatModal');
+    modal.style.display = 'flex';
+
+    // Reset to default selection
+    const defaultRadio = modal.querySelector('input[value="sticker-sheet"]');
+    if (defaultRadio) defaultRadio.checked = true;
+
+    function cleanup() {
+      modal.style.display = 'none';
+      document.getElementById('labelFormatGenerateBtn').removeEventListener('click', onGenerate);
+      document.getElementById('labelFormatCancelBtn').removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onBackdrop);
+    }
+
+    function onGenerate() {
+      const selected = modal.querySelector('input[name="labelFormat"]:checked');
+      cleanup();
+      resolve(selected ? selected.value : null);
+    }
+
+    function onCancel() {
+      cleanup();
+      resolve(null);
+    }
+
+    function onBackdrop(e) {
+      if (e.target === modal) {
+        cleanup();
+        resolve(null);
+      }
+    }
+
+    document.getElementById('labelFormatGenerateBtn').addEventListener('click', onGenerate);
+    document.getElementById('labelFormatCancelBtn').addEventListener('click', onCancel);
+    modal.addEventListener('click', onBackdrop);
+  });
+}
+
 async function generateProductLabels() {
   const selectedIds = Array.from(productCatalogState.selectedForLabels);
   if (selectedIds.length === 0) return;
+
+  // Show format selection modal
+  const format = await showLabelFormatModal();
+  if (!format) return; // User cancelled
 
   const btn = document.getElementById('productPrintLabelsBtn');
   const origText = btn.textContent;
@@ -463,7 +516,8 @@ async function generateProductLabels() {
 
   try {
     const data = await productApi.post('/api/products/generate-labels', {
-      productIds: selectedIds
+      productIds: selectedIds,
+      format
     });
 
     if (data.success) {
