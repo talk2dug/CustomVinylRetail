@@ -94,7 +94,10 @@ const mbState = {
   customerName: '',
   customerEmail: '',
   customerPhone: '',
-  designStatus: 'draft'
+  designStatus: 'draft',
+  // Sidebar filter state
+  partsFilter: { category: null, search: '' },
+  thumbCache: {}   // stlCatalogId -> dataURL or file:// URL
 };
 
 // =============== COLOR PALETTE ===============
@@ -284,6 +287,7 @@ function mbFitDesignerToViewport() {
 async function loadMultiboardCatalog() {
   try {
     mbState.catalog = await mbApi.get('/api/multiboard/parts');
+    mbInitPartsSidebar();
     renderMbPartsList();
   } catch (err) {
     console.error('[Multiboard] Failed to load catalog:', err);
@@ -291,81 +295,188 @@ async function loadMultiboardCatalog() {
   }
 }
 
-// =============== SIDEBAR: CATEGORIZED PARTS LIST ===============
+// =============== SIDEBAR: PARTS BROWSER ===============
+
+function mbInitPartsSidebar() {
+  const btnsContainer = document.getElementById('mbCategoryBtns');
+  if (!btnsContainer || btnsContainer.dataset.initialized) return;
+  btnsContainer.dataset.initialized = '1';
+
+  // "All" button
+  const allBtn = document.createElement('button');
+  allBtn.textContent = 'All';
+  allBtn.className = 'mb-cat-btn active';
+  allBtn.dataset.cat = '';
+  btnsContainer.appendChild(allBtn);
+
+  // One button per category
+  MB_CATEGORIES.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.textContent = cat.label;
+    btn.className = 'mb-cat-btn';
+    btn.dataset.cat = cat.key;
+    btnsContainer.appendChild(btn);
+  });
+
+  btnsContainer.addEventListener('click', (e) => {
+    const btn = e.target.closest('.mb-cat-btn');
+    if (!btn) return;
+    btnsContainer.querySelectorAll('.mb-cat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    mbState.partsFilter.category = btn.dataset.cat || null;
+    renderMbPartsList();
+  });
+
+  // Search input
+  const searchInput = document.getElementById('mbPartsSearch');
+  if (searchInput) {
+    let searchTimer;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        mbState.partsFilter.search = searchInput.value.trim().toLowerCase();
+        renderMbPartsList();
+      }, 200);
+    });
+  }
+}
 
 function renderMbPartsList() {
   const container = document.getElementById('mbPartsList');
   if (!container || !mbState.catalog) return;
-  container.innerHTML = '';
 
-  MB_CATEGORIES.forEach(cat => {
-    const parts = mbState.catalog.parts.filter(p => !p.hidden && p.category === cat.key);
-    if (parts.length === 0) return;
+  const { category, search } = mbState.partsFilter;
 
-    // Category header
-    const header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 0;margin-bottom:4px;user-select:none;';
-    header.innerHTML = `<span style="font-size:10px;transition:transform 0.2s;">&#9660;</span><span style="font-size:12px;font-weight:600;color:#aaa;text-transform:uppercase;letter-spacing:0.5px;">${cat.label}</span>`;
-    const arrow = header.querySelector('span');
-    const group = document.createElement('div');
+  let parts = mbState.catalog.parts.filter(p => !p.hidden);
+  if (category) parts = parts.filter(p => p.category === category);
+  if (search)   parts = parts.filter(p => (p.name || '').toLowerCase().includes(search));
 
-    header.addEventListener('click', () => {
-      const collapsed = group.style.display === 'none';
-      group.style.display = collapsed ? 'block' : 'none';
-      arrow.style.transform = collapsed ? '' : 'rotate(-90deg)';
-    });
+  if (!parts.length) {
+    container.innerHTML = '<div style="padding:24px 12px;text-align:center;color:#555;font-size:13px;">No parts found.</div>';
+    return;
+  }
 
-    container.appendChild(header);
+  const cards = parts.map(part => {
+    const sizeLabel = part.gridWidth > 0 ? `${part.gridWidth}×${part.gridHeight}` : '';
+    const typeIcon  = mbGetPartIcon(part);
+    const previewColor = part.colors?.[0] || '#333';
+    const stlId = part._stlCatalogId || null;
 
-    // Part cards
-    parts.forEach(part => {
-      const card = document.createElement('div');
-      card.className = 'mb-part-card';
-      card.dataset.partId = part.id;
+    // Thumbnail area
+    let thumbHtml;
+    if (stlId && mbState.thumbCache[stlId]) {
+      thumbHtml = `<img src="${mbState.thumbCache[stlId]}"
+        style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:6px 6px 0 0;background:#0a0a1a;display:block;">`;
+    } else if (stlId) {
+      thumbHtml = `<canvas class="mb-part-thumb" data-stl-id="${stlId}" width="120" height="120"
+        style="width:100%;aspect-ratio:1/1;border-radius:6px 6px 0 0;background:#0a0a1a;display:block;"></canvas>`;
+    } else {
+      thumbHtml = `<div style="width:100%;aspect-ratio:1/1;border-radius:6px 6px 0 0;
+        background:${previewColor};display:flex;align-items:center;justify-content:center;">
+        <span style="color:#fff;font-size:${sizeLabel ? '14' : '24'}px;font-weight:700;">${sizeLabel || typeIcon}</span>
+      </div>`;
+    }
 
-      const previewColor = part.colors[0] || '#333';
-      const sizeLabel = part.gridWidth > 0 ? `${part.gridWidth}x${part.gridHeight}` : '';
-      const typeIcon = mbGetPartIcon(part);
+    // Badges
+    const badges = [];
+    if (part._mountHardware?.length) {
+      const hw = part._mountHardware[0];
+      badges.push(`<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#5d4037;color:#ffcc80;">${hw.type}</span>`);
+    }
+    if (part._requiresTray) badges.push('<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#4a148c;color:#ce93d8;">tray</span>');
+    if (part._hasMethodChoice) badges.push('<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#1565c0;color:#90caf9;">A/B</span>');
+    else if (part.requiresHardware?.length) {
+      const hwCount = part.requiresHardware.reduce((s, h) => s + h.qty, 0);
+      badges.push(`<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#37474f;color:#b0bec5;">×${hwCount} hw</span>`);
+    }
 
-      // Build badge indicators for hardware/tray requirements
-      const badges = [];
-      if (part._mountHardware && part._mountHardware.length) {
-        const hw = part._mountHardware[0];
-        badges.push(`<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#5d4037;color:#ffcc80;">${hw.type === 'magnet' ? 'magnet' : hw.type === 'screw' ? 'screw' : hw.type}</span>`);
-      }
-      if (part._requiresTray) {
-        badges.push('<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#4a148c;color:#ce93d8;">tray</span>');
-      }
-      if (part._hasMethodChoice) {
-        badges.push('<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#1565c0;color:#90caf9;">A/B</span>');
-      } else if (part.requiresHardware && part.requiresHardware.length) {
-        const hwCount = part.requiresHardware.reduce((sum, h) => sum + h.qty, 0);
-        badges.push(`<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#37474f;color:#b0bec5;">\u00d7${hwCount} hw</span>`);
-      }
-      const badgeHtml = badges.length ? `<span style="margin-left:4px;">${badges.join(' ')}</span>` : '';
-
-      card.innerHTML = `
-        <div style="background:${previewColor};width:44px;height:44px;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-          <span style="color:#fff;font-size:${sizeLabel ? '11' : '16'}px;font-weight:600;">${sizeLabel || typeIcon}</span>
+    return `<div class="mb-part-card-grid" data-part-id="${part.id}"
+      style="border-radius:6px;cursor:pointer;border:2px solid transparent;
+             background:var(--bg-primary,#1e1e2e);overflow:hidden;transition:border-color 0.15s;">
+      ${thumbHtml}
+      <div style="padding:5px 7px 6px;">
+        <div style="font-size:11px;font-weight:500;line-height:1.3;
+          display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+          ${part.name}
         </div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${part.name}</div>
-          <div style="font-size:12px;color:#888;">$${part.priceUSD.toFixed(2)}${badgeHtml}</div>
-        </div>
-      `;
-      card.style.cssText = 'display:flex;gap:10px;align-items:center;padding:8px;border-radius:6px;cursor:pointer;border:2px solid transparent;margin-bottom:4px;transition:all 0.15s;';
-      card.addEventListener('mouseenter', () => {
-        if (!mbState.isPlacing || mbState.placingPart?.id !== part.id) card.style.borderColor = '#555';
-      });
-      card.addEventListener('mouseleave', () => {
-        if (!mbState.isPlacing || mbState.placingPart?.id !== part.id) card.style.borderColor = 'transparent';
-      });
-      card.addEventListener('click', () => mbStartPlacing(part));
-      group.appendChild(card);
-    });
+        <div style="font-size:10px;color:#888;margin-top:2px;">$${part.priceUSD.toFixed(2)}</div>
+        ${badges.length ? `<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:2px;">${badges.join('')}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
 
-    container.appendChild(group);
+  container.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">${cards}</div>`;
+
+  // Wire events
+  container.querySelectorAll('.mb-part-card-grid').forEach(card => {
+    const part = mbState.catalog.parts.find(p => p.id === card.dataset.partId);
+    if (!part) return;
+    card.addEventListener('click', () => mbStartPlacing(part));
+    card.addEventListener('mouseenter', () => { card.style.borderColor = '#555'; });
+    card.addEventListener('mouseleave', () => {
+      card.style.borderColor = (mbState.isPlacing && mbState.placingPart?.id === part.id) ? '#2196f3' : 'transparent';
+    });
   });
+
+  // Highlight the currently-placing part
+  if (mbState.isPlacing && mbState.placingPart) {
+    const active = container.querySelector(`[data-part-id="${mbState.placingPart.id}"]`);
+    if (active) active.style.borderColor = '#2196f3';
+  }
+
+  // Async load STL thumbnails
+  mbLoadPartThumbs(parts);
+}
+
+async function mbLoadPartThumbs(parts) {
+  if (!window.printStation?.slicer?.getThumbsCached) return;
+
+  const uncachedIds = parts
+    .filter(p => p._stlCatalogId && !mbState.thumbCache[p._stlCatalogId])
+    .map(p => p._stlCatalogId);
+  if (!uncachedIds.length) return;
+
+  try {
+    const result = await printStation.slicer.getThumbsCached(uncachedIds);
+    let anyNew = false;
+    for (const [id, url] of Object.entries(result)) {
+      if (url) { mbState.thumbCache[parseInt(id, 10)] = url; anyNew = true; }
+    }
+
+    // For IDs still missing a disk cache, try to render via canvas
+    const stillMissing = uncachedIds.filter(id => !mbState.thumbCache[id]);
+    for (const stlId of stillMissing) {
+      const canvas = document.querySelector(`.mb-part-thumb[data-stl-id="${stlId}"]`);
+      if (!canvas) continue;
+      try {
+        const buf = await printStation.slicer.fetchStlBytes(stlId);
+        if (!buf) continue;
+        if (typeof slicerRenderStlToCanvas === 'function') {
+          const dataUrl = slicerRenderStlToCanvas(canvas, buf);
+          if (dataUrl) {
+            mbState.thumbCache[stlId] = dataUrl;
+            anyNew = true;
+            printStation.slicer.saveThumbCache(stlId, dataUrl).catch(() => {});
+          }
+        }
+      } catch (_) { /* skip individual failures */ }
+    }
+
+    // Swap any canvas elements that now have a URL for img tags
+    if (anyNew) {
+      document.querySelectorAll('.mb-part-thumb').forEach(canvas => {
+        const id = parseInt(canvas.dataset.stlId, 10);
+        const url = mbState.thumbCache[id];
+        if (!url) return;
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.cssText = 'width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:6px 6px 0 0;background:#0a0a1a;display:block;';
+        canvas.parentNode.replaceChild(img, canvas);
+      });
+    }
+  } catch (err) {
+    console.warn('[Multiboard] Thumb load error:', err);
+  }
 }
 
 function mbGetPartIcon(part) {
