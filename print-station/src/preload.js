@@ -608,14 +608,14 @@ contextBridge.exposeInMainWorld('printStation', {
   },
 
   printQuotes: {
-    list:         (query)                         => ipcRenderer.invoke('quotes:list', query),
-    get:          (id)                            => ipcRenderer.invoke('quotes:get', id),
-    create:       (data)                          => ipcRenderer.invoke('quotes:create', data),
-    update:       (id, updates)                   => ipcRenderer.invoke('quotes:update', { id, updates }),
-    delete:       (id)                            => ipcRenderer.invoke('quotes:delete', id),
-    replaceItems: (quoteId, items)                => ipcRenderer.invoke('quotes:items:replace', { quoteId, items }),
-    packPlates:   (quoteId, printerModel)         => ipcRenderer.invoke('quotes:plates:pack', { quoteId, printerModel }),
-    listPlates:   (quoteId)                       => ipcRenderer.invoke('quotes:plates:list', quoteId),
-    updatePlate:  (quoteId, plateId, updates)     => ipcRenderer.invoke('quotes:plates:update', { quoteId, plateId, updates })
+    list:         (query)                         => ipcRenderer.invoke('pq:list', query),
+    get:          (id)                            => ipcRenderer.invoke('pq:get', id),
+    create:       (data)                          => ipcRenderer.invoke('pq:create', data),
+    update:       (id, updates)                   => ipcRenderer.invoke('pq:update', { id, updates }),
+    delete:       (id)                            => ipcRenderer.invoke('pq:delete', id),
+    replaceItems: (quoteId, items)                => ipcRenderer.invoke('pq:items:replace', { quoteId, items }),
+    packPlates:   (quoteId, printerModel)         => ipcRenderer.invoke('pq:plates:pack', { quoteId, printerModel }),
+    listPlates:   (quoteId)                       => ipcRenderer.invoke('pq:plates:list', quoteId),
+    updatePlate:  (quoteId, plateId, updates)     => ipcRenderer.invoke('pq:plates:update', { quoteId, plateId, updates })
   }
 });

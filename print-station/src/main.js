@@ -7137,7 +7137,7 @@ Return ONLY valid JSON, nothing else:
     return resp;
   }
 
-  ipcMain.handle('quotes:list', async (_event, query = {}) => {
+  ipcMain.handle('pq:list', async (_event, query = {}) => {
     const params = new URLSearchParams();
     if (query.status) params.set('status', query.status);
     if (query.source) params.set('source', query.source);
@@ -7147,12 +7147,12 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
-  ipcMain.handle('quotes:get', async (_event, id) => {
+  ipcMain.handle('pq:get', async (_event, id) => {
     const resp = await quotesFetch(`/api/quotes/${id}`);
     return resp.json();
   });
 
-  ipcMain.handle('quotes:create', async (_event, data) => {
+  ipcMain.handle('pq:create', async (_event, data) => {
     const resp = await quotesFetch('/api/quotes/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -7161,7 +7161,7 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
-  ipcMain.handle('quotes:update', async (_event, { id, updates }) => {
+  ipcMain.handle('pq:update', async (_event, { id, updates }) => {
     const resp = await quotesFetch(`/api/quotes/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -7170,12 +7170,12 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
-  ipcMain.handle('quotes:delete', async (_event, id) => {
+  ipcMain.handle('pq:delete', async (_event, id) => {
     const resp = await quotesFetch(`/api/quotes/${id}`, { method: 'DELETE' });
     return resp.json();
   });
 
-  ipcMain.handle('quotes:items:replace', async (_event, { quoteId, items }) => {
+  ipcMain.handle('pq:items:replace', async (_event, { quoteId, items }) => {
     const resp = await quotesFetch(`/api/quotes/${quoteId}/items`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -7184,7 +7184,7 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
-  ipcMain.handle('quotes:plates:pack', async (_event, { quoteId, printerModel }) => {
+  ipcMain.handle('pq:plates:pack', async (_event, { quoteId, printerModel }) => {
     const resp = await quotesFetch(`/api/quotes/${quoteId}/plates/pack`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -7194,12 +7194,12 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
-  ipcMain.handle('quotes:plates:list', async (_event, quoteId) => {
+  ipcMain.handle('pq:plates:list', async (_event, quoteId) => {
     const resp = await quotesFetch(`/api/quotes/${quoteId}/plates`);
     return resp.json();
   });
 
-  ipcMain.handle('quotes:plates:update', async (_event, { quoteId, plateId, updates }) => {
+  ipcMain.handle('pq:plates:update', async (_event, { quoteId, plateId, updates }) => {
     const resp = await quotesFetch(`/api/quotes/${quoteId}/plates/${plateId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
