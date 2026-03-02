@@ -383,3 +383,33 @@ async function mpbUpdateImportCount() {
     console.warn('[MPB] Could not get import count:', err);
   }
 }
+
+// =============== PUBLIC API ===============
+
+/**
+ * Switch to the Parts Browser view and search for a term.
+ * Called externally (e.g. from Print Quotes view) when a missing part needs to be found.
+ * @param {string} searchTerm
+ */
+window.mpbOpenSearch = function (searchTerm) {
+  // Switch to the parts browser view
+  if (typeof switchView === 'function') {
+    switchView('multiboardPartsBrowserView');
+  }
+
+  const searchUrl = 'https://thangs.com/search?q=' + encodeURIComponent('multiboard ' + searchTerm);
+
+  // If the webview is already initialized, navigate immediately
+  if (mpbState.webview) {
+    mpbState.webview.loadURL(searchUrl);
+  } else {
+    // Not yet initialized — init the view then navigate after webview is ready
+    initMultiboardPartsBrowserView();
+    const poll = setInterval(() => {
+      if (mpbState.webview) {
+        clearInterval(poll);
+        mpbState.webview.loadURL(searchUrl);
+      }
+    }, 100);
+  }
+};

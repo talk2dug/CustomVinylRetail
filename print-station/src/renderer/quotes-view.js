@@ -173,8 +173,8 @@
           ${missingItems.map(it => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #2a1e00;font-size:12px;">
             <span style="color:#ccc;">${escHtml(it.name)} ×${it.qty}</span>
-            ${it.search_hint ? `<a href="#" class="pq-printables-link" data-hint="${escHtml(it.search_hint)}"
-              style="color:#2196f3;text-decoration:none;font-size:11px;">Search Printables →</a>` : ''}
+            ${it.search_hint ? `<a href="#" class="pq-parts-search-link" data-hint="${escHtml(it.search_hint)}"
+              style="color:#2196f3;text-decoration:none;font-size:11px;">Find in Parts Browser →</a>` : ''}
           </div>`).join('')}
         </div>` : ''}
       </div>
@@ -242,16 +242,13 @@
       }
     });
 
-    // Printables search links
-    panel.querySelectorAll('.pq-printables-link').forEach(link => {
+    // Parts Browser search links
+    panel.querySelectorAll('.pq-parts-search-link').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
         const hint = link.dataset.hint;
-        const url = `https://www.printables.com/search/models?q=${encodeURIComponent(hint)}`;
-        if (window.printStation && printStation.shell) {
-          printStation.shell.openExternal(url);
-        } else {
-          window.open(url, '_blank');
+        if (typeof window.mpbOpenSearch === 'function') {
+          window.mpbOpenSearch(hint);
         }
       });
     });
