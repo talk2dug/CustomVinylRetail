@@ -36,12 +36,23 @@ const { handleLeonardoRoute } = require('./leonardo-server');
 const { handleMultiboardRoute } = require('./multiboard-server');
 const { handleHowtoRoute } = require('./multiboard-howto-server');
 const { handleSlicerRoute } = require('./slicer-server');
+const { handleQuoteRoute } = require('./quote-server');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
 const stickerSheets = require('./sticker-sheet-generator');
 const taskTracker = require('./task-tracker');
 const kioskManager = require('./modules/kiosk-manager');
+// Sales & Marketing modules
+const seoEngine = require('./modules/seo-engine');
+const emailSequences = require('./modules/email-sequences');
+const cartRecovery = require('./modules/cart-recovery');
+const listingOptimizer = require('./modules/listing-optimizer');
+const reviewSystem = require('./modules/reviews');
+const referralProgram = require('./modules/referral-program');
+const crossSell = require('./modules/cross-sell');
+const salesAnalytics = require('./modules/sales-analytics');
+const trendMonitor = require('./modules/trend-monitor');
 // Shared utilities
 const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
 const { sendJson, handleOptions } = require('./utils/http');
@@ -3487,6 +3498,158 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // SEO: robots.txt and sitemap.xml (must be handled before static files)
+  if (parsedUrl.pathname === '/robots.txt' || parsedUrl.pathname === '/sitemap.xml') {
+    if (seoEngine.handleSeoRoute(req, res, parsedUrl, db)) return;
+  }
+
+  // =============================================
+  // Sales & Marketing API Routes
+  // =============================================
+  // SEO API
+  if (parsedUrl.pathname.startsWith('/api/seo/')) {
+    if (seoEngine.handleSeoRoute(req, res, parsedUrl, db)) return;
+  }
+  // Reviews API
+  if (parsedUrl.pathname.startsWith('/api/reviews') || parsedUrl.pathname.startsWith('/api/admin/reviews')) {
+    if (reviewSystem.handleReviewRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Loyalty & Referral API
+  if (parsedUrl.pathname.startsWith('/api/loyalty/') || parsedUrl.pathname.startsWith('/api/referral/') || parsedUrl.pathname === '/api/admin/loyalty/stats') {
+    if (referralProgram.handleLoyaltyRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Cross-sell & Bundles API
+  if (parsedUrl.pathname.startsWith('/api/cross-sell/') || parsedUrl.pathname === '/api/bundles') {
+    if (crossSell.handleCrossSellRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Cart Recovery API
+  if (parsedUrl.pathname.startsWith('/api/cart-recovery/')) {
+    if (cartRecovery.handleCartRecoveryRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Listing Optimizer API
+  if (parsedUrl.pathname.startsWith('/api/listings/')) {
+    if (listingOptimizer.handleListingRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data), db)) return;
+  }
+  // Sales Analytics API
+  if (parsedUrl.pathname.startsWith('/api/analytics/')) {
+    if (salesAnalytics.handleAnalyticsRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Trend Monitor API
+  if (parsedUrl.pathname.startsWith('/api/trends')) {
+    if (trendMonitor.handleTrendMonitorRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data), db)) return;
+  }
+  // Email Sequences API
+  if (parsedUrl.pathname.startsWith('/api/email-sequences')) {
+    if (emailSequences.handleEmailSequenceRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // SMS API
+  if (parsedUrl.pathname.startsWith('/api/sms/')) {
+    const sms = require('./sms');
+    if (parsedUrl.pathname === '/api/sms/send' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        (async () => {
+          try {
+            const { to, message } = JSON.parse(body);
+            if (!sms.isConfigured()) {
+              sendJson(res, 503, { error: 'SMS not configured' });
+              return;
+            }
+            const result = await sms.sendSms({ to, body: message });
+            sendJson(res, 200, { success: true, result });
+          } catch (err) {
+            sendJson(res, 400, { error: err.message });
+          }
+        })();
+      });
+      return;
+    }
+    if (parsedUrl.pathname === '/api/sms/bulk' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        (async () => {
+          try {
+            const { recipients, message } = JSON.parse(body);
+            if (!sms.isConfigured()) {
+              sendJson(res, 503, { error: 'SMS not configured' });
+              return;
+            }
+            const results = await sms.sendBulkSms({ to: recipients, body: message });
+            sendJson(res, 200, { success: true, sent: results.filter(Boolean).length, total: recipients.length });
+          } catch (err) {
+            sendJson(res, 400, { error: err.message });
+          }
+        })();
+      });
+      return;
+    }
+    if (parsedUrl.pathname === '/api/sms/status' && req.method === 'GET') {
+      const sms = require('./sms');
+      sendJson(res, 200, { configured: sms.isConfigured() });
+      return;
+    }
+  }
+  // Ads Management API
+  if (parsedUrl.pathname.startsWith('/api/ads/')) {
+    if (parsedUrl.pathname === '/api/ads/insights' && req.method === 'GET') {
+      (async () => {
+        try {
+          const period = parsedUrl.query?.period || '7';
+          const insights = await ads.getMetaInsights(period);
+          sendJson(res, 200, insights);
+        } catch (err) {
+          sendJson(res, 500, { error: err.message });
+        }
+      })();
+      return;
+    }
+    if (parsedUrl.pathname === '/api/ads/social-stats' && req.method === 'GET') {
+      (async () => {
+        try {
+          const stats = await ads.getDashboardSocialStats();
+          sendJson(res, 200, stats);
+        } catch (err) {
+          sendJson(res, 500, { error: err.message });
+        }
+      })();
+      return;
+    }
+    if (parsedUrl.pathname === '/api/ads/create-campaign' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        (async () => {
+          try {
+            const campaign = JSON.parse(body);
+            const result = await ads.createAdCampaign(campaign);
+            sendJson(res, 200, result);
+          } catch (err) {
+            sendJson(res, 500, { error: err.message });
+          }
+        })();
+      });
+      return;
+    }
+    if (parsedUrl.pathname === '/api/ads/generate-creative' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        (async () => {
+          try {
+            const { product, platform } = JSON.parse(body);
+            const creative = ads.generateAdCreative(product, platform || 'meta');
+            sendJson(res, 200, creative);
+          } catch (err) {
+            sendJson(res, 500, { error: err.message });
+          }
+        })();
+      });
+      return;
+    }
+  }
+
   // ===========================================
   // Kiosk Display System (secured with INTERNAL_API_KEY)
   // ===========================================
@@ -3982,12 +4145,30 @@ const requestHandler = async (req, res) => {
         const etsy = require('./integrations/etsy');
         const tokens = await etsy.completeOAuthFlow(code, state);
 
-        // Get shop info
+        // Get shop info and auto-save shop ID
         let shopInfo = null;
         try {
           const shops = await etsy.getMyShops();
           if (shops.results && shops.results.length > 0) {
             shopInfo = shops.results[0];
+            // Auto-save shop ID to .env so it persists
+            if (shopInfo.shop_id) {
+              try {
+                const envPath = path.resolve(__dirname, '..', '.env');
+                let envContent = fs.readFileSync(envPath, 'utf8');
+                if (envContent.includes('ETSY_SHOP_ID=')) {
+                  envContent = envContent.replace(/ETSY_SHOP_ID=.*/, `ETSY_SHOP_ID=${shopInfo.shop_id}`);
+                } else {
+                  envContent += `\nETSY_SHOP_ID=${shopInfo.shop_id}\n`;
+                }
+                fs.writeFileSync(envPath, envContent);
+                // Also update the runtime environment
+                process.env.ETSY_SHOP_ID = String(shopInfo.shop_id);
+                console.log(`[Etsy OAuth] Auto-saved ETSY_SHOP_ID=${shopInfo.shop_id} to .env`);
+              } catch (envErr) {
+                console.error('[Etsy OAuth] Could not auto-save shop ID to .env:', envErr.message);
+              }
+            }
           }
         } catch (e) {
           console.log('[Etsy OAuth] Could not fetch shop info:', e.message);
@@ -4002,10 +4183,7 @@ const requestHandler = async (req, res) => {
               <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
                 <p><strong>Shop Name:</strong> ${shopInfo.shop_name || 'N/A'}</p>
                 <p><strong>Shop ID:</strong> ${shopInfo.shop_id}</p>
-                <p style="color: #6b7280; font-size: 14px; margin-top: 12px;">
-                  Add this to your .env file:<br>
-                  <code style="background: #1f2937; color: #10b981; padding: 4px 8px; border-radius: 4px;">ETSY_SHOP_ID=${shopInfo.shop_id}</code>
-                </p>
+                <p style="color: #10b981; font-weight: bold;">Shop ID has been automatically saved!</p>
               </div>
             ` : ''}
             <p>Token expires in: ${Math.round(tokens.expires_in / 3600)} hours</p>
@@ -5502,10 +5680,19 @@ const requestHandler = async (req, res) => {
             return;
           }
 
-          // Load Shopify product from database
-          const product = db.getShopifyProduct(shopify_product_id);
+          // Load Shopify product via Shopify API (full product data with variants/images)
+          const shopify = require('./integrations/shopify');
+          let product;
+          try {
+            product = await shopify.getProductFull(shopify_product_id);
+          } catch (shopErr) {
+            // Fallback: try qr_products table by shopify_product_id column
+            const rawDb = db.getDb();
+            const row = rawDb.prepare('SELECT * FROM qr_products WHERE shopify_product_id = ? OR id = ?').get(shopify_product_id, shopify_product_id);
+            if (row) product = row;
+          }
           if (!product) {
-            sendJson(res, 404, { error: `Shopify product ${shopify_product_id} not found in database` });
+            sendJson(res, 404, { error: `Shopify product ${shopify_product_id} not found` });
             return;
           }
 
@@ -8627,6 +8814,16 @@ const requestHandler = async (req, res) => {
     if (!requireInternalKey(req, res)) return;
     handleSlicerRoute(parsedUrl.pathname, req, res, db).catch(err => {
       console.error('[Slicer API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Print Quotes API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/quotes')) {
+    if (!requireInternalKey(req, res)) return;
+    handleQuoteRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Quotes API Error]', err);
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;
@@ -19926,6 +20123,47 @@ async function handleShopifyOrderWebhook(orderPayload, { topic } = {}) {
       console.error('Metal prints webhook handling failed:', metalError);
       // Don't throw - let the main order processing continue even if metal prints fails
     }
+
+    // Sales analytics: record order
+    try {
+      const customerEmail = o.email || o.contact_email || o.customer?.email;
+      const totalCents = o.total_price ? Math.round(parseFloat(o.total_price) * 100) : 0;
+      salesAnalytics.recordOrder({
+        id: o.id || o.order_number,
+        channel: 'shopify',
+        totalCents,
+        items: (o.line_items || []).map(li => ({
+          title: li.title,
+          category: li.product_type || 'other',
+          priceCents: li.price ? Math.round(parseFloat(li.price) * 100) : 0,
+          quantity: li.quantity || 1
+        })),
+        customerEmail,
+        source: 'shopify'
+      });
+
+      // Cart recovery: mark cart as recovered
+      if (customerEmail) {
+        cartRecovery.markCartRecoveredByEmail(customerEmail, totalCents);
+      }
+
+      // Loyalty: award purchase points
+      if (customerEmail) {
+        referralProgram.awardPurchasePoints(customerEmail, totalCents, o.id);
+        referralProgram.completeReferral(customerEmail, totalCents);
+      }
+
+      // Email sequences: trigger post-purchase follow-up + cancel win-back
+      if (customerEmail) {
+        const customerName = o.customer?.first_name || o.shipping_address?.first_name || '';
+        emailSequences.enqueueSequence('post_purchase', { email: customerEmail, name: customerName }, { orderId: o.id, totalCents });
+        emailSequences.cancelSequence('win_back', customerEmail);
+        emailSequences.cancelSequence('abandoned_cart', customerEmail);
+      }
+    } catch (analyticsError) {
+      console.error('Sales analytics/loyalty tracking error:', analyticsError.message);
+      // Non-critical — don't throw
+    }
   } catch (e) {
     console.error('Shopify order ingest error:', e);
     throw e;
@@ -19969,6 +20207,97 @@ if (require.main === module) {
       console.log('[Server] Facebook post scheduler started');
     } catch (error) {
       console.error('[Server] Failed to start Facebook scheduler:', error.message);
+    }
+
+    // Start abandoned cart recovery processor (runs every 15 minutes)
+    try {
+      setInterval(() => {
+        const { sendOrdersEmail } = require('./mailer');
+        const pending = cartRecovery.processAbandonedCarts();
+        for (const item of pending) {
+          try {
+            const email = emailSequences.generateSequenceEmail(
+              'abandoned_cart', item.sequenceStep, item.customer, item.cart
+            );
+            sendOrdersEmail({
+              to: item.customer.email,
+              subject: email.subject,
+              text: email.text,
+              html: email.html
+            }).then(() => {
+              cartRecovery.recordEmailSent(item.cartId);
+              salesAnalytics.recordEmailEvent('sent', 'abandoned_cart');
+              console.log(`[CartRecovery] Sent email ${item.sequenceStep + 1}/3 to ${item.customer.email}`);
+            }).catch(err => {
+              console.error(`[CartRecovery] Failed to send email to ${item.customer.email}:`, err.message);
+            });
+          } catch (emailErr) {
+            console.error('[CartRecovery] Email generation error:', emailErr.message);
+          }
+        }
+      }, 15 * 60 * 1000); // Every 15 minutes
+      console.log('[Server] Cart recovery processor started (15-min interval)');
+    } catch (error) {
+      console.error('[Server] Failed to start cart recovery:', error.message);
+    }
+
+    // Start email sequence scheduler (runs every 5 minutes)
+    try {
+      setInterval(async () => {
+        try {
+          const { sendOrdersEmail } = require('./mailer');
+          const sendFn = async (to, subject, html) => {
+            await sendOrdersEmail({ to, subject, html, text: html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() });
+            salesAnalytics.recordEmailEvent('sent', 'sequence');
+          };
+          const processed = await emailSequences.processSequenceQueue(sendFn);
+          if (processed > 0) {
+            console.log(`[EmailSeq] Processed ${processed} queued emails`);
+          }
+        } catch (err) {
+          console.error('[EmailSeq] Scheduler error:', err.message);
+        }
+      }, 5 * 60 * 1000); // Every 5 minutes
+      console.log('[Server] Email sequence scheduler started (5-min interval)');
+    } catch (error) {
+      console.error('[Server] Failed to start email sequence scheduler:', error.message);
+    }
+
+    // Start trend monitor scanner (runs every 4 hours)
+    try {
+      const trendSettings = trendMonitor.loadData()?.settings || trendMonitor.DEFAULT_SETTINGS;
+      const scanIntervalMs = (trendSettings.scanIntervalHours || 4) * 60 * 60 * 1000;
+
+      // Initial scan 60 seconds after startup
+      setTimeout(() => {
+        try {
+          const currentSettings = trendMonitor.loadData()?.settings || trendMonitor.DEFAULT_SETTINGS;
+          if (currentSettings.enabled) {
+            trendMonitor.runTrendScan(currentSettings).catch(err => {
+              console.error('[TrendMonitor] Initial scan error:', err.message);
+            });
+          }
+        } catch (err) {
+          console.error('[TrendMonitor] Initial scan error:', err.message);
+        }
+      }, 60000);
+
+      setInterval(() => {
+        try {
+          const currentSettings = trendMonitor.loadData()?.settings || trendMonitor.DEFAULT_SETTINGS;
+          if (currentSettings.enabled) {
+            trendMonitor.runTrendScan(currentSettings).catch(err => {
+              console.error('[TrendMonitor] Scan error:', err.message);
+            });
+          }
+        } catch (err) {
+          console.error('[TrendMonitor] Scheduler error:', err.message);
+        }
+      }, scanIntervalMs);
+
+      console.log(`[Server] Trend monitor started (${trendSettings.scanIntervalHours}h interval)`);
+    } catch (error) {
+      console.error('[Server] Failed to start trend monitor:', error.message);
     }
   });
 }

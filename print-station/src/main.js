@@ -6586,6 +6586,11 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
+  ipcMain.handle('slicer:catalog:guide', async (_event, id) => {
+    const resp = await slicerFetch(`/api/slicer/catalog/${id}/guide`);
+    return resp.json();
+  });
+
   ipcMain.handle('slicer:catalog:create', async (_event, { filePath, name, category, defaults } = {}) => {
     if (!filePath) throw new Error('No file path provided');
     const { fetch: doFetch } = await ensureFetch();
@@ -6774,7 +6779,7 @@ Return ONLY valid JSON, nothing else:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options),
-      timeout: 120000 // slicing can take up to 2 minutes
+      timeout: 600000 // 10 minutes — multi-copy grid slices can take a while
     });
     return resp.json();
   });
@@ -6786,7 +6791,7 @@ Return ONLY valid JSON, nothing else:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options),
-      timeout: 120000
+      timeout: 600000 // 10 minutes for plate slicing
     });
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
@@ -6808,7 +6813,7 @@ Return ONLY valid JSON, nothing else:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sliceOptions),
-      timeout: 120000
+      timeout: 600000 // 10 minutes for plate slicing
     });
     const sliceResult = await sliceResp.json();
     if (sliceResult.error) throw new Error(`Server slicing error: ${sliceResult.error}`);
@@ -7112,6 +7117,95 @@ Return ONLY valid JSON, nothing else:
     try {
       fs.rmSync(dirPath, { recursive: true, force: true });
     } catch (_) {}
+  });
+
+  // =========================================================================
+  // PRINT QUOTES IPC
+  // =========================================================================
+
+  async function quotesFetch(endpoint, options = {}) {
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const url = `${settings.serverBaseUrl}${endpoint}`;
+    const headers = { ...(options.headers || {}) };
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+    const resp = await doFetch(url, { ...options, headers, signal: AbortSignal.timeout(options.timeout || 15000) });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `Server returned ${resp.status}`);
+    }
+    return resp;
+  }
+
+  ipcMain.handle('quotes:list', async (_event, query = {}) => {
+    const params = new URLSearchParams();
+    if (query.status) params.set('status', query.status);
+    if (query.source) params.set('source', query.source);
+    if (query.limit) params.set('limit', String(query.limit));
+    const qs = params.toString();
+    const resp = await quotesFetch(`/api/quotes/${qs ? '?' + qs : ''}`);
+    return resp.json();
+  });
+
+  ipcMain.handle('quotes:get', async (_event, id) => {
+    const resp = await quotesFetch(`/api/quotes/${id}`);
+    return resp.json();
+  });
+
+  ipcMain.handle('quotes:create', async (_event, data) => {
+    const resp = await quotesFetch('/api/quotes/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('quotes:update', async (_event, { id, updates }) => {
+    const resp = await quotesFetch(`/api/quotes/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('quotes:delete', async (_event, id) => {
+    const resp = await quotesFetch(`/api/quotes/${id}`, { method: 'DELETE' });
+    return resp.json();
+  });
+
+  ipcMain.handle('quotes:items:replace', async (_event, { quoteId, items }) => {
+    const resp = await quotesFetch(`/api/quotes/${quoteId}/items`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('quotes:plates:pack', async (_event, { quoteId, printerModel }) => {
+    const resp = await quotesFetch(`/api/quotes/${quoteId}/plates/pack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ printerModel: printerModel || 'default' }),
+      timeout: 30000
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('quotes:plates:list', async (_event, quoteId) => {
+    const resp = await quotesFetch(`/api/quotes/${quoteId}/plates`);
+    return resp.json();
+  });
+
+  ipcMain.handle('quotes:plates:update', async (_event, { quoteId, plateId, updates }) => {
+    const resp = await quotesFetch(`/api/quotes/${quoteId}/plates/${plateId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    return resp.json();
   });
 }
 

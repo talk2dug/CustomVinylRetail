@@ -2152,6 +2152,7 @@ function mbShowQuoteModal() {
     mbState.customerEmail = document.getElementById('mbQuoteCustEmail').value.trim();
     document.body.removeChild(overlay);
     mbOpenPrintableQuote();
+    mbSaveQuoteToDb();
   });
 
   document.getElementById('mbQuoteCustName').focus();
@@ -2301,6 +2302,65 @@ function mbOpenPrintableQuote() {
     quoteWindow.document.close();
   } else {
     mbShowToast('Pop-up blocked. Please allow pop-ups for quote generation.', 'danger');
+  }
+}
+
+// =============== SAVE QUOTE TO PRINT QUOTES DB ===============
+
+async function mbSaveQuoteToDb() {
+  if (typeof window.pqSaveMbQuote !== 'function') return; // quotes-view.js not loaded
+  try {
+    const pricing = mbCalculatePricing();
+    const projectName = document.getElementById('mbProjectName')?.value || 'Untitled Design';
+    const totalCents = Math.round(pricing.grandTotal * 100);
+
+    // Build items list from partCounts + hardwareCounts
+    const items = [];
+
+    Object.entries(pricing.partCounts).forEach(([partId, qty]) => {
+      const part = mbFindPart(partId);
+      if (!part) return;
+      items.push({
+        stl_catalog_id: part._stlCatalogId || null,
+        part_id: partId,
+        name: part.name,
+        qty,
+        unit_price_cents: Math.round((part.priceUSD || 0) * 100),
+        material: 'PLA',
+        missing_stl: part._stlCatalogId ? 0 : 1,
+        search_hint: part._stlCatalogId ? null : `${part.name} multiboard`
+      });
+    });
+
+    Object.entries(pricing.hardwareCounts).forEach(([partId, qty]) => {
+      const part = mbFindPart(partId);
+      if (!part) return;
+      items.push({
+        stl_catalog_id: part._stlCatalogId || null,
+        part_id: partId,
+        name: part.name,
+        qty,
+        unit_price_cents: Math.round((part.priceUSD || 0) * 100),
+        material: 'PLA',
+        missing_stl: part._stlCatalogId ? 0 : 1,
+        search_hint: part._stlCatalogId ? null : `${part.name} multiboard`
+      });
+    });
+
+    const quote = await window.pqSaveMbQuote({
+      projectName,
+      customerName: mbState.customerName,
+      email: mbState.customerEmail,
+      phone: mbState.customerPhone,
+      serviceLevel: mbState.serviceLevel === 'none' ? 'local' : 'local',
+      totalCents,
+      items
+    });
+
+    mbShowToast(`Quote saved to Print Quotes (ID ${quote.id})`, 'success');
+  } catch (err) {
+    console.error('[Multiboard] Failed to save quote to DB:', err);
+    // Non-fatal — user still gets the printable window
   }
 }
 

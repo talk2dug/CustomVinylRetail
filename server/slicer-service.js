@@ -30,6 +30,32 @@ const PROFILES_DIR = path.join(DATA_DIR, 'profiles');
 // PrusaSlicer path from env
 const SLICER_PATH = process.env.PRUSA_SLICER_PATH || '/home/ubuntu/vinylApp/squashfs-root-2.8.1/usr/bin/prusa-slicer';
 
+// Concurrency control: only one PrusaSlicer process at a time to prevent CPU overload
+const MAX_CONCURRENT_SLICES = 1;
+const SLICER_THREADS = 4; // Cap threads so server stays responsive (8 cores total)
+let activeSlices = 0;
+const sliceQueue = [];
+
+function acquireSliceLock() {
+  return new Promise((resolve) => {
+    if (activeSlices < MAX_CONCURRENT_SLICES) {
+      activeSlices++;
+      resolve();
+    } else {
+      sliceQueue.push(resolve);
+    }
+  });
+}
+
+function releaseSliceLock() {
+  activeSlices--;
+  if (sliceQueue.length > 0 && activeSlices < MAX_CONCURRENT_SLICES) {
+    activeSlices++;
+    const next = sliceQueue.shift();
+    next();
+  }
+}
+
 // ============================================================================
 // AUTO-ORIENT STL — Rotate model for best build plate placement
 // ============================================================================
@@ -629,7 +655,7 @@ const MATERIALS_MAP = {
   abs:        { hotend: 250, bed: 100, retract_length: 0.8, retract_speed: 60, label: 'ABS',        description: 'Strong, needs enclosure' },
   tpu:        { hotend: 225, bed: 60,  retract_length: 1.5, retract_speed: 25, label: 'TPU',        description: 'Flexible, rubber-like' },
   rapid_pla:  { hotend: 220, bed: 60,  retract_length: 0.8, retract_speed: 60, label: 'Rapid PLA',  description: 'High-speed PLA' },
-  rapid_petg: { hotend: 255, bed: 80,  retract_length: 1.0, retract_speed: 50, label: 'Rapid PETG', description: 'High-speed PETG' }
+  rapid_petg: { hotend: 250, bed: 80,  retract_length: 1.0, retract_speed: 50, label: 'Rapid PETG', description: 'High-speed PETG' }
 };
 
 const PRINTERS_MAP = {
@@ -795,7 +821,9 @@ function mapOptionsToSlicerArgs(options) {
 
     // Material (still user-selected)
     args.push('--temperature', String(material.hotend));
+    args.push('--first-layer-temperature', String(material.hotend + 5));
     args.push('--bed-temperature', String(material.bed));
+    args.push('--first-layer-bed-temperature', String(material.bed + 5));
     args.push('--retract-length', String(material.retract_length));
     args.push('--retract-speed', String(material.retract_speed));
 
@@ -873,7 +901,9 @@ function mapOptionsToSlicerArgs(options) {
 
   // Material temperatures
   args.push('--temperature', String(material.hotend));
+  args.push('--first-layer-temperature', String(material.hotend + 5));
   args.push('--bed-temperature', String(material.bed));
+  args.push('--first-layer-bed-temperature', String(material.bed + 5));
   args.push('--retract-length', String(material.retract_length));
   args.push('--retract-speed', String(material.retract_speed));
 
@@ -1194,35 +1224,49 @@ async function sliceSTL(stlPath, options, dbInstance) {
     finalSlicePath
   ];
 
+  // Add thread cap to CLI args so PrusaSlicer doesn't eat all CPU cores
+  cliArgs.unshift('--threads', String(SLICER_THREADS));
+
   console.log(`[Slicer] Slicing: ${path.basename(stlPath)} → ${gcodeFilename} (${actualCopies} copies${mergedCopiesPath ? ', pre-arranged grid' : ''})`);
   console.log(`[Slicer] CLI: ${SLICER_PATH} ${cliArgs.join(' ')}`);
 
+  // Wait for concurrency slot (only 1 PrusaSlicer at a time)
+  if (activeSlices >= MAX_CONCURRENT_SLICES) {
+    console.log(`[Slicer] Queue: waiting for active slice to finish (${sliceQueue.length} ahead)...`);
+  }
+  await acquireSliceLock();
+
   // Spawn PrusaSlicer
-  const result = await new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
-    const proc = spawn(SLICER_PATH, cliArgs, {
-      timeout: 300000, // 5 minute timeout
-      env: { ...process.env, DISPLAY: '' } // Headless
-    });
-    proc.stdout.on('data', (data) => { stdout += data.toString(); });
-    proc.stderr.on('data', (data) => { stderr += data.toString(); });
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve({ stdout, stderr });
-      } else {
-        const output = stderr || stdout;
-        if (output.includes('gcode path conflicts')) {
-          reject(new Error(`Models overlap on the build plate — ${actualCopies > 1 ? `${actualCopies} copies won't fit. Try fewer copies or a smaller model.` : 'the model may be too large for the bed.'}`));
+  let result;
+  try {
+    result = await new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+      const proc = spawn(SLICER_PATH, cliArgs, {
+        timeout: 600000, // 10 minute timeout for multi-copy slices
+        env: { ...process.env, DISPLAY: '' } // Headless
+      });
+      proc.stdout.on('data', (data) => { stdout += data.toString(); });
+      proc.stderr.on('data', (data) => { stderr += data.toString(); });
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve({ stdout, stderr });
         } else {
-          reject(new Error(`PrusaSlicer exited with code ${code}: ${output}`));
+          const output = stderr || stdout;
+          if (output.includes('gcode path conflicts')) {
+            reject(new Error(`Models overlap on the build plate — ${actualCopies > 1 ? `${actualCopies} copies won't fit. Try fewer copies or a smaller model.` : 'the model may be too large for the bed.'}`));
+          } else {
+            reject(new Error(`PrusaSlicer exited with code ${code}: ${output}`));
+          }
         }
-      }
+      });
+      proc.on('error', (err) => {
+        reject(new Error(`Failed to spawn PrusaSlicer: ${err.message}`));
+      });
     });
-    proc.on('error', (err) => {
-      reject(new Error(`Failed to spawn PrusaSlicer: ${err.message}`));
-    });
-  });
+  } finally {
+    releaseSliceLock();
+  }
 
   // Clean up merged grid STL
   if (mergedCopiesPath) {
@@ -1435,8 +1479,17 @@ async function slicePlate(stlPaths, options, dbInstance) {
     ...finalSlicePaths
   ];
 
+  // Add thread cap to CLI args so PrusaSlicer doesn't eat all CPU cores
+  cliArgs.unshift('--threads', String(SLICER_THREADS));
+
   console.log(`[Slicer] Plating ${stlPaths.length} STLs → ${gcodeFilename}`);
   console.log(`[Slicer] CLI: ${SLICER_PATH} ${cliArgs.join(' ')}`);
+
+  // Wait for concurrency slot (only 1 PrusaSlicer at a time)
+  if (activeSlices >= MAX_CONCURRENT_SLICES) {
+    console.log(`[Slicer] Queue: waiting for active slice to finish (${sliceQueue.length} ahead)...`);
+  }
+  await acquireSliceLock();
 
   let result;
   try {
@@ -1458,6 +1511,7 @@ async function slicePlate(stlPaths, options, dbInstance) {
       });
     });
   } finally {
+    releaseSliceLock();
     // Clean up oriented temp files
     for (const tmp of orientedTempFiles) {
       try { fs.unlinkSync(tmp); } catch {}

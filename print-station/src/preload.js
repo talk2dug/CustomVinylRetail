@@ -563,6 +563,7 @@ contextBridge.exposeInMainWorld('printStation', {
     renameFolder: (category, old_name, new_name) => ipcRenderer.invoke('slicer:catalog:folders:rename', { category, old_name, new_name }),
     removeFolder: (category, folder) => ipcRenderer.invoke('slicer:catalog:folders:remove', { category, folder }),
     getCatalogItem: (id) => ipcRenderer.invoke('slicer:catalog:get', id),
+    getPartGuide: (id) => ipcRenderer.invoke('slicer:catalog:guide', id),
     uploadStl: (opts) => ipcRenderer.invoke('slicer:catalog:create', opts),
     updateCatalogItem: (id, updates) => ipcRenderer.invoke('slicer:catalog:update', { id, updates }),
     deleteCatalogItem: (id) => ipcRenderer.invoke('slicer:catalog:delete', id),
@@ -604,5 +605,17 @@ contextBridge.exposeInMainWorld('printStation', {
     saveThumbCache: (stlId, dataUrl) => ipcRenderer.invoke('slicer:thumb:save', { stlId, dataUrl }),
     deleteThumbCache: (stlId) => ipcRenderer.invoke('slicer:thumb:delete', stlId),
     clearThumbCache: () => ipcRenderer.invoke('slicer:thumb:clear')
+  },
+
+  printQuotes: {
+    list:         (query)                         => ipcRenderer.invoke('quotes:list', query),
+    get:          (id)                            => ipcRenderer.invoke('quotes:get', id),
+    create:       (data)                          => ipcRenderer.invoke('quotes:create', data),
+    update:       (id, updates)                   => ipcRenderer.invoke('quotes:update', { id, updates }),
+    delete:       (id)                            => ipcRenderer.invoke('quotes:delete', id),
+    replaceItems: (quoteId, items)                => ipcRenderer.invoke('quotes:items:replace', { quoteId, items }),
+    packPlates:   (quoteId, printerModel)         => ipcRenderer.invoke('quotes:plates:pack', { quoteId, printerModel }),
+    listPlates:   (quoteId)                       => ipcRenderer.invoke('quotes:plates:list', quoteId),
+    updatePlate:  (quoteId, plateId, updates)     => ipcRenderer.invoke('quotes:plates:update', { quoteId, plateId, updates })
   }
 });

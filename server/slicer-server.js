@@ -171,8 +171,11 @@ async function handleSlicerRoute(pathname, req, res, db) {
   // GET /api/slicer/catalog/folders?category=X — list folders in a category
   if (req.method === 'GET' && route === '/catalog/folders') {
     try {
-      const folders = db.listStlFolders(query.category || '');
-      sendJson(res, 200, { folders });
+      const folderRows = db.listStlFolders(query.category || '');
+      const folders = folderRows.map(r => r.folder);
+      const folderCounts = {};
+      for (const r of folderRows) folderCounts[r.folder] = r.count;
+      sendJson(res, 200, { folders, folderCounts });
     } catch (err) {
       console.error('[Slicer] List folders error:', err);
       sendError(res, 500, err.message);
@@ -229,6 +232,90 @@ async function handleSlicerRoute(pathname, req, res, db) {
       sendJson(res, 200, result);
     } catch (err) {
       console.error('[Slicer] Remove folder error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // GET /api/slicer/catalog/:id/guide — mounting instructions + dependencies + howtos
+  const guideMatch = route.match(/^\/catalog\/(\d+)\/guide$/);
+  if (req.method === 'GET' && guideMatch) {
+    try {
+      const id = parseInt(guideMatch[1], 10);
+      const item = db.getStlCatalogItem(id);
+      if (!item) {
+        sendError(res, 404, 'STL catalog item not found');
+        return true;
+      }
+
+      // Resolve dependency recipe
+      const { resolvePartDependencies } = require('./multiboard-dependency-recipes');
+      const partObj = {
+        name: item.name,
+        gridWidth: item.mu_width || 2,
+        gridHeight: item.mu_height || 2,
+        _mbType: item.mb_type,
+        _mountType: item.mount_type,
+        attachesTo: item.mount_type === 'snap' ? 'multihole' : ''
+      };
+      const deps = resolvePartDependencies(partObj);
+
+      // Get the single most relevant howto for this part type
+      const typeToSlug = {
+        shell: 'bin-assembly',
+        bin: 'bin-assembly',
+        insert: 'bin-assembly',
+        divider: 'bin-assembly',
+        gridfinity: 'bin-assembly',
+        tray: 'tray-mounting-method-a',
+        drawer: 'tray-mounting-method-a',
+        shelf: 'shelf-bolt-locked',
+        hook: 'peg-click-hooks',
+        peg: 'peg-click-hooks',
+        tile: 'wall-mounting-tiles',
+        snap: 'snap-installation',
+        mount: 'bolt-locked-inserts',
+        bracket: 'bolt-locked-inserts',
+        hinge: 'bolt-locked-inserts',
+        fastener: 'bolt-locked-inserts',
+        label: 'snap-installation',
+        rail: 'multipoint-connections'
+      };
+
+      let enrichedHowtos = [];
+      const slug = item.mb_type ? typeToSlug[item.mb_type] : null;
+      if (slug) {
+        const full = db.getHowtoBySlug(slug);
+        if (full) enrichedHowtos.push({ title: full.howto.title, content: full.howto.content, slug: full.howto.slug, images: full.images, videos: full.videos });
+      }
+
+      // Parse mount hardware
+      let mountHardware = [];
+      if (item.mount_hardware) {
+        try { mountHardware = JSON.parse(item.mount_hardware); } catch (_) {}
+      }
+
+      sendJson(res, 200, {
+        item: {
+          id: item.id,
+          name: item.name,
+          mb_type: item.mb_type,
+          mount_type: item.mount_type,
+          mount_hardware: mountHardware,
+          requires_tray: item.requires_tray,
+          tray_size: item.tray_size,
+          tray_notes: item.tray_notes,
+          mu_width: item.mu_width,
+          mu_height: item.mu_height,
+          folder: item.folder,
+          source_url: item.source_url,
+          description: item.description
+        },
+        dependencies: deps,
+        howtos: enrichedHowtos
+      });
+    } catch (err) {
+      console.error('[Slicer] Part guide error:', err);
       sendError(res, 500, err.message);
     }
     return true;

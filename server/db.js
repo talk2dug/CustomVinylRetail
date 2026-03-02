@@ -3497,11 +3497,63 @@ function initCustomArtTables() {
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_part_howtos_part ON multiboard_part_howtos(part_id)`); } catch (e) { /* ignore */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_part_howtos_slug ON multiboard_part_howtos(howto_slug)`); } catch (e) { /* ignore */ }
 
+  // Print Quotes System
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS print_quotes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      source      TEXT NOT NULL DEFAULT 'manual',
+      customer_name TEXT,
+      email       TEXT,
+      phone       TEXT,
+      project_name TEXT,
+      service_level TEXT DEFAULT 'local',
+      status      TEXT NOT NULL DEFAULT 'draft',
+      total_cents INTEGER DEFAULT 0,
+      notes       TEXT,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS print_quote_items (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id        INTEGER NOT NULL,
+      stl_catalog_id  INTEGER,
+      part_id         TEXT,
+      name            TEXT NOT NULL,
+      qty             INTEGER NOT NULL DEFAULT 1,
+      unit_price_cents INTEGER DEFAULT 0,
+      material        TEXT DEFAULT 'PLA',
+      missing_stl     INTEGER DEFAULT 0,
+      search_hint     TEXT,
+      FOREIGN KEY (quote_id) REFERENCES print_quotes(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS print_quote_plates (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id      INTEGER NOT NULL,
+      plate_index   INTEGER NOT NULL DEFAULT 0,
+      material      TEXT NOT NULL DEFAULT 'PLA',
+      stl_item_ids  TEXT DEFAULT '[]',
+      gcode_id      INTEGER,
+      status        TEXT NOT NULL DEFAULT 'pending',
+      printer_id    TEXT,
+      FOREIGN KEY (quote_id) REFERENCES print_quotes(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_pq_items_quote ON print_quote_items(quote_id);
+    CREATE INDEX IF NOT EXISTS idx_pq_plates_quote ON print_quote_plates(quote_id);
+  `);
+
   console.log('[Slicer] ✅ Tables initialized successfully');
   console.log('[Howtos] ✅ Tables initialized successfully');
+  console.log('[PrintQuotes] ✅ Tables initialized successfully');
 
   // Auto-classify existing Multiboard items that lack metadata
   migrateMultiboardItems();
+  // Absorb Snap_Tiles category into Multiboard
+  absorbSnapTiles();
+  // Reclassify old catch-all folders into granular subfolders
+  reclassifyBinsAndTrays();
+  reclassifyHardware();
+  reclassifyAccessories();
+  reclassifyUncategorized();
   // Backfill hardware/mount parsing for items that haven't been parsed yet
   backfillMultiboardHardware();
   // Seed how-to content from JSON if tables are empty
@@ -6500,10 +6552,11 @@ function bulkSetCategory(stlIds, category) {
 function listStlFolders(category) {
   if (!category) return [];
   return db.prepare(
-    `SELECT DISTINCT folder FROM stl_catalog
+    `SELECT folder, COUNT(*) as count FROM stl_catalog
      WHERE category = ? AND folder IS NOT NULL AND folder != ''
+     GROUP BY folder
      ORDER BY folder COLLATE NOCASE`
-  ).all(category).map(r => r.folder);
+  ).all(category);
 }
 
 function bulkSetFolder(stlIds, folder) {
@@ -6579,17 +6632,29 @@ function parseMultiboardMetadata(name) {
 
   // --- Part Type Detection (keyword priority order) ---
   const TYPE_RULES = [
-    { pattern: /\b(Tile|Plate|Board)\b/i,        type: 'tile',      folder: 'Tiles' },
-    { pattern: /\bShelf\b/i,                      type: 'shelf',     folder: 'Shelves' },
-    { pattern: /\b(Bin|Tray|Drawer|Shell)\b/i,   type: 'bin',       folder: 'Bins & Trays' },
-    { pattern: /\b(Hook|Click[\s-]?Hook)\b/i,    type: 'hook',      folder: 'Hooks' },
-    { pattern: /\bPeg\b/i,                        type: 'peg',       folder: 'Pegs' },
-    { pattern: /\b(Snaps?|Insert|Adapter)\b/i,     type: 'hardware',  folder: 'Hardware' },
-    { pattern: /\b(Mount|Standoff|Pillar|Foot)\b/i, type: 'hardware',  folder: 'Hardware' },
-    { pattern: /\b(Hinge|Beam|Bracket|Clip)\b/i, type: 'hardware',  folder: 'Hardware' },
-    { pattern: /\b(Label|Holder)\b/i,             type: 'accessory', folder: 'Accessories' },
-    { pattern: /\b(Bolt|Thread|Spacer)\b/i,       type: 'hardware',  folder: 'Hardware' },
-    { pattern: /\bGridfinity\b/i,                  type: 'bin',       folder: 'Bins & Trays' },
+    // --- Container types ---
+    { pattern: /\bGridfinity\b/i,                 type: 'gridfinity', folder: 'Gridfinity' },
+    { pattern: /\bShell\b/i,                      type: 'shell',      folder: 'Shells' },
+    { pattern: /\bInsert\b/i,                     type: 'insert',     folder: 'Inserts' },
+    { pattern: /\bDivider\b/i,                    type: 'divider',    folder: 'Dividers' },
+    { pattern: /\bDrawer\b/i,                     type: 'drawer',     folder: 'Drawers' },
+    { pattern: /\bTray\b/i,                       type: 'tray',       folder: 'Trays' },
+    { pattern: /\bBin\b/i,                        type: 'bin',        folder: 'Bins' },
+    // --- Structure types ---
+    { pattern: /\b(Tile|Plate|Board)\b/i,        type: 'tile',       folder: 'Tiles' },
+    { pattern: /\bShelf\b/i,                      type: 'shelf',      folder: 'Shelves' },
+    { pattern: /\b(Hook|Click[\s-]?Hook)\b/i,    type: 'hook',       folder: 'Hooks' },
+    { pattern: /\bPeg\b/i,                        type: 'peg',        folder: 'Pegs' },
+    // --- Hardware (granular) ---
+    { pattern: /\b(Snaps?|Adapter|Connector)\b/i, type: 'snap',      folder: 'Snaps & Connectors' },
+    { pattern: /\b(Mount|Standoff|Pillar|Foot)\b/i, type: 'mount',   folder: 'Mounts & Standoffs' },
+    { pattern: /\b(Bracket|Clip)\b/i,             type: 'bracket',    folder: 'Brackets & Clips' },
+    { pattern: /\b(Hinge|Beam)\b/i,               type: 'hinge',      folder: 'Hinges & Beams' },
+    { pattern: /\b(Bolt|Thread|Spacer|Washer)\b/i, type: 'fastener',   folder: 'Fasteners' },
+    { pattern: /\bRail\b/i,                       type: 'rail',       folder: 'Snaps & Connectors' },
+    { pattern: /\b(Cap|Screw)\b/i,                type: 'fastener',   folder: 'Fasteners' },
+    // --- Accessories ---
+    { pattern: /\b(Label|Holder)\b/i,             type: 'label',      folder: 'Labels & Holders' },
   ];
 
   let mb_type = 'unknown';
@@ -6652,8 +6717,9 @@ function parseMultiboardMetadata(name) {
   if (bareMatch && mb_type !== 'unknown') {
     mu_width = parseInt(bareMatch[1], 10);
     mu_height = parseInt(bareMatch[2], 10);
-    // If type is bin/tray, bare numbers are likely LU — double them
-    if (mb_type === 'bin') {
+    // If type is a container, bare numbers are likely LU — double them
+    const containerTypes = new Set(['bin', 'tray', 'drawer', 'shell', 'insert', 'divider', 'gridfinity']);
+    if (containerTypes.has(mb_type)) {
       mu_width *= 2;
       mu_height *= 2;
     }
@@ -6732,6 +6798,155 @@ function migrateMultiboardItems() {
 
   runMigration();
   console.log(`[Multiboard] Migration complete: ${items.length} items processed`);
+}
+
+/**
+ * One-time migration: reclassify items in the old "Bins & Trays" folder
+ * into the new granular subfolders (Shells, Inserts, Dividers, Drawers, Trays, Bins, Gridfinity).
+ * Safe to call multiple times (idempotent — no-ops if no items match old folder).
+ */
+function reclassifyBinsAndTrays() {
+  const items = db.prepare(
+    "SELECT id, name FROM stl_catalog WHERE category = 'Multiboard' AND folder = 'Bins & Trays'"
+  ).all();
+
+  if (items.length === 0) return;
+
+  console.log(`[Multiboard] Reclassifying ${items.length} items from "Bins & Trays" into granular folders...`);
+
+  const updateStmt = db.prepare(
+    'UPDATE stl_catalog SET folder = ?, mb_type = ? WHERE id = ?'
+  );
+
+  const runMigration = db.transaction(() => {
+    for (const row of items) {
+      const meta = parseMultiboardMetadata(row.name);
+      updateStmt.run(meta.folder, meta.mb_type, row.id);
+    }
+  });
+
+  runMigration();
+  console.log(`[Multiboard] Reclassification complete: ${items.length} items moved to granular folders`);
+}
+
+/**
+ * One-time migration: reclassify items in the old "Hardware" catch-all folder
+ * into granular subfolders (Snaps & Connectors, Mounts & Standoffs, Brackets & Clips, etc.).
+ * Safe to call multiple times (idempotent).
+ */
+function reclassifyHardware() {
+  const items = db.prepare(
+    "SELECT id, name FROM stl_catalog WHERE category = 'Multiboard' AND folder = 'Hardware'"
+  ).all();
+
+  if (items.length === 0) return;
+
+  console.log(`[Multiboard] Reclassifying ${items.length} items from "Hardware" into granular folders...`);
+
+  const updateStmt = db.prepare(
+    'UPDATE stl_catalog SET folder = ?, mb_type = ? WHERE id = ?'
+  );
+
+  const runMigration = db.transaction(() => {
+    for (const row of items) {
+      const meta = parseMultiboardMetadata(row.name);
+      updateStmt.run(meta.folder, meta.mb_type, row.id);
+    }
+  });
+
+  runMigration();
+  console.log(`[Multiboard] Hardware reclassification complete: ${items.length} items`);
+}
+
+/**
+ * One-time migration: reclassify items in the old "Accessories" folder
+ * into the new "Labels & Holders" folder.
+ * Safe to call multiple times (idempotent).
+ */
+function reclassifyAccessories() {
+  const items = db.prepare(
+    "SELECT id, name FROM stl_catalog WHERE category = 'Multiboard' AND folder = 'Accessories'"
+  ).all();
+
+  if (items.length === 0) return;
+
+  console.log(`[Multiboard] Reclassifying ${items.length} items from "Accessories" into granular folders...`);
+
+  const updateStmt = db.prepare(
+    'UPDATE stl_catalog SET folder = ?, mb_type = ? WHERE id = ?'
+  );
+
+  const runMigration = db.transaction(() => {
+    for (const row of items) {
+      const meta = parseMultiboardMetadata(row.name);
+      updateStmt.run(meta.folder, meta.mb_type, row.id);
+    }
+  });
+
+  runMigration();
+  console.log(`[Multiboard] Accessories reclassification complete: ${items.length} items`);
+}
+
+/**
+ * One-time migration: re-parse "Uncategorized" items against updated TYPE_RULES.
+ * Items that now match a rule get moved to the correct folder.
+ * Safe to call multiple times (idempotent — items that still don't match stay Uncategorized).
+ */
+function reclassifyUncategorized() {
+  const items = db.prepare(
+    "SELECT id, name FROM stl_catalog WHERE category = 'Multiboard' AND folder = 'Uncategorized'"
+  ).all();
+
+  if (items.length === 0) return;
+
+  console.log(`[Multiboard] Re-parsing ${items.length} Uncategorized items...`);
+
+  const updateStmt = db.prepare(
+    'UPDATE stl_catalog SET folder = ?, mb_type = ? WHERE id = ?'
+  );
+
+  let moved = 0;
+  const runMigration = db.transaction(() => {
+    for (const row of items) {
+      const meta = parseMultiboardMetadata(row.name);
+      if (meta.folder !== 'Uncategorized') {
+        updateStmt.run(meta.folder, meta.mb_type, row.id);
+        moved++;
+      }
+    }
+  });
+
+  runMigration();
+  console.log(`[Multiboard] Uncategorized reclassification: ${moved}/${items.length} items moved`);
+}
+
+/**
+ * One-time migration: absorb the "Snap_Tiles" category into "Multiboard".
+ * Moves all Snap_Tiles items to category=Multiboard and classifies into proper folders.
+ * Safe to call multiple times (idempotent — no-ops if Snap_Tiles category is empty).
+ */
+function absorbSnapTiles() {
+  const items = db.prepare(
+    "SELECT id, name FROM stl_catalog WHERE category = 'Snap_Tiles'"
+  ).all();
+
+  if (items.length === 0) return;
+
+  console.log(`[Multiboard] Absorbing ${items.length} items from "Snap_Tiles" into Multiboard...`);
+
+  const updateStmt = db.prepare(
+    'UPDATE stl_catalog SET category = ?, folder = ?, mb_type = ?, mu_width = ?, mu_height = ? WHERE id = ?'
+  );
+
+  const runMigration = db.transaction(() => {
+    for (const row of items) {
+      const meta = parseMultiboardMetadata(row.name);
+      updateStmt.run('Multiboard', meta.folder, meta.mb_type, meta.mu_width, meta.mu_height, row.id);
+    }
+  });
+
+  runMigration();
+  console.log(`[Multiboard] Snap_Tiles absorption complete: ${items.length} items moved to Multiboard`);
 }
 
 /**
@@ -7044,6 +7259,102 @@ function clearAllGcodeCache() {
   return db.prepare('DELETE FROM gcode_cache').run();
 }
 
+// ============================================================================
+// PRINT QUOTES CRUD
+// ============================================================================
+
+function createPrintQuote({ source = 'manual', customer_name, email, phone, project_name, service_level = 'local', notes, total_cents = 0 } = {}) {
+  const result = db.prepare(`
+    INSERT INTO print_quotes (source, customer_name, email, phone, project_name, service_level, notes, total_cents)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(source, customer_name || null, email || null, phone || null, project_name || null, service_level, notes || null, total_cents);
+  return getPrintQuote(result.lastInsertRowid);
+}
+
+function getPrintQuote(id) {
+  return db.prepare('SELECT * FROM print_quotes WHERE id = ?').get(id) || null;
+}
+
+function listPrintQuotes({ status, source, limit = 100 } = {}) {
+  let sql = 'SELECT * FROM print_quotes';
+  const params = [];
+  const wheres = [];
+  if (status) { wheres.push('status = ?'); params.push(status); }
+  if (source) { wheres.push('source = ?'); params.push(source); }
+  if (wheres.length) sql += ' WHERE ' + wheres.join(' AND ');
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(limit);
+  return db.prepare(sql).all(...params);
+}
+
+function updatePrintQuote(id, updates) {
+  const allowed = ['customer_name', 'email', 'phone', 'project_name', 'service_level', 'status', 'total_cents', 'notes'];
+  const sets = [];
+  const params = [];
+  for (const key of allowed) {
+    if (updates[key] !== undefined) {
+      sets.push(`${key} = ?`);
+      params.push(updates[key]);
+    }
+  }
+  if (!sets.length) return getPrintQuote(id);
+  sets.push("updated_at = CURRENT_TIMESTAMP");
+  params.push(id);
+  db.prepare(`UPDATE print_quotes SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getPrintQuote(id);
+}
+
+function deletePrintQuote(id) {
+  return db.prepare('DELETE FROM print_quotes WHERE id = ?').run(id);
+}
+
+function addPrintQuoteItem(quoteId, { stl_catalog_id, part_id, name, qty = 1, unit_price_cents = 0, material = 'PLA', missing_stl = 0, search_hint } = {}) {
+  const result = db.prepare(`
+    INSERT INTO print_quote_items (quote_id, stl_catalog_id, part_id, name, qty, unit_price_cents, material, missing_stl, search_hint)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(quoteId, stl_catalog_id || null, part_id || null, name, qty, unit_price_cents, material, missing_stl ? 1 : 0, search_hint || null);
+  return db.prepare('SELECT * FROM print_quote_items WHERE id = ?').get(result.lastInsertRowid);
+}
+
+function listPrintQuoteItems(quoteId) {
+  return db.prepare('SELECT * FROM print_quote_items WHERE quote_id = ? ORDER BY id').all(quoteId);
+}
+
+function deletePrintQuoteItems(quoteId) {
+  return db.prepare('DELETE FROM print_quote_items WHERE quote_id = ?').run(quoteId);
+}
+
+function upsertPrintQuotePlates(quoteId, plates = []) {
+  const del = db.prepare('DELETE FROM print_quote_plates WHERE quote_id = ?');
+  const ins = db.prepare(`
+    INSERT INTO print_quote_plates (quote_id, plate_index, material, stl_item_ids, gcode_id, status, printer_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  const tx = db.transaction(() => {
+    del.run(quoteId);
+    plates.forEach((p, i) => {
+      ins.run(quoteId, p.plate_index ?? i, p.material || 'PLA', JSON.stringify(p.stl_item_ids || []), p.gcode_id || null, p.status || 'pending', p.printer_id || null);
+    });
+  });
+  tx();
+}
+
+function listPrintQuotePlates(quoteId) {
+  return db.prepare('SELECT * FROM print_quote_plates WHERE quote_id = ? ORDER BY plate_index').all(quoteId);
+}
+
+function updatePrintQuotePlate(id, { gcode_id, status, printer_id } = {}) {
+  const sets = [];
+  const params = [];
+  if (gcode_id !== undefined) { sets.push('gcode_id = ?'); params.push(gcode_id); }
+  if (status !== undefined) { sets.push('status = ?'); params.push(status); }
+  if (printer_id !== undefined) { sets.push('printer_id = ?'); params.push(printer_id); }
+  if (!sets.length) return;
+  params.push(id);
+  db.prepare(`UPDATE print_quote_plates SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return db.prepare('SELECT * FROM print_quote_plates WHERE id = ?').get(id);
+}
+
 module.exports = {
   initDatabase,
   normalizeEmail,
@@ -7342,5 +7653,17 @@ module.exports = {
   listGcodeCacheForStl,
   listAllGcodeCache,
   deleteGcodeCache,
-  clearAllGcodeCache
+  clearAllGcodeCache,
+  // Print Quotes
+  createPrintQuote,
+  getPrintQuote,
+  listPrintQuotes,
+  updatePrintQuote,
+  deletePrintQuote,
+  addPrintQuoteItem,
+  listPrintQuoteItems,
+  deletePrintQuoteItems,
+  upsertPrintQuotePlates,
+  listPrintQuotePlates,
+  updatePrintQuotePlate
 };

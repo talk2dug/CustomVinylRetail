@@ -16,6 +16,7 @@
     "dotenv": "^16.4.5",
     "facebook-nodejs-business-sdk": "^24.0.1",
     "formidable": "^3.3.0",
+    "google-trends-api": "^4.9.2",
     "nodemailer": "^6.9.15",
     "sharp": "^0.33.5",
     "sql.js": "^1.14.0",

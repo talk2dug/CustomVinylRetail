@@ -225,6 +225,32 @@
                     <input type="text" id="editCategory" placeholder="e.g. Stickers, Decals" list="categorySuggestions">
                     <datalist id="categorySuggestions"></datalist>
                 </div>
+                <div style="display:flex;gap:10px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Size</label>
+                        <input type="text" id="editSize" placeholder='e.g. 3", 5x7'>
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Color</label>
+                        <input type="text" id="editColor" placeholder="e.g. Red, Holographic">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Decal Text</label>
+                    <input type="text" id="editDecalText" placeholder="Text on the decal (if any)">
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Quantity</label>
+                        <input type="number" id="editQuantity" min="1" step="1" value="1" placeholder="1">
+                    </div>
+                    <div class="form-group" style="flex:1;display:flex;align-items:flex-end;padding-bottom:2px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#fff;">
+                            <input type="checkbox" id="editHeatTransfer" style="width:auto;accent-color:#b45309;">
+                            Heat Transfer
+                        </label>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-danger btn-sm" id="deleteBtn" style="margin-right:auto;display:none;">Delete</button>
@@ -371,8 +397,10 @@
                         : `<div class="no-photo">&#128247;</div>`}
                     <div class="info">
                         <div class="title">${esc(p.title)}</div>
-                        <div class="price">${formatPrice(p.priceCents)}</div>
+                        <div class="price">${formatPrice(p.priceCents)}${p.quantity > 1 ? ` <span style="font-size:0.75rem;color:#aaa;">x${p.quantity}</span>` : ''}</div>
+                        ${p.isHeatTransfer ? `<span style="display:inline-block;font-size:0.65rem;padding:1px 5px;background:#b45309;border-radius:3px;color:#fff;margin-top:2px;">HT</span>` : ''}
                         ${p.category ? `<span class="category-badge">${esc(p.category)}</span>` : ''}
+                        ${p.size || p.color ? `<div style="font-size:0.7rem;color:#888;margin-top:2px;">${[p.size, p.color].filter(Boolean).map(esc).join(' / ')}</div>` : ''}
                     </div>
                 </div>
             `).join('');
@@ -389,6 +417,11 @@
             $('editDescription').value = editingProduct?.description || '';
             $('editPrice').value = editingProduct ? (editingProduct.priceCents / 100).toFixed(2) : '';
             $('editCategory').value = editingProduct?.category || '';
+            $('editSize').value = editingProduct?.size || '';
+            $('editColor').value = editingProduct?.color || '';
+            $('editDecalText').value = editingProduct?.decalText || '';
+            $('editQuantity').value = editingProduct?.quantity || 1;
+            $('editHeatTransfer').checked = editingProduct?.isHeatTransfer || false;
             $('deleteBtn').style.display = editingProduct ? 'inline-block' : 'none';
             pendingPhotoFile = null;
 
@@ -448,21 +481,23 @@
             const priceCents = Math.round(parseFloat(priceStr || '0') * 100);
             const description = $('editDescription').value.trim();
             const category = $('editCategory').value.trim();
+            const size = $('editSize').value.trim();
+            const color = $('editColor').value.trim();
+            const decalText = $('editDecalText').value.trim();
+            const quantity = parseInt($('editQuantity').value, 10) || 1;
+            const isHeatTransfer = $('editHeatTransfer').checked;
 
             $('editSave').disabled = true;
             $('editSave').textContent = 'Saving...';
 
             try {
                 let product;
+                const payload = { title, description, priceCents, category, size, color, decalText, quantity, isHeatTransfer };
                 if (editingProduct) {
-                    const data = await api('PUT', `/api/products/${editingProduct.id}`, {
-                        title, description, priceCents, category
-                    });
+                    const data = await api('PUT', `/api/products/${editingProduct.id}`, payload);
                     product = data.product;
                 } else {
-                    const data = await api('POST', '/api/products', {
-                        title, description, priceCents, category
-                    });
+                    const data = await api('POST', '/api/products', payload);
                     product = data.product;
                 }
 

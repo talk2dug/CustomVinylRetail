@@ -628,6 +628,35 @@ async function syncProductToTikTok(shopCipher, shopifyProduct, categoryId, optio
 }
 
 /**
+ * Ship an order (mark as shipped with tracking info)
+ * @param {string} shopCipher - Shop cipher from authorized shops
+ * @param {string} orderId - TikTok order ID
+ * @param {object} shipment - Shipping details
+ * @param {string} shipment.trackingNumber - Carrier tracking number
+ * @param {string} shipment.shippingProvider - Provider ID (e.g., 'usps', 'ups', 'fedex')
+ */
+async function shipOrder(shopCipher, orderId, shipment) {
+  const packageData = {
+    tracking_number: shipment.trackingNumber,
+    shipping_provider_id: shipment.shippingProvider || 'usps'
+  };
+
+  const result = await apiRequest(shopCipher, 'POST', `/orders/${orderId}/packages`, {
+    packages: [packageData]
+  });
+
+  console.log(`[TikTok] Order ${orderId} marked as shipped, tracking: ${shipment.trackingNumber}`);
+  return result;
+}
+
+/**
+ * Get shipping providers list
+ */
+async function getShippingProviders(shopCipher) {
+  return apiRequest(shopCipher, 'GET', '/logistics/shipping_providers');
+}
+
+/**
  * Get connection status
  */
 async function getConnectionStatus() {
@@ -701,9 +730,11 @@ module.exports = {
   // Inventory
   updateInventory,
 
-  // Orders
+  // Orders & Fulfillment
   getOrders,
   getOrderDetails,
+  shipOrder,
+  getShippingProviders,
 
   // Images
   uploadImageFromUrl,

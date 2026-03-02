@@ -129,6 +129,12 @@ function slicerWireEvents() {
     });
   }
 
+  // Sort order
+  const sortSelect = document.getElementById('slicerSortOrder');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', () => slicerRenderCatalog());
+  }
+
   // Upload STL
   if (uploadBtn) {
     uploadBtn.addEventListener('click', slicerUploadStl);
@@ -231,6 +237,13 @@ function slicerWireEvents() {
   if (grid) {
     grid.addEventListener('click', (e) => {
       // Delete button — always works
+      const guideBtn = e.target.closest('.slicer-guide-btn');
+      if (guideBtn) {
+        e.stopPropagation();
+        const id = parseInt(guideBtn.dataset.guideId, 10);
+        slicerShowPartGuide(id);
+        return;
+      }
       const delBtn = e.target.closest('.slicer-catalog-delete');
       if (delBtn) {
         e.stopPropagation();
@@ -464,9 +477,11 @@ async function slicerLoadFolders() {
   try {
     const result = await printStation.slicer.listFolders(category);
     slicerState.folders = result.folders || [];
+    slicerState.folderCounts = result.folderCounts || {};
   } catch (err) {
     console.warn('[Slicer] Load folders error:', err);
     slicerState.folders = [];
+    slicerState.folderCounts = {};
   }
   slicerRenderFolderBar();
 }
@@ -496,17 +511,21 @@ function slicerRenderFolderBar() {
     : `<span style="font-weight:600;">${slicerEsc(category)}</span>`;
 
   let folderTilesHtml = '';
+  const counts = slicerState.folderCounts || {};
   const visibleFolders = inFolder ? folders.filter(f => f !== inFolder) : folders;
   if (visibleFolders.length > 0) {
     folderTilesHtml = `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
-      ${visibleFolders.map(f => `
+      ${visibleFolders.map(f => {
+        const cnt = counts[f] || 0;
+        return `
         <div class="slicer-folder-tile" data-folder="${slicerEsc(f)}"
           style="display:flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid var(--border);
           border-radius:8px;background:var(--bg-secondary,#1e293b);cursor:pointer;min-width:120px;transition:all 0.15s;">
           <span style="font-size:1.3rem;">&#128193;</span>
           <span style="font-weight:500;font-size:0.9rem;">${slicerEsc(f)}</span>
-        </div>
-      `).join('')}
+          ${cnt ? `<span style="font-size:0.75rem;color:var(--muted);margin-left:auto;">${cnt}</span>` : ''}
+        </div>`;
+      }).join('')}
     </div>`;
   }
 
@@ -655,6 +674,17 @@ async function slicerRenderCatalog() {
     return;
   }
 
+  // Sort catalog based on user selection
+  const sortOrder = document.getElementById('slicerSortOrder')?.value || 'name-asc';
+  slicerState.catalog.sort((a, b) => {
+    switch (sortOrder) {
+      case 'name-desc': return (b.name || '').localeCompare(a.name || '');
+      case 'newest': return (b.id || 0) - (a.id || 0);
+      case 'size': return (b.file_size || 0) - (a.file_size || 0);
+      default: return (a.name || '').localeCompare(b.name || '');
+    }
+  });
+
   // Prefetch disk-cached thumbnails for items not already in any cache
   const uncachedIds = slicerState.catalog
     .filter(item => !slicerState.thumbCache[item.id] && !slicerState.thumbDiskCache[item.id])
@@ -671,22 +701,33 @@ async function slicerRenderCatalog() {
     const diskCached = slicerState.thumbDiskCache[item.id];
     const cachedUrl = memCached || diskCached;
     const thumbHtml = cachedUrl
-      ? `<img src="${cachedUrl}" style="width:80px;height:80px;border-radius:8px;object-fit:cover;background:#0a0a1a;">`
-      : `<canvas class="slicer-stl-thumb" data-stl-id="${item.id}" width="160" height="160" style="width:80px;height:80px;border-radius:8px;background:#0a0a1a;"></canvas>`;
+      ? `<img src="${cachedUrl}" style="width:120px;height:120px;border-radius:8px;object-fit:cover;background:#0a0a1a;">`
+      : `<canvas class="slicer-stl-thumb" data-stl-id="${item.id}" width="240" height="240" style="width:120px;height:120px;border-radius:8px;background:#0a0a1a;"></canvas>`;
     const selected = isPlate && plateIds.has(item.id);
     const checkHtml = isPlate ? `<div class="slicer-plate-check">${selected ? '✓' : ''}</div>` : '';
+    const muBadge = (item.category === 'Multiboard' && item.mu_width && item.mu_height)
+      ? `<span class="badge" style="font-size:0.75rem;padding:2px 8px;background:#4f46e5;border-radius:4px;margin-left:4px;">${item.mu_width}x${item.mu_height} MU</span>`
+      : '';
+    const guideBtn = item.category === 'Multiboard'
+      ? `<button class="slicer-guide-btn" data-guide-id="${item.id}" title="Mounting Guide"
+          style="position:absolute;top:8px;right:32px;background:none;border:none;color:#818cf8;cursor:pointer;font-size:1.1rem;padding:4px 8px;opacity:0.7;">&#9432;</button>`
+      : '';
     return `
     <div class="inventory-card slicer-catalog-card${selected ? ' slicer-plate-selected' : ''}" data-stl-id="${item.id}" draggable="true" style="cursor:pointer;padding:16px;position:relative;">
       ${checkHtml}
+      ${guideBtn}
       <button class="slicer-catalog-delete" data-stl-id="${item.id}" title="Delete"
         style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:1rem;padding:4px 8px;opacity:0.6;">&times;</button>
       <div style="display:flex;gap:12px;align-items:flex-start;">
-        <div style="width:80px;height:80px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <div style="width:120px;height:120px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           ${thumbHtml}
         </div>
         <div style="flex:1;min-width:0;">
-          <div style="font-weight:600;font-size:1rem;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${slicerEsc(item.name)}</div>
-          ${item.category ? `<span class="badge" style="font-size:0.75rem;padding:2px 8px;background:var(--accent);border-radius:4px;">${slicerEsc(item.category)}</span>` : ''}
+          <div style="font-weight:600;font-size:1rem;margin-bottom:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3;">${slicerEsc(item.name)}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;">
+            ${item.category ? `<span class="badge" style="font-size:0.75rem;padding:2px 8px;background:var(--accent);border-radius:4px;">${slicerEsc(item.category)}</span>` : ''}
+            ${muBadge}
+          </div>
           <div class="muted" style="font-size:0.8rem;margin-top:4px;">
             ${item.dim_x ? `${item.dim_x.toFixed(1)} x ${item.dim_y.toFixed(1)} x ${item.dim_z.toFixed(1)} mm` : ''}
             ${item.file_size ? ` &middot; ${slicerFormatSize(item.file_size)}` : ''}
@@ -2074,6 +2115,201 @@ async function slicerShowCategoryManager() {
 }
 
 // ============================================================================
+// PART GUIDE MODAL — Mounting instructions, dependencies, howtos
+// ============================================================================
+
+async function slicerShowPartGuide(itemId) {
+  // Show loading modal immediately
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--card,#1e293b);border-radius:12px;padding:32px;max-width:640px;width:95%;max-height:85vh;overflow-y:auto;position:relative;">
+      <div style="text-align:center;padding:40px 0;color:var(--muted);">Loading guide...</div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  try {
+    const data = await printStation.slicer.getPartGuide(itemId);
+    const item = data.item;
+    const deps = data.dependencies || {};
+    const howtos = data.howtos || [];
+
+    // --- Header ---
+    const typeLabel = item.mb_type ? item.mb_type.charAt(0).toUpperCase() + item.mb_type.slice(1) : 'Part';
+    const muLabel = (item.mu_width && item.mu_height) ? `${item.mu_width}x${item.mu_height} MU` : '';
+
+    // --- Mount Info ---
+    let mountHtml = '';
+    if (item.mount_type) {
+      const mountLabels = {
+        snap: 'Snap-fit (press into tile holes)',
+        magnet: 'Magnetic (embedded magnets)',
+        screw: 'Screw mount (heat-set inserts + bolts)',
+        rail: 'Rail slide-in (T-slot rail system)',
+        pegboard: 'Pegboard click (peg holes)'
+      };
+      mountHtml = `<div style="margin-bottom:16px;">
+        <h4 style="margin:0 0 6px;font-size:0.9rem;color:var(--accent);">Mount Type</h4>
+        <div style="font-size:0.9rem;">${mountLabels[item.mount_type] || item.mount_type}</div>
+      </div>`;
+    }
+
+    // --- Embedded Hardware (magnets, screws, inserts from the part itself) ---
+    let embeddedHtml = '';
+    if (item.mount_hardware && item.mount_hardware.length > 0) {
+      const lines = item.mount_hardware.map(h => {
+        if (h.type === 'magnet') return `${h.qty || '?'}x ${h.size || 'magnets'}`;
+        if (h.type === 'screw') return `${h.qty || '?'}x ${h.spec || 'screws'}`;
+        if (h.type === 'insert') return `${h.spec || '?'} heat-set inserts`;
+        return `${h.qty || ''}x ${h.type}`;
+      });
+      embeddedHtml = `<div style="margin-bottom:16px;">
+        <h4 style="margin:0 0 6px;font-size:0.9rem;color:var(--accent);">Embedded Hardware</h4>
+        <ul style="margin:0;padding-left:20px;font-size:0.85rem;">${lines.map(l => `<li>${slicerEsc(l)}</li>`).join('')}</ul>
+      </div>`;
+    }
+
+    // --- Tray requirement ---
+    let trayHtml = '';
+    if (item.requires_tray) {
+      trayHtml = `<div style="margin-bottom:16px;padding:10px 14px;background:#92400e20;border:1px solid #92400e;border-radius:8px;">
+        <strong style="color:#fbbf24;">Requires Tray</strong>
+        ${item.tray_size ? `<span style="margin-left:8px;font-size:0.85rem;">Size: ${slicerEsc(item.tray_size)}</span>` : ''}
+        ${item.tray_notes ? `<div style="font-size:0.8rem;color:var(--muted);margin-top:4px;">${slicerEsc(item.tray_notes)}</div>` : ''}
+      </div>`;
+    }
+
+    // --- Dependencies (from recipe engine) ---
+    let depsHtml = '';
+    const partIdLabels = {
+      'flush-snap': 'Flush Snap',
+      'moderate-snap': 'Moderate Snap',
+      'heavy-hook-snap': 'Heavy Hook Snap',
+      'drawer-shell': 'Drawer Shell',
+      'rail-popin': 'Rail Pop-In',
+      'drawer-stopper-pin': 'Drawer Stopper Pin',
+      'bolt-locked-bracket': 'Bolt-Locked Bracket',
+      'locking-bolt': 'Locking Bolt',
+      'bracket-multipoint': 'Bracket Multipoint Adapter',
+      'multipoint-connector': 'Multipoint Connector',
+      'shelf-support-bracket': 'Shelf Support Bracket',
+      'ds-snap-a': 'DS Snap Part A',
+      'ds-snap-b': 'DS Snap Part B',
+      'wall-mount': 'Wall Mount'
+    };
+
+    if (deps.methods && deps.methods.length > 1) {
+      // Multiple mounting methods (e.g. trays)
+      depsHtml = `<div style="margin-bottom:16px;">
+        <h4 style="margin:0 0 8px;font-size:0.9rem;color:var(--accent);">Mounting Methods</h4>
+        ${deps.methods.map(m => `
+          <div style="margin-bottom:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;">
+            <div style="font-weight:600;font-size:0.9rem;margin-bottom:4px;">${slicerEsc(m.name)}</div>
+            <div style="font-size:0.8rem;color:var(--muted);margin-bottom:6px;">${slicerEsc(m.description)}</div>
+            <div style="font-size:0.85rem;">
+              ${m.hardware.map(h => `<div style="padding:2px 0;">&bull; ${h.qty}x ${slicerEsc(partIdLabels[h.partId] || h.partId)}</div>`).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>`;
+    } else if (deps.requiresHardware && deps.requiresHardware.length > 0) {
+      depsHtml = `<div style="margin-bottom:16px;">
+        <h4 style="margin:0 0 6px;font-size:0.9rem;color:var(--accent);">Additional Parts Needed</h4>
+        <ul style="margin:0;padding-left:20px;font-size:0.85rem;">
+          ${deps.requiresHardware.map(h => `<li>${h.qty}x ${slicerEsc(partIdLabels[h.partId] || h.partId)}</li>`).join('')}
+        </ul>
+      </div>`;
+    } else {
+      depsHtml = `<div style="margin-bottom:16px;">
+        <h4 style="margin:0 0 6px;font-size:0.9rem;color:var(--accent);">Additional Parts</h4>
+        <div style="font-size:0.85rem;color:var(--muted);">No additional hardware required &mdash; this part is self-contained.</div>
+      </div>`;
+    }
+
+    // --- Howtos ---
+    let howtosHtml = '';
+    if (howtos.length > 0) {
+      howtosHtml = `<div>
+        <h4 style="margin:0 0 8px;font-size:0.9rem;color:var(--accent);">Assembly Instructions</h4>
+        ${howtos.map(h => {
+          const content = h.content || '';
+          // Convert markdown-ish content to simple HTML
+          const htmlContent = content
+            .replace(/^### (.+)$/gm, '<strong>$1</strong>')
+            .replace(/^## (.+)$/gm, '<strong style="font-size:1rem;">$1</strong>')
+            .replace(/^\d+\.\s+\*\*(.+?)\*\*\s*[–—-]\s*(.+)$/gm, '<div style="margin:4px 0;"><strong>$1</strong> &mdash; $2</div>')
+            .replace(/^\d+\.\s+(.+)$/gm, '<div style="margin:4px 0;">&bull; $1</div>')
+            .replace(/^[-*]\s+(.+)$/gm, '<div style="margin:2px 0 2px 12px;">&ndash; $1</div>')
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n{2,}/g, '<br><br>')
+            .replace(/\n/g, '<br>');
+
+          // Get images if present
+          const images = h.images || [];
+          const imgHtml = images.length > 0
+            ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">${images.map(img =>
+                `<img src="${slicerEsc(img.source_url || img.local_path)}" alt="${slicerEsc(img.alt || img.caption || '')}"
+                  style="max-width:200px;max-height:150px;border-radius:6px;object-fit:cover;border:1px solid var(--border);">`
+              ).join('')}</div>`
+            : '';
+
+          // Get videos if present
+          const videos = h.videos || [];
+          const vidHtml = videos.length > 0
+            ? `<div style="margin-top:8px;">${videos.map(v =>
+                `<a href="${slicerEsc(v.url)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--bg-secondary,#1e293b);border:1px solid var(--border);border-radius:6px;font-size:0.8rem;color:#818cf8;text-decoration:none;">
+                  &#9654; ${slicerEsc(v.title || 'Watch Video')}</a>`
+              ).join(' ')}</div>`
+            : '';
+
+          return `<details style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden;" open>
+            <summary style="padding:10px 14px;cursor:pointer;font-weight:600;font-size:0.9rem;background:var(--bg-secondary,#1e293b);">${slicerEsc(h.title)}</summary>
+            <div style="padding:12px 14px;font-size:0.83rem;line-height:1.6;">${htmlContent}${imgHtml}${vidHtml}</div>
+          </details>`;
+        }).join('')}
+      </div>`;
+    }
+
+    // --- Source URL ---
+    const sourceHtml = item.source_url
+      ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <a href="${slicerEsc(item.source_url)}" target="_blank" style="font-size:0.8rem;color:#818cf8;">View original source</a>
+        </div>`
+      : '';
+
+    // Render the full modal content
+    modal.querySelector('div').innerHTML = `
+      <button style="position:absolute;top:12px;right:12px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.3rem;padding:4px 8px;"
+        onclick="this.closest('div[style*=fixed]').remove()">&times;</button>
+      <div style="margin-bottom:16px;">
+        <h3 style="margin:0 0 4px;font-size:1.1rem;">${slicerEsc(item.name)}</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+          <span class="badge" style="font-size:0.75rem;padding:2px 10px;background:var(--accent);border-radius:4px;">${typeLabel}</span>
+          ${muLabel ? `<span class="badge" style="font-size:0.75rem;padding:2px 10px;background:#4f46e5;border-radius:4px;">${muLabel}</span>` : ''}
+          ${item.folder ? `<span class="badge" style="font-size:0.75rem;padding:2px 10px;background:var(--bg-secondary,#334155);border-radius:4px;">${slicerEsc(item.folder)}</span>` : ''}
+        </div>
+      </div>
+      ${mountHtml}
+      ${embeddedHtml}
+      ${trayHtml}
+      ${depsHtml}
+      ${howtosHtml}
+      ${sourceHtml}
+    `;
+  } catch (err) {
+    console.error('[Slicer] Part guide error:', err);
+    modal.querySelector('div').innerHTML = `
+      <button style="position:absolute;top:12px;right:12px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.3rem;padding:4px 8px;"
+        onclick="this.closest('div[style*=fixed]').remove()">&times;</button>
+      <div style="text-align:center;padding:40px 0;">
+        <div style="font-size:1rem;margin-bottom:8px;">Failed to load guide</div>
+        <div class="muted" style="font-size:0.85rem;">${slicerEsc(err.message)}</div>
+      </div>`;
+  }
+}
+
+// ============================================================================
 // PLATE MODE — MULTI-STL BUILD PLATE
 // ============================================================================
 
@@ -2112,16 +2348,85 @@ function slicerUpdatePlateBar() {
 
   if (!slicerState.plateMode || slicerState.plateItems.length === 0) {
     bar.style.display = 'none';
+    slicerUpdatePlateBanner();
     return;
   }
 
   bar.style.display = '';
-  const countEl = document.getElementById('slicerPlateCount');
-  const namesEl = document.getElementById('slicerPlateNames');
   const n = slicerState.plateItems.length;
 
-  if (countEl) countEl.textContent = `${n} model${n !== 1 ? 's' : ''} on plate`;
-  if (namesEl) namesEl.textContent = slicerState.plateItems.map(i => i.name).join(', ');
+  // Build chip list with folder origin + remove button
+  const chipsHtml = slicerState.plateItems.map(item => {
+    const folderLabel = item.folder ? ` <span style="color:var(--muted);font-size:0.7rem;">${slicerEsc(item.folder)}</span>` : '';
+    return `<span class="slicer-plate-chip" data-plate-id="${item.id}"
+      style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--bg-secondary,#1e293b);border:1px solid var(--border);border-radius:12px;font-size:0.8rem;white-space:nowrap;">
+      ${slicerEsc(item.name)}${folderLabel}
+      <span class="slicer-plate-chip-remove" data-remove-id="${item.id}" style="cursor:pointer;color:var(--danger);font-weight:700;margin-left:2px;line-height:1;">&times;</span>
+    </span>`;
+  }).join('');
+
+  bar.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="flex:1;min-width:0;">
+        <span style="font-weight:700;font-size:1rem;color:var(--accent);">${n} model${n !== 1 ? 's' : ''} on plate</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;max-height:80px;overflow-y:auto;">
+          ${chipsHtml}
+        </div>
+      </div>
+      <button id="slicerPlateClearBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Clear</button>
+      <button id="slicerBulkCategoryBtn" class="secondary" style="padding:8px 14px;font-size:0.9rem;font-weight:600;">Set Category</button>
+      <button id="slicerPlateGoBtn" class="primary" style="padding:8px 18px;font-size:0.95rem;font-weight:600;">Slice Plate &rarr;</button>
+    </div>`;
+
+  // Wire remove chip buttons
+  bar.querySelectorAll('.slicer-plate-chip-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const removeId = parseInt(btn.dataset.removeId, 10);
+      slicerState.plateItems = slicerState.plateItems.filter(i => i.id !== removeId);
+      slicerUpdatePlateBar();
+      slicerUpdatePlateCheckmarks();
+    });
+  });
+
+  // Re-wire the action buttons since we replaced innerHTML
+  document.getElementById('slicerPlateClearBtn')?.addEventListener('click', () => {
+    slicerState.plateItems = [];
+    slicerUpdatePlateBar();
+    slicerUpdatePlateCheckmarks();
+  });
+  document.getElementById('slicerBulkCategoryBtn')?.addEventListener('click', slicerShowBulkCategoryPicker);
+  document.getElementById('slicerPlateGoBtn')?.addEventListener('click', slicerShowBuildPlatePreview);
+
+  slicerUpdatePlateBanner();
+}
+
+function slicerUpdatePlateBanner() {
+  let banner = document.getElementById('slicerPlateBanner');
+  const currentFolder = slicerState.selectedFolder;
+  const plateItems = slicerState.plateItems || [];
+
+  // Count items from other folders
+  const otherCount = plateItems.filter(i => i.folder !== currentFolder).length;
+
+  if (!slicerState.plateMode || otherCount === 0) {
+    if (banner) banner.remove();
+    return;
+  }
+
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'slicerPlateBanner';
+    banner.style.cssText = 'margin:0 16px 8px;padding:8px 14px;background:#4f46e520;border:1px solid #4f46e5;border-radius:8px;font-size:0.85rem;color:#a5b4fc;cursor:pointer;';
+    const folderBar = document.getElementById('slicerFolderBar');
+    if (folderBar) folderBar.parentNode.insertBefore(banner, folderBar.nextSibling);
+    else return;
+  }
+  banner.textContent = `${otherCount} item${otherCount !== 1 ? 's' : ''} on plate from other folders`;
+  banner.onclick = () => {
+    const plateBar = document.getElementById('slicerPlateBar');
+    if (plateBar) plateBar.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  };
 }
 
 function slicerUpdatePlateCheckmarks() {
@@ -4267,3 +4572,37 @@ async function slicerUpdateApprove() {
     }
   }
 }
+
+// ============================================================================
+// PUBLIC API — called externally (e.g. from Print Quotes view)
+// ============================================================================
+
+/**
+ * Switch to plate mode and pre-load catalog items by ID.
+ * @param {Array<{id: number, name: string, qty?: number}>} items
+ */
+window.slicerAddPlateItems = async function (items) {
+  if (!slicerState.initialized) {
+    initSlicerView();
+    await new Promise(r => setTimeout(r, 400));
+  }
+  // Ensure catalog is loaded
+  if (!slicerState.catalog || !slicerState.catalog.length) {
+    await slicerLoadCatalog();
+  }
+  // Enable plate mode
+  if (!slicerState.plateMode) {
+    slicerState.plateMode = true;
+    const btn = document.getElementById('slicerPlateToggle');
+    if (btn) btn.classList.add('active');
+  }
+  // Add items
+  for (const req of items) {
+    const catalogItem = slicerState.catalog.find(i => i.id === req.id);
+    if (catalogItem && !slicerState.plateItems.find(i => i.id === req.id)) {
+      slicerState.plateItems.push({ ...catalogItem, _overrideQty: req.qty || 1 });
+    }
+  }
+  slicerUpdatePlateBar();
+  await slicerRenderCatalog();
+};

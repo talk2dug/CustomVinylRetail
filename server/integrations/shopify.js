@@ -56,7 +56,7 @@ function adminUrl(pathname) {
   return `${base}/admin/api/${API_VERSION}${p}`;
 }
 
-async function httpJson(method, url, body) {
+async function httpJson(method, url, body, _retryCount = 0) {
   // Wait for rate limit before making the call
   await waitForRateLimit();
 
@@ -83,8 +83,24 @@ async function httpJson(method, url, body) {
             const text = Buffer.concat(chunks).toString('utf8');
             let json = null;
             try { json = JSON.parse(text || '{}'); } catch (_) {}
+
+            // 429 Too Many Requests — back off and retry (max 3 retries)
+            if (res.statusCode === 429 && _retryCount < 3) {
+              const retryAfter = parseFloat(res.headers['retry-after']) || (2 * (_retryCount + 1));
+              console.log(`[Shopify] Rate limited (429), retrying in ${retryAfter}s (attempt ${_retryCount + 1}/3)`);
+              setTimeout(() => {
+                httpJson(method, url, body, _retryCount + 1).then(resolve).catch(reject);
+              }, retryAfter * 1000);
+              return;
+            }
+
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              resolve(json || { ok: true });
+              // Attach Link header for pagination support
+              const result = json || { ok: true };
+              if (res.headers.link) {
+                result.__linkHeader = res.headers.link;
+              }
+              resolve(result);
             } else {
               // Build error message - handle objects by JSON stringifying
               let errMsg = `HTTP ${res.statusCode}`;
@@ -112,6 +128,15 @@ async function httpJson(method, url, body) {
       reject(e);
     }
   });
+}
+
+/**
+ * Parse Shopify Link header to extract the next page URL
+ */
+function parseLinkNext(linkHeader) {
+  if (!linkHeader) return null;
+  const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+  return match ? match[1] : null;
 }
 
 async function graphql(query, variables = {}) {
@@ -1236,24 +1261,58 @@ async function updateProductCategory(productId, categoryId) {
 }
 
 /**
- * List all products with pagination support
+ * List all products with full pagination support
+ * Follows Shopify Link header to fetch every page automatically
  */
 async function listAllProducts({ limit = 250, collection_id } = {}) {
   let allProducts = [];
-  let url = `products.json?limit=${limit}`;
-  if (collection_id) {
-    url += `&collection_id=${collection_id}`;
-  }
+  let url = adminUrl(`/products.json?limit=${limit}${collection_id ? `&collection_id=${collection_id}` : ''}`);
 
   while (url) {
-    const resp = await httpJson('GET', adminUrl(url));
+    const resp = await httpJson('GET', url);
     if (resp.products) {
       allProducts = allProducts.concat(resp.products);
     }
-    // Check for pagination
-    url = null; // For now, just get first page
+    // Follow pagination via Link header
+    url = parseLinkNext(resp.__linkHeader) || null;
   }
+  console.log(`[Shopify] listAllProducts fetched ${allProducts.length} total products`);
   return allProducts;
+}
+
+/**
+ * Get inventory levels for a location (or all locations)
+ * Returns inventory for all items at the given location
+ */
+async function getInventoryLevels({ locationId, inventoryItemIds } = {}) {
+  if (!isConfigured()) throw new Error('Shopify not configured');
+  let url;
+  if (inventoryItemIds && inventoryItemIds.length) {
+    url = adminUrl(`/inventory_levels.json?inventory_item_ids=${inventoryItemIds.join(',')}&limit=250`);
+  } else if (locationId) {
+    url = adminUrl(`/inventory_levels.json?location_ids=${locationId}&limit=250`);
+  } else {
+    throw new Error('Either locationId or inventoryItemIds required');
+  }
+  const resp = await httpJson('GET', url);
+  return resp?.inventory_levels || [];
+}
+
+/**
+ * Get all orders with pagination (recent first)
+ */
+async function getAllOrders({ status = 'any', limit = 250, created_at_min } = {}) {
+  let allOrders = [];
+  let url = adminUrl(`/orders.json?status=${status}&limit=${limit}${created_at_min ? `&created_at_min=${created_at_min}` : ''}`);
+
+  while (url) {
+    const resp = await httpJson('GET', url);
+    if (resp.orders) {
+      allOrders = allOrders.concat(resp.orders);
+    }
+    url = parseLinkNext(resp.__linkHeader) || null;
+  }
+  return allOrders;
 }
 
 /**
@@ -1314,6 +1373,8 @@ async function updateProductVariants(productId, variants) {
 
 // Export new functions
 module.exports.listAllProducts = listAllProducts;
+module.exports.getInventoryLevels = getInventoryLevels;
+module.exports.getAllOrders = getAllOrders;
 module.exports.updateVariant = updateVariant;
 module.exports.updateProductTags = updateProductTags;
 module.exports.getProductFull = getProductFull;

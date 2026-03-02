@@ -87,6 +87,7 @@
           <button class="dropdown-item" data-view="multiboardPartsBrowserView">Parts Browser</button>
           <button class="dropdown-item" data-view="printerFleetView">Printer Fleet</button>
           <button class="dropdown-item" data-view="slicerView">Slice &amp; Print</button>
+          <button class="dropdown-item" data-view="printQuotesView">Print Quotes</button>
         </div>
       </div>
 
@@ -99,6 +100,7 @@
           <button class="dropdown-item" data-view="socialMarketingView">Facebook Post Creator</button>
           <button class="dropdown-item" data-view="tiktokPostView">TikTok Post Creator</button>
           <button class="dropdown-item" data-view="fbScheduleManagerView">Schedule Manager</button>
+          <button class="dropdown-item" data-view="trendMonitorView">Trend Monitor</button>
         </div>
       </div>
 
@@ -4181,6 +4183,162 @@
       </section>
 
       <!-- ================================================================== -->
+      <!-- TREND MONITOR                                                      -->
+      <!-- ================================================================== -->
+      <section id="trendMonitorView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Trend Monitor</h2>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button class="tab-pill active" data-trendtab="trends">Trends</button>
+            <button class="tab-pill" data-trendtab="designs">Design Queue</button>
+            <button class="tab-pill" data-trendtab="history">History</button>
+            <button class="tab-pill" data-trendtab="settings">Settings</button>
+            <button id="trendScanNowBtn" class="primary small">Scan Now</button>
+            <button id="trendRefreshBtn" class="secondary small">Refresh</button>
+          </div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div id="trendStatsBar" class="trend-stats-bar"></div>
+
+        <!-- Main Content Area -->
+        <div id="trendMonitorContent" class="view-content" style="padding:16px;overflow-y:auto;flex:1;"></div>
+
+        <style>
+          .trend-stats-bar {
+            display: flex; gap: 24px; padding: 12px 16px;
+            background: #1e293b; border-bottom: 1px solid #334155;
+            flex-wrap: wrap;
+          }
+          .trend-stat {
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+          }
+          .trend-stat strong {
+            font-size: 1.4rem; color: #e2e8f0;
+          }
+          .trend-stat span {
+            font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;
+          }
+          .tab-pill {
+            padding: 4px 12px; border-radius: 20px; border: 1px solid #475569;
+            background: transparent; color: #94a3b8; cursor: pointer; font-size: 0.85rem;
+            transition: all 0.15s;
+          }
+          .tab-pill:hover { border-color: #3b82f6; color: #e2e8f0; }
+          .tab-pill.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+
+          .trend-cards {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 16px;
+          }
+          .trend-card {
+            background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+            padding: 16px; transition: border-color 0.15s;
+          }
+          .trend-card:hover { border-color: #475569; }
+          .trend-card-header {
+            display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px;
+          }
+          .trend-score {
+            min-width: 48px; height: 48px; border: 3px solid; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 1.1rem; flex-shrink: 0;
+          }
+          .trend-card-title h4 { color: #e2e8f0; line-height: 1.3; }
+          .trend-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+          .trend-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 0.7rem; color: white; font-weight: 500;
+          }
+          .trend-badge.small { font-size: 0.65rem; padding: 1px 6px; }
+          .trend-metrics { color: #94a3b8; font-size: 0.85rem; margin-bottom: 6px; }
+          .trend-reasoning { color: #cbd5e1; font-size: 0.9rem; margin: 6px 0; font-style: italic; }
+          .trend-phrases { margin: 8px 0; }
+          .trend-phrase {
+            background: #0f172a; padding: 6px 10px; border-radius: 6px;
+            color: #fbbf24; font-size: 0.9rem; margin: 4px 0;
+            border-left: 3px solid #f59e0b;
+          }
+          .trend-card-actions {
+            display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+          }
+
+          .design-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 16px;
+          }
+          .design-card {
+            background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+            overflow: hidden; transition: border-color 0.15s;
+          }
+          .design-card:hover { border-color: #475569; }
+          .design-image {
+            aspect-ratio: 1; overflow: hidden; background: #0f172a;
+          }
+          .design-image img {
+            width: 100%; height: 100%; object-fit: cover;
+          }
+          .design-status-dot {
+            position: absolute; top: 8px; right: 8px; width: 12px; height: 12px;
+            border-radius: 50%; border: 2px solid #1e293b;
+          }
+          .design-info { padding: 12px; }
+          .design-phrase {
+            color: #e2e8f0; font-size: 0.9rem; margin: 0 0 6px;
+            line-height: 1.3;
+          }
+          .design-actions {
+            padding: 8px 12px 12px; display: flex; gap: 6px; flex-wrap: wrap;
+          }
+
+          .trend-settings-form { max-width: 700px; }
+          .settings-section {
+            background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+            padding: 20px; margin-bottom: 16px;
+          }
+          .settings-section h3 { margin: 0 0 12px; color: #e2e8f0; font-size: 1rem; }
+          .form-row {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 10px;
+          }
+          .form-row label {
+            min-width: 200px; color: #94a3b8; font-size: 0.9rem;
+          }
+          .form-row input[type="number"],
+          .form-row input[type="text"] {
+            flex: 1; padding: 6px 10px; border-radius: 6px;
+            border: 1px solid #475569; background: #0f172a; color: #e2e8f0;
+            font-size: 0.9rem;
+          }
+          .form-row textarea {
+            border: 1px solid #475569; background: #0f172a; color: #e2e8f0;
+            border-radius: 6px; padding: 8px;
+          }
+          .form-row input[type="checkbox"] {
+            width: 18px; height: 18px; accent-color: #3b82f6;
+          }
+
+          .trend-history-table {
+            width: 100%; border-collapse: collapse;
+          }
+          .trend-history-table th {
+            text-align: left; padding: 8px 12px; color: #94a3b8;
+            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;
+            border-bottom: 1px solid #334155;
+          }
+          .trend-history-table td {
+            padding: 8px 12px; color: #e2e8f0; font-size: 0.9rem;
+            border-bottom: 1px solid #1e293b;
+          }
+          .trend-history-table tr:hover td { background: #1e293b; }
+
+          button.small {
+            padding: 4px 12px; font-size: 0.8rem;
+          }
+        </style>
+      </section>
+
+      <!-- ================================================================== -->
       <!-- FACEBOOK SCHEDULE MANAGER                                          -->
       <!-- ================================================================== -->
       <section id="fbScheduleManagerView" class="view">
@@ -6268,6 +6426,12 @@
             <select id="slicerCategoryFilter" style="padding:6px 12px;">
               <option value="">-- Choose a Category --</option>
             </select>
+            <select id="slicerSortOrder" style="padding:6px 12px;font-size:0.85rem;">
+              <option value="name-asc">Name A-Z</option>
+              <option value="name-desc">Name Z-A</option>
+              <option value="newest">Newest</option>
+              <option value="size">Size</option>
+            </select>
             <button id="slicerUploadBtn" class="primary" style="padding:6px 14px;">+ Upload STL</button>
             <button id="slicerBulkImportBtn" class="secondary" style="padding:6px 14px;">Bulk Import</button>
             <button id="slicerPlateToggle" class="secondary" style="padding:6px 14px;">🔲 Build Plate</button>
@@ -6280,7 +6444,7 @@
         <div id="slicerContent" style="padding:0 16px 16px;">
           <!-- Panel 1: STL Catalog Grid (shown by default) -->
           <div id="slicerCatalogPanel">
-            <div id="slicerCatalogGrid" class="dashboard-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));max-height:calc(100vh - 310px);overflow-y:auto;">
+            <div id="slicerCatalogGrid" class="dashboard-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));max-height:calc(100vh - 310px);overflow-y:auto;">
               <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
                 No STL models in the catalog yet. Click <strong>+ Upload STL</strong> to add your first model.
               </div>
@@ -6707,6 +6871,33 @@
     </div>
 
       <!-- ================================================================== -->
+      <!-- PRINT QUOTES                                                      -->
+      <!-- ================================================================== -->
+      <section id="printQuotesView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Print Quotes</h2>
+          <button id="pqNewQuoteBtn" class="primary" style="margin-left:auto;">+ New Quote</button>
+        </div>
+        <div id="printQuotesViewBody" style="flex:1;min-height:0;overflow:hidden;display:flex;gap:0;">
+          <!-- List panel -->
+          <div id="pqListPanel" style="width:320px;min-width:220px;border-right:1px solid #222;overflow-y:auto;display:flex;flex-direction:column;">
+            <div style="padding:10px 12px;border-bottom:1px solid #1a1a2e;">
+              <input id="pqSearchBox" type="text" placeholder="Search quotes…" style="width:100%;box-sizing:border-box;">
+            </div>
+            <div id="pqQuoteList" style="flex:1;overflow-y:auto;padding:8px 0;"></div>
+          </div>
+          <!-- Detail panel -->
+          <div id="pqDetailPanel" style="flex:1;overflow-y:auto;padding:20px;">
+            <div id="pqEmptyState" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#555;">
+              <div style="font-size:3rem;">📋</div>
+              <p>Select a quote or create a new one.</p>
+            </div>
+            <div id="pqDetail" style="display:none;max-width:900px;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
       <!-- MULTIBOARD DESIGNER                                               -->
       <!-- ================================================================== -->
       <section id="multiboardDesignerView" class="view" style="flex:1;min-height:0;overflow:hidden;gap:0;">
@@ -6905,6 +7096,10 @@
     <script src="./slicer-view.js"></script>
     <!-- B2B Management View -->
     <script src="./b2b-management-view.js"></script>
+    <!-- Trend Monitor View -->
+    <script src="./trend-monitor-view.js"></script>
+    <!-- Print Quotes View -->
+    <script src="./quotes-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>

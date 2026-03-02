@@ -847,6 +847,94 @@ async function syncProductToEbay(shopifyProduct, options = {}) {
   };
 }
 
+// ===========================================
+// Order Management API (Fulfillment)
+// ===========================================
+
+/**
+ * Get orders with optional filters
+ * @param {object} options - Filter options
+ * @param {string} options.filter - eBay filter string (e.g., 'orderfulfillmentstatus:{NOT_STARTED|IN_PROGRESS}')
+ * @param {number} options.limit - Max orders to return (default 50)
+ * @param {number} options.offset - Pagination offset
+ */
+async function getOrders({ filter, limit = 50, offset = 0 } = {}) {
+  let endpoint = `/sell/fulfillment/v1/order?limit=${limit}&offset=${offset}`;
+  if (filter) {
+    endpoint += `&filter=${encodeURIComponent(filter)}`;
+  }
+  return apiRequest('GET', endpoint);
+}
+
+/**
+ * Get a single order by ID
+ */
+async function getOrder(orderId) {
+  return apiRequest('GET', `/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}`);
+}
+
+/**
+ * Create a shipping fulfillment (mark order as shipped with tracking)
+ * @param {string} orderId - eBay order ID
+ * @param {object} shipment - Shipping details
+ * @param {string} shipment.trackingNumber - Carrier tracking number
+ * @param {string} shipment.carrier - Shipping carrier (e.g., 'USPS', 'UPS', 'FEDEX')
+ * @param {string[]} shipment.lineItemIds - Array of line item IDs to fulfill (or all if omitted)
+ */
+async function createShippingFulfillment(orderId, shipment) {
+  // Get order details to determine line items if not specified
+  let lineItems = shipment.lineItemIds;
+  if (!lineItems || lineItems.length === 0) {
+    const order = await getOrder(orderId);
+    lineItems = (order.lineItems || []).map(li => li.lineItemId);
+  }
+
+  const data = {
+    lineItems: lineItems.map(id => ({
+      lineItemId: id,
+      quantity: 1
+    })),
+    shippingCarrierCode: shipment.carrier || 'USPS',
+    trackingNumber: shipment.trackingNumber
+  };
+
+  if (shipment.shippedDate) {
+    data.shippedDate = shipment.shippedDate;
+  }
+
+  return apiRequest('POST', `/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}/shipping_fulfillment`, data);
+}
+
+/**
+ * Get shipping fulfillments for an order
+ */
+async function getShippingFulfillments(orderId) {
+  return apiRequest('GET', `/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}/shipping_fulfillment`);
+}
+
+/**
+ * Issue a refund for an order
+ * @param {string} orderId - eBay order ID
+ * @param {object} refund - Refund details
+ * @param {string} refund.reasonForRefund - Reason code
+ * @param {number} refund.amount - Refund amount in dollars
+ */
+async function issueRefund(orderId, refund) {
+  const data = {
+    reasonForRefund: refund.reasonForRefund || 'OTHER',
+    orderLevelRefundAmount: {
+      currency: 'USD',
+      value: String(refund.amount)
+    }
+  };
+
+  if (refund.comment) {
+    data.comment = refund.comment;
+  }
+
+  return apiRequest('POST', `/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}/issue_refund`, data);
+}
+
 // Store for OAuth state
 const oauthPending = new Map();
 
@@ -931,6 +1019,13 @@ module.exports = {
   // Taxonomy
   getCategoryTree,
   searchCategories,
+
+  // Order Management & Fulfillment
+  getOrders,
+  getOrder,
+  createShippingFulfillment,
+  getShippingFulfillments,
+  issueRefund,
 
   // Sync helpers
   shopifyToEbayItem,

@@ -1768,6 +1768,11 @@ function switchView(viewId) {
     loadFbScheduleTemplates();
     loadScheduledPosts();
   }
+  if (viewId === 'trendMonitorView') {
+    if (typeof initTrendMonitorView === 'function') {
+      initTrendMonitorView();
+    }
+  }
   if (viewId === 'customArtView') {
     console.log('[Custom Art] View opened');
     // Initialize Custom Art elements (get fresh DOM references)
@@ -1877,6 +1882,13 @@ function switchView(viewId) {
   if (viewId === 'slicerView') {
     if (typeof initSlicerView === 'function') {
       initSlicerView();
+    }
+  }
+
+  // Print Quotes view
+  if (viewId === 'printQuotesView') {
+    if (typeof initPrintQuotesView === 'function') {
+      initPrintQuotesView();
     }
   }
 
