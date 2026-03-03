@@ -5833,6 +5833,36 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('admin:orders:orphans', () =>
     httpRequest('/api/internal/orders/orphans', { method: 'GET' })
   );
+
+  // AI Sales Agent
+  ipcMain.handle('agent:status', () =>
+    httpRequest('/api/agent/status', { method: 'GET' })
+  );
+  ipcMain.handle('agent:engagement-summary', () =>
+    httpRequest('/api/agent/engagement/summary', { method: 'GET' })
+  );
+  ipcMain.handle('agent:strategy', () =>
+    httpRequest('/api/agent/strategy', { method: 'GET' })
+  );
+  ipcMain.handle('agent:categories', () =>
+    httpRequest('/api/agent/categories', { method: 'GET' })
+  );
+  ipcMain.handle('agent:update-category', (_event, { name, data }) =>
+    httpRequest(`/api/agent/categories/${encodeURIComponent(name)}`, { method: 'PUT', body: data })
+  );
+  ipcMain.handle('agent:calendar', () =>
+    httpRequest('/api/agent/calendar', { method: 'GET' })
+  );
+  ipcMain.handle('agent:daily-report', () =>
+    httpRequest('/api/agent/report/daily', { method: 'GET' })
+  );
+  ipcMain.handle('agent:approvals', () =>
+    httpRequest('/api/agent/approvals', { method: 'GET' })
+  );
+  ipcMain.handle('agent:run', () =>
+    httpRequest('/api/agent/run', { method: 'POST' })
+  );
+
   ipcMain.handle('admin:orders:cleanup', (_event, payload) =>
     httpRequest('/api/internal/orders/cleanup', { method: 'POST', body: payload || {} })
   );

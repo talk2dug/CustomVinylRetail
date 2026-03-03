@@ -441,6 +441,19 @@ contextBridge.exposeInMainWorld('printStation', {
     getSocialStats: (period) => ipcRenderer.invoke('dashboard:social-stats', { period })
   },
 
+  // AI Sales Agent APIs
+  agent: {
+    getStatus: () => ipcRenderer.invoke('agent:status'),
+    getEngagementSummary: () => ipcRenderer.invoke('agent:engagement-summary'),
+    getStrategy: () => ipcRenderer.invoke('agent:strategy'),
+    getCategories: () => ipcRenderer.invoke('agent:categories'),
+    updateCategory: (name, data) => ipcRenderer.invoke('agent:update-category', { name, data }),
+    getCalendar: () => ipcRenderer.invoke('agent:calendar'),
+    getDailyReport: () => ipcRenderer.invoke('agent:daily-report'),
+    getApprovals: () => ipcRenderer.invoke('agent:approvals'),
+    triggerRun: () => ipcRenderer.invoke('agent:run'),
+  },
+
   // Shopify Manager APIs
   shopifyManager: {
     listProducts: (query) => ipcRenderer.invoke('shopify-manager:products:list', query || {}),

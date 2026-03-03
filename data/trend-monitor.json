@@ -54,8 +54,8 @@
     ],
     "googleTrendsGeo": "US"
   },
-  "lastScanAt": "2026-03-03T18:04:44.106Z",
-  "scanCount": 22,
+  "lastScanAt": "2026-03-03T20:37:35.660Z",
+  "scanCount": 28,
   "trends": [
     {
       "id": "reddit_1riex53",
@@ -1111,7 +1111,7 @@
     }
   ],
   "stats": {
-    "totalScans": 22,
+    "totalScans": 28,
     "totalTrendsFound": 12,
     "totalDesignsGenerated": 48,
     "totalApproved": 8,
