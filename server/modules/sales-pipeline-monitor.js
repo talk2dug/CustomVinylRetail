@@ -16,6 +16,8 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const Database = require('better-sqlite3');
+let telegram;
+try { telegram = require('../lib/telegram-notifier'); } catch(e) { /* optional */ }
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const DB_PATH = path.join(APP_ROOT, 'data', 'store.db');
@@ -751,6 +753,17 @@ function executeResetFailedPosts() {
 async function executeSendAlert(action) {
   const message = `[Pipeline Monitor] ${action.severity === 'critical' ? 'CRITICAL: ' : ''}${action.message}`;
   console.log(`${LOG_PREFIX} ALERT: ${message}`);
+
+  // Try Telegram first
+  if (telegram && telegram.isConfigured()) {
+    try {
+      const sev = action.severity === 'critical' ? 'critical' : 'warning';
+      await telegram.sendAlert(sev, 'Pipeline Alert', action.message);
+      return { sent: true, channel: 'telegram' };
+    } catch (e) {
+      console.warn(`${LOG_PREFIX} Telegram alert failed: ${e.message}`);
+    }
+  }
 
   // Try SMS if configured
   if (_config.enableAlerts && _config.alertPhone) {

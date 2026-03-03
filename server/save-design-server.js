@@ -54,6 +54,7 @@ const crossSell = require('./modules/cross-sell');
 const salesAnalytics = require('./modules/sales-analytics');
 const trendMonitor = require('./modules/trend-monitor');
 const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
+const aiSalesAgent = require('./modules/ai-sales-agent');
 // Shared utilities
 const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
 const { sendJson, handleOptions } = require('./utils/http');
@@ -3543,6 +3544,10 @@ const requestHandler = async (req, res) => {
   // Pipeline Monitor API
   if (parsedUrl.pathname.startsWith('/api/pipeline/')) {
     if (salesPipelineMonitor.handlePipelineRoute(req, res, parsedUrl, sendJson, db)) return;
+  }
+  // AI Sales Agent API
+  if (parsedUrl.pathname.startsWith('/api/agent/')) {
+    if (aiSalesAgent.handleAgentRoute(req, res, parsedUrl, sendJson, db)) return;
   }
   if (parsedUrl.pathname.startsWith('/api/email-sequences')) {
     if (emailSequences.handleEmailSequenceRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
@@ -20223,6 +20228,14 @@ if (require.main === module) {
       console.log('[Server] Sales pipeline monitor started');
     } catch (error) {
       console.error('[Server] Failed to start pipeline monitor:', error.message);
+    }
+
+    // Start AI Sales Agent daemon (runs every 30 minutes)
+    try {
+      aiSalesAgent.startAgent(db);
+      console.log('[Server] AI Sales Agent started');
+    } catch (error) {
+      console.error('[Server] Failed to start AI Sales Agent:', error.message);
     }
 
     // Start abandoned cart recovery processor (runs every 15 minutes)

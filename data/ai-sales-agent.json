@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "agentState": {
+    "enabled": true,
+    "lastCycleAt": "2026-03-03T20:40:26.975Z",
+    "cycleCount": 2,
+    "currentStrategy": null
+  },
+  "platforms": {
+    "facebook": {
+      "enabled": true,
+      "postsPerDay": 2,
+      "bestHours": [
+        10,
+        14,
+        19
+      ],
+      "maxPostsPerWeek": 14
+    },
+    "pinterest": {
+      "enabled": false,
+      "postsPerDay": 0,
+      "note": "Token expired - needs PINTEREST_ACCESS_TOKEN"
+    },
+    "tiktok": {
+      "enabled": false,
+      "postsPerDay": 0,
+      "note": "Needs TIKTOK_ACCESS_TOKEN and audit"
+    },
+    "instagram": {
+      "enabled": false,
+      "postsPerDay": 0,
+      "note": "Needs IG Business account linked to FB page"
+    }
+  },
+  "categories": {
+    "metal-print": {
+      "displayName": "Metal Prints",
+      "enabled": true,
+      "postingWeight": 0.54,
+      "shopifyProductTypes": [
+        "Metal Print",
+        "Metal Print Wall Art",
+        "Metal art",
+        "Metal art piece"
+      ],
+      "captionStyles": {
+        "showcase": 0.3,
+        "lifestyle": 0.3,
+        "quality": 0.2,
+        "humor": 0.1,
+        "urgency": 0.1
+      },
+      "defaultHashtags": "#metalprint #wallart #homedecor #metalwallart #artprint #BlueRidgeCustomCo",
+      "targetAudience": "Homeowners, interior design enthusiasts, car lovers, art collectors"
+    },
+    "tshirt": {
+      "displayName": "T-Shirts",
+      "enabled": true,
+      "postingWeight": 0.31,
+      "shopifyProductTypes": [
+        "tshirt",
+        "T-Shirt"
+      ],
+      "captionStyles": {
+        "humor": 0.41,
+        "showcase": 0.2,
+        "urgency": 0.2,
+        "lifestyle": 0.19
+      },
+      "defaultHashtags": "#customtee #graphictee #tshirt #trending #shopsmall #BlueRidgeCustomCo",
+      "targetAudience": "GenX, Millennials, meme culture, casual fashion"
+    },
+    "sticker": {
+      "displayName": "Stickers",
+      "enabled": true,
+      "postingWeight": 0.15,
+      "shopifyProductTypes": [
+        "sticker",
+        "sticker-pack",
+        "Decals",
+        "Decal",
+        "Bumper stickers",
+        "Sticker Pack"
+      ],
+      "captionStyles": {
+        "humor": 0.4,
+        "showcase": 0.3,
+        "lifestyle": 0.2,
+        "urgency": 0.1
+      },
+      "defaultHashtags": "#stickers #vinylsticker #customsticker #stickerlife #BlueRidgeCustomCo",
+      "targetAudience": "Young adults, sticker collectors, laptop customizers"
+    }
+  },
+  "captionStyleDefinitions": {
+    "showcase": "Highlight the product quality, details, and craftsmanship. Describe what makes it special.",
+    "lifestyle": "Show the product in context. Describe a scene where it fits. Make it aspirational.",
+    "humor": "Use wit, puns, or relatable humor. Be playful and casual. Match Gen X/Millennial humor.",
+    "urgency": "Create FOMO. Limited availability, trending now, selling fast. Drive immediate action.",
+    "quality": "Focus on materials, durability, craftsmanship. Premium positioning."
+  },
+  "strategy": {
+    "learningRate": 0.1,
+    "underexposedBoostDays": 7,
+    "repostCooldownDays": 14,
+    "abTestMinSample": 10,
+    "engagementWindowDays": 30
+  },
+  "telegram": {
+    "dailyReportHour": 20,
+    "weeklyReportDay": 1,
+    "viralThreshold": 50,
+    "approvalRequiredFor": [
+      "paid_ads",
+      "new_channel"
+    ]
+  }
+}
