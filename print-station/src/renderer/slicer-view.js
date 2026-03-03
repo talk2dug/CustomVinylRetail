@@ -4004,7 +4004,14 @@ function slicerRenderSelectedPreview(arrayBuffer) {
     }
   }
 
-  geometry.center();
+  // Floor model to Y=0 and center in XZ — matches how build plate preview shows it
+  geometry.computeBoundingBox();
+  const bb = geometry.boundingBox;
+  geometry.translate(
+    -((bb.max.x + bb.min.x) / 2),
+    -bb.min.y,
+    -((bb.max.z + bb.min.z) / 2)
+  );
 
   const material = new THREE.MeshPhongMaterial({
     color: 0x38bdf8, specular: 0x222222, shininess: 40
@@ -4012,17 +4019,51 @@ function slicerRenderSelectedPreview(arrayBuffer) {
   const mesh = new THREE.Mesh(geometry, material);
   scene.add(mesh);
 
-  const box = new THREE.Box3().setFromObject(mesh);
-  const size = box.getSize(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z);
+  // Small bed reference plane at Y=0 so orientation relative to printer X/Y axes is visible
+  geometry.computeBoundingBox();
+  const mbox = geometry.boundingBox;
+  const mw = mbox.max.x - mbox.min.x;
+  const md = mbox.max.z - mbox.min.z;
+  const mh = mbox.max.y - mbox.min.y;
+  const padFactor = 1.6;
+  const bedW = Math.max(mw * padFactor, 30);
+  const bedD = Math.max(md * padFactor, 30);
+  const bedGeo = new THREE.PlaneGeometry(bedW, bedD);
+  const bedMat = new THREE.MeshPhongMaterial({ color: 0x1a1a2e, transparent: true, opacity: 0.7 });
+  const bedMesh = new THREE.Mesh(bedGeo, bedMat);
+  bedMesh.rotation.x = -Math.PI / 2;
+  scene.add(bedMesh);
+
+  // Thin grid lines on the bed (5mm spacing, up to 8 lines per axis)
+  const gridPts = [];
+  const step = Math.max(5, Math.ceil(Math.min(bedW, bedD) / 8 / 5) * 5);
+  for (let x = -bedW / 2; x <= bedW / 2 + 0.01; x += step) {
+    gridPts.push(new THREE.Vector3(x, 0.05, -bedD / 2));
+    gridPts.push(new THREE.Vector3(x, 0.05,  bedD / 2));
+  }
+  for (let z = -bedD / 2; z <= bedD / 2 + 0.01; z += step) {
+    gridPts.push(new THREE.Vector3(-bedW / 2, 0.05, z));
+    gridPts.push(new THREE.Vector3( bedW / 2, 0.05, z));
+  }
+  const gridGeo = new THREE.BufferGeometry().setFromPoints(gridPts);
+  const gridMat = new THREE.LineBasicMaterial({ color: 0x333355, transparent: true, opacity: 0.4 });
+  const gridMesh = new THREE.LineSegments(gridGeo, gridMat);
+  scene.add(gridMesh);
+
+  // Camera: same elevation angle as build plate (0.5/0.7/0.5 ratio) so orientation reads identically
+  const maxDim = Math.max(mw, mh, md, bedW, bedD);
   const fov = camera.fov * (Math.PI / 180);
-  const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.8;
-  camera.position.set(dist * 0.7, dist * 0.5, dist * 0.7);
-  camera.lookAt(0, 0, 0);
+  const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.4;
+  const modelCenterY = mh / 2;
+  camera.position.set(dist * 0.5, modelCenterY + dist * 0.7, dist * 0.5);
+  const target = new THREE.Vector3(0, modelCenterY, 0);
+  camera.lookAt(target);
 
   const controls = new THREE.OrbitControls(camera, canvas);
+  controls.target.copy(target);
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
+  controls.update();
 
   let animId;
   function animate() {
@@ -4032,7 +4073,7 @@ function slicerRenderSelectedPreview(arrayBuffer) {
   }
   animate();
 
-  slicerState.selectedPreview = { renderer, scene, camera, controls, animId, geometry, material };
+  slicerState.selectedPreview = { renderer, scene, camera, controls, animId, geometry, material, bedGeo, bedMat, gridGeo, gridMat };
 }
 
 function slicerDisposeSelectedPreview() {
@@ -4042,6 +4083,10 @@ function slicerDisposeSelectedPreview() {
   if (p.controls) p.controls.dispose();
   if (p.geometry) p.geometry.dispose();
   if (p.material) p.material.dispose();
+  if (p.bedGeo) p.bedGeo.dispose();
+  if (p.bedMat) p.bedMat.dispose();
+  if (p.gridGeo) p.gridGeo.dispose();
+  if (p.gridMat) p.gridMat.dispose();
   if (p.renderer) p.renderer.dispose();
   slicerState.selectedPreview = null;
 }

@@ -6595,7 +6595,7 @@ function updateStlCatalogItem(id, updates) {
     'notes', 'file_size', 'triangle_count', 'dim_x', 'dim_y', 'dim_z', 'est_weight_g', 'est_time_min',
     'mb_type', 'mu_width', 'mu_height',
     'description', 'source_url', 'mount_type', 'mount_hardware', 'requires_tray', 'tray_size', 'tray_notes',
-    'mount_normal'];
+    'mount_normal', 'default_transform'];
   const set = [];
   const params = { id };
   for (const key of allowed) {
