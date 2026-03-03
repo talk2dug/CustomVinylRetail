@@ -174,7 +174,7 @@
           <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #2a1e00;font-size:12px;">
             <span style="color:#ccc;">${escHtml(it.name)} ×${it.qty}</span>
             ${it.search_hint ? `<a href="#" class="pq-parts-search-link" data-hint="${escHtml(it.search_hint)}"
-              style="color:#2196f3;text-decoration:none;font-size:11px;">Find in Parts Browser →</a>` : ''}
+              style="color:#2196f3;text-decoration:none;font-size:11px;white-space:nowrap;">🔍 Find Part →</a>` : ''}
           </div>`).join('')}
         </div>` : ''}
       </div>
@@ -242,12 +242,14 @@
       }
     });
 
-    // Parts Browser search links
+    // Parts Browser search links — open slide-in drawer
     panel.querySelectorAll('.pq-parts-search-link').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
         const hint = link.dataset.hint;
-        if (typeof window.mpbOpenSearch === 'function') {
+        if (typeof window.openPartsFinderDrawer === 'function') {
+          window.openPartsFinderDrawer(hint);
+        } else if (typeof window.mpbOpenSearch === 'function') {
           window.mpbOpenSearch(hint);
         }
       });
