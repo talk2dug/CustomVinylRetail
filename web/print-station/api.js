@@ -377,6 +377,23 @@ window.printStation = {
   },
 
   // ============================================================================
+  // AI SALES AGENT
+  // ============================================================================
+  agent: {
+    getStatus: () => apiRequest('/api/agent/status'),
+    getEngagementSummary: () => apiRequest('/api/agent/engagement/summary'),
+    getStrategy: () => apiRequest('/api/agent/strategy'),
+    getCategories: () => apiRequest('/api/agent/categories'),
+    updateCategory: (name, data) => apiRequest(`/api/agent/categories/${encodeURIComponent(name)}`, { method: 'PUT', body: data }),
+    getCalendar: () => apiRequest('/api/agent/calendar'),
+    getDailyReport: () => apiRequest('/api/agent/report/daily'),
+    getApprovals: () => apiRequest('/api/agent/approvals'),
+    triggerRun: () => apiRequest('/api/agent/run', { method: 'POST' }),
+  },
+
+
+
+  // ============================================================================
   // SHOPIFY MANAGER
   // ============================================================================
   shopifyManager: {

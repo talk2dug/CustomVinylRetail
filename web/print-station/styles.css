@@ -4196,6 +4196,110 @@ textarea:focus {
 }
 
 /* Print styles - hide navigation */
+
+/* ============================================================================
+   AI SALES AGENT
+   ============================================================================ */
+
+.ai-agent-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 18px;
+}
+
+.ai-agent-panel .inventory-card { height: 100%; }
+
+.ai-agent-table-container { overflow-x: auto; }
+
+/* Category weight bars */
+.ai-weight-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ai-weight-bar-row .ai-weight-label {
+  font-size: 0.8rem; color: var(--text); min-width: 100px; text-transform: capitalize;
+}
+.ai-weight-bar-row .ai-weight-track {
+  flex: 1; height: 8px; background: rgba(100,116,139,0.2); border-radius: 4px; overflow: hidden;
+}
+.ai-weight-bar-row .ai-weight-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent), #22d3ee); border-radius: 4px; transition: width 0.5s ease;
+}
+.ai-weight-bar-row .ai-weight-value {
+  font-size: 0.8rem; color: var(--muted); min-width: 36px; text-align: right; font-variant-numeric: tabular-nums;
+}
+
+/* Best time badges */
+.ai-best-times { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-time-badge {
+  background: rgba(30,41,59,0.5); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 0.8rem; color: var(--text);
+}
+.ai-time-badge .ai-time-hour { font-weight: 600; color: var(--accent); }
+.ai-time-badge .ai-time-eng { color: var(--muted); margin-left: 4px; }
+
+/* Strategy decisions */
+.ai-decisions-list { display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; }
+.ai-decision-item {
+  background: rgba(30,41,59,0.5); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px;
+}
+.ai-decision-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.ai-decision-time { font-size: 0.75rem; color: var(--muted); }
+.ai-decision-confidence { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+.ai-decision-confidence.high { background: rgba(52,211,153,0.2); color: var(--success); }
+.ai-decision-confidence.medium { background: rgba(251,191,36,0.2); color: var(--warning); }
+.ai-decision-confidence.low { background: rgba(248,113,113,0.2); color: var(--danger); }
+.ai-decision-body { font-size: 0.85rem; color: var(--text); }
+
+/* Calendar */
+.ai-calendar-list { display: flex; flex-direction: column; gap: 8px; }
+.ai-calendar-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: rgba(30,41,59,0.5); border: 1px solid var(--border); border-radius: 6px;
+}
+.ai-calendar-date { min-width: 80px; text-align: center; }
+.ai-calendar-date .ai-cal-day { font-size: 0.7rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; }
+.ai-calendar-date .ai-cal-time { font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+.ai-calendar-info { flex: 1; min-width: 0; }
+.ai-calendar-info .ai-cal-category { font-size: 0.85rem; font-weight: 500; color: var(--text); text-transform: capitalize; }
+.ai-calendar-info .ai-cal-style { font-size: 0.75rem; color: var(--muted); }
+.ai-calendar-status {
+  font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-weight: 600;
+}
+.ai-calendar-status.planned { background: rgba(56,189,248,0.2); color: var(--accent); }
+.ai-calendar-status.scheduled { background: rgba(251,191,36,0.2); color: var(--warning); }
+.ai-calendar-status.published { background: rgba(52,211,153,0.2); color: var(--success); }
+
+/* Category settings */
+.ai-category-settings { display: flex; flex-direction: column; gap: 10px; }
+.ai-category-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: rgba(30,41,59,0.5); border: 1px solid var(--border); border-radius: 6px;
+}
+.ai-category-row .ai-cat-name { font-weight: 500; color: var(--text); min-width: 120px; text-transform: capitalize; }
+.ai-category-row .ai-cat-weight { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ai-category-row .ai-cat-styles { font-size: 0.75rem; color: var(--muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-category-row .ai-cat-toggle { margin-left: auto; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+/* Approvals */
+.ai-approvals-list { display: flex; flex-direction: column; gap: 10px; }
+.ai-approval-item {
+  padding: 12px; background: rgba(30,41,59,0.5); border: 1px solid var(--border); border-radius: 6px;
+}
+.ai-approval-item.pending { border-left: 3px solid var(--warning); }
+.ai-approval-item.approved { border-left: 3px solid var(--success); opacity: 0.7; }
+.ai-approval-item.denied { border-left: 3px solid var(--danger); opacity: 0.7; }
+.ai-approval-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.ai-approval-desc { font-size: 0.85rem; color: var(--text); margin-bottom: 8px; }
+.ai-approval-actions { display: flex; gap: 8px; }
+.ai-approval-actions button { padding: 4px 12px; font-size: 0.8rem; border-radius: 4px; cursor: pointer; }
+
+@media (max-width: 900px) {
+  .ai-agent-layout { grid-template-columns: 1fr; }
+}
+
 @media print {
   .app-header,
   .tab-bar,

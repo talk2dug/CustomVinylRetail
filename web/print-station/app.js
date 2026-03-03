@@ -1733,6 +1733,9 @@ function switchView(viewId) {
     // Initialize Printer view - load printers
     initPrinterView();
   }
+  if (viewId === 'aiAgentView') {
+    loadAiAgentData();
+  }
   if (viewId === 'fbScheduleManagerView') {
     // Load campaigns and templates for schedule manager
     loadFbScheduleCampaigns();
@@ -1808,6 +1811,18 @@ const dashboardState = {
   lastUpdated: null,
   salesPeriod: 'week',
   socialPeriod: '7d'
+};
+
+// AI Sales Agent State
+const aiAgentState = {
+  loading: false,
+  status: null,
+  dailyReport: null,
+  engagement: null,
+  strategy: null,
+  calendar: null,
+  categories: null,
+  approvals: null
 };
 
 // Task Monitor State
@@ -1949,10 +1964,11 @@ async function loadDashboardData() {
 
   try {
     // Load all dashboard data in parallel
-    const [statsResult, serverResult, socialResult] = await Promise.all([
+    const [statsResult, serverResult, socialResult, agentStatusResult] = await Promise.all([
       printStation.dashboard.getStats(dashboardState.salesPeriod).catch(e => ({ error: e.message })),
       printStation.dashboard.getServerStats().catch(e => ({ error: e.message })),
-      printStation.dashboard.getSocialStats(dashboardState.socialPeriod).catch(e => ({ error: e.message }))
+      printStation.dashboard.getSocialStats(dashboardState.socialPeriod).catch(e => ({ error: e.message })),
+      printStation.agent ? printStation.agent.getStatus().catch(e => ({ error: e.message })) : Promise.resolve({ error: 'not available' })
     ]);
 
     // Update server health
@@ -1971,6 +1987,11 @@ async function loadDashboardData() {
     // Update social stats
     if (socialResult && !socialResult.error) {
       updateSocialStats(socialResult);
+    }
+
+    // Update AI Agent card
+    if (agentStatusResult && !agentStatusResult.error) {
+      updateAgentDashboardCard(agentStatusResult);
     }
 
     // Update last updated time
@@ -2202,6 +2223,42 @@ function updateSocialStats(social) {
   setVal('socialCtr', `${(social.ctr || 0).toFixed(1)}%`);
 }
 
+
+function updateAgentDashboardCard(status) {
+  if (!status) return;
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+  const badge = document.getElementById('agentStatusBadge');
+  if (badge) {
+    badge.className = 'dashboard-status online';
+    badge.title = status.running ? 'Agent is running' : 'Agent idle';
+  }
+
+  setVal('agentCycleCount', status.cycleCount || 0);
+  setVal('agentQueueDepth', status.queueDepth || 0);
+  setVal('agentPostsTracked', status.postsTracked || 0);
+
+  if (status.lastCycleAt) {
+    const diffMin = Math.round((Date.now() - new Date(status.lastCycleAt).getTime()) / 60000);
+    if (diffMin < 60) setVal('agentLastCycle', diffMin + 'm ago');
+    else if (diffMin < 1440) setVal('agentLastCycle', Math.round(diffMin / 60) + 'h ago');
+    else setVal('agentLastCycle', new Date(status.lastCycleAt).toLocaleDateString());
+  } else {
+    setVal('agentLastCycle', 'Never');
+  }
+
+  const catEl = document.getElementById('agentTopCategories');
+  if (catEl && status.enabledCategories?.length) {
+    const sorted = [...status.enabledCategories].sort((a, b) => b.weight - a.weight);
+    catEl.innerHTML = '<h4>Active Categories</h4><ul>' +
+      sorted.map(c => '<li><span class="item-name" style="text-transform:capitalize;">' +
+        escapeHtml(c.name.replace(/-/g, ' ')) + '</span><span class="item-value">' +
+        (c.weight * 100).toFixed(0) + '%</span></li>').join('') + '</ul>';
+  } else if (catEl) {
+    catEl.innerHTML = '<h4>Active Categories</h4><div class="placeholder">No categories</div>';
+  }
+}
+
 function formatNumber(num) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
@@ -2233,6 +2290,247 @@ function initDashboardEventListeners() {
     });
   }
 }
+
+// ============================================================================
+// AI SALES AGENT VIEW
+// ============================================================================
+
+async function loadAiAgentData() {
+  if (aiAgentState.loading) return;
+  aiAgentState.loading = true;
+
+  try {
+    const [status, daily, engagement, strategy, calendar, categories, approvals] = await Promise.all([
+      printStation.agent.getStatus().catch(e => ({ error: e.message })),
+      printStation.agent.getDailyReport().catch(e => ({ error: e.message })),
+      printStation.agent.getEngagementSummary().catch(e => ({ error: e.message })),
+      printStation.agent.getStrategy().catch(e => ({ error: e.message })),
+      printStation.agent.getCalendar().catch(e => ({ error: e.message })),
+      printStation.agent.getCategories().catch(e => ({ error: e.message })),
+      printStation.agent.getApprovals().catch(e => ({ error: e.message }))
+    ]);
+
+    aiAgentState.status = status;
+
+    // Toolbar status
+    if (status && !status.error) {
+      const ind = document.getElementById('aiAgentStatusIndicator');
+      if (ind) { ind.className = 'dashboard-status online'; ind.title = status.running ? 'Running...' : 'Idle'; }
+      const label = document.getElementById('aiAgentLastCycleLabel');
+      if (label && status.lastCycleAt) label.textContent = 'Last cycle: ' + new Date(status.lastCycleAt).toLocaleString();
+      else if (label) label.textContent = 'No cycles yet';
+    }
+
+    if (daily && !daily.error) renderAiDailyReport(daily);
+    if (engagement && !engagement.error) renderAiEngagement(engagement);
+    if (strategy && !strategy.error) renderAiStrategy(strategy);
+    if (calendar && !calendar.error) renderAiCalendar(calendar);
+    if (categories && !categories.error) renderAiCategories(categories);
+    if (approvals && !approvals.error) renderAiApprovals(approvals);
+
+  } catch (e) {
+    console.error('[AI Agent] Error loading data:', e);
+  } finally {
+    aiAgentState.loading = false;
+  }
+}
+
+function renderAiDailyReport(data) {
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setVal('aiDailyPostsPublished', data.postsPublished || 0);
+  setVal('aiDailyTotalLikes', formatNumber(data.totalLikes || 0));
+  setVal('aiDailyTotalComments', formatNumber(data.totalComments || 0));
+  setVal('aiDailyTotalShares', formatNumber(data.totalShares || 0));
+  setVal('aiDailyQueueDepth', data.queueDepth || 0);
+  setVal('aiDailyQueueDays', data.queueDays ? '~' + data.queueDays + 'd' : '--');
+}
+
+function renderAiEngagement(data) {
+  const tbody = document.getElementById('aiEngagementCategoryBody');
+  if (tbody) {
+    if (data.byCategory?.length) {
+      tbody.innerHTML = data.byCategory.map(c => {
+        const cat = (c.product_category || 'unknown').replace(/-/g, ' ');
+        return '<tr>' +
+          '<td style="padding:8px;text-transform:capitalize;">' + escapeHtml(cat) + '</td>' +
+          '<td style="padding:8px;text-align:right;">' + (c.post_count || 0) + '</td>' +
+          '<td style="padding:8px;text-align:right;">' + (c.avg_engagement || 0) + '</td>' +
+          '<td style="padding:8px;text-align:right;">' + formatNumber(c.total_likes || 0) + '</td>' +
+          '<td style="padding:8px;text-align:right;">' + formatNumber(c.total_comments || 0) + '</td>' +
+          '<td style="padding:8px;text-align:right;">' + formatNumber(c.total_shares || 0) + '</td>' +
+          '</tr>';
+      }).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="6" class="placeholder" style="text-align:center;padding:20px;">No engagement data yet</td></tr>';
+    }
+  }
+
+  const windowEl = document.getElementById('aiEngagementWindow');
+  if (windowEl) windowEl.textContent = (data.windowDays || 30) + '-day window';
+
+  const timesEl = document.getElementById('aiBestTimes');
+  if (timesEl && data.byHour?.length) {
+    timesEl.innerHTML = data.byHour.slice(0, 6).map(h =>
+      '<div class="ai-time-badge"><span class="ai-time-hour">' + h.posted_hour + ':00</span>' +
+      '<span class="ai-time-eng">' + (h.avg_engagement || 0) + ' eng</span></div>'
+    ).join('');
+  } else if (timesEl) {
+    timesEl.innerHTML = '<div class="placeholder">Not enough data</div>';
+  }
+}
+
+function renderAiStrategy(data) {
+  const barsEl = document.getElementById('aiWeightBars');
+  if (barsEl && data.currentWeights) {
+    const entries = Object.entries(data.currentWeights);
+    if (entries.length) {
+      const maxW = Math.max(...entries.map(([_, v]) => v.weight || 0), 0.01);
+      barsEl.innerHTML = entries.map(([name, val]) => {
+        const pct = ((val.weight || 0) / maxW * 100).toFixed(0);
+        return '<div class="ai-weight-bar-row">' +
+          '<span class="ai-weight-label">' + escapeHtml(name.replace(/-/g, ' ')) + '</span>' +
+          '<div class="ai-weight-track"><div class="ai-weight-fill" style="width:' + pct + '%"></div></div>' +
+          '<span class="ai-weight-value">' + ((val.weight || 0) * 100).toFixed(0) + '%</span></div>';
+      }).join('');
+    } else {
+      barsEl.innerHTML = '<div class="placeholder">No weights configured</div>';
+    }
+  }
+
+  const listEl = document.getElementById('aiDecisionsList');
+  if (listEl && data.recentDecisions?.length) {
+    listEl.innerHTML = data.recentDecisions.slice(0, 5).map(d => {
+      const time = new Date(d.timestamp).toLocaleString();
+      const conf = d.confidence_score || 0;
+      const confCls = conf >= 0.7 ? 'high' : conf >= 0.4 ? 'medium' : 'low';
+      const recs = d.strategy_json?.recommendations;
+      const summary = Array.isArray(recs) ? recs.slice(0, 2).join('; ') : 'Strategy analysis completed';
+      return '<div class="ai-decision-item">' +
+        '<div class="ai-decision-header"><span class="ai-decision-time">' + time + '</span>' +
+        '<span class="ai-decision-confidence ' + confCls + '">' + (conf * 100).toFixed(0) + '% conf</span></div>' +
+        '<div class="ai-decision-body">' + escapeHtml(summary) + '</div></div>';
+    }).join('');
+  } else if (listEl) {
+    listEl.innerHTML = '<div class="placeholder">No strategy decisions yet</div>';
+  }
+}
+
+function renderAiCalendar(data) {
+  const listEl = document.getElementById('aiCalendarList');
+  if (!listEl) return;
+  const items = data.data || [];
+  if (!items.length) {
+    listEl.innerHTML = '<div class="placeholder">No upcoming content planned (queue has enough posts)</div>';
+    return;
+  }
+  listEl.innerHTML = items.map(item => {
+    const d = new Date(item.planned_date);
+    const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const st = (item.status || 'planned').toLowerCase();
+    return '<div class="ai-calendar-item">' +
+      '<div class="ai-calendar-date"><div class="ai-cal-day">' + dayLabel + '</div>' +
+      '<div class="ai-cal-time">' + (item.planned_time || '--:--') + '</div></div>' +
+      '<div class="ai-calendar-info"><div class="ai-cal-category">' +
+      escapeHtml((item.product_category || 'general').replace(/-/g, ' ')) + '</div>' +
+      '<div class="ai-cal-style">' + escapeHtml(item.caption_style || '') +
+      (item.platform ? ' | ' + escapeHtml(item.platform) : '') + '</div></div>' +
+      '<span class="ai-calendar-status ' + st + '">' + (item.status || 'planned') + '</span></div>';
+  }).join('');
+}
+
+function renderAiCategories(data) {
+  const container = document.getElementById('aiCategorySettings');
+  if (!container) return;
+  const cats = data.categories || {};
+  const entries = Object.entries(cats);
+  if (!entries.length) {
+    container.innerHTML = '<div class="placeholder">No categories configured</div>';
+    return;
+  }
+  container.innerHTML = entries.map(([name, cat]) => {
+    const styles = cat.captionStyles ? Object.keys(cat.captionStyles).join(', ') : '';
+    return '<div class="ai-category-row" data-category="' + escapeHtml(name) + '">' +
+      '<span class="ai-cat-name">' + escapeHtml(cat.displayName || name.replace(/-/g, ' ')) + '</span>' +
+      '<span class="ai-cat-weight">Weight: ' + ((cat.postingWeight || 0) * 100).toFixed(0) + '%</span>' +
+      '<span class="ai-cat-styles">' + escapeHtml(styles) + '</span>' +
+      '<label class="ai-cat-toggle"><input type="checkbox" ' + (cat.enabled ? 'checked' : '') +
+      " onchange=\"toggleAgentCategory('" + escapeHtml(name) + "', this.checked)\" />" +
+      '<span style="font-size:0.8rem;color:var(--muted);">' + (cat.enabled ? 'On' : 'Off') + '</span></label></div>';
+  }).join('');
+}
+
+function renderAiApprovals(data) {
+  const listEl = document.getElementById('aiApprovalsList');
+  const countEl = document.getElementById('aiApprovalCount');
+  if (!listEl) return;
+
+  const pending = data.pending || [];
+  const recent = data.recent || [];
+  const all = [...pending, ...recent];
+
+  if (countEl) {
+    countEl.textContent = pending.length;
+    countEl.style.display = pending.length > 0 ? '' : 'none';
+  }
+
+  if (!all.length) {
+    listEl.innerHTML = '<div class="placeholder">No approvals yet</div>';
+    return;
+  }
+
+  listEl.innerHTML = all.map(a => {
+    const time = new Date(a.timestamp).toLocaleString();
+    const isPending = a.status === 'pending';
+    const badgeCls = a.status === 'approved' ? 'success' : a.status === 'denied' ? 'danger' : 'warning';
+    return '<div class="ai-approval-item ' + (a.status || 'pending') + '">' +
+      '<div class="ai-approval-header"><span class="item-badge ' + badgeCls + '">' + (a.status || 'pending') + '</span>' +
+      '<span style="font-size:0.75rem;color:var(--muted);">' + time + '</span></div>' +
+      '<div class="ai-approval-desc">' + escapeHtml(a.description || a.action_type || 'Approval request') + '</div>' +
+      (isPending ? '<div class="ai-approval-actions">' +
+        '<button class="primary" onclick="handleAgentApproval(\x27' + escapeHtml(a.id) + '\x27, \x27approved\x27)">Approve</button>' +
+        '<button class="secondary" onclick="handleAgentApproval(\x27' + escapeHtml(a.id) + '\x27, \x27denied\x27)">Deny</button></div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+async function triggerAgentRun() {
+  try {
+    const result = await printStation.agent.triggerRun();
+    if (typeof showToast === 'function') showToast('Agent cycle triggered', 'success');
+    setTimeout(() => loadAiAgentData(), 2000);
+  } catch (e) {
+    console.error('[AI Agent] Run failed:', e);
+    if (typeof showToast === 'function') showToast('Run failed: ' + e.message, 'error');
+  }
+}
+
+async function toggleAgentCategory(name, enabled) {
+  try {
+    await printStation.agent.updateCategory(name, { enabled });
+    if (typeof showToast === 'function') showToast(name + ' ' + (enabled ? 'enabled' : 'disabled'), 'success');
+  } catch (e) {
+    console.error('[AI Agent] Category toggle failed:', e);
+    if (typeof showToast === 'function') showToast('Failed: ' + e.message, 'error');
+    loadAiAgentData();
+  }
+}
+
+async function handleAgentApproval(id, action) {
+  try {
+    await printStation.agent.approvalCallback({ approvalId: id, status: action });
+    if (typeof showToast === 'function') showToast('Approval ' + action, 'success');
+    loadAiAgentData();
+  } catch (e) {
+    console.error('[AI Agent] Approval failed:', e);
+    if (typeof showToast === 'function') showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+window.toggleAgentCategory = toggleAgentCategory;
+window.handleAgentApproval = handleAgentApproval;
+window.triggerAgentRun = triggerAgentRun;
+window.loadAiAgentData = loadAiAgentData;
+
 
 // =============== Marketing admin ===============
 function renderCreativePreview(creative) {
@@ -13230,6 +13528,12 @@ async function init() {
   // Initialize dashboard event listeners and load initial data
   initDashboardEventListeners();
   loadDashboardData();
+
+  // AI Agent view event listeners
+  const aiRefreshBtn = document.getElementById('aiAgentRefreshBtn');
+  if (aiRefreshBtn) aiRefreshBtn.addEventListener('click', loadAiAgentData);
+  const aiRunBtn = document.getElementById('aiAgentRunNowBtn');
+  if (aiRunBtn) aiRunBtn.addEventListener('click', triggerAgentRun);
 
   // Handle standalone tab buttons (not in dropdowns)
   elements.tabButtons.forEach((button) => {

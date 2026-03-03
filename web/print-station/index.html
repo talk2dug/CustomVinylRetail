@@ -73,6 +73,8 @@
           <button class="dropdown-item" data-view="socialMarketingView">Facebook Post Creator</button>
           <button class="dropdown-item" data-view="tiktokPostView">TikTok Post Creator</button>
           <button class="dropdown-item" data-view="fbScheduleManagerView">Schedule Manager</button>
+          <div style="border-top:1px solid var(--border);margin:4px 0;"></div>
+          <button class="dropdown-item" data-view="aiAgentView">AI Sales Agent</button>
         </div>
       </div>
 
@@ -336,6 +338,38 @@
               </div>
               <div class="dashboard-mini-list" id="inventoryAlerts">
                 <h4>Stock Alerts</h4>
+                <div class="placeholder">Loading...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Sales Agent Card -->
+          <div class="dashboard-card ai-agent-status">
+            <div class="dashboard-card-header">
+              <h3>AI Sales Agent</h3>
+              <span class="dashboard-status" id="agentStatusBadge" title="Checking...">&#9679;</span>
+            </div>
+            <div class="dashboard-card-body">
+              <div class="dashboard-stats-grid">
+                <div class="dashboard-stat-item">
+                  <span class="stat-value" id="agentCycleCount">--</span>
+                  <span class="stat-label">Cycles Run</span>
+                </div>
+                <div class="dashboard-stat-item">
+                  <span class="stat-value" id="agentQueueDepth">--</span>
+                  <span class="stat-label">Queue Depth</span>
+                </div>
+                <div class="dashboard-stat-item">
+                  <span class="stat-value" id="agentPostsTracked">--</span>
+                  <span class="stat-label">Posts Tracked</span>
+                </div>
+                <div class="dashboard-stat-item">
+                  <span class="stat-value" id="agentLastCycle">--</span>
+                  <span class="stat-label">Last Cycle</span>
+                </div>
+              </div>
+              <div class="dashboard-mini-list" id="agentTopCategories">
+                <h4>Active Categories</h4>
                 <div class="placeholder">Loading...</div>
               </div>
             </div>
@@ -3890,6 +3924,142 @@
                   <button class="secondary" disabled style="padding:4px 12px; font-size:12px;">← Prev</button>
                   <button class="secondary" disabled style="padding:4px 12px; font-size:12px;">Next →</button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- ================================================================== -->
+      <!-- AI SALES AGENT VIEW                                                -->
+      <!-- ================================================================== -->
+      <section id="aiAgentView" class="view">
+        <div class="view-toolbar">
+          <div class="catalog-toolbar-group">
+            <h3 style="margin:0;">AI Sales Agent</h3>
+            <span id="aiAgentStatusIndicator" class="dashboard-status" style="margin-left:12px;" title="Agent status">&#9679;</span>
+            <span id="aiAgentLastCycleLabel" class="muted" style="font-size:0.85rem;margin-left:8px;"></span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="aiAgentRefreshBtn" class="secondary">Refresh</button>
+            <button id="aiAgentRunNowBtn" class="primary">Run Cycle Now</button>
+          </div>
+        </div>
+
+        <div class="ai-agent-layout">
+          <!-- Daily Report Panel -->
+          <div class="ai-agent-panel">
+            <div class="inventory-card">
+              <h3>Daily Report</h3>
+              <div class="dashboard-stats-grid">
+                <div class="dashboard-stat-item highlight">
+                  <span class="stat-value" id="aiDailyPostsPublished">--</span>
+                  <span class="stat-label">Posts Today</span>
+                </div>
+                <div class="dashboard-stat-item">
+                  <span class="stat-value" id="aiDailyTotalLikes">--</span>
+                  <span class="stat-label">Likes</span>
+                </div>
+                <div class="dashboard-stat-item">
+                  <span class="stat-value" id="aiDailyTotalComments">--</span>
+                  <span class="stat-label">Comments</span>
+                </div>
+                <div class="dashboard-stat-item">
+                  <span class="stat-value" id="aiDailyTotalShares">--</span>
+                  <span class="stat-label">Shares</span>
+                </div>
+                <div class="dashboard-stat-item">
+                  <span class="stat-value" id="aiDailyQueueDepth">--</span>
+                  <span class="stat-label">Queue Depth</span>
+                </div>
+                <div class="dashboard-stat-item">
+                  <span class="stat-value" id="aiDailyQueueDays">--</span>
+                  <span class="stat-label">Queue Days</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Engagement by Category Panel -->
+          <div class="ai-agent-panel">
+            <div class="inventory-card">
+              <h3 style="display:flex;justify-content:space-between;align-items:center;">
+                Engagement by Category
+                <span id="aiEngagementWindow" class="muted" style="font-size:0.8rem;font-weight:normal;"></span>
+              </h3>
+              <div class="ai-agent-table-container">
+                <table class="insights-table" style="width:100%;font-size:13px;border-collapse:collapse;">
+                  <thead>
+                    <tr style="border-bottom:1px solid var(--border);">
+                      <th style="text-align:left;padding:8px;">Category</th>
+                      <th style="text-align:right;padding:8px;">Posts</th>
+                      <th style="text-align:right;padding:8px;">Avg Eng.</th>
+                      <th style="text-align:right;padding:8px;">Likes</th>
+                      <th style="text-align:right;padding:8px;">Comments</th>
+                      <th style="text-align:right;padding:8px;">Shares</th>
+                    </tr>
+                  </thead>
+                  <tbody id="aiEngagementCategoryBody">
+                    <tr><td colspan="6" class="placeholder" style="text-align:center;padding:20px;">Loading...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style="margin-top:12px;">
+                <h4 style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px 0;">Best Time to Post</h4>
+                <div id="aiBestTimes" class="ai-best-times">
+                  <div class="placeholder">Loading...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Strategy Decisions Panel -->
+          <div class="ai-agent-panel">
+            <div class="inventory-card">
+              <h3>Strategy</h3>
+              <div id="aiStrategyWeights" style="margin-bottom:16px;">
+                <h4 style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px 0;">Category Weights</h4>
+                <div id="aiWeightBars" class="placeholder">Loading...</div>
+              </div>
+              <div id="aiRecentDecisions">
+                <h4 style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px 0;">Recent Decisions</h4>
+                <div id="aiDecisionsList" class="ai-decisions-list">
+                  <div class="placeholder">Loading...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Content Calendar Panel -->
+          <div class="ai-agent-panel">
+            <div class="inventory-card" style="max-height:500px;overflow-y:auto;">
+              <h3>Content Calendar</h3>
+              <div id="aiCalendarList" class="ai-calendar-list">
+                <div class="placeholder">Loading...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category Settings Panel -->
+          <div class="ai-agent-panel">
+            <div class="inventory-card">
+              <h3>Category Settings</h3>
+              <div id="aiCategorySettings" class="ai-category-settings">
+                <div class="placeholder">Loading...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Approval Queue Panel -->
+          <div class="ai-agent-panel">
+            <div class="inventory-card">
+              <h3 style="display:flex;justify-content:space-between;align-items:center;">
+                Approvals
+                <span id="aiApprovalCount" class="item-badge" style="display:none;">0</span>
+              </h3>
+              <div id="aiApprovalsList" class="ai-approvals-list">
+                <div class="placeholder">No pending approvals</div>
               </div>
             </div>
           </div>
