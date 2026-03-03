@@ -3428,6 +3428,10 @@ function initCustomArtTables() {
   // Saved orientation for designer (JSON string like "[0,0,-1]" — user-confirmed mount normal)
   ensureColumn('stl_catalog', 'mount_normal', 'TEXT DEFAULT NULL');
 
+  // Default print orientation — applied to slice when user hasn't manually set a rotation
+  // JSON string: {"rx":0,"ry":0,"rz":0,"scale":1}
+  ensureColumn('stl_catalog', 'default_transform', 'TEXT DEFAULT NULL');
+
   // Calibration log table (for future calibration wizard)
   db.exec(`
     CREATE TABLE IF NOT EXISTS calibration_log (

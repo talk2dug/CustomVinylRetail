@@ -234,6 +234,8 @@ function slicerWireEvents() {
   });
   const resetRotBtn = document.getElementById('slicerResetRotBtn');
   if (resetRotBtn) resetRotBtn.addEventListener('click', slicerResetSingleRotation);
+  const saveDefaultOrientBtn = document.getElementById('slicerSaveDefaultOrientBtn');
+  if (saveDefaultOrientBtn) saveDefaultOrientBtn.addEventListener('click', slicerSaveDefaultOrientation);
 
   // Manage Categories
   const manageCatBtn = document.getElementById('slicerManageCategoriesBtn');
@@ -959,6 +961,17 @@ async function slicerSelectItem(id) {
     if (result.item.default_texture) slicerState.settings.texture = result.item.default_texture;
     if (result.item.default_supports) slicerState.settings.supports = result.item.default_supports;
     if (result.item.default_surface) slicerState.settings.surface = result.item.default_surface;
+
+    // Pre-populate orientation from saved default (only if user hasn't already set a manual override)
+    if (result.item.default_transform && !slicerState.plateTransforms[result.item.id]) {
+      try {
+        const dt = JSON.parse(result.item.default_transform);
+        slicerState.plateTransforms[result.item.id] = {
+          rx: dt.rx || 0, ry: dt.ry || 0, rz: dt.rz || 0,
+          scale: dt.scale || 1, posX: 0, posZ: 0
+        };
+      } catch (e) { /* ignore bad JSON */ }
+    }
 
     // Switch panels
     document.getElementById('slicerCatalogPanel').style.display = 'none';
@@ -4070,25 +4083,70 @@ function slicerResetSingleRotation() {
 }
 
 /**
- * Update the rotation hint text next to the orientation buttons.
+ * Update the rotation hint text and saved-badge visibility.
  */
 function slicerUpdateRotHint() {
-  const hintEl = document.getElementById('slicerRotHint');
-  if (!hintEl) return;
+  const hintEl  = document.getElementById('slicerRotHint');
+  const badgeEl = document.getElementById('slicerSavedOrientBadge');
   const item = slicerState.selectedItem;
   const t = item ? slicerState.plateTransforms[item.id] : null;
   const toDeg = r => Math.round(((r || 0) * 180 / Math.PI + 360 * 100) % 360);
   const rxd = toDeg(t && t.rx);
   const ryd = toDeg(t && t.ry);
   const rzd = toDeg(t && t.rz);
-  if (!t || (rxd === 0 && ryd === 0 && rzd === 0)) {
-    hintEl.textContent = '';
-  } else {
-    const parts = [];
-    if (rxd !== 0) parts.push(`X:${rxd}°`);
-    if (ryd !== 0) parts.push(`Y:${ryd}°`);
-    if (rzd !== 0) parts.push(`Z:${rzd}°`);
-    hintEl.textContent = parts.join(' ');
+  if (hintEl) {
+    if (!t || (rxd === 0 && ryd === 0 && rzd === 0)) {
+      hintEl.textContent = '';
+    } else {
+      const parts = [];
+      if (rxd !== 0) parts.push(`X:${rxd}°`);
+      if (ryd !== 0) parts.push(`Y:${ryd}°`);
+      if (rzd !== 0) parts.push(`Z:${rzd}°`);
+      hintEl.textContent = parts.join(' ');
+    }
+  }
+  // Show "★ saved" badge if item has a persisted default transform
+  if (badgeEl) {
+    const hasSaved = item && item.default_transform;
+    badgeEl.style.display = hasSaved ? '' : 'none';
+  }
+}
+
+/**
+ * Save current orientation as the permanent default for this item.
+ * Persists to server DB so it auto-applies on every future slice.
+ */
+async function slicerSaveDefaultOrientation() {
+  const item = slicerState.selectedItem;
+  if (!item) return;
+  const t = slicerState.plateTransforms[item.id];
+  const saveBtn = document.getElementById('slicerSaveDefaultOrientBtn');
+
+  try {
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+    const payload = t
+      ? { rx: t.rx || 0, ry: t.ry || 0, rz: t.rz || 0, scale: t.scale || 1 }
+      : null; // null clears the saved default
+
+    await printStation.slicer.updateCatalogItem(item.id, {
+      default_transform: payload ? JSON.stringify(payload) : null
+    });
+
+    // Update local item cache so badge reflects saved state
+    item.default_transform = payload ? JSON.stringify(payload) : null;
+    slicerUpdateRotHint();
+
+    if (saveBtn) {
+      saveBtn.textContent = payload ? '✓ Saved!' : '✓ Cleared';
+      setTimeout(() => {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Default'; }
+      }, 1500);
+    }
+  } catch (err) {
+    console.error('[Slicer] Save default orientation failed:', err);
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Default'; }
+    alert('Failed to save default orientation: ' + err.message);
   }
 }
 

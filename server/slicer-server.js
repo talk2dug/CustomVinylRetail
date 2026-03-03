@@ -635,7 +635,8 @@ async function handleSlicerRoute(pathname, req, res, db) {
         supports: supports || item.default_supports || 'none',
         auto_orient: auto_orient === true,
         copies: parseInt(copies, 10) || 1,
-        transform: transform || null
+        // User transform takes priority; fall back to item's saved default orientation
+        transform: transform || (item.default_transform ? JSON.parse(item.default_transform) : null)
       }, rawDb);
 
       sendJson(res, 200, result);
