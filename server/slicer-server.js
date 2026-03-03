@@ -503,7 +503,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
       }
 
       // Delete physical STL file
-      const stlAbsPath = path.join(slicer.STL_MODELS, item.stl_path);
+      const stlAbsPath = path.join(slicer.STL_MODELS, item.stl_path.trim());
       try { fs.unlinkSync(stlAbsPath); } catch {}
 
       // Delete associated G-code files
@@ -574,7 +574,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
         sendError(res, 404, 'STL catalog item not found');
         return true;
       }
-      const absPath = path.join(slicer.STL_MODELS, item.stl_path);
+      const absPath = path.join(slicer.STL_MODELS, item.stl_path.trim());
       if (!fs.existsSync(absPath)) {
         sendError(res, 404, 'STL file missing');
         return true;
@@ -583,7 +583,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
       res.writeHead(200, {
         'Content-Type': 'application/sla',
         'Content-Length': stat.size,
-        'Content-Disposition': `attachment; filename="${path.basename(item.stl_path)}"`,
+        'Content-Disposition': `attachment; filename="${path.basename(item.stl_path.trim())}"`,
         'Access-Control-Allow-Origin': '*'
       });
       fs.createReadStream(absPath).pipe(res);
@@ -615,7 +615,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
         return true;
       }
 
-      const stlAbsPath = path.join(slicer.STL_MODELS, item.stl_path);
+      const stlAbsPath = path.join(slicer.STL_MODELS, item.stl_path.trim());
       if (!fs.existsSync(stlAbsPath)) {
         sendError(res, 404, 'STL file missing from disk');
         return true;
@@ -667,7 +667,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
           sendError(res, 404, `STL catalog item not found: id=${id}`);
           return true;
         }
-        const absPath = path.join(slicer.STL_MODELS, item.stl_path);
+        const absPath = path.join(slicer.STL_MODELS, item.stl_path.trim());
         if (!fs.existsSync(absPath)) {
           sendError(res, 404, `STL file missing from disk: ${item.name || item.stl_path}`);
           return true;

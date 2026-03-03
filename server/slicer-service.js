@@ -544,7 +544,7 @@ function bakeTransformToSTL(stlPath, transform, stlId) {
     outputBuffer.writeUInt16LE(origAttr, off + 48);
   }
 
-  const tmpPath = path.join(os.tmpdir(), `baked_${stlId}_${path.basename(stlPath)}`);
+  const tmpPath = path.join(os.tmpdir(), `baked_${stlId}_${path.basename(stlPath.trim())}`);
   fs.writeFileSync(tmpPath, outputBuffer);
 
   console.log(`[Slicer] Transform bake: ${path.basename(stlPath)} → ${tmpPath} (rx=${rx.toFixed(2)} ry=${ry.toFixed(2)} rz=${rz.toFixed(2)} scale=${scale.toFixed(2)} pos=${posX.toFixed(1)},${posZ.toFixed(1)})`);
@@ -1265,20 +1265,12 @@ async function sliceSTL(stlPath, options, dbInstance) {
       });
     });
   } finally {
+    // Clean up temp files before releasing lock — avoids race where a queued
+    // request with the same stl_id can have its baked file deleted after it's written
+    if (mergedCopiesPath) { try { fs.unlinkSync(mergedCopiesPath); } catch {} }
+    if (orientedPath) { try { fs.unlinkSync(orientedPath); } catch {} }
+    if (bakedPath) { try { fs.unlinkSync(bakedPath); } catch {} }
     releaseSliceLock();
-  }
-
-  // Clean up merged grid STL
-  if (mergedCopiesPath) {
-    try { fs.unlinkSync(mergedCopiesPath); } catch {}
-  }
-
-  // Clean up temp files
-  if (orientedPath) {
-    try { fs.unlinkSync(orientedPath); } catch {}
-  }
-  if (bakedPath) {
-    try { fs.unlinkSync(bakedPath); } catch {}
   }
 
   // Parse output
@@ -1511,19 +1503,18 @@ async function slicePlate(stlPaths, options, dbInstance) {
       });
     });
   } finally {
-    releaseSliceLock();
-    // Clean up oriented temp files
+    // Clean up temp files before releasing lock — avoids race where a queued
+    // request with the same stl_id can have its baked file deleted after it's written
     for (const tmp of orientedTempFiles) {
       try { fs.unlinkSync(tmp); } catch {}
     }
-    // Clean up baked transform temp files
     for (const tmp of bakedTempFiles) {
       try { fs.unlinkSync(tmp); } catch {}
     }
-    // Clean up merged temp file
     if (mergedTmpPath) {
       try { fs.unlinkSync(mergedTmpPath); } catch {}
     }
+    releaseSliceLock();
   }
 
   const combined = result.stdout + '\n' + result.stderr;
