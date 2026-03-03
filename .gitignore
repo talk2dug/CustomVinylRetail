@@ -1,118 +1,79 @@
 # Dependencies
 node_modules/
 
-# Environment and secrets
+# Environment
 .env
 .env.*
-*.pem
-*.key
-
-# IDE and editor
-.vscode/sftp.json
-.vscode/*.code-workspace
-.claude/
-.smoke-userdata/
 
 # Database files
-*.db
-*.db-journal
-*.db.bak
-data/
-!data/multiboard-parts.json
-server/data/
+data/*.db
+data/backups/
 
-# Large media and image files
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.webp
-*.ico
-*.bmp
-*.tiff
-*.tif
-*.mp4
-*.mov
-*.avi
-*.mkv
-*.webm
-*.mp3
-*.wav
-*.ogg
+# Large generated/cached data
+data/stl-library/
+data/gcode-cache/
+data/generated-mockups/
+data/export-jobs/
+data/tiktok-temp/
+data/race-quote-files/
+data/kiosk-promotions/
+
+# Uploaded/generated images
+web/images/catalog/
+web/images/custom-art/
+web/images/leonardo/
+
+# User content
 Products/
 Stickers/
-StickerSheets/
-Metallic samples/
-PINUP GILRS BUNDLE/
-web/images/catalog/
-web/library/
-web/videos/
-exports/
-extracted_stickers/
-
-# Build outputs
-print-station/dist/
-print-station/extracted_asar/
-print-station/nul
-nul
-
-# Temporary files
-*.bak
-*.tmp
-*.temp
-temp-*
-fix-*.js
-
-# Generated files
 saved-designs/
-sticker-sheet_*.png
-sticker-sheet_*.svg
-eng.traineddata
-print-station/eng.traineddata
 
-# Facebook/marketing data files
-facebook-campaign-*.json
-facebook-posts-*.json
-facebook-marketplace-feeds/
+# PrusaSlicer AppImage extracts
+squashfs-root*/
 
-# Shopify theme files (large)
-shopify-theme/
-shopify-template/
-shopify-sections/
-shopify-metal-prints/
-
-# Documentation that shouldn't be in repo
-*.md
-!README.md
-!miltBin/*.md
-
-# macOS
-._*
+# OS files
 .DS_Store
+Thumbs.db
 
-# Misc large/unnecessary folders
-GF/
-Garment_color_changer/
-kiosk-display-system/
+# Piper voice models
+piper-voices/
 
-# Config files with potential secrets
-nginx*.conf
-vinylapp.conf
+# PM2
+ecosystem.config.js
 
-# Scripts that may contain secrets
-scripts/facebook-*.js
-scripts/shopify-*.js
-scripts/validate-*.js
+# Backup files
+*.bak
 
-# TikTok verification files
-tiktok*.txt
+# Sample media files
+Metallic samples/
 
-# Test files
-test-*.js
-print-station/test-*.js
+# Scraped data
+MultiBoardScraper/
 
-# Sync scripts
-sync-*.js
+# Claude settings
+.claude/
 
-# Shell scripts
-*.sh
+# Binary installers and AppImages
+*.exe
+*.AppImage
+*.msi
+
+# Large binary/media files
+web/videos/
+web/mockup-pro/models/
+eng.traineddata
+server/eng.traineddata
+
+# Product images (scraped)
+productimages/
+ProductImages/
+
+# Catalog data (large JSON)
+web/catalog-decal-icons.json
+
+# DB backups (any pattern)
+data/*.db.bak*
+data/*.jsonl
+
+# Large generated assets
+web/minipaint/images/preview.gif

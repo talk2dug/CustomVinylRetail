@@ -1382,3 +1382,21 @@ module.exports.updateProductFull = updateProductFull;
 module.exports.updateProductVariants = updateProductVariants;
 module.exports.addProductImage = addProductImage;
 module.exports.deleteProductImages = deleteProductImages;
+
+// --- Pipeline Monitor helpers ---
+
+async function getOrderCount(params = {}) {
+  if (!isConfigured()) throw new Error('Shopify not configured');
+  const query = new URLSearchParams({ status: 'any', ...params });
+  return httpJson('GET', adminUrl('/orders/count.json?' + query));
+}
+
+async function registerWebhook(topic, address) {
+  if (!isConfigured()) throw new Error('Shopify not configured');
+  return httpJson('POST', adminUrl('/webhooks.json'), {
+    webhook: { topic, address, format: 'json' }
+  });
+}
+
+module.exports.getOrderCount = getOrderCount;
+module.exports.registerWebhook = registerWebhook;

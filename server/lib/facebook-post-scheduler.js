@@ -24,8 +24,38 @@ if (fs.existsSync(envPath)) {
 }
 
 // Configuration
-const FB_PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN || process.env.FB_ACCESS_TOKEN || '';
-const FB_PAGE_ID = process.env.FB_PAGE_ID || '';
+// Configuration - Support multiple Facebook pages
+const FB_PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN || process.env.FB_ACCESS_TOKEN || "";
+const FB_PAGE_ID = process.env.FB_PAGE_ID || "";
+
+// Swayzes Custom Vinyl page (for apparel/stickers)
+const FB_PAGE_ACCESS_TOKEN_SWAYZE = process.env.FB_PAGE_ACCESS_TOKEN_SWAYZE || "";
+const FB_PAGE_ID_SWAYZE = process.env.FB_PAGE_ID_SWAYZE || "";
+
+// Product categories that should go to Swayzes Custom Vinyl
+const SWAYZE_CATEGORIES = ["apparel", "stickers", "sticker", "bumper", "clothing", "t-shirt", "tshirt", "shirt", "hoodie", "decal", "decals", "vinyl"];
+
+/**
+ * Get Facebook credentials based on product category
+ */
+function getFacebookCredentials(category) {
+  const categoryLower = (category || "").toLowerCase();
+  const isSwayzeCategory = SWAYZE_CATEGORIES.some(cat => categoryLower.includes(cat));
+  
+  if (isSwayzeCategory && FB_PAGE_ID_SWAYZE && FB_PAGE_ACCESS_TOKEN_SWAYZE) {
+    return {
+      pageId: FB_PAGE_ID_SWAYZE,
+      accessToken: FB_PAGE_ACCESS_TOKEN_SWAYZE,
+      pageName: "Swayzes Custom Vinyl"
+    };
+  }
+  
+  return {
+    pageId: FB_PAGE_ID,
+    accessToken: FB_PAGE_ACCESS_TOKEN,
+    pageName: "Blue Ridge Custom Co"
+  };
+}
 const GENERATED_MOCKUPS_DIR = path.resolve(__dirname, '..', '..', 'data', 'generated-mockups');
 const SERVER_BASE_URL = process.env.SERVER_BASE_URL || 'https://blueridgecustomco.com';
 
@@ -284,6 +314,78 @@ Output as JSON:
   }
 }
 
+
+/**
+ * Generate AI post using local Ollama (fallback when Anthropic API unavailable)
+ */
+async function generateAiPostViaOllama(item, campaign, style = 'showcase') {
+  try {
+    const httpMod = require('http');
+    const productName = item.name || 'Custom Design';
+    const campaignSlug = (campaign?.slug || '').toLowerCase();
+
+    const prompt = `You are a social media expert for Blue Ridge Custom Co, a custom apparel brand.
+Write ONE engaging Facebook post for this trending t-shirt design: "${productName}"
+Campaign: ${campaign?.title || campaignSlug || 'Trending Designs'}
+Style: ${style === 'urgency' ? "Create FOMO and urgency - this is a trending design that won't last" : 'Highlight the design quality and style'}
+
+Requirements:
+- 2-3 sentences with a strong hook
+- Casual, fun tone - not corporate
+- Use 1-2 emojis
+- Then list 6-8 relevant hashtags
+
+Output as JSON: {"text": "your post", "hashtags": ["#tag1", "#tag2"]}`;
+
+    const result = await new Promise((resolve, reject) => {
+      const postData = JSON.stringify({
+        model: 'llama3.1:8b',
+        prompt: prompt,
+        stream: false,
+        options: { temperature: 0.8, num_predict: 400 }
+      });
+
+      const req = httpMod.request({
+        hostname: '127.0.0.1',
+        port: 11434,
+        path: '/api/generate',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 120000
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            resolve(parsed.response || '');
+          } catch (e) { reject(e); }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('Ollama timeout')); });
+      req.write(postData);
+      req.end();
+    });
+
+    const jsonMatch = result.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('[FB Scheduler] Ollama: Could not parse JSON, using template');
+      return { text: `Check out our new ${productName}! Grab yours before it's gone \u{1F525}`, hashtags: '#TrendingNow #BlueRidgeCustomCo #NewDesign #ShopNow' };
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    console.log(`[FB Scheduler] Ollama generated text for: ${productName}`);
+    return {
+      text: parsed.text || '',
+      hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.join(' ') : (parsed.hashtags || '')
+    };
+  } catch (err) {
+    console.error(`[FB Scheduler] Ollama generation failed:`, err.message);
+    return null;
+  }
+}
+
 /**
  * Check if a path is a URL
  */
@@ -307,6 +409,41 @@ function resolveImagePath(imagePath) {
     return { type: 'url', path: imagePath };
   }
 
+  // Absolute local filesystem path (already resolved)
+  if (imagePath.startsWith('/') && fs.existsSync(imagePath)) {
+    return { type: 'local', path: imagePath };
+  }
+
+  // App-relative paths like /data/... or /images/... - resolve to vinylApp directory
+  if (imagePath.startsWith('/')) {
+    const VINYL_APP_ROOT = '/home/ubuntu/vinylApp';
+    const appRelativePath = path.join(VINYL_APP_ROOT, imagePath);
+    if (fs.existsSync(appRelativePath)) {
+      console.log(`[FB Scheduler] Resolved app-relative path to local: ${appRelativePath}`);
+      return { type: 'local', path: appRelativePath };
+    }
+    const webRelativePath = path.join(VINYL_APP_ROOT, 'web', imagePath);
+    if (fs.existsSync(webRelativePath)) {
+      console.log(`[FB Scheduler] Resolved web-relative path to local: ${webRelativePath}`);
+      return { type: 'local', path: webRelativePath };
+    }
+  }
+
+  // Check local filesystem first for relative paths (e.g. library/uploads/custom-art/...)
+  if (!imagePath.startsWith('/')) {
+    const APP_DIR = path.resolve(__dirname, '..', '..');
+    const possiblePaths = [
+      path.resolve(APP_DIR, imagePath),
+      path.resolve(APP_DIR, 'web', imagePath)
+    ];
+    for (const localPath of possiblePaths) {
+      if (fs.existsSync(localPath)) {
+        console.log(`[FB Scheduler] Resolved to local file: ${localPath}`);
+        return { type: 'local', path: localPath };
+      }
+    }
+  }
+
   // Server-relative paths -> convert to full URL
   // This handles /api/library/, /uploads/, etc.
   if (imagePath.startsWith('/')) {
@@ -315,7 +452,7 @@ function resolveImagePath(imagePath) {
     return { type: 'url', path: fullUrl };
   }
 
-  // Relative path without leading slash - assume it's relative to server root
+  // Relative path without leading slash - fallback to URL
   const fullUrl = `${SERVER_BASE_URL}/${imagePath}`;
   console.log(`[FB Scheduler] Resolved relative path to URL: ${fullUrl}`);
   return { type: 'url', path: fullUrl };
@@ -435,8 +572,14 @@ async function generateMockupForPost(post, template, options = {}) {
  * @param {string|Buffer} imagePathOrBuffer - Either a local file path, URL, or Buffer containing image data
  * @param {string} text - Post text
  */
-async function postToFacebook(imagePathOrBuffer, text) {
-  if (!FB_PAGE_ACCESS_TOKEN || !FB_PAGE_ID) {
+async function postToFacebook(imagePathOrBuffer, text, category = "") {
+  const creds = getFacebookCredentials(category);
+  const pageAccessToken = creds.accessToken;
+  const pageId = creds.pageId;
+  
+  console.log("[Facebook] Category:", category, "-> Posting to:", creds.pageName, "(ID:", pageId, ")");
+  
+  if (!pageAccessToken || !pageId) {
     throw new Error('Facebook credentials not configured. Set FB_PAGE_ACCESS_TOKEN and FB_PAGE_ID in .env');
   }
 
@@ -460,7 +603,7 @@ async function postToFacebook(imagePathOrBuffer, text) {
     Buffer.from(`${text}\r\n`),
     Buffer.from(`--${boundary}\r\n`),
     Buffer.from(`Content-Disposition: form-data; name="access_token"\r\n\r\n`),
-    Buffer.from(`${FB_PAGE_ACCESS_TOKEN}\r\n`),
+    Buffer.from(`${pageAccessToken}\r\n`),
     Buffer.from(`--${boundary}\r\n`),
     Buffer.from(`Content-Disposition: form-data; name="published"\r\n\r\n`),
     Buffer.from(`true\r\n`),
@@ -470,7 +613,7 @@ async function postToFacebook(imagePathOrBuffer, text) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'graph.facebook.com',
-      path: `/v18.0/${FB_PAGE_ID}/photos`,
+      path: `/v18.0/${pageId}/photos`,
       method: 'POST',
       headers: {
         'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -613,13 +756,42 @@ async function processScheduledPost(post, db, options = {}) {
             postHashtags: postHashtags
           });
         } else {
-          // Fallback to default text
-          postText = `Check out ${post.productName}! Available now.`;
-          console.log(`[FB Scheduler] AI failed, using fallback for: ${post.productName}`);
+          // Try Ollama as fallback before using default text
+          console.log(`[FB Scheduler] Claude unavailable, trying Ollama for: ${post.productName}`);
+          const ollamaResult = await generateAiPostViaOllama(
+            itemData,
+            campaignData || { slug: post.campaignSlug, productType: post.campaignType },
+            post.aiStyle || 'showcase'
+          );
+          if (ollamaResult) {
+            postText = ollamaResult.text;
+            postHashtags = ollamaResult.hashtags || postHashtags;
+            console.log(`[FB Scheduler] Ollama generated text for: ${post.productName}`);
+            db.updateScheduledPost(post.id, { postText, postHashtags });
+          } else {
+            postText = `Check out ${post.productName}! Available now.`;
+            console.log(`[FB Scheduler] All AI failed, using fallback for: ${post.productName}`);
+          }
         }
       } catch (aiError) {
         console.error(`[FB Scheduler] AI generation error:`, aiError.message);
-        postText = `Check out ${post.productName}! Available now.`;
+        try {
+          console.log(`[FB Scheduler] Trying Ollama fallback for: ${post.productName}`);
+          const ollamaFallback = await generateAiPostViaOllama(
+            { name: post.productName, uid: post.productUid },
+            { slug: post.campaignSlug, productType: post.campaignType },
+            post.aiStyle || 'showcase'
+          );
+          if (ollamaFallback) {
+            postText = ollamaFallback.text;
+            postHashtags = ollamaFallback.hashtags || postHashtags;
+            console.log(`[FB Scheduler] Ollama fallback succeeded for: ${post.productName}`);
+          } else {
+            postText = `Check out ${post.productName}! Available now.`;
+          }
+        } catch (ollamaErr) {
+          postText = `Check out ${post.productName}! Available now.`;
+        }
       }
     }
 
@@ -651,7 +823,7 @@ async function processScheduledPost(post, db, options = {}) {
     // Post to Facebook
     if (onProgress) onProgress('posting', post);
 
-    const fbResult = await postToFacebook(imagePath, postText);
+    const fbResult = await postToFacebook(imagePath, postText, post.category || post.productCategory || post.campaignSlug || post.campaignProductType || "");
 
     // Mark as published
     db.markScheduledPostPublished(post.id, fbResult.postId);
@@ -685,9 +857,19 @@ async function processScheduledPost(post, db, options = {}) {
  * Process all pending scheduled posts that are due
  */
 async function processPendingPosts(db, options = {}) {
-  const pendingPosts = db.getPendingScheduledPosts();
+  const allPending = db.getPendingScheduledPosts();
 
-  console.log(`[FB Scheduler] Found ${pendingPosts.length} pending posts to process`);
+  // Filter out non-Facebook posts (e.g. pinterest) - those need their own publisher
+  const pendingPosts = allPending.filter(post => {
+    const ctype = (post.campaignType || '').toLowerCase();
+    if (ctype === 'pinterest' || ctype === 'instagram') {
+      console.log(`[FB Scheduler] Skipping ${ctype} post ${post.id} (${post.productName}) - not a Facebook post`);
+      return false;
+    }
+    return true;
+  });
+
+  console.log(`[FB Scheduler] Found ${pendingPosts.length} Facebook posts to process (${allPending.length - pendingPosts.length} non-Facebook skipped)`);
 
   const results = [];
 

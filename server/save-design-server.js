@@ -53,6 +53,7 @@ const referralProgram = require('./modules/referral-program');
 const crossSell = require('./modules/cross-sell');
 const salesAnalytics = require('./modules/sales-analytics');
 const trendMonitor = require('./modules/trend-monitor');
+const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
 // Shared utilities
 const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
 const { sendJson, handleOptions } = require('./utils/http');
@@ -3539,6 +3540,10 @@ const requestHandler = async (req, res) => {
     if (trendMonitor.handleTrendMonitorRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data), db)) return;
   }
   // Email Sequences API
+  // Pipeline Monitor API
+  if (parsedUrl.pathname.startsWith('/api/pipeline/')) {
+    if (salesPipelineMonitor.handlePipelineRoute(req, res, parsedUrl, sendJson, db)) return;
+  }
   if (parsedUrl.pathname.startsWith('/api/email-sequences')) {
     if (emailSequences.handleEmailSequenceRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
   }
@@ -20207,6 +20212,17 @@ if (require.main === module) {
       console.log('[Server] Facebook post scheduler started');
     } catch (error) {
       console.error('[Server] Failed to start Facebook scheduler:', error.message);
+    }
+
+    // Start sales pipeline monitor daemon (runs every 15 minutes)
+    try {
+      salesPipelineMonitor.startMonitorDaemon(db, {
+        intervalMinutes: 15,
+        enableAlerts: true
+      });
+      console.log('[Server] Sales pipeline monitor started');
+    } catch (error) {
+      console.error('[Server] Failed to start pipeline monitor:', error.message);
     }
 
     // Start abandoned cart recovery processor (runs every 15 minutes)
