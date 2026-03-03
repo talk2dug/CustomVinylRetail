@@ -226,6 +226,15 @@ function slicerWireEvents() {
     });
   }
 
+  // Single-item orientation buttons (Flip X/Y/Z)
+  document.querySelectorAll('.sl-rot-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      slicerRotateSingle(btn.dataset.axis, parseInt(btn.dataset.dir, 10));
+    });
+  });
+  const resetRotBtn = document.getElementById('slicerResetRotBtn');
+  if (resetRotBtn) resetRotBtn.addEventListener('click', slicerResetSingleRotation);
+
   // Manage Categories
   const manageCatBtn = document.getElementById('slicerManageCategoriesBtn');
   if (manageCatBtn) {
@@ -959,6 +968,7 @@ async function slicerSelectItem(id) {
     slicerRenderSelectedInfo(result.item);
     slicerRenderGcodeList(slicerState.gcodeEntries);
     slicerSyncSettingsButtons();
+    slicerUpdateRotHint();
 
     // Render 3D preview for selected item
     slicerFetchStlBuffer(result.item.id).then(buf => {
@@ -3965,6 +3975,22 @@ function slicerRenderSelectedPreview(arrayBuffer) {
   const loader = new THREE.STLLoader();
   const geometry = loader.parse(arrayBuffer);
   geometry.computeVertexNormals();
+
+  // Apply STL Z-up → Three.js Y-up so preview matches PrusaSlicer's orientation
+  geometry.rotateX(-Math.PI / 2);
+
+  // Apply any saved print-orientation overrides so preview shows exactly how it'll print
+  const previewItem = slicerState.selectedItem;
+  if (previewItem) {
+    const t = slicerState.plateTransforms[previewItem.id];
+    if (t) {
+      if (t.rx) geometry.rotateX(t.rx);
+      if (t.ry) geometry.rotateY(t.ry);
+      if (t.rz) geometry.rotateZ(t.rz);
+      if (t.scale && t.scale !== 1) geometry.scale(t.scale, t.scale, t.scale);
+    }
+  }
+
   geometry.center();
 
   const material = new THREE.MeshPhongMaterial({
@@ -4005,6 +4031,65 @@ function slicerDisposeSelectedPreview() {
   if (p.material) p.material.dispose();
   if (p.renderer) p.renderer.dispose();
   slicerState.selectedPreview = null;
+}
+
+// ============================================================================
+// SINGLE-ITEM ORIENTATION CONTROLS
+// ============================================================================
+
+/**
+ * Rotate the selected single item 90° on the given axis, save to plateTransforms,
+ * and re-render the preview so the user sees the effect immediately.
+ */
+function slicerRotateSingle(axis, dir) {
+  const item = slicerState.selectedItem;
+  if (!item) return;
+
+  const angle = (Math.PI / 2) * dir;
+  if (!slicerState.plateTransforms[item.id]) {
+    slicerState.plateTransforms[item.id] = { rx: 0, ry: 0, rz: 0, scale: 1, posX: 0, posZ: 0 };
+  }
+  const t = slicerState.plateTransforms[item.id];
+  if (axis === 'x')      t.rx = (t.rx || 0) + angle;
+  else if (axis === 'y') t.ry = (t.ry || 0) + angle;
+  else if (axis === 'z') t.rz = (t.rz || 0) + angle;
+
+  slicerUpdateRotHint();
+  slicerFetchStlBuffer(item.id).then(buf => slicerRenderSelectedPreview(buf)).catch(() => {});
+}
+
+/**
+ * Clear any saved orientation override for the current item and re-render.
+ */
+function slicerResetSingleRotation() {
+  const item = slicerState.selectedItem;
+  if (!item) return;
+  delete slicerState.plateTransforms[item.id];
+  slicerUpdateRotHint();
+  slicerFetchStlBuffer(item.id).then(buf => slicerRenderSelectedPreview(buf)).catch(() => {});
+}
+
+/**
+ * Update the rotation hint text next to the orientation buttons.
+ */
+function slicerUpdateRotHint() {
+  const hintEl = document.getElementById('slicerRotHint');
+  if (!hintEl) return;
+  const item = slicerState.selectedItem;
+  const t = item ? slicerState.plateTransforms[item.id] : null;
+  const toDeg = r => Math.round(((r || 0) * 180 / Math.PI + 360 * 100) % 360);
+  const rxd = toDeg(t && t.rx);
+  const ryd = toDeg(t && t.ry);
+  const rzd = toDeg(t && t.rz);
+  if (!t || (rxd === 0 && ryd === 0 && rzd === 0)) {
+    hintEl.textContent = '';
+  } else {
+    const parts = [];
+    if (rxd !== 0) parts.push(`X:${rxd}°`);
+    if (ryd !== 0) parts.push(`Y:${ryd}°`);
+    if (rzd !== 0) parts.push(`Z:${rzd}°`);
+    hintEl.textContent = parts.join(' ');
+  }
 }
 
 /**

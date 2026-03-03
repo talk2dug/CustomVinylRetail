@@ -6474,6 +6474,21 @@
                     <button id="slicerViewOnBedBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">View on Build Plate</button>
                     <button id="slicerUpdateInfoBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Update Info</button>
                   </div>
+                  <!-- Print orientation controls — affects how PrusaSlicer receives the model -->
+                  <div style="margin-top:10px;padding:8px 10px;background:rgba(255,255,255,0.04);border-radius:6px;border:1px solid var(--border);">
+                    <div style="font-size:0.75rem;color:#888;margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Print Orientation</div>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+                      <button class="sl-rot-btn secondary" data-axis="x" data-dir="1"  style="padding:4px 9px;font-size:0.78rem;">Flip X+</button>
+                      <button class="sl-rot-btn secondary" data-axis="x" data-dir="-1" style="padding:4px 9px;font-size:0.78rem;">Flip X−</button>
+                      <button class="sl-rot-btn secondary" data-axis="y" data-dir="1"  style="padding:4px 9px;font-size:0.78rem;">Rot Y+</button>
+                      <button class="sl-rot-btn secondary" data-axis="y" data-dir="-1" style="padding:4px 9px;font-size:0.78rem;">Rot Y−</button>
+                      <button class="sl-rot-btn secondary" data-axis="z" data-dir="1"  style="padding:4px 9px;font-size:0.78rem;">Rot Z+</button>
+                      <button class="sl-rot-btn secondary" data-axis="z" data-dir="-1" style="padding:4px 9px;font-size:0.78rem;">Rot Z−</button>
+                      <button id="slicerResetRotBtn" class="secondary" style="padding:4px 9px;font-size:0.78rem;border-color:rgba(255,100,100,0.4);color:#f87171;">Reset</button>
+                      <span id="slicerRotHint" style="font-size:0.75rem;color:#f59e0b;margin-left:4px;font-weight:600;"></span>
+                    </div>
+                    <div style="font-size:0.7rem;color:#666;margin-top:5px;">Each button rotates 90°. Preview updates instantly. Reset = back to original.</div>
+                  </div>
                   <div id="slicerSelectedMountInfo" class="muted" style="font-size:0.8rem;margin-top:6px;"></div>
                 </div>
               </div>
