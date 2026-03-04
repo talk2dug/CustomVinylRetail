@@ -153,56 +153,126 @@ async function generateAiPostForItem(item, campaign, style = 'showcase', collect
     const campaignSlug = (campaign?.slug || '').toLowerCase();
     const isSticker = campaignSlug.includes('sticker') || campaignSlug.includes('decal') || campaignSlug.includes('bumper');
     const isMetalPrint = !isSticker && (campaignProductType === 'custom-art' || campaignProductType === 'metal-print');
+    const isMultiboard = campaignProductType === 'multiboard' ||
+                         campaignSlug.includes('multiboard') ||
+                         (item.name && /multiboard|wall.?organiz|tile.?grid/i.test(item.name));
 
     console.log(`[FB Scheduler] AI detection - apparelType: "${apparelType}", campaignProductType: "${campaignProductType}", campaignSlug: "${campaignSlug}"`);
 
-    // Art products include both metal prints and stickers (not apparel)
-    const isArtProduct = !apparelType && (
+    // Art products include both metal prints and stickers (not apparel, not multiboard)
+    const isArtProduct = !apparelType && !isMultiboard && (
       isMetalPrint || isSticker ||
       ['canvas', 'poster', 'wall-art', 'decal', 'sticker'].includes(campaignProductType) ||
       (item.name && /lighthouse|print|art|canvas|poster|wall|decor/i.test(item.name))
     );
-    console.log(`[FB Scheduler] AI detection result - isArtProduct: ${isArtProduct}, isSticker: ${isSticker}, isMetalPrint: ${isMetalPrint}`);
+    console.log(`[FB Scheduler] AI detection result - isArtProduct: ${isArtProduct}, isSticker: ${isSticker}, isMetalPrint: ${isMetalPrint}, isMultiboard: ${isMultiboard}`);
 
-    // Style prompts - different for art vs apparel
+    // Style prompts - enriched with psychology & copy frameworks (Phase 2c)
     const artStylePrompts = {
-      showcase: 'Highlight the artistic beauty and visual impact of this piece.',
-      lifestyle: 'Paint a picture of where this art could transform a space.',
-      quality: 'Emphasize the premium sublimation printing and lasting quality.',
-      urgency: 'Create excitement around the limited nature of this artwork.'
+      showcase: 'Use AIDA structure: hook with a visual detail from the image, build interest with what makes it unique, create desire by describing the feeling of owning it. Contrast this piece against generic wall art.',
+      lifestyle: 'Use BAB structure: paint a "before" scene of a bare/boring wall, then the "after" with this art as the centerpiece. Use identity signaling — what does owning this say about the person?',
+      quality: 'Use AIDA: lead with a surprising quality fact about sublimation metal printing, build interest with process details, desire through longevity. Apply Authority Bias — technical details signal expertise.',
+      urgency: 'Use PAS: the problem is missing out on something everyone else is noticing. Agitate with social proof hints. Apply Loss Aversion — frame what they lose by not acting.'
     };
 
     const apparelStylePrompts = {
-      showcase: 'Highlight the design quality and style.',
-      lifestyle: 'Show how this fits into everyday life.',
-      quality: 'Emphasize craftsmanship and premium materials.',
-      urgency: 'Create urgency with seasonal or trending appeal.'
+      showcase: 'Use AIDA: hook with a specific design detail visible in the image. Create desire through identity signaling — who wears this design and what it says about them.',
+      lifestyle: 'Use BAB: boring outfit before, statement piece after. Paint a specific scene — at the coffee shop, at a cookout, walking the dog. Make it aspirational but relatable.',
+      quality: 'Use AIDA: lead with a material or printing quality fact. Build expertise through Authority Bias. End with Zero-Risk positioning — this is an investment piece.',
+      urgency: 'Use PAS: trending designs move fast. Agitate with social proof (this design is getting attention). Apply Scarcity — unique designs in limited runs.'
     };
 
-    const stylePrompts = isArtProduct ? artStylePrompts : apparelStylePrompts;
+    const multiboardStylePrompts = {
+      showcase: 'Use AIDA: hook with the specific organization problem this solves. Build interest with the modular snap system. Contrast against cheap alternatives that fall apart.',
+      lifestyle: 'Use BAB: messy/chaotic room before, organized zen-like space after. Use the specific room context provided. Apply Identity Signaling — organized people choose systems, not quick fixes.',
+      quality: 'Use AIDA: lead with a 3D printing quality detail, interest in local Asheville production, desire through the expandable system concept. Authority Bias through manufacturing details.',
+      urgency: 'Use PAS: disorganization costs time daily. Agitate the frustration. Package deal value as the solve. Apply Loss Aversion — calculate time wasted looking for things.'
+    };
 
-    // Different system prompts for stickers, metal prints, and apparel
+    const stylePrompts = isMultiboard ? multiboardStylePrompts : (isArtProduct ? artStylePrompts : apparelStylePrompts);
+
+    // Different system prompts for stickers, metal prints, multiboard, and apparel (Phase 2c)
+    const BANNED_PHRASES_GLOBAL = 'NEVER use: "transform your space", "elevate your", "perfect for any room", "ALERT", "must-have", "game-changer", "next level", "ACT NOW", "BUY NOW", "don\'t miss out", "obsessed", "literally dying", "stop scrolling"';
+    const NO_LINKS_RULE = 'CRITICAL: Do NOT include any links or URLs in the post body. The link will be added as a comment separately.';
+
     let systemPrompt;
-    if (isSticker) {
+    if (isMultiboard) {
+      systemPrompt = `You are a social media expert for Blue Ridge Custom Co — Authorized Multiboard Reseller.
+We 3D print modular wall organization systems under license from Multiboard.
+- Practical and direct — no fluff or hype language
+- Light humor is fine
+- Printed locally in Asheville, NC
+- Frame Multiboard as "the system" — not just hooks and bins
+- Always include "Authorized Multiboard Reseller" in product-focused posts
+- Say "wall tiles" not "MU tiles", "storage bins" not "Multibins"
+CONTENT RULES:
+- Lead with the problem being solved
+- Use specific room contexts (kitchen, garage, craft room, desk)
+- Include price in conversion posts
+- Mention expandability
+- Don't claim to be the manufacturer
+- Don't use "our design" or "we designed"
+- End with a conversational CTA like "What room would you organize first?" — NOT "Shop now"
+${BANNED_PHRASES_GLOBAL}
+${NO_LINKS_RULE}`;
+    } else if (isSticker) {
       systemPrompt = `You are a social media expert for Blue Ridge Custom Co.
 We create eye-catching vinyl stickers and decals with bold designs.
 Write fun, punchy posts that show personality and make people want to slap these on their stuff.
 Be playful, authentic, and tap into the sticker collector vibe. Use 1-2 fun emojis.
-NEVER use boring corporate language.`;
+NEVER use boring corporate language.
+End with a conversational CTA like "Tag a friend who needs this" — NOT "Shop now" or "Buy now".
+${BANNED_PHRASES_GLOBAL}
+${NO_LINKS_RULE}`;
     } else if (isArtProduct) {
       systemPrompt = `You are a passionate art curator and social media expert for Blue Ridge Custom Co.
-We create stunning sublimation metal prints and wall art that transform spaces.
+We create stunning sublimation metal prints and wall art.
 Write posts that make people FEEL something - nostalgia, wonder, desire.
 Be authentic, evocative, and paint vivid pictures with words. Use 1-2 well-placed emojis.
-NEVER use generic phrases like "elevate your space" or "perfect for any room".`;
+End with a conversational CTA like "Tag someone who needs this on their wall" — NOT "Shop now".
+${BANNED_PHRASES_GLOBAL}
+${NO_LINKS_RULE}`;
     } else {
       systemPrompt = `You are a social media expert for Blue Ridge Custom Co, a custom apparel printing business.
 Generate engaging, authentic posts that drive engagement and sales.
-Keep posts casual, friendly, and avoid sounding like an ad. Use emojis sparingly but effectively.`;
+Keep posts casual, friendly, and avoid sounding like an ad. Use emojis sparingly but effectively.
+End with a conversational CTA like "Drop a [emoji] if this is you" — NOT "Shop now" or "Buy now".
+${BANNED_PHRASES_GLOBAL}
+${NO_LINKS_RULE}`;
     }
 
     let userPrompt;
-    if (isSticker) {
+    if (isMultiboard) {
+      const room = item.room_use_case || item.room || campaign?.room || 'home';
+      const pillar = item.pillar || style || 'showcase';
+      userPrompt = `Create ONE engaging Facebook post for this Multiboard product:
+
+Product: ${item.name || 'Multiboard Wall Organization System'}
+Room: ${room}
+${campaign?.title ? `Campaign: ${campaign.title}` : ''}
+${collectionUrl ? `Shop: ${collectionUrl}` : ''}
+
+Style Guidance: ${stylePrompts[style] || stylePrompts.showcase}
+
+Write a post that:
+- Leads with the problem (messy/disorganized ${room})
+- Introduces the modular wall tile solution (2-3 sentences max)
+- Mentions it's 3D printed locally in Asheville, NC
+- Mentions "Authorized Multiboard Reseller"
+- Ends with a call to action
+
+Then add 8-10 hashtags mixing:
+- Organization/home improvement tags
+- Room-specific tags
+- Local/3D printing tags
+- Multiboard community tags
+
+Output as JSON:
+{
+  "text": "Your practical, engaging post here",
+  "hashtags": ["#tag1", "#tag2"]
+}`;
+    } else if (isSticker) {
       userPrompt = `Look at this design and create ONE punchy Facebook post:
 
 Design: ${item.name || 'Custom Sticker'}
@@ -649,6 +719,56 @@ async function postToFacebook(imagePathOrBuffer, text, category = "") {
 }
 
 /**
+ * Phase 1a: Post a comment on a Facebook post (used for shop link as first comment)
+ * @param {string} postId - The Facebook post ID to comment on
+ * @param {string} message - Comment text
+ * @param {string} category - Product category (for credential lookup)
+ */
+async function postFirstComment(postId, message, category = "") {
+  const creds = getFacebookCredentials(category);
+  const pageAccessToken = creds.accessToken;
+
+  if (!pageAccessToken || !postId) {
+    throw new Error('Missing credentials or post ID for comment');
+  }
+
+  const postData = JSON.stringify({
+    message,
+    access_token: pageAccessToken
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'graph.facebook.com',
+      path: `/v18.0/${postId}/comments`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          if (result.error) {
+            reject(new Error(result.error.message));
+          } else {
+            resolve({ success: true, commentId: result.id });
+          }
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
+  });
+}
+
+/**
  * Process a single scheduled post
  *
  * Handles two modes:
@@ -692,7 +812,18 @@ async function processScheduledPost(post, db, options = {}) {
         });
       }
     }
-    // Mode 3: Fallback - just use artwork as the image
+    // Mode 3: Multiboard - pull media from multiboard_media table
+    else if (post.campaignType === 'multiboard' && db.getMultiboardMediaForPillar) {
+      const pillar = post.aiStyle === 'lifestyle' ? 'consideration' :
+                     post.aiStyle === 'quality' ? 'trust' :
+                     post.aiStyle === 'urgency' ? 'conversion' : 'awareness';
+      const media = db.getMultiboardMediaForPillar(pillar, post.room || null);
+      if (media && media.file_path) {
+        rawImagePath = media.file_path;
+        if (onProgress) onProgress('using-multiboard-media', post);
+      }
+    }
+    // Mode 4: Fallback - just use artwork as the image
     else if (post.artworkPath) {
       rawImagePath = post.artworkPath;
     }
@@ -808,13 +939,11 @@ async function processScheduledPost(post, db, options = {}) {
       }
     }
 
-    // Append hashtags and collection URL
+    // Append hashtags (Phase 1a: link moved to first comment)
     if (postHashtags) {
       postText += '\n\n' + postHashtags;
     }
-    if (post.collectionUrl) {
-      postText += `\n\n🛒 Shop: ${post.collectionUrl}`;
-    }
+    // NOTE: Shop link is now posted as first comment, NOT in post body (improves reach)
 
     if (!postText.trim()) {
       throw new Error('No post text provided');
@@ -824,6 +953,16 @@ async function processScheduledPost(post, db, options = {}) {
     if (onProgress) onProgress('posting', post);
 
     const fbResult = await postToFacebook(imagePath, postText, post.category || post.productCategory || post.campaignSlug || post.campaignProductType || "");
+
+    // Phase 1a: Post shop link as first comment (non-fatal if it fails)
+    if (post.collectionUrl && fbResult.postId) {
+      try {
+        await postFirstComment(fbResult.postId, `🛒 Shop this item: ${post.collectionUrl}`, post.category || post.productCategory || post.campaignSlug || "");
+        console.log(`[FB Scheduler] Posted shop link as first comment on ${fbResult.postId}`);
+      } catch (commentErr) {
+        console.warn(`[FB Scheduler] Failed to post first comment (non-fatal): ${commentErr.message}`);
+      }
+    }
 
     // Mark as published
     db.markScheduledPostPublished(post.id, fbResult.postId);
@@ -1290,12 +1429,105 @@ async function getBulkPostInsights(facebookPostIds) {
   return results;
 }
 
+/**
+ * Schedule Multiboard posts using pillar-based weekly rotation
+ *
+ * Weekly schedule:
+ *   Monday:    Awareness (educational explainer)
+ *   Wednesday: Consideration (use-case, room rotates weekly)
+ *   Friday:    Conversion (product with price)
+ *   Sunday:    Trust (behind the scenes / print process)
+ *
+ * Room rotation: kitchen → garage → craft → desk (cycles each week)
+ *
+ * @param {Object} db - Database instance
+ * @param {Object} options - Scheduling options
+ * @returns {Array} Created scheduled post entries
+ */
+function scheduleMultiboardPosts(db, options = {}) {
+  const {
+    weeksAhead = 4,
+    startDate = null
+  } = options;
+
+  const ROOMS = ['kitchen', 'garage', 'craft', 'desk'];
+  const PILLAR_SCHEDULE = [
+    { day: 1, pillar: 'awareness', style: 'showcase' },    // Monday
+    { day: 3, pillar: 'consideration', style: 'lifestyle' }, // Wednesday
+    { day: 5, pillar: 'conversion', style: 'urgency' },     // Friday
+    { day: 0, pillar: 'trust', style: 'quality' }           // Sunday
+  ];
+
+  // Determine base week offset from existing scheduled multiboard posts
+  let weekOffset = 0;
+  try {
+    const existingPosts = db.listScheduledPosts ? db.listScheduledPosts() : [];
+    const mbPosts = existingPosts.filter(p => p.campaignType === 'multiboard');
+    weekOffset = Math.floor(mbPosts.length / PILLAR_SCHEDULE.length) % ROOMS.length;
+  } catch (e) {
+    // Start from 0 if we can't check
+  }
+
+  const start = startDate ? new Date(startDate) : new Date();
+  const created = [];
+
+  for (let week = 0; week < weeksAhead; week++) {
+    const currentRoom = ROOMS[(weekOffset + week) % ROOMS.length];
+
+    for (const schedule of PILLAR_SCHEDULE) {
+      // Find next occurrence of this day of week
+      const postDate = new Date(start);
+      postDate.setDate(postDate.getDate() + (week * 7));
+      // Adjust to the correct day of week
+      const currentDay = postDate.getDay();
+      let daysUntil = schedule.day - currentDay;
+      if (daysUntil < 0) daysUntil += 7;
+      postDate.setDate(postDate.getDate() + daysUntil);
+
+      // Set posting time to 10:00 AM ET
+      postDate.setHours(10, 0, 0, 0);
+
+      // Don't schedule in the past
+      if (postDate <= new Date()) continue;
+
+      const postData = {
+        campaignSlug: 'multiboard',
+        campaignType: 'multiboard',
+        productName: `Multiboard ${schedule.pillar} - ${currentRoom}`,
+        productUid: `multiboard-${schedule.pillar}-${currentRoom}-${week}`,
+        scheduledAt: postDate.toISOString(),
+        postText: '', // Will be generated at posting time
+        postHashtags: '',
+        aiStyle: schedule.style,
+        generateAiOnPost: 1,
+        room: currentRoom,
+        status: 'pending'
+      };
+
+      try {
+        if (db.createScheduledPost) {
+          const post = db.createScheduledPost(postData);
+          created.push(post);
+          console.log(`[MB Scheduler] Scheduled ${schedule.pillar} post for ${postDate.toDateString()} (${currentRoom})`);
+        }
+      } catch (e) {
+        console.error(`[MB Scheduler] Failed to schedule ${schedule.pillar} post:`, e.message);
+      }
+    }
+  }
+
+  console.log(`[MB Scheduler] Scheduled ${created.length} multiboard posts over ${weeksAhead} weeks`);
+  return created;
+}
+
 module.exports = {
   generateMockupForPost,
   postToFacebook,
+  postFirstComment,
   processScheduledPost,
   processPendingPosts,
   schedulePostsForCampaign,
+  scheduleMultiboardPosts,
   startSchedulerDaemon,
   getPostInsights,
   getBulkPostInsights,

@@ -8,6 +8,7 @@
  * - Adapts strategy based on performance data
  * - Reports to owner via Telegram
  * - Presents paid options for approval
+ * - A/B tests caption styles, hooks, CTAs (Bayesian)
  *
  * Runs every 30 minutes, integrates with pipeline monitor.
  */
@@ -104,7 +105,44 @@ function ensureTables(db) {
       response_data_json TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_approvals_status ON agent_approvals(status);
+
+    -- A/B Testing tables (Phase 5)
+    CREATE TABLE IF NOT EXISTS ab_tests (
+      id TEXT PRIMARY KEY,
+      test_name TEXT NOT NULL,
+      test_variable TEXT NOT NULL,
+      category TEXT,
+      variant_a TEXT NOT NULL,
+      variant_b TEXT NOT NULL,
+      status TEXT DEFAULT 'active',
+      min_posts_per_variant INTEGER DEFAULT 10,
+      min_duration_days INTEGER DEFAULT 14,
+      max_duration_days INTEGER DEFAULT 30,
+      winner TEXT,
+      probability_a_better REAL,
+      conclusion_reason TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      concluded_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS ab_test_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      test_id TEXT NOT NULL,
+      post_id TEXT NOT NULL,
+      variant TEXT NOT NULL,
+      weighted_score REAL DEFAULT 0,
+      assigned_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (test_id) REFERENCES ab_tests(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ab_assignments_test ON ab_test_assignments(test_id);
   `);
+
+  // Phase 1b: Add weighted_score column (safe for existing DB)
+  try { db.exec(`ALTER TABLE engagement_tracking ADD COLUMN weighted_score REAL DEFAULT 0`); } catch (e) { /* column exists */ }
+
+  // Phase 2d: Add hook_formula columns
+  try { db.exec(`ALTER TABLE content_calendar ADD COLUMN hook_formula TEXT`); } catch (e) { /* column exists */ }
+  try { db.exec(`ALTER TABLE scheduled_facebook_posts ADD COLUMN hook_formula TEXT`); } catch (e) { /* column exists */ }
 }
 
 // ============================================================================
@@ -112,7 +150,7 @@ function ensureTables(db) {
 // ============================================================================
 
 const DEFAULT_CONFIG = {
-  version: 1,
+  version: 2,
   agentState: {
     enabled: true,
     lastCycleAt: null,
@@ -154,19 +192,71 @@ const DEFAULT_CONFIG = {
       targetAudience: 'Young adults, sticker collectors, laptop customizers'
     }
   },
+  // Phase 2a: Psychology-enriched caption style definitions
   captionStyleDefinitions: {
-    showcase: 'Highlight the product quality, details, and craftsmanship. Describe what makes it special.',
-    lifestyle: 'Show the product in context. Describe a scene where it fits. Make it aspirational.',
-    humor: 'Use wit, puns, or relatable humor. Be playful and casual. Match Gen X/Millennial humor.',
-    urgency: 'Create FOMO. Limited availability, trending now, selling fast. Drive immediate action.',
-    quality: 'Focus on materials, durability, craftsmanship. Premium positioning.'
+    showcase: {
+      description: 'Highlight the product quality, details, and craftsmanship. Describe what makes it special.',
+      psychology: 'Contrast Effect — show before/after or compare to generic alternatives. Anchoring — lead with the premium aspect so everything else feels like bonus value.',
+      structure: 'AIDA — Attention (visual hook), Interest (unique detail), Desire (imagine owning it), Action (soft CTA)',
+      hookFormulas: ['curiosity_gap', 'pattern_interrupt', 'specific_number'],
+      bannedPhrases: ['transform your space', 'elevate your', 'perfect for any room', 'ALERT', 'must-have', 'game-changer', 'next level'],
+      exampleCTA: 'Tag someone who needs this on their wall'
+    },
+    lifestyle: {
+      description: 'Show the product in context. Describe a scene where it fits. Make it aspirational.',
+      psychology: 'Identity Signaling — the product says something about who you are. Mere Exposure Effect — paint a familiar scene the audience already loves.',
+      structure: 'BAB — Before (life without it), After (life with it), Bridge (this product)',
+      hookFormulas: ['before_after', 'scenario_paint', 'identity_call'],
+      bannedPhrases: ['transform your space', 'elevate your', 'perfect for any room', 'imagine this', 'picture this'],
+      exampleCTA: 'What room would you put this in?'
+    },
+    humor: {
+      description: 'Use wit, puns, or relatable humor. Be playful and casual. Match Gen X/Millennial humor.',
+      psychology: 'Humor Effect — funny content gets shared more and remembered longer. In-Group Signaling — reference shared experiences that make the audience feel "seen".',
+      structure: 'Story — Setup (relatable situation) + Punchline (unexpected twist) + Product tie-in',
+      hookFormulas: ['pattern_interrupt', 'hot_take', 'relatable_confession'],
+      bannedPhrases: ['ALERT', 'stop scrolling', 'you NEED this', 'obsessed', 'literally dying'],
+      exampleCTA: 'Drop a [emoji] if this is you'
+    },
+    urgency: {
+      description: 'Create FOMO. Limited availability, trending now, selling fast. Drive immediate action.',
+      psychology: 'Loss Aversion — people feel losses 2x more than gains. Scarcity — limited quantity or time triggers action. Social Proof — others buying validates the choice.',
+      structure: 'PAS — Problem (you\'re missing out), Agitate (everyone else has it), Solve (get yours now)',
+      hookFormulas: ['social_proof_opener', 'scarcity_signal', 'urgency_stat'],
+      bannedPhrases: ['ALERT', 'ACT NOW', 'BUY NOW', 'don\'t miss out', 'limited time only', 'while supplies last'],
+      exampleCTA: 'Link in comments (only a few left)'
+    },
+    quality: {
+      description: 'Focus on materials, durability, craftsmanship. Premium positioning.',
+      psychology: 'Authority Bias — technical details signal expertise. Zero-Risk Bias — quality emphasis reduces purchase anxiety.',
+      structure: 'AIDA — Attention (surprising quality fact), Interest (process/material detail), Desire (longevity/value), Action (learn more)',
+      hookFormulas: ['specific_number', 'myth_buster', 'behind_the_scenes'],
+      bannedPhrases: ['top-notch', 'world-class', 'best in class', 'premium quality', 'second to none'],
+      exampleCTA: 'Ask me anything about our process'
+    }
+  },
+  // Phase 6b: Content pillar rotation by day of week
+  contentPillars: {
+    0: { style: 'lifestyle', weight: 1.2, label: 'Sunday Lifestyle' },
+    1: { style: 'showcase', weight: 1.0, label: 'Monday Showcase' },
+    2: { style: 'humor', weight: 1.0, label: 'Tuesday Fun' },
+    3: { style: 'quality', weight: 1.0, label: 'Wednesday Craft' },
+    4: { style: 'lifestyle', weight: 1.0, label: 'Thursday Lifestyle' },
+    5: { style: 'urgency', weight: 1.2, label: 'Friday Deals' },
+    6: { style: 'showcase', weight: 1.0, label: 'Saturday Showcase' }
   },
   strategy: {
     learningRate: 0.1,
     underexposedBoostDays: 7,
     repostCooldownDays: 14,
     abTestMinSample: 10,
-    engagementWindowDays: 30
+    engagementWindowDays: 30,
+    recycleMinAgeDays: 28,
+    recycleMinScoreMultiplier: 1.5,
+    recycleChance: 0.2,
+    maxCategoryPostsPerWeek: 3,
+    maxStylePerCategoryPerWeek: 2,
+    minPostSpacingHours: 6
   },
   telegram: {
     dailyReportHour: 20,
@@ -249,6 +339,46 @@ async function callOllama(prompt, options = {}) {
   });
 }
 
+/**
+ * Extract a JSON object from LLM response text.
+ * Handles markdown code fences, extra prose, trailing commas, etc.
+ */
+function extractJSON(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  // Step 1: Strip markdown code fences (```json ... ``` or ``` ... ```)
+  let cleaned = text.replace(/```(?:json)?\s*\n?([\s\S]*?)```/g, '$1').trim();
+
+  // Step 2: Try parsing the whole cleaned text directly
+  try { return JSON.parse(cleaned); } catch (_) {}
+
+  // Step 3: Find the outermost { ... } using bracket balancing (not greedy regex)
+  const start = cleaned.indexOf('{');
+  if (start !== -1) {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = start; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inString) { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) {
+        let candidate = cleaned.substring(start, i + 1);
+        try { return JSON.parse(candidate); } catch (_) {}
+        // Step 4: Fix trailing commas before } or ]
+        candidate = candidate.replace(/,\s*([}\]])/g, '$1');
+        try { return JSON.parse(candidate); } catch (_) {}
+        break;
+      }}
+    }
+  }
+
+  return null;
+}
+
 // ============================================================================
 // ENGAGEMENT TRACKING
 // ============================================================================
@@ -317,6 +447,8 @@ async function collectEngagementData() {
     const comments = insight.comments || 0;
     const shares = insight.shares || 0;
     const clicks = insight.clicks || 0;
+    // Phase 1b: Weighted scoring — comments and shares signal deeper engagement
+    const weightedScore = likes + (comments * 3) + (shares * 5);
     const total = likes + comments + shares;
     const engagementRate = insight.reach > 0 ? (total / insight.reach * 100) : 0;
 
@@ -325,15 +457,24 @@ async function collectEngagementData() {
         INSERT OR REPLACE INTO engagement_tracking
         (post_id, facebook_post_id, platform, product_uid, product_category,
          campaign_slug, caption_style, posted_at, posted_hour, posted_day_of_week,
-         likes, comments, shares, clicks, engagement_rate, collected_at)
-        VALUES (?, ?, 'facebook', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         likes, comments, shares, clicks, engagement_rate, weighted_score, collected_at)
+        VALUES (?, ?, 'facebook', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         post.id, post.facebook_post_id, post.product_uid, category,
         post.campaign_slug, style, post.published_at,
         postedAt.getUTCHours(), postedAt.getUTCDay(),
-        likes, comments, shares, clicks, engagementRate, now
+        likes, comments, shares, clicks, engagementRate, weightedScore, now
       );
       collected++;
+
+      // Phase 5d: Update A/B test assignments with weighted score
+      try {
+        _db.prepare(`
+          UPDATE ab_test_assignments SET weighted_score = ?
+          WHERE post_id = ?
+        `).run(weightedScore, post.id);
+      } catch (e) { /* no assignment for this post */ }
+
     } catch (e) {
       console.error('[AI Agent] DB insert error:', e.message);
     }
@@ -371,11 +512,13 @@ function analyzePerformance() {
     )
   `;
 
+  // Phase 3a: Use weighted_score in analysis
   const byCategory = _db.prepare(`
     ${latestSnapshotCTE}
     SELECT e.product_category,
            COUNT(*) as post_count,
            ROUND(AVG(e.engagement_rate), 2) as avg_engagement,
+           ROUND(AVG(e.weighted_score), 2) as avg_weighted_score,
            SUM(e.likes) as total_likes,
            SUM(e.comments) as total_comments,
            SUM(e.shares) as total_shares,
@@ -383,7 +526,7 @@ function analyzePerformance() {
     FROM engagement_tracking e
     JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
     GROUP BY e.product_category
-    ORDER BY avg_engagement DESC
+    ORDER BY avg_weighted_score DESC
   `).all();
 
   const byStyle = _db.prepare(`
@@ -391,43 +534,60 @@ function analyzePerformance() {
     SELECT e.caption_style,
            COUNT(*) as post_count,
            ROUND(AVG(e.engagement_rate), 2) as avg_engagement,
+           ROUND(AVG(e.weighted_score), 2) as avg_weighted_score,
            SUM(e.likes) as total_likes,
            SUM(e.clicks) as total_clicks
     FROM engagement_tracking e
     JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
     GROUP BY e.caption_style
-    ORDER BY avg_engagement DESC
+    ORDER BY avg_weighted_score DESC
   `).all();
 
   const byHour = _db.prepare(`
     ${latestSnapshotCTE}
     SELECT e.posted_hour,
            COUNT(*) as post_count,
-           ROUND(AVG(e.engagement_rate), 2) as avg_engagement
+           ROUND(AVG(e.engagement_rate), 2) as avg_engagement,
+           ROUND(AVG(e.weighted_score), 2) as avg_weighted_score
     FROM engagement_tracking e
     JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
     GROUP BY e.posted_hour
-    ORDER BY avg_engagement DESC
+    ORDER BY avg_weighted_score DESC
   `).all();
 
   const byDayOfWeek = _db.prepare(`
     ${latestSnapshotCTE}
     SELECT e.posted_day_of_week,
            COUNT(*) as post_count,
-           ROUND(AVG(e.engagement_rate), 2) as avg_engagement
+           ROUND(AVG(e.engagement_rate), 2) as avg_engagement,
+           ROUND(AVG(e.weighted_score), 2) as avg_weighted_score
     FROM engagement_tracking e
     JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
     GROUP BY e.posted_day_of_week
-    ORDER BY avg_engagement DESC
+    ORDER BY avg_weighted_score DESC
+  `).all();
+
+  // Phase 3a: Category x Style cross-tabulation
+  const byCategoryStyle = _db.prepare(`
+    ${latestSnapshotCTE}
+    SELECT e.product_category, e.caption_style,
+           COUNT(*) as post_count,
+           ROUND(AVG(e.weighted_score), 2) as avg_weighted_score,
+           ROUND(AVG(e.engagement_rate), 2) as avg_engagement
+    FROM engagement_tracking e
+    JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
+    GROUP BY e.product_category, e.caption_style
+    ORDER BY e.product_category, avg_weighted_score DESC
   `).all();
 
   const topPosts = _db.prepare(`
     ${latestSnapshotCTE}
     SELECT e.post_id, e.product_uid, e.product_category, e.caption_style,
-           e.posted_hour, e.likes, e.comments, e.shares, e.engagement_rate
+           e.posted_hour, e.likes, e.comments, e.shares, e.engagement_rate,
+           e.weighted_score
     FROM engagement_tracking e
     JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
-    ORDER BY (e.likes + e.comments + e.shares) DESC
+    ORDER BY e.weighted_score DESC
     LIMIT 10
   `).all();
 
@@ -441,6 +601,7 @@ function analyzePerformance() {
     byStyle,
     byHour: byHour.slice(0, 8),
     byDayOfWeek,
+    byCategoryStyle,
     topPosts: topPosts.slice(0, 5),
     totalPostsTracked: totalPosts?.count || 0,
     windowDays
@@ -461,23 +622,27 @@ async function callOllamaForStrategy(analysis) {
   }
 
   // Compact summary to keep prompt short for Ollama CPU speed
-  const catSummary = analysis.byCategory.map(c => `${c.category}: ${c.avg_engagement.toFixed(1)} avg eng, ${c.total_posts} posts`).join('; ');
-  const styleSummary = analysis.byStyle.slice(0, 5).map(s => `${s.caption_style}: ${s.avg_engagement.toFixed(1)} avg`).join('; ');
-  const hourSummary = analysis.byHour.slice(0, 3).map(h => `${h.hour}:00=${h.avg_engagement.toFixed(1)}`).join(', ');
+  const catSummary = analysis.byCategory.map(c => `${c.product_category}: ${(c.avg_weighted_score || 0).toFixed(1)} wtd score, ${c.post_count} posts`).join('; ');
+  const styleSummary = analysis.byStyle.slice(0, 5).map(s => `${s.caption_style}: ${(s.avg_weighted_score || 0).toFixed(1)} wtd`).join('; ');
+  const hourSummary = analysis.byHour.slice(0, 3).map(h => `${h.posted_hour}:00=${(h.avg_weighted_score || 0).toFixed(1)}`).join(', ');
 
-  const prompt = `Marketing strategy for online store (metal prints, t-shirts, stickers).
+  const prompt = `You are a JSON API. Respond with ONLY raw JSON, no explanation, no markdown, no code fences.
+
+Marketing strategy for online store (metal prints, t-shirts, stickers).
 Data: ${catSummary}. Styles: ${styleSummary}. Best hours: ${hourSummary}.
 Current weights: ${JSON.stringify(currentWeights)}.
-Output ONLY JSON: {"categoryWeightAdjustments":{"metal-print":0.55,"tshirt":0.30,"sticker":0.15},"bestPostingHours":[10,14,19],"recommendations":["one tip"],"confidence":0.7}`;
+
+Respond with ONLY this JSON format (no other text):
+{"categoryWeightAdjustments":{"metal-print":0.55,"tshirt":0.30,"sticker":0.15},"bestPostingHours":[10,14,19],"recommendations":["one tip"],"confidence":0.7}`;
 
   try {
     const result = await callOllama(prompt, { temperature: 0.5, maxTokens: 300, timeout: 240000 });
-    const jsonMatch = result.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.warn('[AI Agent] Ollama strategy: could not parse JSON response');
+    const parsed = extractJSON(result);
+    if (!parsed) {
+      console.warn('[AI Agent] Ollama strategy: could not parse JSON response, raw:', result?.substring(0, 200));
       return null;
     }
-    return JSON.parse(jsonMatch[0]);
+    return parsed;
   } catch (e) {
     console.error('[AI Agent] Ollama strategy failed:', e.message);
     return null;
@@ -557,6 +722,51 @@ function applyStrategyAdjustments(strategy) {
 // CONTENT PLANNING & GENERATION
 // ============================================================================
 
+// Phase 3c: Find high-performing posts eligible for recycling
+function findRecyclablePosts() {
+  const config = loadConfig();
+  const minAge = config.strategy.recycleMinAgeDays || 28;
+  const scoreMultiplier = config.strategy.recycleMinScoreMultiplier || 1.5;
+
+  // Get average weighted score
+  const avgScore = _db.prepare(`
+    WITH latest AS (
+      SELECT post_id, MAX(collected_at) as max_collected
+      FROM engagement_tracking WHERE posted_at > datetime('now', '-90 days')
+      GROUP BY post_id
+    )
+    SELECT AVG(e.weighted_score) as avg_score
+    FROM engagement_tracking e
+    JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
+  `).get()?.avg_score || 0;
+
+  if (avgScore <= 0) return [];
+
+  const minScore = avgScore * scoreMultiplier;
+
+  return _db.prepare(`
+    WITH latest AS (
+      SELECT post_id, MAX(collected_at) as max_collected
+      FROM engagement_tracking WHERE posted_at > datetime('now', '-90 days')
+      GROUP BY post_id
+    )
+    SELECT e.post_id, e.product_uid, e.product_category, e.caption_style,
+           e.weighted_score, e.posted_at,
+           s.product_name, s.artwork_path, s.collection_url
+    FROM engagement_tracking e
+    JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
+    JOIN scheduled_facebook_posts s ON e.post_id = s.id
+    WHERE e.weighted_score >= ?
+      AND e.posted_at < datetime('now', '-${minAge} days')
+      AND e.post_id NOT IN (
+        SELECT product_uid FROM scheduled_facebook_posts
+        WHERE status = 'pending' AND product_uid IS NOT NULL
+      )
+    ORDER BY e.weighted_score DESC
+    LIMIT 10
+  `).all(minScore);
+}
+
 async function planNextContent() {
   const config = loadConfig();
 
@@ -588,15 +798,83 @@ async function planNextContent() {
 
   for (let i = 0; i < toGenerate; i++) {
     // Pick category by weight
-    const category = pickWeighted(enabledCategories.map(([name, cfg]) => ({
+    let category = pickWeighted(enabledCategories.map(([name, cfg]) => ({
       value: name, weight: cfg.postingWeight
     })));
     const catConfig = config.categories[category];
 
-    // Pick caption style by weight
-    const style = pickWeighted(Object.entries(catConfig.captionStyles).map(([name, weight]) => ({
-      value: name, weight
-    })));
+    // Phase 3b: Diminishing returns prevention
+    const maxCatPerWeek = config.strategy.maxCategoryPostsPerWeek || 3;
+    const recentCatPosts = _db.prepare(`
+      SELECT COUNT(*) as count FROM content_calendar
+      WHERE product_category = ? AND planned_date > date('now', '-7 days') AND status != 'skipped'
+    `).get(category)?.count || 0;
+
+    if (recentCatPosts >= maxCatPerWeek) {
+      console.log(`[AI Agent] Diminishing returns: ${category} has ${recentCatPosts} posts in 7 days, re-rolling`);
+      // Re-roll with boosted weights for other categories
+      const alternatives = enabledCategories
+        .filter(([name]) => name !== category)
+        .map(([name, cfg]) => ({ value: name, weight: cfg.postingWeight * 1.5 }));
+      if (alternatives.length > 0) {
+        category = pickWeighted(alternatives);
+      }
+    }
+
+    // Phase 3c: Content recycling (~20% chance)
+    const recycleChance = config.strategy.recycleChance || 0.2;
+    let isRecycled = false;
+    let recycledPost = null;
+
+    if (Math.random() < recycleChance) {
+      const recyclable = findRecyclablePosts();
+      if (recyclable.length > 0) {
+        recycledPost = recyclable[Math.floor(Math.random() * Math.min(3, recyclable.length))];
+        isRecycled = true;
+        console.log(`[AI Agent] Recycling top performer: "${recycledPost.product_name}" (score: ${recycledPost.weighted_score})`);
+      }
+    }
+
+    // Pick caption style by weight, with pillar day preference
+    const dayOfWeek = new Date().getDay();
+    const pillar = config.contentPillars?.[dayOfWeek];
+    let style;
+
+    // Phase 3b: Style saturation check
+    const maxStylePerCat = config.strategy.maxStylePerCategoryPerWeek || 2;
+
+    if (pillar && catConfig.captionStyles[pillar.style] !== undefined) {
+      // Boost the pillar day style
+      const adjustedStyles = Object.entries(catConfig.captionStyles).map(([name, weight]) => ({
+        value: name, weight: name === pillar.style ? weight * (pillar.weight || 1.2) : weight
+      }));
+      style = pickWeighted(adjustedStyles);
+    } else {
+      style = pickWeighted(Object.entries(catConfig.captionStyles).map(([name, weight]) => ({
+        value: name, weight
+      })));
+    }
+
+    // Check style saturation
+    const recentStylePosts = _db.prepare(`
+      SELECT COUNT(*) as count FROM content_calendar
+      WHERE product_category = ? AND caption_style = ? AND planned_date > date('now', '-7 days') AND status != 'skipped'
+    `).get(category, style)?.count || 0;
+
+    if (recentStylePosts >= maxStylePerCat) {
+      console.log(`[AI Agent] Diminishing returns: ${category}/${style} has ${recentStylePosts} posts in 7 days, re-rolling style`);
+      const altStyles = Object.entries(catConfig.captionStyles)
+        .filter(([name]) => name !== style)
+        .map(([name, weight]) => ({ value: name, weight: weight * 1.5 }));
+      if (altStyles.length > 0) {
+        style = pickWeighted(altStyles);
+      }
+    }
+
+    // Phase 2b: Select hook formula from style definition
+    const styleDef = config.captionStyleDefinitions[style];
+    const hookFormulas = (styleDef && styleDef.hookFormulas) || ['curiosity_gap'];
+    const hookFormula = hookFormulas[Math.floor(Math.random() * hookFormulas.length)];
 
     // Pick posting time
     const hour = bestHours[i % bestHours.length];
@@ -604,28 +882,59 @@ async function planNextContent() {
     const plannedDate = new Date();
     plannedDate.setDate(plannedDate.getDate() + daysAhead);
     const dateStr = plannedDate.toISOString().slice(0, 10);
-    const timeStr = `${String(hour).padStart(2, '0')}:00`;
+    let timeStr = `${String(hour).padStart(2, '0')}:00`;
 
+    // Phase 6a: Enforce 6+ hour spacing
+    const minSpacing = config.strategy.minPostSpacingHours || 6;
+    const existingForDate = _db.prepare(`
+      SELECT planned_time FROM content_calendar
+      WHERE planned_date = ? AND status != 'skipped'
+      UNION
+      SELECT substr(scheduled_for, 12, 5) as planned_time FROM scheduled_facebook_posts
+      WHERE date(scheduled_for) = ? AND status = 'pending'
+    `).all(dateStr, dateStr);
+
+    if (existingForDate.length > 0) {
+      const existingHours = existingForDate.map(e => parseInt((e.planned_time || '12:00').split(':')[0]));
+      let proposedHour = hour;
+      let shifted = false;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const tooClose = existingHours.some(h => Math.abs(h - proposedHour) < minSpacing);
+        if (!tooClose) break;
+        proposedHour = (proposedHour + minSpacing) % 24;
+        shifted = true;
+      }
+      if (shifted) {
+        timeStr = `${String(proposedHour).padStart(2, '0')}:00`;
+        console.log(`[AI Agent] Shifted time from ${hour}:00 to ${timeStr} (${minSpacing}h spacing) for ${dateStr}`);
+      }
+    }
+
+    const calendarId = crypto.randomUUID();
     planned.push({
-      id: crypto.randomUUID(),
+      id: calendarId,
       planned_date: dateStr,
       planned_time: timeStr,
       platform: 'facebook',
-      product_category: category,
+      product_category: isRecycled ? recycledPost.product_category : category,
+      product_uid: isRecycled ? recycledPost.product_uid : null,
       caption_style: style,
+      hook_formula: hookFormula,
       status: 'planned',
-      reason: `Weighted selection: ${category} (${Math.round(catConfig.postingWeight * 100)}%), style: ${style}`
+      reason: isRecycled
+        ? `Recycled top performer (score: ${recycledPost.weighted_score})`
+        : `Weighted selection: ${category} (${Math.round(catConfig.postingWeight * 100)}%), style: ${style}, hook: ${hookFormula}`
     });
   }
 
   // Insert into content_calendar
   const insert = _db.prepare(`
-    INSERT INTO content_calendar (id, planned_date, planned_time, platform, product_category, caption_style, status, reason)
-    VALUES (?, ?, ?, ?, ?, ?, 'planned', ?)
+    INSERT INTO content_calendar (id, planned_date, planned_time, platform, product_category, product_uid, caption_style, hook_formula, status, reason)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?)
   `);
 
   for (const p of planned) {
-    insert.run(p.id, p.planned_date, p.planned_time, p.platform, p.product_category, p.caption_style, p.reason);
+    insert.run(p.id, p.planned_date, p.planned_time, p.platform, p.product_category, p.product_uid, p.caption_style, p.hook_formula, p.reason);
   }
 
   console.log(`[AI Agent] Planned ${planned.length} calendar entries`);
@@ -657,16 +966,17 @@ async function executeContentPlan() {
       if (!catConfig) continue;
 
       // Find a product to post about
-      const product = await selectProduct(entry.product_category, catConfig);
+      const product = await selectProduct(entry.product_category, catConfig, entry.product_uid);
       if (!product) {
         console.log(`[AI Agent] No product found for category: ${entry.product_category}`);
         _db.prepare(`UPDATE content_calendar SET status = 'skipped', reason = 'No product found' WHERE id = ?`).run(entry.id);
         continue;
       }
 
-      // Generate caption via Ollama
-      const styleDef = config.captionStyleDefinitions[entry.caption_style] || '';
-      const caption = await generateCaption(product, entry.product_category, entry.caption_style, styleDef, catConfig);
+      // Phase 2b: Generate caption with psychology-enriched prompt
+      const styleDef = config.captionStyleDefinitions[entry.caption_style];
+      const hookFormula = entry.hook_formula || 'curiosity_gap';
+      const caption = await generateCaption(product, entry.product_category, entry.caption_style, styleDef, catConfig, hookFormula);
 
       // Get product image URL
       const imageUrl = product.images?.[0]?.src || product.image?.src || null;
@@ -685,12 +995,20 @@ async function executeContentPlan() {
       const postText = caption.text || `Check out ${product.title}! Available now at Blue Ridge Custom Co.`;
       const postHashtags = caption.hashtags || hashtags;
 
+      // Phase 5d: Check active A/B tests for this category
+      let abVariant = null;
+      const activeTest = getActiveTestForCategory(entry.product_category);
+      if (activeTest) {
+        abVariant = assignToTest(activeTest, postId);
+        console.log(`[AI Agent] A/B test "${activeTest.test_name}": assigned variant ${abVariant} to post ${postId}`);
+      }
+
       _db.prepare(`
         INSERT INTO scheduled_facebook_posts
         (id, campaign_slug, product_uid, product_name, campaign_type,
          artwork_path, post_text, post_hashtags,
-         collection_url, scheduled_for, status, generate_ai_on_post, ai_style)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?)
+         collection_url, scheduled_for, status, generate_ai_on_post, ai_style, hook_formula)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)
       `).run(
         postId,
         `agent-${entry.product_category}`,
@@ -702,7 +1020,8 @@ async function executeContentPlan() {
         postHashtags,
         collectionUrl,
         scheduledFor,
-        entry.caption_style
+        entry.caption_style,
+        hookFormula
       );
 
       // Update calendar entry
@@ -712,7 +1031,7 @@ async function executeContentPlan() {
       `).run(postId, String(product.id), product.title, new Date().toISOString(), entry.id);
 
       generated++;
-      console.log(`[AI Agent] Scheduled: "${product.title}" (${entry.product_category}/${entry.caption_style}) for ${scheduledFor}`);
+      console.log(`[AI Agent] Scheduled: "${product.title}" (${entry.product_category}/${entry.caption_style}/${hookFormula}) for ${scheduledFor}`);
 
     } catch (e) {
       console.error(`[AI Agent] Content execution error:`, e.message);
@@ -723,7 +1042,16 @@ async function executeContentPlan() {
   return { generated };
 }
 
-async function selectProduct(category, catConfig) {
+async function selectProduct(category, catConfig, preferredUid) {
+  // If we have a preferred UID (e.g. from recycling), try to find it
+  if (preferredUid) {
+    const shopify = require('../integrations/shopify');
+    try {
+      const product = await shopify.getProduct(preferredUid);
+      if (product) return product;
+    } catch (e) { /* fall through to normal selection */ }
+  }
+
   const shopify = require('../integrations/shopify');
   const productTypes = catConfig.shopifyProductTypes || [];
 
@@ -762,7 +1090,45 @@ async function selectProduct(category, catConfig) {
   return finalPool[Math.floor(Math.random() * finalPool.length)];
 }
 
-async function generateCaption(product, category, style, styleDef, catConfig) {
+// Phase 2b: Psychology-enriched caption generation
+async function generateCaption(product, category, style, styleDef, catConfig, hookFormula) {
+  // Build rich prompt using style definition
+  const isRichStyle = styleDef && typeof styleDef === 'object';
+
+  const psychologyInstruction = isRichStyle ? `\nPsychology to apply: ${styleDef.psychology}` : '';
+  const structureInstruction = isRichStyle ? `\nCopy structure: ${styleDef.structure}` : '';
+
+  // Hook formula descriptions
+  const hookDescriptions = {
+    curiosity_gap: 'Open with an incomplete thought that creates an information gap the reader must resolve',
+    pattern_interrupt: 'Start with something unexpected that breaks the scroll pattern',
+    specific_number: 'Lead with a specific, concrete number or statistic',
+    before_after: 'Paint a vivid before/after contrast in the opening line',
+    scenario_paint: 'Drop the reader into a specific sensory scene',
+    identity_call: 'Call out a specific identity or tribe ("Fellow plant parents...")',
+    hot_take: 'Lead with a mildly controversial opinion related to the product category',
+    relatable_confession: 'Start with a self-deprecating or relatable admission',
+    social_proof_opener: 'Reference what others are doing or buying',
+    scarcity_signal: 'Hint at limited availability without being pushy',
+    urgency_stat: 'Open with a trending-now data point',
+    myth_buster: 'Challenge a common misconception',
+    behind_the_scenes: 'Reveal something about how the product is made'
+  };
+
+  const hookInstruction = hookFormula && hookDescriptions[hookFormula]
+    ? `\nHook approach: ${hookDescriptions[hookFormula]}`
+    : '';
+
+  const bannedList = isRichStyle && styleDef.bannedPhrases
+    ? `\nNEVER use these phrases: ${styleDef.bannedPhrases.join(', ')}`
+    : '';
+
+  const ctaExample = isRichStyle && styleDef.exampleCTA
+    ? `\nCTA style (conversational, not "Shop now"): Example — "${styleDef.exampleCTA}"`
+    : '';
+
+  const styleDescription = isRichStyle ? styleDef.description : (styleDef || '');
+
   const prompt = `You are a social media expert for Blue Ridge Custom Co.
 Write ONE engaging Facebook post for this product.
 
@@ -770,27 +1136,39 @@ Product: ${product.title}
 Category: ${catConfig.displayName}
 Target audience: ${catConfig.targetAudience}
 
-Style: ${style} — ${styleDef}
+Style: ${style} — ${styleDescription}${psychologyInstruction}${structureInstruction}${hookInstruction}${bannedList}${ctaExample}
 
 Requirements:
 - 2-3 sentences with a strong opening hook
 - Casual, authentic tone - not corporate
 - Use 1-2 emojis naturally
-- End with a subtle call to action
+- End with a conversational call to action (NOT "Shop now" or "Buy now")
+- Do NOT include any links or URLs in the post
 
 Then provide 6-8 relevant hashtags.
 
-Output ONLY valid JSON:
-{"text": "your post text here", "hashtags": "#tag1 #tag2 #tag3"}`;
+Respond with ONLY raw JSON, no explanation, no markdown, no code fences:
+{"text": "your post text here", "hashtags": "#tag1 #tag2 #tag3", "hook_formula": "${hookFormula || 'curiosity_gap'}"}`;
 
   try {
     const result = await callOllama(prompt, { temperature: 0.8, maxTokens: 400 });
-    const jsonMatch = result.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = extractJSON(result);
+    if (parsed) {
+      // Validate against banned phrases
+      let text = parsed.text || '';
+      if (isRichStyle && styleDef.bannedPhrases) {
+        for (const phrase of styleDef.bannedPhrases) {
+          const regex = new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          text = text.replace(regex, '');
+        }
+        // Clean up double spaces from removals
+        text = text.replace(/\s{2,}/g, ' ').trim();
+      }
+
       return {
-        text: parsed.text || '',
-        hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.join(' ') : (parsed.hashtags || catConfig.defaultHashtags)
+        text,
+        hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.join(' ') : (parsed.hashtags || catConfig.defaultHashtags),
+        hook_formula: parsed.hook_formula || hookFormula
       };
     }
   } catch (e) {
@@ -800,7 +1178,8 @@ Output ONLY valid JSON:
   // Fallback
   return {
     text: `Check out ${product.title}! Available now at Blue Ridge Custom Co.`,
-    hashtags: catConfig.defaultHashtags
+    hashtags: catConfig.defaultHashtags,
+    hook_formula: hookFormula
   };
 }
 
@@ -812,6 +1191,205 @@ function pickWeighted(items) {
     if (random <= 0) return item.value;
   }
   return items[items.length - 1].value;
+}
+
+// ============================================================================
+// A/B TESTING (Phase 5)
+// ============================================================================
+
+// Phase 5b: Bayesian Beta-Binomial with Monte Carlo simulation
+
+// Marsaglia-Tsang method for Gamma sampling
+function gammaSample(alpha, beta) {
+  if (alpha < 1) {
+    // Boost method for alpha < 1
+    return gammaSample(alpha + 1, beta) * Math.pow(Math.random(), 1.0 / alpha);
+  }
+  const d = alpha - 1.0 / 3.0;
+  const c = 1.0 / Math.sqrt(9.0 * d);
+  while (true) {
+    let x, v;
+    do {
+      x = boxMullerNormal();
+      v = 1.0 + c * x;
+    } while (v <= 0);
+    v = v * v * v;
+    const u = Math.random();
+    if (u < 1 - 0.0331 * (x * x) * (x * x)) return d * v / beta;
+    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v / beta;
+  }
+}
+
+// Box-Muller transform for normal distribution
+function boxMullerNormal() {
+  let u1, u2;
+  do { u1 = Math.random(); } while (u1 === 0);
+  u2 = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+}
+
+function betaSample(alpha, beta) {
+  const x = gammaSample(alpha, 1);
+  const y = gammaSample(beta, 1);
+  return x / (x + y);
+}
+
+/**
+ * Bayesian A/B test analysis
+ * Returns P(A > B) using Monte Carlo simulation
+ */
+function bayesianAnalysis(scoresA, scoresB, nSimulations = 10000) {
+  // Convert weighted scores to success/total using median as threshold
+  const allScores = [...scoresA, ...scoresB].filter(s => s > 0);
+  const median = allScores.length > 0
+    ? allScores.sort((a, b) => a - b)[Math.floor(allScores.length / 2)]
+    : 1;
+
+  const successesA = scoresA.filter(s => s >= median).length;
+  const successesB = scoresB.filter(s => s >= median).length;
+  const totalA = scoresA.length;
+  const totalB = scoresB.length;
+
+  // Beta prior (weakly informative)
+  const priorAlpha = 1;
+  const priorBeta = 1;
+
+  let aWins = 0;
+  for (let i = 0; i < nSimulations; i++) {
+    const sampleA = betaSample(priorAlpha + successesA, priorBeta + totalA - successesA);
+    const sampleB = betaSample(priorAlpha + successesB, priorBeta + totalB - successesB);
+    if (sampleA > sampleB) aWins++;
+  }
+
+  return {
+    probabilityABetter: aWins / nSimulations,
+    successRateA: totalA > 0 ? successesA / totalA : 0,
+    successRateB: totalB > 0 ? successesB / totalB : 0,
+    samplesA: totalA,
+    samplesB: totalB,
+    avgScoreA: scoresA.length > 0 ? scoresA.reduce((s, v) => s + v, 0) / scoresA.length : 0,
+    avgScoreB: scoresB.length > 0 ? scoresB.reduce((s, v) => s + v, 0) / scoresB.length : 0
+  };
+}
+
+// Phase 5c: Test management
+
+function createTest(testName, testVariable, category, variantA, variantB) {
+  // Enforce max 1 test per category
+  const existingCat = _db.prepare(`
+    SELECT id FROM ab_tests WHERE category = ? AND status = 'active'
+  `).get(category);
+  if (existingCat) {
+    throw new Error(`Active test already exists for category "${category}": ${existingCat.id}`);
+  }
+
+  // Enforce max 2 concurrent tests
+  const activeCount = _db.prepare(`SELECT COUNT(*) as c FROM ab_tests WHERE status = 'active'`).get()?.c || 0;
+  if (activeCount >= 2) {
+    throw new Error(`Maximum 2 concurrent tests allowed (currently ${activeCount} active)`);
+  }
+
+  const id = crypto.randomUUID();
+  _db.prepare(`
+    INSERT INTO ab_tests (id, test_name, test_variable, category, variant_a, variant_b, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'active')
+  `).run(id, testName, testVariable, category, variantA, variantB);
+
+  console.log(`[AI Agent] A/B test created: "${testName}" (${variantA} vs ${variantB}) for ${category}`);
+  return { id, testName, testVariable, category, variantA, variantB, status: 'active' };
+}
+
+function getActiveTestForCategory(category) {
+  return _db.prepare(`
+    SELECT * FROM ab_tests WHERE category = ? AND status = 'active'
+  `).get(category) || null;
+}
+
+function assignToTest(test, postId) {
+  // Round-robin assignment (not random) for balanced samples
+  const counts = _db.prepare(`
+    SELECT variant, COUNT(*) as c FROM ab_test_assignments
+    WHERE test_id = ? GROUP BY variant
+  `).all(test.id);
+
+  const countA = counts.find(c => c.variant === 'a')?.c || 0;
+  const countB = counts.find(c => c.variant === 'b')?.c || 0;
+  const variant = countA <= countB ? 'a' : 'b';
+
+  _db.prepare(`
+    INSERT INTO ab_test_assignments (test_id, post_id, variant)
+    VALUES (?, ?, ?)
+  `).run(test.id, postId, variant);
+
+  return variant;
+}
+
+function evaluateTests() {
+  const activeTests = _db.prepare(`SELECT * FROM ab_tests WHERE status = 'active'`).all();
+  const results = [];
+
+  for (const test of activeTests) {
+    const assignments = _db.prepare(`
+      SELECT variant, weighted_score FROM ab_test_assignments WHERE test_id = ?
+    `).all(test.id);
+
+    const scoresA = assignments.filter(a => a.variant === 'a').map(a => a.weighted_score || 0);
+    const scoresB = assignments.filter(a => a.variant === 'b').map(a => a.weighted_score || 0);
+
+    const daysSinceCreation = (Date.now() - new Date(test.created_at).getTime()) / 86400000;
+    const minPostsPerVariant = test.min_posts_per_variant || 10;
+    const hasMinSamples = scoresA.length >= minPostsPerVariant && scoresB.length >= minPostsPerVariant;
+    const pastMaxDuration = daysSinceCreation >= (test.max_duration_days || 30);
+
+    let conclusion = null;
+
+    if (hasMinSamples || pastMaxDuration) {
+      const analysis = bayesianAnalysis(scoresA, scoresB);
+
+      // Decision threshold: P(A>B) >= 0.85 or P(B>A) >= 0.85
+      if (analysis.probabilityABetter >= 0.85) {
+        conclusion = { winner: 'a', prob: analysis.probabilityABetter, reason: `P(A>B)=${analysis.probabilityABetter.toFixed(3)}`, analysis };
+      } else if (analysis.probabilityABetter <= 0.15) {
+        conclusion = { winner: 'b', prob: 1 - analysis.probabilityABetter, reason: `P(B>A)=${(1 - analysis.probabilityABetter).toFixed(3)}`, analysis };
+      } else if (pastMaxDuration) {
+        conclusion = { winner: 'inconclusive', prob: analysis.probabilityABetter, reason: `Max duration reached, P(A>B)=${analysis.probabilityABetter.toFixed(3)}`, analysis };
+      }
+
+      if (conclusion) {
+        _db.prepare(`
+          UPDATE ab_tests SET status = 'concluded', winner = ?, probability_a_better = ?,
+            conclusion_reason = ?, concluded_at = ?
+          WHERE id = ?
+        `).run(conclusion.winner, analysis.probabilityABetter, conclusion.reason, new Date().toISOString(), test.id);
+
+        console.log(`[AI Agent] A/B test "${test.test_name}" concluded: winner=${conclusion.winner}, ${conclusion.reason}`);
+
+        // Send Telegram alert
+        try {
+          const telegram = require('../lib/telegram-notifier');
+          telegram.sendAlert('milestone', `A/B Test Complete: ${test.test_name}`,
+            `Winner: ${conclusion.winner === 'a' ? test.variant_a : conclusion.winner === 'b' ? test.variant_b : 'Inconclusive'}\n` +
+            `${conclusion.reason}\n` +
+            `Avg score A (${test.variant_a}): ${conclusion.analysis.avgScoreA.toFixed(1)} (n=${conclusion.analysis.samplesA})\n` +
+            `Avg score B (${test.variant_b}): ${conclusion.analysis.avgScoreB.toFixed(1)} (n=${conclusion.analysis.samplesB})`
+          ).catch(() => {});
+        } catch (e) { /* telegram not configured */ }
+
+        results.push({ testId: test.id, testName: test.test_name, ...conclusion });
+      }
+    } else {
+      results.push({
+        testId: test.id,
+        testName: test.test_name,
+        status: 'in_progress',
+        samplesA: scoresA.length,
+        samplesB: scoresB.length,
+        daysSinceCreation: Math.round(daysSinceCreation)
+      });
+    }
+  }
+
+  return results;
 }
 
 // ============================================================================
@@ -833,7 +1411,7 @@ function generateDailyReportData() {
       GROUP BY post_id
     )
     SELECT SUM(e.likes) as likes, SUM(e.comments) as comments, SUM(e.shares) as shares,
-           SUM(e.clicks) as clicks
+           SUM(e.clicks) as clicks, ROUND(AVG(e.weighted_score), 2) as avg_weighted_score
     FROM engagement_tracking e
     JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
   `).get() || {};
@@ -844,15 +1422,92 @@ function generateDailyReportData() {
 
   const postsPerDay = loadConfig().platforms.facebook.postsPerDay || 2;
 
+  // Phase 4a: Best performing hook formula (7-day window)
+  const bestHook = _db.prepare(`
+    WITH latest AS (
+      SELECT post_id, MAX(collected_at) as max_collected
+      FROM engagement_tracking WHERE posted_at > datetime('now', '-7 days')
+      GROUP BY post_id
+    )
+    SELECT s.hook_formula, ROUND(AVG(e.weighted_score), 2) as avg_score, COUNT(*) as count
+    FROM engagement_tracking e
+    JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
+    JOIN scheduled_facebook_posts s ON e.post_id = s.id
+    WHERE s.hook_formula IS NOT NULL
+    GROUP BY s.hook_formula
+    HAVING count >= 2
+    ORDER BY avg_score DESC
+    LIMIT 1
+  `).get() || null;
+
+  // Phase 4a: Category saturation warnings
+  const saturationWarnings = [];
+  const config = loadConfig();
+  const maxCatPerWeek = config.strategy.maxCategoryPostsPerWeek || 3;
+  for (const [cat, cfg] of Object.entries(config.categories)) {
+    if (!cfg.enabled) continue;
+    const count = _db.prepare(`
+      SELECT COUNT(*) as c FROM content_calendar
+      WHERE product_category = ? AND planned_date > date('now', '-7 days') AND status != 'skipped'
+    `).get(cat)?.c || 0;
+    if (count >= maxCatPerWeek) {
+      saturationWarnings.push(`${cfg.displayName}: ${count} posts in 7 days (limit: ${maxCatPerWeek})`);
+    }
+  }
+
+  // Phase 4a: Weighted score trend (this week vs last week)
+  const thisWeekScore = _db.prepare(`
+    WITH latest AS (
+      SELECT post_id, MAX(collected_at) as max_collected
+      FROM engagement_tracking WHERE posted_at > datetime('now', '-7 days')
+      GROUP BY post_id
+    )
+    SELECT ROUND(AVG(e.weighted_score), 2) as avg FROM engagement_tracking e
+    JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
+  `).get()?.avg || 0;
+
+  const lastWeekScore = _db.prepare(`
+    WITH latest AS (
+      SELECT post_id, MAX(collected_at) as max_collected
+      FROM engagement_tracking
+      WHERE posted_at > datetime('now', '-14 days') AND posted_at <= datetime('now', '-7 days')
+      GROUP BY post_id
+    )
+    SELECT ROUND(AVG(e.weighted_score), 2) as avg FROM engagement_tracking e
+    JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
+  `).get()?.avg || 0;
+
+  const topPost = _db.prepare(`
+    WITH latest AS (
+      SELECT post_id, MAX(collected_at) as max_collected
+      FROM engagement_tracking WHERE posted_at > datetime('now', '-7 days')
+      GROUP BY post_id
+    )
+    SELECT e.post_id, s.product_name as name, e.weighted_score as engagement
+    FROM engagement_tracking e
+    JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
+    JOIN scheduled_facebook_posts s ON e.post_id = s.id
+    ORDER BY e.weighted_score DESC LIMIT 1
+  `).get() || null;
+
   return {
     date: today,
     postsPublished,
+    topPost,
     totalLikes: engagement7d.likes || 0,
     totalComments: engagement7d.comments || 0,
     totalShares: engagement7d.shares || 0,
     totalClicks: engagement7d.clicks || 0,
+    avgWeightedScore: engagement7d.avg_weighted_score || 0,
     queueDepth,
-    queueDays: Math.round(queueDepth / postsPerDay)
+    queueDays: Math.round(queueDepth / postsPerDay),
+    bestHookFormula: bestHook,
+    saturationWarnings,
+    weightedScoreTrend: {
+      thisWeek: thisWeekScore,
+      lastWeek: lastWeekScore,
+      change: lastWeekScore > 0 ? Math.round((thisWeekScore - lastWeekScore) / lastWeekScore * 100) : 0
+    }
   };
 }
 
@@ -867,18 +1522,18 @@ function generateWeeklyReportData() {
   if (analysis.byCategory.length > 0) {
     const best = analysis.byCategory[0];
     const worst = analysis.byCategory[analysis.byCategory.length - 1];
-    if (best.avg_engagement > 0) worked.push(`${best.product_category}: ${best.avg_engagement}% avg engagement (${best.total_likes} likes)`);
-    if (worst.avg_engagement === 0 && worst.post_count > 0) didntWork.push(`${worst.product_category}: 0% engagement across ${worst.post_count} posts`);
+    if (best.avg_weighted_score > 0) worked.push(`${best.product_category}: ${best.avg_weighted_score} avg weighted score (${best.total_likes} likes)`);
+    if (worst.avg_weighted_score === 0 && worst.post_count > 0) didntWork.push(`${worst.product_category}: 0 weighted score across ${worst.post_count} posts`);
   }
 
   if (analysis.byStyle.length > 0) {
     const bestStyle = analysis.byStyle[0];
-    if (bestStyle.avg_engagement > 0) worked.push(`${bestStyle.caption_style} style: ${bestStyle.avg_engagement}% avg engagement`);
+    if (bestStyle.avg_weighted_score > 0) worked.push(`${bestStyle.caption_style} style: ${bestStyle.avg_weighted_score} avg weighted score`);
   }
 
   if (analysis.byHour.length > 0) {
     const bestHour = analysis.byHour[0];
-    if (bestHour.avg_engagement > 0) worked.push(`Posting at ${bestHour.posted_hour}:00: ${bestHour.avg_engagement}% engagement`);
+    if (bestHour.avg_weighted_score > 0) worked.push(`Posting at ${bestHour.posted_hour}:00: ${bestHour.avg_weighted_score} weighted score`);
   }
 
   // Get recent strategy recommendations
@@ -900,13 +1555,41 @@ function generateWeeklyReportData() {
   const dateEnd = new Date().toISOString().slice(0, 10);
   const dateStart = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
 
+  // Phase 4b: Category x Style matrix
+  const categoryStyleMatrix = analysis.byCategoryStyle || [];
+
+  // Phase 4b: Recycling candidates
+  const recyclingCandidates = findRecyclablePosts().slice(0, 3).map(p => ({
+    name: p.product_name,
+    category: p.product_category,
+    score: p.weighted_score,
+    postedAt: p.posted_at
+  }));
+
+  // Phase 4b: Week-over-week trend
+  const thisWeekPosts = _db.prepare(`
+    SELECT COUNT(*) as c FROM scheduled_facebook_posts
+    WHERE status = 'published' AND published_at > datetime('now', '-7 days')
+  `).get()?.c || 0;
+  const lastWeekPosts = _db.prepare(`
+    SELECT COUNT(*) as c FROM scheduled_facebook_posts
+    WHERE status = 'published' AND published_at > datetime('now', '-14 days') AND published_at <= datetime('now', '-7 days')
+  `).get()?.c || 0;
+
+  // Active A/B tests summary
+  const activeTests = _db.prepare(`SELECT test_name, variant_a, variant_b, created_at FROM ab_tests WHERE status = 'active'`).all();
+
   return {
     dateRange: `${dateStart} to ${dateEnd}`,
     worked: worked.length > 0 ? worked : ['Not enough data yet'],
     didntWork: didntWork.length > 0 ? didntWork : ['Not enough data yet'],
     adjustments,
     recommendations,
-    nextWeekPlan: `${config.platforms.facebook.postsPerDay * 7} posts planned across ${Object.keys(config.categories).filter(k => config.categories[k].enabled).length} categories`
+    nextWeekPlan: `${config.platforms.facebook.postsPerDay * 7} posts planned across ${Object.keys(config.categories).filter(k => config.categories[k].enabled).length} categories`,
+    categoryStyleMatrix,
+    recyclingCandidates,
+    weekOverWeek: { thisWeek: thisWeekPosts, lastWeek: lastWeekPosts },
+    activeABTests: activeTests
   };
 }
 
@@ -925,7 +1608,7 @@ async function runAgentCycle() {
   const cycleStart = Date.now();
   console.log(`[AI Agent] === Cycle #${_cycleCount} starting ===`);
 
-  const results = { cycle: _cycleCount, engagement: null, analysis: null, strategy: null, content: null };
+  const results = { cycle: _cycleCount, engagement: null, analysis: null, strategy: null, content: null, abTests: null };
 
   try {
     // Phase 1: Collect engagement data
@@ -945,6 +1628,19 @@ async function runAgentCycle() {
       }
     } else {
       console.log(`[AI Agent] Only ${results.analysis.totalPostsTracked} posts tracked, need ${config.strategy.abTestMinSample} for strategy adaptation`);
+    }
+
+    // Phase 3.5: Evaluate A/B tests
+    try {
+      results.abTests = evaluateTests();
+      if (results.abTests.length > 0) {
+        const concluded = results.abTests.filter(t => t.winner);
+        if (concluded.length > 0) {
+          console.log(`[AI Agent] ${concluded.length} A/B test(s) concluded this cycle`);
+        }
+      }
+    } catch (e) {
+      console.error('[AI Agent] A/B test evaluation error:', e.message);
     }
 
     // Phase 4: Plan and generate content
@@ -1013,17 +1709,17 @@ async function checkAlerts() {
   const config = loadConfig();
   const viralThreshold = config.telegram.viralThreshold || 50;
 
-  // Check for viral posts
+  // Check for viral posts (use weighted_score)
   const viral = _db.prepare(`
     WITH latest AS (
       SELECT post_id, MAX(collected_at) as max_collected
       FROM engagement_tracking WHERE posted_at > datetime('now', '-3 days')
       GROUP BY post_id
     )
-    SELECT e.post_id, e.product_category, (e.likes + e.comments + e.shares) as total_engagement
+    SELECT e.post_id, e.product_category, e.weighted_score as total_engagement
     FROM engagement_tracking e
     JOIN latest l ON e.post_id = l.post_id AND e.collected_at = l.max_collected
-    WHERE (e.likes + e.comments + e.shares) >= ?
+    WHERE e.weighted_score >= ?
   `).all(viralThreshold);
 
   // Check if we already alerted for these
@@ -1037,7 +1733,7 @@ async function checkAlerts() {
     if (!alreadyAlerted) {
       const productName = _db.prepare(`SELECT product_name FROM scheduled_facebook_posts WHERE id = ?`).get(post.post_id)?.product_name || 'Unknown';
       await telegram.sendAlert('milestone', 'Viral Post Detected!',
-        `"${productName}" has ${post.total_engagement} engagements! (${post.product_category})`);
+        `"${productName}" has ${post.total_engagement} weighted engagements! (${post.product_category})`);
 
       _db.prepare(`INSERT INTO pipeline_actions (id, timestamp, trigger_reason, action_type, action_details_json, status)
         VALUES (?, ?, 'viral_post', 'send_alert', ?, 'executed')`
@@ -1279,6 +1975,75 @@ function handleAgentRoute(req, res, parsedUrl, sendJson) {
       return true;
     }
 
+    // ========== Phase 5e: A/B Test API endpoints ==========
+
+    // GET /api/agent/ab-tests
+    if (method === 'GET' && subpath === 'ab-tests') {
+      const tests = _db.prepare(`SELECT * FROM ab_tests ORDER BY created_at DESC`).all();
+      sendJson(res, 200, { data: tests });
+      return true;
+    }
+
+    // POST /api/agent/ab-tests
+    if (method === 'POST' && subpath === 'ab-tests') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const { testName, testVariable, category, variantA, variantB } = JSON.parse(body);
+          if (!testName || !testVariable || !category || !variantA || !variantB) {
+            sendJson(res, 400, { error: 'Required: testName, testVariable, category, variantA, variantB' });
+            return;
+          }
+          const test = createTest(testName, testVariable, category, variantA, variantB);
+          sendJson(res, 201, test);
+        } catch (e) {
+          sendJson(res, 400, { error: e.message });
+        }
+      });
+      return true;
+    }
+
+    // GET /api/agent/ab-tests/:id
+    if (method === 'GET' && subpath.startsWith('ab-tests/') && !subpath.includes('evaluate')) {
+      const testId = subpath.replace('ab-tests/', '');
+      const test = _db.prepare(`SELECT * FROM ab_tests WHERE id = ?`).get(testId);
+      if (!test) {
+        sendJson(res, 404, { error: 'Test not found' });
+        return true;
+      }
+      const assignments = _db.prepare(`
+        SELECT * FROM ab_test_assignments WHERE test_id = ? ORDER BY assigned_at
+      `).all(testId);
+
+      // Run analysis if enough data
+      const scoresA = assignments.filter(a => a.variant === 'a').map(a => a.weighted_score || 0);
+      const scoresB = assignments.filter(a => a.variant === 'b').map(a => a.weighted_score || 0);
+      let analysis = null;
+      if (scoresA.length >= 3 && scoresB.length >= 3) {
+        analysis = bayesianAnalysis(scoresA, scoresB);
+      }
+
+      sendJson(res, 200, { test, assignments, analysis });
+      return true;
+    }
+
+    // DELETE /api/agent/ab-tests/:id
+    if (method === 'DELETE' && subpath.startsWith('ab-tests/')) {
+      const testId = subpath.replace('ab-tests/', '');
+      _db.prepare(`UPDATE ab_tests SET status = 'cancelled', concluded_at = ? WHERE id = ?`)
+        .run(new Date().toISOString(), testId);
+      sendJson(res, 200, { success: true, message: 'Test cancelled' });
+      return true;
+    }
+
+    // POST /api/agent/ab-tests/evaluate
+    if (method === 'POST' && (subpath === 'ab-tests/evaluate' || subpath === 'ab-tests%2Fevaluate')) {
+      const results = evaluateTests();
+      sendJson(res, 200, { results });
+      return true;
+    }
+
   } catch (e) {
     console.error('[AI Agent] Route error:', e.message);
     sendJson(res, 500, { error: e.message });
@@ -1305,5 +2070,9 @@ module.exports = {
   generateWeeklyReportData,
   handleAgentRoute,
   loadConfig,
-  saveConfig
+  saveConfig,
+  findRecyclablePosts,
+  createTest,
+  evaluateTests,
+  bayesianAnalysis
 };

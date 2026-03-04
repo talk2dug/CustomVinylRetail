@@ -1,9 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "agentState": {
     "enabled": true,
-    "lastCycleAt": "2026-03-03T21:08:08.352Z",
-    "cycleCount": 3,
+    "lastCycleAt": "2026-03-04T19:07:34.915Z",
+    "cycleCount": 11,
     "currentStrategy": null
   },
   "platforms": {
@@ -37,7 +37,7 @@
     "metal-print": {
       "displayName": "Metal Prints",
       "enabled": true,
-      "postingWeight": 0.54,
+      "postingWeight": 0.64,
       "shopifyProductTypes": [
         "Metal Print",
         "Metal Print Wall Art",
@@ -57,7 +57,7 @@
     "tshirt": {
       "displayName": "T-Shirts",
       "enabled": true,
-      "postingWeight": 0.31,
+      "postingWeight": 0.36,
       "shopifyProductTypes": [
         "tshirt",
         "T-Shirt"
@@ -73,7 +73,7 @@
     },
     "sticker": {
       "displayName": "Stickers",
-      "enabled": true,
+      "enabled": false,
       "postingWeight": 0.15,
       "shopifyProductTypes": [
         "sticker",
@@ -92,20 +92,6 @@
       "defaultHashtags": "#stickers #vinylsticker #customsticker #stickerlife #BlueRidgeCustomCo",
       "targetAudience": "Young adults, sticker collectors, laptop customizers"
     }
-  },
-  "captionStyleDefinitions": {
-    "showcase": "Highlight the product quality, details, and craftsmanship. Describe what makes it special.",
-    "lifestyle": "Show the product in context. Describe a scene where it fits. Make it aspirational.",
-    "humor": "Use wit, puns, or relatable humor. Be playful and casual. Match Gen X/Millennial humor.",
-    "urgency": "Create FOMO. Limited availability, trending now, selling fast. Drive immediate action.",
-    "quality": "Focus on materials, durability, craftsmanship. Premium positioning."
-  },
-  "strategy": {
-    "learningRate": 0.1,
-    "underexposedBoostDays": 7,
-    "repostCooldownDays": 14,
-    "abTestMinSample": 10,
-    "engagementWindowDays": 30
   },
   "telegram": {
     "dailyReportHour": 20,
