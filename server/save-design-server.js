@@ -3922,7 +3922,7 @@ const requestHandler = async (req, res) => {
         }
 
         const payload = JSON.parse(body || '{}');
-        const { shopifyProductId, publish = false, priceMultiplier = 1.13, storeLevel = 'basic' } = payload;
+        const { shopifyProductId, publish = false, priceMultiplier = 1.15, storeLevel = 'basic' } = payload;
 
         if (!shopifyProductId) {
           sendJson(res, 400, { error: 'shopifyProductId required' });
@@ -3941,7 +3941,6 @@ const requestHandler = async (req, res) => {
           publish,
           priceMultiplier,
           storeLevel,
-          categoryId: '180098' // Stickers & Decals
         });
 
         sendJson(res, 200, {
@@ -3972,7 +3971,6 @@ const requestHandler = async (req, res) => {
         const {
           publish = false,
           priceMultiplier = 1.15,
-          categoryId = '360', // Art Prints category (simpler requirements)
           limit = 50,
           skipExisting = true
         } = payload;
@@ -4035,7 +4033,7 @@ const requestHandler = async (req, res) => {
 
           try {
             // Convert to eBay format
-            const ebayItem = ebay.shopifyToEbayItem(product, { priceMultiplier, categoryId });
+            const ebayItem = ebay.shopifyToEbayItem(product, { priceMultiplier });
 
             // Create inventory item
             await ebay.createOrUpdateInventoryItem(sku, ebayItem);
@@ -4047,7 +4045,7 @@ const requestHandler = async (req, res) => {
                 description: ebayItem.description,
                 price: ebayItem.price,
                 quantity: 999,
-                categoryId,
+                categoryId: ebayItem.categoryId,
                 fulfillmentPolicyId,
                 returnPolicyId,
                 locationKey
@@ -4246,7 +4244,7 @@ const requestHandler = async (req, res) => {
         }
 
         const payload = JSON.parse(body || '{}');
-        const { sku, price, categoryId = '159889' } = payload;
+        const { sku, price, categoryId } = payload;
 
         if (!sku) {
           sendJson(res, 400, { error: 'sku required' });

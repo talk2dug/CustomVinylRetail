@@ -673,9 +673,9 @@ async function searchCategories(query) {
  */
 function shopifyToEbayItem(shopifyProduct, options = {}) {
   const {
-    priceMultiplier = 1.13,
+    priceMultiplier = 1.15,
     storeLevel = 'basic',
-    categoryId = '180098' // Stickers & Decals default
+    categoryId = getEbayCategoryId(shopifyProduct.product_type)
   } = options;
 
   // Get base price from first variant
@@ -726,13 +726,7 @@ ${productDesc}
     categoryId,
     condition: 'NEW',
     imageUrls,
-    // Aspects commented out for now - may need category-specific aspects
-    // aspects: {
-    //   'Type': ['Decal/Sticker'],
-    //   'Material': ['Vinyl'],
-    //   'Indoor/Outdoor': ['Outdoor'],
-    //   'Theme': extractThemes(shopifyProduct.tags)
-    // },
+    aspects: getEbayAspects(shopifyProduct.product_type, shopifyProduct),
     // Store Shopify reference
     _shopifyId: shopifyProduct.id,
     _shopifyHandle: shopifyProduct.handle
@@ -776,12 +770,290 @@ function extractThemes(tags) {
 }
 
 /**
- * Sync a Shopify product to eBay
+ * Map Shopify product_type to eBay category ID
+ */
+function getEbayCategoryId(productType) {
+  const type = (productType || '').toLowerCase();
+  const map = {
+    't-shirt':              '15687',  // Men's T-Shirts
+    'tshirt':               '15687',
+    'metal print wall art': '41511',  // Home Decor Posters & Prints
+    'metal print':          '41511',
+    'metal art':            '41511',
+    'metal art piece':      '41511',
+    'sticker':              '159889', // Decor Decals, Stickers & Vinyl Art
+    'sticker-pack':         '159889',
+    'decals':               '159889',
+    'decal':                '159889',
+    'bumper stickers':      '159889',
+    'racing':               '50445',  // Car & Truck Decals & Vinyl
+    'race decal':           '50445',
+    'number kit':           '50445',
+    'livery':               '50445',
+    'custom-vinyl':         '50445',
+    'custom vinyl':         '50445',
+    'car decal':            '50445',
+    'heat transfer':        '183090', // Adhesive Vinyl (craft supply)
+    'multiboard':           '43502',  // Home Organization Supplies
+    'wall organizer':       '43502',
+    'laser-engraving':      '170115', // Personalized Gift & Party Supplies
+    'laser engraving':      '170115',
+    'engraved':             '170115',
+  };
+  return map[type] || '159889'; // default: Decals/Stickers
+}
+
+/**
+ * Return item aspects based on product type and eBay category
+ */
+function getEbayAspects(productType, shopifyProduct) {
+  const type = (productType || '').toLowerCase();
+  const tags = shopifyProduct.tags || '';
+  const themes = extractThemes(tags);
+
+  const base = { 'Brand': ['BlueRidgeCustomCo'], 'Country/Region of Manufacture': ['United States'] };
+
+  if (type.includes('t-shirt') || type === 'tshirt') {
+    return { ...base, 'Type': ['T-Shirt'], 'Style': ['Graphic Tee'], 'Sleeve Length': ['Short Sleeve'],
+      'Neckline': ['Crew Neck'], 'Pattern': ['Graphic Print'], 'Department': ['Men'],
+      'Fabric Type': ['Cotton Blend'], 'Theme': themes };
+  }
+  if (type.includes('metal print') || type.includes('metal art')) {
+    return { ...base, 'Type': ['Print'], 'Material': ['Metal'], 'Features': ['Ready to Hang'],
+      'Original/Reproduction': ['Original'], 'Theme': themes };
+  }
+  if (type.includes('sticker') || type.includes('decal') || type.includes('bumper')) {
+    return { ...base, 'Type': ['Decal/Sticker'], 'Material': ['Vinyl'],
+      'Features': ['Waterproof', 'Self-Adhesive'], 'Theme': themes };
+  }
+  if (type.includes('racing') || type.includes('race') || type.includes('number kit') || type.includes('livery')) {
+    return { ...base, 'Type': ['Decal/Sticker'], 'Placement on Vehicle': ['Side'],
+      'Material': ['Vinyl'], 'Theme': ['Racing'] };
+  }
+  if (type.includes('custom vinyl') || type.includes('car decal')) {
+    return { ...base, 'Type': ['Decal/Sticker'], 'Material': ['Vinyl'],
+      'Placement on Vehicle': ['Universal'] };
+  }
+  if (type.includes('multiboard') || type.includes('wall organizer')) {
+    return { ...base, 'Type': ['Wall Organizer'], 'Material': ['Plastic'],
+      'Mounting': ['Wall Mounted'], 'Room': ['Any Room'], 'Features': ['Modular'] };
+  }
+  if (type.includes('laser') || type.includes('engrav')) {
+    return { ...base, 'Type': ['Engraved Gift'], 'Personalization': ['Yes'],
+      'Occasion': ['Any Occasion'], 'Theme': themes };
+  }
+  return { ...base, 'Type': ['Decal/Sticker'], 'Material': ['Vinyl'] };
+}
+
+/**
+ * Create or update an inventory item group (for multi-variant listings)
+ */
+async function createOrUpdateInventoryItemGroup(groupKey, group) {
+  const data = {
+    title: group.title,
+    description: group.description,
+    imageUrls: group.imageUrls || [],
+    aspects: group.aspects || {},
+    variantSKUs: group.variantSKUs,
+    variesBy: {
+      aspectsImageVariesBy: [],
+      specifications: group.variesBy || [{ name: 'Size' }]
+    }
+  };
+
+  console.log('[eBay] Creating inventory item group:', groupKey);
+
+  return apiRequest('PUT', `/sell/inventory/v1/inventory_item_group/${encodeURIComponent(groupKey)}`, data);
+}
+
+/**
+ * Convert a multi-variant Shopify product into individual eBay inventory items + group
+ */
+function shopifyToEbayVariantItems(shopifyProduct, options = {}) {
+  const {
+    priceMultiplier = 1.15,
+    storeLevel = 'basic',
+    categoryId = getEbayCategoryId(shopifyProduct.product_type)
+  } = options;
+
+  const imageUrls = (shopifyProduct.images || [])
+    .slice(0, 12)
+    .map(img => img.src || img);
+
+  const productDesc = shopifyProduct.body_html || shopifyProduct.description || '';
+  const description = `
+<div style="text-align: center; margin-bottom: 20px;">
+  <img src="https://blueridgecustomco.com/images/BlueRidgeCustomCoLogo.png" alt="Blue Ridge Custom Co" style="max-width: 250px; height: auto;">
+</div>
+<h2 style="text-align: center; color: #333;">${shopifyProduct.title}</h2>
+${productDesc}
+<br><br>
+<hr style="border: 1px solid #ddd;">
+<h3>Product Details:</h3>
+<ul>
+  <li>Professionally printed on premium materials</li>
+  <li>Weather-resistant and UV-protected</li>
+  <li>Vibrant, fade-resistant colors</li>
+  <li>Ships from Asheville, NC</li>
+</ul>
+<hr style="border: 1px solid #ddd;">
+<p style="text-align: center; color: #666;"><strong>Blue Ridge Custom Co</strong> - Quality Custom Products from the Mountains of North Carolina</p>
+`;
+
+  const aspects = getEbayAspects(shopifyProduct.product_type, shopifyProduct);
+
+  // Determine which Shopify options are used (e.g., Size, Color)
+  const shopifyOptions = (shopifyProduct.options || []).map(o => o.name);
+  const variesBy = shopifyOptions.map(name => ({ name }));
+
+  // Build individual items per variant
+  const items = [];
+  const variantSKUs = [];
+
+  for (const variant of (shopifyProduct.variants || [])) {
+    const basePrice = parseFloat(variant.price || 0);
+    const ebayPrice = options.calculateFees
+      ? calculateEbayPrice(basePrice, storeLevel)
+      : basePrice * priceMultiplier;
+
+    const variantSku = variant.sku && variant.sku.length > 3
+      ? `${variant.sku}-${variant.id}`
+      : `SHOP-${shopifyProduct.id}-V${variant.id}`;
+
+    // Build variant-specific aspects (base aspects + variant options)
+    const variantAspects = { ...aspects };
+    if (variant.option1 && shopifyOptions[0]) variantAspects[shopifyOptions[0]] = [variant.option1];
+    if (variant.option2 && shopifyOptions[1]) variantAspects[shopifyOptions[1]] = [variant.option2];
+    if (variant.option3 && shopifyOptions[2]) variantAspects[shopifyOptions[2]] = [variant.option3];
+
+    items.push({
+      sku: variantSku,
+      title: shopifyProduct.title.slice(0, 80),
+      description,
+      price: ebayPrice.toFixed(2),
+      quantity: variant.inventory_quantity > 0 ? variant.inventory_quantity : 999,
+      categoryId,
+      condition: 'NEW',
+      imageUrls,
+      aspects: variantAspects,
+      _shopifyId: shopifyProduct.id,
+      _variantId: variant.id
+    });
+
+    variantSKUs.push(variantSku);
+  }
+
+  const groupKey = `GROUP-${shopifyProduct.id}`;
+
+  return {
+    items,
+    group: {
+      groupKey,
+      title: shopifyProduct.title.slice(0, 80),
+      description,
+      imageUrls,
+      aspects,
+      variantSKUs,
+      variesBy
+    },
+    categoryId
+  };
+}
+
+/**
+ * Full variant sync pipeline: create items, group, offer, and optionally publish
+ */
+async function syncVariantProductToEbay(shopifyProduct, options = {}) {
+  console.log(`[eBay] Syncing variant product: ${shopifyProduct.title} (${shopifyProduct.variants.length} variants)`);
+
+  const { items, group, categoryId } = shopifyToEbayVariantItems(shopifyProduct, options);
+
+  // 1. Create inventory items for each variant
+  for (const item of items) {
+    await createOrUpdateInventoryItem(item.sku, item);
+    console.log(`[eBay] Created variant inventory item: ${item.sku}`);
+  }
+
+  // 2. Create inventory item group
+  await createOrUpdateInventoryItemGroup(group.groupKey, group);
+  console.log(`[eBay] Created inventory item group: ${group.groupKey}`);
+
+  // 3. Get policies
+  let fulfillmentPolicyId = options.fulfillmentPolicyId;
+  let paymentPolicyId = options.paymentPolicyId;
+  let returnPolicyId = options.returnPolicyId;
+
+  if (!fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
+    try {
+      const [fulfillment, payment, returns] = await Promise.all([
+        getFulfillmentPolicies(),
+        getPaymentPolicies(),
+        getReturnPolicies()
+      ]);
+      fulfillmentPolicyId = fulfillmentPolicyId || fulfillment.fulfillmentPolicies?.[0]?.fulfillmentPolicyId;
+      paymentPolicyId = paymentPolicyId || payment.paymentPolicies?.[0]?.paymentPolicyId;
+      returnPolicyId = returnPolicyId || returns.returnPolicies?.[0]?.returnPolicyId;
+    } catch (e) {
+      console.error('[eBay] Error fetching policies:', e.message);
+    }
+  }
+
+  if (!fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
+    console.warn('[eBay] Missing policies - inventory items/group created but offer not created');
+    return { groupKey: group.groupKey, variantSKUs: group.variantSKUs, status: 'inventory_only' };
+  }
+
+  // 4. Create offer for the group (use lowest variant price)
+  const lowestPrice = Math.min(...items.map(i => parseFloat(i.price)));
+  const offer = await createOffer(group.variantSKUs[0], {
+    description: group.description,
+    price: lowestPrice.toFixed(2),
+    quantity: 999,
+    categoryId,
+    fulfillmentPolicyId,
+    paymentPolicyId,
+    returnPolicyId
+  });
+
+  console.log(`[eBay] Created offer for group: ${offer.offerId}`);
+
+  // 5. Publish if requested
+  if (options.publish) {
+    const published = await publishOffer(offer.offerId);
+    console.log(`[eBay] Published variant listing: ${published.listingId}`);
+    return {
+      groupKey: group.groupKey,
+      variantSKUs: group.variantSKUs,
+      offerId: offer.offerId,
+      listingId: published.listingId,
+      status: 'published'
+    };
+  }
+
+  return {
+    groupKey: group.groupKey,
+    variantSKUs: group.variantSKUs,
+    offerId: offer.offerId,
+    status: 'draft'
+  };
+}
+
+/**
+ * Sync a Shopify product to eBay (auto-detects single vs multi-variant)
  */
 async function syncProductToEbay(shopifyProduct, options = {}) {
   console.log(`[eBay] Syncing product: ${shopifyProduct.title}`);
 
-  // Convert to eBay format
+  // Auto-detect multi-variant products
+  const variants = shopifyProduct.variants || [];
+  const hasMultipleVariants = variants.length > 1;
+  const hasOptions = (shopifyProduct.options || []).some(o => o.name !== 'Title' && o.values && o.values.length > 1);
+
+  if (hasMultipleVariants && hasOptions) {
+    return syncVariantProductToEbay(shopifyProduct, options);
+  }
+
+  // Single-item flow
   const ebayItem = shopifyToEbayItem(shopifyProduct, options);
 
   // Create/update inventory item
@@ -794,7 +1066,6 @@ async function syncProductToEbay(shopifyProduct, options = {}) {
   let returnPolicyId = options.returnPolicyId;
 
   if (!fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
-    // Try to get existing policies
     try {
       const [fulfillment, payment, returns] = await Promise.all([
         getFulfillmentPolicies(),
@@ -1029,5 +1300,12 @@ module.exports = {
 
   // Sync helpers
   shopifyToEbayItem,
-  syncProductToEbay
+  shopifyToEbayVariantItems,
+  syncProductToEbay,
+  syncVariantProductToEbay,
+
+  // Variant/Group support
+  createOrUpdateInventoryItemGroup,
+  getEbayCategoryId,
+  getEbayAspects
 };
