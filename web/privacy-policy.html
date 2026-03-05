@@ -4,30 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Privacy Policy - Blue Ridge Custom Co</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="./theme.css">
+    <link rel="stylesheet" href="./theme-pages.css">
     <style>
         body {
             font-family: Arial, sans-serif;
             line-height: 1.6;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            color: #333;
+            color: var(--text-1, #e0eaff);
         }
         h1 {
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
+            color: var(--text-0, #fff);
+            border-bottom: 2px solid var(--cyan, #00e5ff);
             padding-bottom: 10px;
         }
         h2 {
-            color: #34495e;
+            color: var(--text-0, #fff);
             margin-top: 30px;
         }
         .last-updated {
-            color: #7f8c8d;
+            color: var(--text-2, #8fa4c4);
             font-style: italic;
         }
         .contact {
-            background: #ecf0f1;
+            background: var(--surface-2, #0f1f3a);
             padding: 15px;
             border-radius: 5px;
             margin-top: 30px;
@@ -35,6 +37,19 @@
     </style>
 </head>
 <body>
+<header class="site-header" id="siteHeader">
+  <div class="container header-inner">
+    <a href="./" class="logo"><div class="logo-icon"><i class="fas fa-bolt"></i></div><div><span>BlueRidgeCustomCo</span><span class="logo-sub">Premium Custom Designs</span></div></a>
+    <nav class="nav-desktop">
+      <a href="./catalog.html">Catalog</a><a href="./designer.html">Designer</a><a href="./racing.html">Racing</a><a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a><a href="./customer.html" class="nav-cta">My Account</a>
+    </nav>
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+  </div>
+</header>
+<div class="nav-mobile-overlay" id="mobileNav">
+  <a href="./catalog.html">Catalog</a><a href="./designer.html">Designer</a><a href="./racing.html">Racing</a><a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a><a href="./customer.html">My Account</a>
+</div>
+<div class="container" style="padding: 2rem 1.5rem;">
     <h1>Privacy Policy</h1>
     <p class="last-updated">Last Updated: November 26, 2025</p>
 
@@ -162,8 +177,17 @@
     </div>
 
     <hr>
-    <p style="text-align: center; color: #7f8c8d; font-size: 0.9em;">
+    <p style="text-align: center; color: var(--text-2, #8fa4c4); font-size: 0.9em;">
         © 2025 Blue Ridge Custom Co. All rights reserved.
     </p>
+</div>
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-bottom">
+      <span>&copy; <span data-year></span> BlueRidgeCustomCo. All rights reserved.</span>
+    </div>
+  </div>
+</footer>
+<script src="./theme.js"></script>
 </body>
 </html>

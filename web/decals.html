@@ -4,11 +4,44 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Decals • Swayze's Custom Vinyl</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="./theme.css">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./theme-pages.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Lobster&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600&family=Pacifico&family=Playfair+Display:wght@400;700&family=Raleway:wght@400;600;700&family=Roboto+Slab:wght@400;600;700&display=swap">
   <script>/* route flag so nav highlights correctly */ window.__PAGE_KEY__ = 'decals';</script>
 </head>
 <body>
+  <header class="site-header" id="siteHeader">
+    <div class="container header-inner">
+      <a href="./" class="logo">
+        <div class="logo-icon"><i class="fas fa-bolt"></i></div>
+        <div>
+          <span>BlueRidgeCustomCo</span>
+          <span class="logo-sub">Premium Custom Designs</span>
+        </div>
+      </a>
+      <nav class="nav-desktop">
+        <a href="./catalog.html">Catalog</a>
+        <a href="./designer.html">Designer</a>
+        <a href="./racing.html">Racing</a>
+        <a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a>
+        <a href="./customer.html" class="nav-cta">My Account</a>
+      </nav>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+  <div class="nav-mobile-overlay" id="mobileNav">
+    <a href="./catalog.html">Catalog</a>
+    <a href="./designer.html">Designer</a>
+    <a href="./racing.html">Racing</a>
+    <a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a>
+    <a href="./customer.html">My Account</a>
+  </div>
+
   <div class="app">
     <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="sidebar">
       Browse &amp; filters
@@ -19,7 +52,7 @@
         Close
       </button>
       <header class="brand">
-        <h1>Swayze's Custom Vinyl</h1>
+        <h1>BlueRidgeCustomCo</h1>
         <p class="tagline">Browse designs, preview colors, build your order.</p>
         <a class="login-button" href="./customer.html">Customer login</a>
       </header>
@@ -183,6 +216,7 @@
     // Enable auto color counting logic in script.js for decals page
     window.__AUTO_COLOR_COUNT__ = true;
   </script>
+  <script src="./theme.js"></script>
   <script type="module" src="./script.js"></script>
 </body>
 </html>

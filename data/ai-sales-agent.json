@@ -2,8 +2,8 @@
   "version": 2,
   "agentState": {
     "enabled": true,
-    "lastCycleAt": "2026-03-05T00:17:30.681Z",
-    "cycleCount": 6,
+    "lastCycleAt": "2026-03-05T00:37:24.492Z",
+    "cycleCount": 1,
     "currentStrategy": null
   },
   "platforms": {
@@ -37,7 +37,7 @@
     "metal-print": {
       "displayName": "Metal Prints",
       "enabled": true,
-      "postingWeight": 0.20,
+      "postingWeight": 0.2,
       "fbPage": "blueridge",
       "shopifyProductTypes": [
         "Metal Print",
@@ -100,7 +100,12 @@
       "enabled": true,
       "postingWeight": 0.15,
       "fbPage": "swayze",
-      "shopifyProductTypes": ["racing", "Race Decal", "Number Kit", "Livery"],
+      "shopifyProductTypes": [
+        "racing",
+        "Race Decal",
+        "Number Kit",
+        "Livery"
+      ],
       "captionStyles": {
         "showcase": 0.3,
         "lifestyle": 0.3,
@@ -115,7 +120,12 @@
       "enabled": true,
       "postingWeight": 0.15,
       "fbPage": "swayze",
-      "shopifyProductTypes": ["custom-vinyl", "Custom Vinyl", "Car Decal", "Heat Transfer"],
+      "shopifyProductTypes": [
+        "custom-vinyl",
+        "Custom Vinyl",
+        "Car Decal",
+        "Heat Transfer"
+      ],
       "captionStyles": {
         "showcase": 0.3,
         "lifestyle": 0.3,
@@ -128,9 +138,13 @@
     "multiboard": {
       "displayName": "MultiBoard",
       "enabled": true,
-      "postingWeight": 0.10,
+      "postingWeight": 0.1,
       "fbPage": "blueridge",
-      "shopifyProductTypes": ["multiboard", "Multiboard", "Wall Organizer"],
+      "shopifyProductTypes": [
+        "multiboard",
+        "Multiboard",
+        "Wall Organizer"
+      ],
       "captionStyles": {
         "showcase": 0.3,
         "lifestyle": 0.3,
@@ -143,9 +157,13 @@
     "laser-engraving": {
       "displayName": "Laser Engraving",
       "enabled": true,
-      "postingWeight": 0.10,
+      "postingWeight": 0.1,
       "fbPage": "blueridge",
-      "shopifyProductTypes": ["laser-engraving", "Laser Engraving", "Engraved"],
+      "shopifyProductTypes": [
+        "laser-engraving",
+        "Laser Engraving",
+        "Engraved"
+      ],
       "captionStyles": {
         "showcase": 0.3,
         "quality": 0.3,

@@ -10777,6 +10777,42 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Public endpoint: fetch metal print products from Shopify
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/public/metal-prints') {
+    try {
+      if (!shopify.isConfigured()) {
+        sendJson(res, 200, { success: true, products: [] });
+        return;
+      }
+      // Search for metal print products
+      const result = await shopify.listProducts({ limit: 50 });
+      const metalProducts = (result.products || []).filter(p => {
+        const title = (p.title || '').toLowerCase();
+        const type = (p.product_type || '').toLowerCase();
+        const tags = (p.tags || '').toLowerCase();
+        return title.includes('metal print') || type.includes('metal print') || tags.includes('metal-print') || tags.includes('metal print');
+      }).map(p => ({
+        id: p.id,
+        title: p.title,
+        description: p.body_html ? p.body_html.replace(/<[^>]*>/g, '').substring(0, 300) : '',
+        image: p.image ? p.image.src : (p.images && p.images[0] ? p.images[0].src : null),
+        images: (p.images || []).map(img => img.src),
+        variants: (p.variants || []).map(v => ({
+          id: v.id,
+          title: v.title,
+          price: v.price,
+          available: v.inventory_quantity > 0 || v.inventory_policy === 'continue'
+        })),
+        url: `https://store.swayzecustomvinyl.com/products/${p.handle}`
+      }));
+      sendJson(res, 200, { success: true, products: metalProducts });
+    } catch (err) {
+      console.error('[Metal Prints Public API]', err.message);
+      sendJson(res, 200, { success: true, products: [] });
+    }
+    return;
+  }
+
   if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/artwork') {
     handleArtworkUpload(req, res);
     return;

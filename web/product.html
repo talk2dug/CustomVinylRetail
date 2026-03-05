@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Product - Blue Ridge Custom Co</title>
     <meta property="og:type" content="product">
+    <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="./theme.css">
+    <link rel="stylesheet" href="./theme-pages.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -79,9 +84,18 @@
     </style>
 </head>
 <body>
-    <div class="brand-bar">
-        <h1>Blue Ridge Custom Co</h1>
-    </div>
+<header class="site-header" id="siteHeader">
+  <div class="container header-inner">
+    <a href="./" class="logo"><div class="logo-icon"><i class="fas fa-bolt"></i></div><div><span>BlueRidgeCustomCo</span><span class="logo-sub">Premium Custom Designs</span></div></a>
+    <nav class="nav-desktop">
+      <a href="./catalog.html">Catalog</a><a href="./designer.html">Designer</a><a href="./racing.html">Racing</a><a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a><a href="./customer.html" class="nav-cta">My Account</a>
+    </nav>
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+  </div>
+</header>
+<div class="nav-mobile-overlay" id="mobileNav">
+  <a href="./catalog.html">Catalog</a><a href="./designer.html">Designer</a><a href="./racing.html">Racing</a><a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a><a href="./customer.html">My Account</a>
+</div>
 
     <div id="loadingState" class="loading-state">Loading product...</div>
     <div id="errorState" class="error-state" style="display:none;">
@@ -110,8 +124,15 @@
         </div>
     </div>
 
-    <div class="footer">Swayze Custom Vinyl / Blue Ridge Custom Co</div>
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-bottom">
+      <span>&copy; <span data-year></span> BlueRidgeCustomCo. All rights reserved.</span>
+    </div>
+  </div>
+</footer>
 
+    <script src="./theme.js"></script>
     <script>
     (function() {
         const params = new URLSearchParams(window.location.search);
