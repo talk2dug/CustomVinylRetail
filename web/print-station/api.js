@@ -281,6 +281,20 @@ window.printStation = {
   },
 
   // ============================================================================
+  // EBAY
+  // ============================================================================
+  ebay: {
+    getStatus: () => apiRequest('/api/ebay/status'),
+    syncProduct: (data) => apiRequest('/api/ebay/sync-product', { method: 'POST', body: data }),
+    bulkSync: (data) => apiRequest('/api/ebay/bulk-sync', { method: 'POST', body: data }),
+    publishOffer: (data) => apiRequest('/api/ebay/publish-offer', { method: 'POST', body: data }),
+    getInventory: (query) => apiRequest(`/api/ebay/inventory${query ? '?' + new URLSearchParams(query) : ''}`),
+    getPolicies: () => apiRequest('/api/ebay/policies'),
+  },
+
+
+
+  // ============================================================================
   // SALES / SHOPIFY
   // ============================================================================
   sales: {

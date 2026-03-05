@@ -1016,6 +1016,8 @@ const elements = {
   campaignLlmClassifyAllButton: document.getElementById('campaignLlmClassifyAllButton'),
   campaignExportShopifyButton: document.getElementById('campaignExportShopifyButton'),
   campaignExportGuidedButton: document.getElementById('campaignExportGuidedButton'),
+  campaignPublishEbayButton: document.getElementById('campaignPublishEbayButton'),
+  campaignEbayStatus: document.getElementById('campaignEbayStatus'),
   campaignRefreshDescriptionsButton: document.getElementById('campaignRefreshDescriptionsButton'),
   campaignRefreshFromCatalogButton: document.getElementById('campaignRefreshFromCatalogButton'),
   campaignCreateShopifyPageButton: document.getElementById('campaignCreateShopifyPageButton'),
@@ -15085,7 +15087,73 @@ async function init() {
       }
     });
   }
-  if (elements.campaignRefreshDescriptionsButton) {
+  // eBay Publish handler
+  if (elements.campaignPublishEbayButton) {
+    elements.campaignPublishEbayButton.addEventListener('click', async () => {
+      try {
+        if (!state.campaign?.slug) { showToast('Save the campaign first.', 'warning'); return; }
+        const items = state.campaign.items || [];
+        if (items.length === 0) { showToast('No items in campaign.', 'warning'); return; }
+
+        // Check eBay connection
+        const ebayStatus = await printStation.ebay.getStatus();
+        if (!ebayStatus.authenticated) {
+          showToast('eBay not connected. Visit /oauth/ebay to authorize.', 'error', 8000);
+          return;
+        }
+
+        // Find items with Shopify product IDs
+        const publishable = items.filter(it => it.shopifyProductId);
+        if (publishable.length === 0) {
+          showToast('No items have Shopify product IDs. Export to Shopify first.', 'warning', 6000);
+          return;
+        }
+
+        elements.campaignPublishEbayButton.disabled = true;
+        if (elements.campaignEbayStatus) {
+          elements.campaignEbayStatus.textContent = `Publishing ${publishable.length} items to eBay...`;
+          elements.campaignEbayStatus.className = 'muted';
+        }
+
+        let ok = 0, fail = 0;
+        const errors = [];
+        for (let i = 0; i < publishable.length; i++) {
+          const item = publishable[i];
+          try {
+            if (elements.campaignEbayStatus) {
+              elements.campaignEbayStatus.textContent = `eBay: syncing ${i + 1}/${publishable.length} — ${(item.name || '').slice(0, 40)}...`;
+            }
+            await printStation.ebay.syncProduct({
+              shopifyProductId: item.shopifyProductId,
+              publish: false
+            });
+            ok++;
+          } catch (err) {
+            fail++;
+            errors.push({ name: item.name, error: err.message || String(err) });
+          }
+        }
+
+        let msg = `eBay: ${ok} synced as drafts`;
+        if (fail > 0) msg += `, ${fail} failed`;
+        if (elements.campaignEbayStatus) {
+          elements.campaignEbayStatus.textContent = msg;
+          elements.campaignEbayStatus.className = fail > 0 ? 'warning' : 'success';
+        }
+        showToast(msg, fail > 0 ? 'warning' : 'success', 6000);
+        elements.campaignPublishEbayButton.disabled = false;
+      } catch (error) {
+        showToast(error?.message || 'eBay publish failed.', 'error', 6000);
+        if (elements.campaignEbayStatus) {
+          elements.campaignEbayStatus.textContent = 'eBay publish failed: ' + (error?.message || 'unknown error');
+          elements.campaignEbayStatus.className = 'error';
+        }
+        if (elements.campaignPublishEbayButton) elements.campaignPublishEbayButton.disabled = false;
+      }
+    });
+  }
+
+    if (elements.campaignRefreshDescriptionsButton) {
     elements.campaignRefreshDescriptionsButton.addEventListener('click', async () => {
       try {
         if (!state.campaign?.slug) { showToast('Save the campaign first to get a slug.', 'warning'); return; }
