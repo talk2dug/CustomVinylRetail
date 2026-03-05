@@ -34,41 +34,54 @@
       }
     }
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="./theme.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800;900&family=Montserrat:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="./racing.css">
-  <link rel="stylesheet" href="./shared-modern.css">
+  <link rel="stylesheet" href="./theme-pages.css">
 </head>
 <body>
-  <header class="modern-header">
-    <div class="header-container">
+  <header class="site-header" id="siteHeader">
+    <div class="container header-inner">
       <a href="./" class="logo">
-        <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo">
-        <div class="logo-text">
-          <span class="logo-name">BlueRidgeCustomCo</span>
-          <span class="logo-tagline">Premium Custom Designs</span>
-        </div>
+        <div class="logo-icon"><i class="fas fa-bolt"></i></div>
+        <div><span>BlueRidgeCustomCo</span><span class="logo-sub">Premium Custom Designs</span></div>
       </a>
-      <nav class="nav-menu">
-        <a href="./designer.html" class="nav-link">Designer</a>
-        <a href="./racing.html" class="nav-link">Racing</a>
-        <a href="https://store.swayzecustomvinyl.com/apparel.html" class="nav-link">Apparel</a>
-        <a href="./customer.html" class="cta-button">Account</a>
+      <nav class="nav-desktop">
+        <a href="./catalog.html">Catalog</a>
+        <a href="./designer.html">Designer</a>
+        <a href="./racing.html">Racing</a>
+        <a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a>
+        <a href="./customer.html" class="nav-cta">My Account</a>
       </nav>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
     </div>
   </header>
+  <div class="nav-mobile-overlay" id="mobileNav">
+    <a href="./catalog.html">Catalog</a>
+    <a href="./designer.html">Designer</a>
+    <a href="./racing.html">Racing</a>
+    <a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a>
+    <a href="./customer.html">My Account</a>
+  </div>
 
   <main>
     <section class="hero">
       <div class="hero__content">
-        <span class="eyebrow">Built By Racers</span>
+        <span class="eyebrow">Built By Racers &middot; SCCA &middot; ARA &middot; NASA</span>
         <h1>Race-day vinyl and apparel from a fellow rally driver.</h1>
         <p>
           I wrench on my own rally car and understand what a scramble it can be to keep numbers, sponsors,
-          and crew gear dialed before the next stage. BlueRidgeCustomCo packages are tuned for grassroots
+          and crew gear dialed before the next stage. Our packages are tuned for grassroots
           teams who need pro-level branding without the red tape.
         </p>
         <div class="hero__actions">
-          <a class="primary" href="./racing-designer.html">Design Your Car</a>
+          <a class="primary" href="#quote">Get Your Free Quote</a>
           <a class="ghost" href="#packages">Compare Packages</a>
         </div>
 
@@ -388,42 +401,66 @@
         </form>
       </div>
     </section>
+
+    <!-- ═══════ FAQ ═══════ -->
+    <section class="faq" id="faq" style="padding:4rem 0;">
+      <div class="container">
+        <h2 style="text-align:center;margin-bottom:2rem;">Common Questions from Racers</h2>
+        <div style="max-width:800px;margin:0 auto;">
+
+          <details style="margin-bottom:1rem;border:1px solid rgba(0,229,255,0.15);border-radius:8px;padding:1rem;background:rgba(10,22,40,0.6);">
+            <summary style="cursor:pointer;font-weight:600;font-size:1.1rem;color:#e0eaff;">How fast can I get my number kit?</summary>
+            <p style="margin-top:0.75rem;color:#8fa4c4;">Standard turnaround is 5-7 business days. Rush orders (48hr) are available for an additional fee — just mention it in your quote. We know race weekends don't wait.</p>
+          </details>
+
+          <details style="margin-bottom:1rem;border:1px solid rgba(0,229,255,0.15);border-radius:8px;padding:1rem;background:rgba(10,22,40,0.6);">
+            <summary style="cursor:pointer;font-weight:600;font-size:1.1rem;color:#e0eaff;">What materials do you use?</summary>
+            <p style="margin-top:0.75rem;color:#8fa4c4;">Premium 3M and Avery cast vinyl with 3M laminate overlay. These are track-rated materials that withstand heat, rain, UV, and rock chips. Removable without residue when you need to change sponsors or numbers.</p>
+          </details>
+
+          <details style="margin-bottom:1rem;border:1px solid rgba(0,229,255,0.15);border-radius:8px;padding:1rem;background:rgba(10,22,40,0.6);">
+            <summary style="cursor:pointer;font-weight:600;font-size:1.1rem;color:#e0eaff;">Do you handle SCCA/ARA/NASA number compliance?</summary>
+            <p style="margin-top:0.75rem;color:#8fa4c4;">Yes. We're familiar with the class numbering rules for SCCA, ARA, NASA, and most regional series. We'll make sure your numbers and class letters meet tech specs for size, contrast, and placement.</p>
+          </details>
+
+          <details style="margin-bottom:1rem;border:1px solid rgba(0,229,255,0.15);border-radius:8px;padding:1rem;background:rgba(10,22,40,0.6);">
+            <summary style="cursor:pointer;font-weight:600;font-size:1.1rem;color:#e0eaff;">Can I install these myself?</summary>
+            <p style="margin-top:0.75rem;color:#8fa4c4;">Absolutely. Every kit ships with detailed install instructions, a squeegee, and an application fluid sample. The vinyl is air-release, so bubbles work out easily. Most racers install their own kits in 1-2 hours.</p>
+          </details>
+
+          <details style="margin-bottom:1rem;border:1px solid rgba(0,229,255,0.15);border-radius:8px;padding:1rem;background:rgba(10,22,40,0.6);">
+            <summary style="cursor:pointer;font-weight:600;font-size:1.1rem;color:#e0eaff;">Do you do full livery wraps?</summary>
+            <p style="margin-top:0.75rem;color:#8fa4c4;">We do partial and full livery design and production. For full wraps, we handle the design and vinyl production — installation can be done by you or a local wrap shop. Quote includes design mockups on your actual car photos.</p>
+          </details>
+
+          <details style="margin-bottom:1rem;border:1px solid rgba(0,229,255,0.15);border-radius:8px;padding:1rem;background:rgba(10,22,40,0.6);">
+            <summary style="cursor:pointer;font-weight:600;font-size:1.1rem;color:#e0eaff;">What about crew apparel?</summary>
+            <p style="margin-top:0.75rem;color:#8fa4c4;">Every race package ships with 4 free crew tees featuring your team branding. Need more? We do custom team hoodies, hats, and pit crew shirts at bulk pricing. Add them to your quote.</p>
+          </details>
+
+        </div>
+      </div>
+    </section>
   </main>
 
-  <footer class="modern-footer">
-    <div class="footer-container">
-      <div class="footer-content">
-        <div class="footer-section">
-          <h3>Products</h3>
-          <ul>
-            <li><a href="./designer.html">Custom Designer</a></li>
-            <li><a href="./racing.html">Racing Decals</a></li>
-          </ul>
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand-col">
+          <a href="./" class="logo"><div class="logo-icon"><i class="fas fa-bolt"></i></div><div><span>BlueRidgeCustomCo</span><span class="logo-sub">Premium Custom Designs</span></div></a>
+          <p>Premium custom vinyl decals, apparel, and designs.</p>
         </div>
-        <div class="footer-section">
-          <h3>Resources</h3>
-          <ul>
-            <li><a href="./price-list.html">Pricing</a></li>
-            <li><a href="./terms.html">Terms & Conditions</a></li>
-            <li><a href="./customer.html">My Account</a></li>
-          </ul>
-        </div>
-        <div class="footer-section">
-          <h3>Contact</h3>
-          <ul>
-            <li><a href="tel:+12027408240">(202) 740-8240</a></li>
-            <li><a href="mailto:info@blueridgecustomco.com">info@blueridgecustomco.com</a></li>
-          </ul>
-        </div>
+        <div class="footer-col"><h4>Products</h4><a href="./catalog.html">Vinyl Decals</a><a href="./designer.html">Custom Designer</a><a href="./racing.html">Racing Packages</a></div>
+        <div class="footer-col"><h4>Company</h4><a href="./customer.html">Customer Portal</a><a href="./terms.html">Terms</a><a href="./privacy-policy.html">Privacy</a></div>
+        <div class="footer-col"><h4>Contact</h4><a href="tel:+12027408240">(202) 740-8240</a><a href="mailto:info@blueridgecustomco.com">info@blueridgecustomco.com</a></div>
       </div>
-      <div class="footer-bottom">
-        <p>&copy; <span id="year"></span> BlueRidgeCustomCo. All rights reserved.</p>
-      </div>
+      <div class="footer-bottom"><span>&copy; <span data-year></span> BlueRidgeCustomCo.</span></div>
     </div>
   </footer>
 
+  <script src="./theme.js"></script>
   <script>
-    document.getElementById('year').textContent = new Date().getFullYear();
+    // (year is now handled by theme.js via data-year)
 
     // Authentication state
     let authToken = null;

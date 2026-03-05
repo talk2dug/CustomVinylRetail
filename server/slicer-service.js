@@ -402,10 +402,19 @@ function bakeTransformToSTL(stlPath, transform, stlId) {
 
   const fileBuffer = fs.readFileSync(stlPath);
 
-  // Check if ASCII STL (starts with "solid")
-  const header = fileBuffer.slice(0, 5).toString('ascii');
-  if (header === 'solid' && fileBuffer.indexOf(0x00, 0, 80) === -1) {
-    console.log('[Slicer] Transform bake: ASCII STL detected, skipping');
+  // Check if ASCII STL. Use size-based validation: binary STLs have
+  // exactly 84 + triangleCount * 50 bytes, where triangleCount is at offset 80.
+  // Many binary STLs start with "solid" in their text header — don't rely on
+  // null-byte detection which produces false positives for those files.
+  if (fileBuffer.length >= 84) {
+    const expectedBinarySize = 84 + fileBuffer.readUInt32LE(80) * 50;
+    const header5 = fileBuffer.slice(0, 5).toString('ascii');
+    if (header5 === 'solid' && fileBuffer.length !== expectedBinarySize) {
+      console.log('[Slicer] Transform bake: ASCII STL detected (size mismatch), skipping');
+      return null;
+    }
+  } else {
+    console.log('[Slicer] Transform bake: file too small to be valid STL, skipping');
     return null;
   }
 
@@ -424,18 +433,18 @@ function bakeTransformToSTL(stlPath, transform, stlId) {
   // The Three.js preview converts STL Z-up → Three.js Y-up via rotateX(-PI/2).
   // User rotations in that Y-up space need to be converted back to STL Z-up.
   // The conjugation Rx(PI/2) * R_threejs * Rx(-PI/2) gives:
-  //   R_stl = Ry(threejs_rz) * Rz(threejs_ry) * Rx(threejs_rx)
+  //   R_stl = Ry(-threejs_rz) * Rz(threejs_ry) * Rx(threejs_rx)
   // Applied directly to raw STL vertices (no Y↔Z swap needed).
   const hasRotation = (rx !== 0 || ry !== 0 || rz !== 0);
   let R;
   if (hasRotation) {
-    // Build Rx(rx), Rz(ry), Ry(rz) and multiply: R = Ry(rz) * Rz(ry) * Rx(rx)
+    // Build Rx(rx), Rz(ry), Ry(-rz) and multiply: R = Ry(-rz) * Rz(ry) * Rx(rx)
     const cx1 = Math.cos(rx), sx1 = Math.sin(rx);
     const cz1 = Math.cos(ry), sz1 = Math.sin(ry);
     const cy1 = Math.cos(rz), sy1 = Math.sin(rz);
     const Rx1 = [1, 0, 0, 0, cx1, -sx1, 0, sx1, cx1];
     const Rz1 = [cz1, -sz1, 0, sz1, cz1, 0, 0, 0, 1];
-    const Ry1 = [cy1, 0, sy1, 0, 1, 0, -sy1, 0, cy1];
+    const Ry1 = [cy1, 0, -sy1, 0, 1, 0, sy1, 0, cy1]; // Ry(-rz): negated off-diagonals
     function mul(A, B) {
       const C = new Array(9);
       for (let r = 0; r < 3; r++)

@@ -4,28 +4,44 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BlueRidgeCustomCo - Product Catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="./theme.css">
   <link rel="stylesheet" href="./styles.css">
-  <link rel="stylesheet" href="./shared-modern.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Lobster&family=Montserrat:wght@400;600;700&family=Oswald:wght@400;600&family=Pacifico&family=Playfair+Display:wght@400;700&family=Raleway:wght@400;600;700&family=Roboto+Slab:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="./theme-pages.css">
 </head>
 <body>
-  <header class="modern-header">
-    <div class="header-container">
+  <header class="site-header" id="siteHeader">
+    <div class="container header-inner">
       <a href="./" class="logo">
-        <img src="./images/BlueRidgeCustomCoLogo.png" alt="BlueRidgeCustomCo">
-        <div class="logo-text">
-          <span class="logo-name">BlueRidgeCustomCo</span>
-          <span class="logo-tagline">Premium Custom Designs</span>
+        <div class="logo-icon"><i class="fas fa-bolt"></i></div>
+        <div>
+          <span>BlueRidgeCustomCo</span>
+          <span class="logo-sub">Premium Custom Designs</span>
         </div>
       </a>
-      <nav class="nav-menu">
-        <a href="./designer.html" class="nav-link">Designer</a>
-        <a href="./racing.html" class="nav-link">Racing</a>
-        <a href="https://store.swayzecustomvinyl.com/apparel.html" class="nav-link">Apparel</a>
-        <a href="./customer.html" class="cta-button">Account</a>
+      <nav class="nav-desktop">
+        <a href="./catalog.html">Catalog</a>
+        <a href="./designer.html">Designer</a>
+        <a href="./racing.html">Racing</a>
+        <a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a>
+        <a href="./customer.html" class="nav-cta">My Account</a>
       </nav>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
     </div>
   </header>
+  <div class="nav-mobile-overlay" id="mobileNav">
+    <a href="./catalog.html">Catalog</a>
+    <a href="./designer.html">Designer</a>
+    <a href="./racing.html">Racing</a>
+    <a href="https://store.swayzecustomvinyl.com/apparel.html">Apparel</a>
+    <a href="./customer.html">My Account</a>
+  </div>
 
   <div class="app">
     <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="sidebar">
@@ -336,37 +352,49 @@
     </div>
   </div>
 
-  <footer class="modern-footer">
-    <div class="footer-container">
-      <div class="footer-content">
-        <div class="footer-section">
-          <h3>Products</h3>
-          <ul>
-            <li><a href="./designer.html">Custom Designer</a></li>
-            <li><a href="./racing.html">Racing Decals</a></li>
-          </ul>
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand-col">
+          <a href="./" class="logo">
+            <div class="logo-icon"><i class="fas fa-bolt"></i></div>
+            <div><span>BlueRidgeCustomCo</span><span class="logo-sub">Premium Custom Designs</span></div>
+          </a>
+          <p>Premium custom vinyl decals, apparel, and designs with professional quality and fast turnaround.</p>
+          <div class="footer-social">
+            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+            <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+            <a href="mailto:info@blueridgecustomco.com" aria-label="Email"><i class="fas fa-envelope"></i></a>
+          </div>
         </div>
-        <div class="footer-section">
-          <h3>Resources</h3>
-          <ul>
-            <li><a href="./price-list.html">Pricing</a></li>
-            <li><a href="./terms.html">Terms & Conditions</a></li>
-            <li><a href="./customer.html">My Account</a></li>
-          </ul>
+        <div class="footer-col">
+          <h4>Products</h4>
+          <a href="./catalog.html">Vinyl Decals</a>
+          <a href="./designer.html">Custom Designer</a>
+          <a href="./racing.html">Racing Packages</a>
         </div>
-        <div class="footer-section">
-          <h3>Contact</h3>
-          <ul>
-            <li><a href="tel:+12027408240">(202) 740-8240</a></li>
-            <li><a href="mailto:info@blueridgecustomco.com">info@blueridgecustomco.com</a></li>
-          </ul>
+        <div class="footer-col">
+          <h4>Company</h4>
+          <a href="./customer.html">Customer Portal</a>
+          <a href="./terms.html">Terms of Service</a>
+          <a href="./privacy-policy.html">Privacy Policy</a>
+        </div>
+        <div class="footer-col">
+          <h4>Contact</h4>
+          <a href="tel:+12027408240">(202) 740-8240</a>
+          <a href="mailto:info@blueridgecustomco.com">info@blueridgecustomco.com</a>
         </div>
       </div>
       <div class="footer-bottom">
-        <p>&copy; 2024 BlueRidgeCustomCo. All rights reserved.</p>
+        <span>&copy; <span data-year></span> BlueRidgeCustomCo. All rights reserved.</span>
+        <div class="footer-trust">
+          <div class="footer-trust-item"><i class="fas fa-check-circle"></i> Secure Checkout</div>
+          <div class="footer-trust-item"><i class="fas fa-check-circle"></i> Made in USA</div>
+        </div>
       </div>
     </div>
   </footer>
+  <script src="./theme.js"></script>
 
   <script type="module" src="./script.js"></script>
 </body>

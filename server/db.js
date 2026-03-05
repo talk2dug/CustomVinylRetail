@@ -3501,6 +3501,75 @@ function initCustomArtTables() {
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_part_howtos_part ON multiboard_part_howtos(part_id)`); } catch (e) { /* ignore */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_part_howtos_slug ON multiboard_part_howtos(howto_slug)`); } catch (e) { /* ignore */ }
 
+  // Multiboard Products (e-commerce marketing)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS multiboard_products (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      product_category TEXT NOT NULL,
+      description TEXT,
+      hero_description TEXT,
+      whats_included TEXT,
+      price_cents INTEGER NOT NULL,
+      cost_cents INTEGER,
+      est_weight_g REAL,
+      margin_pct REAL,
+      room_use_case TEXT,
+      compatible_addons TEXT,
+      grid_size TEXT,
+      shopify_product_id TEXT,
+      shopify_handle TEXT,
+      shopify_collection_id TEXT,
+      active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  try { db.exec("ALTER TABLE multiboard_products ADD COLUMN shopify_variant_id TEXT"); } catch (e) { /* already exists */ }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS multiboard_media (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename TEXT NOT NULL,
+      file_path TEXT,
+      source_url TEXT,
+      asset_type TEXT NOT NULL,
+      pillar TEXT,
+      room TEXT,
+      page_context TEXT,
+      dimensions_json TEXT,
+      ready INTEGER DEFAULT 0,
+      notes TEXT,
+      scraped_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS multiboard_scheduled_content (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id TEXT,
+      pillar TEXT NOT NULL,
+      room TEXT,
+      post_text TEXT,
+      hashtags TEXT,
+      media_id INTEGER,
+      style TEXT,
+      generated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      used_count INTEGER DEFAULT 0,
+      FOREIGN KEY (product_id) REFERENCES multiboard_products(id),
+      FOREIGN KEY (media_id) REFERENCES multiboard_media(id)
+    )
+  `);
+
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_mb_products_category ON multiboard_products(product_category)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_mb_products_room ON multiboard_products(room_use_case)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_mb_media_pillar ON multiboard_media(pillar)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_mb_media_room ON multiboard_media(room)`); } catch (e) { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_mb_content_pillar ON multiboard_scheduled_content(pillar)`); } catch (e) { /* ignore */ }
+
   // Print Quotes System
   db.exec(`
     CREATE TABLE IF NOT EXISTS print_quotes (
@@ -3543,6 +3612,19 @@ function initCustomArtTables() {
     );
     CREATE INDEX IF NOT EXISTS idx_pq_items_quote ON print_quote_items(quote_id);
     CREATE INDEX IF NOT EXISTS idx_pq_plates_quote ON print_quote_plates(quote_id);
+
+    -- Saved build plates (reusable plate configurations)
+    CREATE TABLE IF NOT EXISTS saved_build_plates (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      printer_model TEXT DEFAULT 'kobra3',
+      items       TEXT NOT NULL DEFAULT '[]',
+      settings    TEXT DEFAULT '{}',
+      last_gcode_id INTEGER DEFAULT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_saved_build_plates_name ON saved_build_plates(name);
   `);
 
   console.log('[Slicer] ✅ Tables initialized successfully');
@@ -7229,6 +7311,185 @@ function getHowtosForTags(tags) {
 }
 
 // ============================================================================
+// MULTIBOARD PRODUCTS (E-commerce marketing)
+// ============================================================================
+
+function createMultiboardProduct(data) {
+  const stmt = db.prepare(`INSERT INTO multiboard_products
+    (id, name, slug, product_category, description, hero_description, whats_included,
+     price_cents, cost_cents, est_weight_g, margin_pct, room_use_case, compatible_addons,
+     grid_size, shopify_product_id, shopify_handle, shopify_collection_id, shopify_variant_id, active)
+    VALUES (@id, @name, @slug, @product_category, @description, @hero_description, @whats_included,
+     @price_cents, @cost_cents, @est_weight_g, @margin_pct, @room_use_case, @compatible_addons,
+     @grid_size, @shopify_product_id, @shopify_handle, @shopify_collection_id, @shopify_variant_id, @active)`);
+  stmt.run({
+    id: data.id,
+    name: data.name,
+    slug: data.slug,
+    product_category: data.product_category,
+    description: data.description || null,
+    hero_description: data.hero_description || null,
+    whats_included: data.whats_included ? JSON.stringify(data.whats_included) : null,
+    price_cents: data.price_cents,
+    cost_cents: data.cost_cents || null,
+    est_weight_g: data.est_weight_g || null,
+    margin_pct: data.margin_pct || null,
+    room_use_case: data.room_use_case || null,
+    compatible_addons: data.compatible_addons ? JSON.stringify(data.compatible_addons) : null,
+    grid_size: data.grid_size || null,
+    shopify_product_id: data.shopify_product_id || null,
+    shopify_handle: data.shopify_handle || null,
+    shopify_collection_id: data.shopify_collection_id || null,
+    shopify_variant_id: data.shopify_variant_id || null,
+    active: data.active !== undefined ? data.active : 1
+  });
+  return getMultiboardProduct(data.id);
+}
+
+function updateMultiboardProduct(id, updates) {
+  const allowed = ['name', 'slug', 'product_category', 'description', 'hero_description',
+    'whats_included', 'price_cents', 'cost_cents', 'est_weight_g', 'margin_pct',
+    'room_use_case', 'compatible_addons', 'grid_size', 'shopify_product_id',
+    'shopify_handle', 'shopify_collection_id', 'shopify_variant_id', 'active'];
+  const sets = [];
+  const params = { id };
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(updates, key)) {
+      let val = updates[key];
+      if ((key === 'whats_included' || key === 'compatible_addons') && typeof val !== 'string') {
+        val = JSON.stringify(val);
+      }
+      sets.push(`${key} = @${key}`);
+      params[key] = val;
+    }
+  }
+  if (!sets.length) return false;
+  const sql = `UPDATE multiboard_products SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = @id`;
+  const info = db.prepare(sql).run(params);
+  return info.changes > 0;
+}
+
+function getMultiboardProduct(id) {
+  return db.prepare('SELECT * FROM multiboard_products WHERE id = ?').get(id);
+}
+
+function getMultiboardProductBySlug(slug) {
+  return db.prepare('SELECT * FROM multiboard_products WHERE slug = ?').get(slug);
+}
+
+function listMultiboardProducts(filters = {}) {
+  let sql = 'SELECT * FROM multiboard_products WHERE 1=1';
+  const params = [];
+  if (filters.category) { sql += ' AND product_category = ?'; params.push(filters.category); }
+  if (filters.room) { sql += ' AND room_use_case = ?'; params.push(filters.room); }
+  if (filters.activeOnly !== false) { sql += ' AND active = 1'; }
+  sql += ' ORDER BY product_category, price_cents ASC';
+  return db.prepare(sql).all(...params);
+}
+
+// ============================================================================
+// MULTIBOARD MEDIA
+// ============================================================================
+
+function createMultiboardMedia(data) {
+  const stmt = db.prepare(`INSERT INTO multiboard_media
+    (filename, file_path, source_url, asset_type, pillar, room, page_context, dimensions_json, ready, notes, scraped_at)
+    VALUES (@filename, @file_path, @source_url, @asset_type, @pillar, @room, @page_context, @dimensions_json, @ready, @notes, @scraped_at)`);
+  const info = stmt.run({
+    filename: data.filename,
+    file_path: data.file_path || null,
+    source_url: data.source_url || null,
+    asset_type: data.asset_type,
+    pillar: data.pillar || null,
+    room: data.room || null,
+    page_context: data.page_context || null,
+    dimensions_json: data.dimensions_json ? (typeof data.dimensions_json === 'string' ? data.dimensions_json : JSON.stringify(data.dimensions_json)) : null,
+    ready: data.ready || 0,
+    notes: data.notes || null,
+    scraped_at: data.scraped_at || null
+  });
+  return db.prepare('SELECT * FROM multiboard_media WHERE id = ?').get(info.lastInsertRowid);
+}
+
+function updateMultiboardMedia(id, updates) {
+  const allowed = ['filename', 'file_path', 'source_url', 'asset_type', 'pillar', 'room',
+    'page_context', 'dimensions_json', 'ready', 'notes', 'scraped_at'];
+  const sets = [];
+  const params = { id };
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(updates, key)) {
+      sets.push(`${key} = @${key}`);
+      params[key] = updates[key];
+    }
+  }
+  if (!sets.length) return false;
+  const sql = `UPDATE multiboard_media SET ${sets.join(', ')} WHERE id = @id`;
+  const info = db.prepare(sql).run(params);
+  return info.changes > 0;
+}
+
+function getMultiboardMediaForPillar(pillar, room) {
+  let sql = 'SELECT * FROM multiboard_media WHERE ready = 1 AND pillar = ?';
+  const params = [pillar];
+  if (room) { sql += ' AND room = ?'; params.push(room); }
+  sql += ' ORDER BY RANDOM() LIMIT 1';
+  return db.prepare(sql).get(...params);
+}
+
+function listMultiboardMedia(filters = {}) {
+  let sql = 'SELECT * FROM multiboard_media WHERE 1=1';
+  const params = [];
+  if (filters.assetType) { sql += ' AND asset_type = ?'; params.push(filters.assetType); }
+  if (filters.pillar) { sql += ' AND pillar = ?'; params.push(filters.pillar); }
+  if (filters.room) { sql += ' AND room = ?'; params.push(filters.room); }
+  if (filters.readyOnly) { sql += ' AND ready = 1'; }
+  sql += ' ORDER BY created_at DESC';
+  return db.prepare(sql).all(...params);
+}
+
+// ============================================================================
+// MULTIBOARD SCHEDULED CONTENT
+// ============================================================================
+
+function createMultiboardContent(data) {
+  const stmt = db.prepare(`INSERT INTO multiboard_scheduled_content
+    (product_id, pillar, room, post_text, hashtags, media_id, style)
+    VALUES (@product_id, @pillar, @room, @post_text, @hashtags, @media_id, @style)`);
+  const info = stmt.run({
+    product_id: data.product_id || null,
+    pillar: data.pillar,
+    room: data.room || null,
+    post_text: data.post_text || null,
+    hashtags: data.hashtags || null,
+    media_id: data.media_id || null,
+    style: data.style || null
+  });
+  return db.prepare('SELECT * FROM multiboard_scheduled_content WHERE id = ?').get(info.lastInsertRowid);
+}
+
+function getNextMultiboardContent(pillar, room) {
+  let sql = 'SELECT * FROM multiboard_scheduled_content WHERE pillar = ?';
+  const params = [pillar];
+  if (room) { sql += ' AND room = ?'; params.push(room); }
+  sql += ' ORDER BY used_count ASC, RANDOM() LIMIT 1';
+  return db.prepare(sql).get(...params);
+}
+
+function markMultiboardContentUsed(id) {
+  const info = db.prepare('UPDATE multiboard_scheduled_content SET used_count = used_count + 1 WHERE id = ?').run(id);
+  return info.changes > 0;
+}
+
+function listMultiboardContent(filters = {}) {
+  let sql = 'SELECT * FROM multiboard_scheduled_content WHERE 1=1';
+  const params = [];
+  if (filters.pillar) { sql += ' AND pillar = ?'; params.push(filters.pillar); }
+  if (filters.room) { sql += ' AND room = ?'; params.push(filters.room); }
+  sql += ' ORDER BY generated_at DESC';
+  return db.prepare(sql).all(...params);
+}
+
+// ============================================================================
 // G-CODE CACHE (Sliced G-code with settings metadata)
 // ============================================================================
 
@@ -7261,6 +7522,59 @@ function deleteGcodeCache(id) {
 
 function clearAllGcodeCache() {
   return db.prepare('DELETE FROM gcode_cache').run();
+}
+
+// ============================================================================
+// SAVED BUILD PLATES
+// ============================================================================
+
+function createSavedBuildPlate({ name, printer_model, items, settings }) {
+  const result = db.prepare(`
+    INSERT INTO saved_build_plates (name, printer_model, items, settings)
+    VALUES (?, ?, ?, ?)
+  `).run(
+    name,
+    printer_model || 'kobra3',
+    JSON.stringify(items || []),
+    JSON.stringify(settings || {})
+  );
+  return db.prepare('SELECT * FROM saved_build_plates WHERE id = ?').get(result.lastInsertRowid);
+}
+
+function getSavedBuildPlate(id) {
+  return db.prepare('SELECT * FROM saved_build_plates WHERE id = ?').get(id) || null;
+}
+
+function listSavedBuildPlates() {
+  return db.prepare(`
+    SELECT bp.*, gc.est_time_min AS last_est_time_min, gc.est_weight_g AS last_est_weight_g,
+           gc.printer_model AS last_printer_model
+    FROM saved_build_plates bp
+    LEFT JOIN gcode_cache gc ON gc.id = bp.last_gcode_id
+    ORDER BY bp.updated_at DESC
+  `).all();
+}
+
+function updateSavedBuildPlate(id, updates) {
+  const allowed = ['name', 'printer_model', 'items', 'settings', 'last_gcode_id'];
+  const sets = [];
+  const params = {};
+  for (const key of allowed) {
+    if (updates[key] !== undefined) {
+      const val = (key === 'items' || key === 'settings') ? JSON.stringify(updates[key]) : updates[key];
+      sets.push(`${key} = @${key}`);
+      params[key] = val;
+    }
+  }
+  if (!sets.length) return getSavedBuildPlate(id);
+  sets.push("updated_at = datetime('now')");
+  params.id = id;
+  db.prepare(`UPDATE saved_build_plates SET ${sets.join(', ')} WHERE id = @id`).run(params);
+  return getSavedBuildPlate(id);
+}
+
+function deleteSavedBuildPlate(id) {
+  return db.prepare('DELETE FROM saved_build_plates WHERE id = ?').run(id);
 }
 
 // ============================================================================
@@ -7652,12 +7966,34 @@ module.exports = {
   getHowtosForPart,
   getHowtosForDesign,
   getHowtosForTags,
+  // Multiboard Products (e-commerce)
+  createMultiboardProduct,
+  updateMultiboardProduct,
+  getMultiboardProduct,
+  getMultiboardProductBySlug,
+  listMultiboardProducts,
+  // Multiboard Media
+  createMultiboardMedia,
+  updateMultiboardMedia,
+  getMultiboardMediaForPillar,
+  listMultiboardMedia,
+  // Multiboard Scheduled Content
+  createMultiboardContent,
+  getNextMultiboardContent,
+  markMultiboardContentUsed,
+  listMultiboardContent,
   // G-code Cache
   getGcodeCache,
   listGcodeCacheForStl,
   listAllGcodeCache,
   deleteGcodeCache,
   clearAllGcodeCache,
+  // Saved Build Plates
+  createSavedBuildPlate,
+  getSavedBuildPlate,
+  listSavedBuildPlates,
+  updateSavedBuildPlate,
+  deleteSavedBuildPlate,
   // Print Quotes
   createPrintQuote,
   getPrintQuote,

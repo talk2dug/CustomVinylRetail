@@ -55,6 +55,7 @@ const salesAnalytics = require('./modules/sales-analytics');
 const trendMonitor = require('./modules/trend-monitor');
 const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
 const aiSalesAgent = require('./modules/ai-sales-agent');
+const telegramPrinterBot = require('./modules/telegram-printer-bot');
 // Shared utilities
 const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
 const { sendJson, handleOptions } = require('./utils/http');
@@ -3549,6 +3550,37 @@ const requestHandler = async (req, res) => {
   if (parsedUrl.pathname.startsWith('/api/agent/')) {
     if (aiSalesAgent.handleAgentRoute(req, res, parsedUrl, sendJson, db)) return;
   }
+
+  // Printer Notification API (from Electron print station)
+  if (parsedUrl.pathname.startsWith('/api/notify/')) {
+    if (!requireInternalKey(req, res)) return;
+    const { parseBody: parseB } = require('./utils/http');
+
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/notify/printer-event') {
+      try {
+        const body = await parseB(req);
+        await telegramPrinterBot.handlePrinterEvent(body);
+        sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error('[Notify] Printer event error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/notify/printer-heartbeat') {
+      try {
+        const body = await parseB(req);
+        telegramPrinterBot.updateCache(body);
+        sendJson(res, 200, { ok: true, cached: (body.printers || []).length });
+      } catch (err) {
+        console.error('[Notify] Heartbeat error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+  }
+
   if (parsedUrl.pathname.startsWith('/api/email-sequences')) {
     if (emailSequences.handleEmailSequenceRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
   }
@@ -8794,6 +8826,66 @@ const requestHandler = async (req, res) => {
       console.error('[Leonardo API Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
     });
+    return;
+  }
+
+  // Multiboard Public Storefront API (no auth required)
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/multiboard-store/products') {
+    try {
+      const products = db.listMultiboardProducts({ activeOnly: true });
+      // Get all ready media for image assignments
+      const allMedia = db.listMultiboardMedia({ readyOnly: true });
+      const mediaByRoom = {};
+      const mediaGeneral = [];
+      for (const m of allMedia) {
+        if (m.room && m.room !== 'general') {
+          if (!mediaByRoom[m.room]) mediaByRoom[m.room] = [];
+          mediaByRoom[m.room].push(m);
+        } else {
+          mediaGeneral.push(m);
+        }
+      }
+      const formatted = products.map(p => {
+        // Pick best image: room-specific first, then general
+        const roomMedia = mediaByRoom[p.room_use_case] || [];
+        const candidates = roomMedia.length > 0 ? roomMedia : mediaGeneral;
+        const image = candidates.length > 0 ? `/multiboard/media/${candidates[Math.floor(Math.random() * candidates.length)].filename}` : null;
+        return {
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          category: p.product_category,
+          description: p.description,
+          heroDescription: p.hero_description,
+          whatsIncluded: JSON.parse(p.whats_included || '[]'),
+          priceCents: p.price_cents,
+          room: p.room_use_case,
+          compatibleAddons: JSON.parse(p.compatible_addons || '[]'),
+          gridSize: p.grid_size,
+          shopifyVariantId: p.shopify_variant_id,
+          shopifyHandle: p.shopify_handle,
+          image
+        };
+      });
+      // Pick hero images
+      const heroImages = allMedia
+        .filter(m => m.pillar === 'awareness' && m.dimensions_json)
+        .map(m => {
+          const dims = JSON.parse(m.dimensions_json || '{}');
+          return { url: `/multiboard/media/${m.filename}`, width: dims.width || 0, height: dims.height || 0 };
+        })
+        .filter(i => i.width >= 1000)
+        .slice(0, 5);
+      sendJson(res, 200, {
+        success: true,
+        products: formatted,
+        heroImages,
+        shopifyDomain: process.env.SHOPIFY_STORE_DOMAIN || ''
+      });
+    } catch (err) {
+      console.error('[Multiboard Store API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    }
     return;
   }
 
@@ -16837,6 +16929,20 @@ const requestHandler = async (req, res) => {
   }
 
   // ============================================================================
+  // MULTIBOARD PUBLIC STOREFRONT
+  // ============================================================================
+  if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname.startsWith('/multiboard')) {
+    let assetPath = parsedUrl.pathname.slice('/multiboard'.length) || '/';
+    if (assetPath === '/' || assetPath === '') {
+      assetPath = 'multiboard/index.html';
+    } else {
+      assetPath = 'multiboard' + assetPath;
+    }
+    serveWebAsset(req, res, assetPath);
+    return;
+  }
+
+  // ============================================================================
   // B2B PORTAL - SUBDOMAIN HANDLING
   // ============================================================================
   // Serve B2B portal files when accessed via b2b.* subdomain or /b2b/ path
@@ -20236,6 +20342,14 @@ if (require.main === module) {
       console.log('[Server] AI Sales Agent started');
     } catch (error) {
       console.error('[Server] Failed to start AI Sales Agent:', error.message);
+    }
+
+    // Start Telegram printer bot polling for /printerstatus commands
+    try {
+      telegramPrinterBot.startPolling();
+      console.log('[Server] Telegram printer bot polling started');
+    } catch (error) {
+      console.error('[Server] Failed to start printer bot polling:', error.message);
     }
 
     // Start abandoned cart recovery processor (runs every 15 minutes)

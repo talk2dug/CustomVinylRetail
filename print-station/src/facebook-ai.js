@@ -339,6 +339,213 @@ Generate a Facebook Ads campaign as JSON:
 }
 
 /**
+ * Generate a Multiboard-specific Facebook Ad campaign
+ *
+ * @param {Object} campaign - Campaign data with product info
+ * @param {string} imagePath - Path to campaign image
+ * @param {string} tier - 'awareness' | 'consideration' | 'conversion'
+ * @returns {Object} Complete Facebook Ads campaign configuration
+ */
+async function generateMultiboardAdCampaign(campaign, imagePath, tier = 'awareness') {
+  const base64Image = await prepareImage(imagePath);
+
+  const product = campaign.product || {};
+  const price = product.price_cents ? `$${(product.price_cents / 100).toFixed(2)}` : (campaign.price || '');
+  const room = product.room_use_case || campaign.room || 'general';
+
+  const tierConfigs = {
+    awareness: {
+      objective: 'REACH',
+      budgetMin: 5,
+      budgetMax: 10,
+      cta: 'LEARN_MORE',
+      description: 'Cold audience — introduce Multiboard concept'
+    },
+    consideration: {
+      objective: 'LINK_CLICKS',
+      budgetMin: 8,
+      budgetMax: 15,
+      cta: 'SHOP_NOW',
+      description: 'Warm audience — retarget engaged users with room-specific use cases'
+    },
+    conversion: {
+      objective: 'CONVERSIONS',
+      budgetMin: 10,
+      budgetMax: 20,
+      cta: 'SHOP_NOW',
+      description: 'Hot audience — retarget product page visitors with specific product + price'
+    }
+  };
+
+  const config = tierConfigs[tier] || tierConfigs.awareness;
+
+  const systemPrompt = `You are a Facebook Ads expert specializing in home organization and 3D printed products.
+You are creating ads for Blue Ridge Custom Co — Authorized Multiboard Reseller.
+Multiboard is a modular, snap-together wall organization system. We 3D print it locally in Asheville, NC.
+Output as valid JSON only - no markdown, no explanation.`;
+
+  const messages = [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: 'image/jpeg',
+            data: base64Image
+          }
+        },
+        {
+          type: 'text',
+          text: `Campaign: ${campaign.title || product.name || 'Multiboard Wall Organization'}
+Product: ${product.name || 'Multiboard System'}
+Price: ${price}
+Room: ${room}
+Tier: ${tier} — ${config.description}
+Objective: ${config.objective}
+Budget: $${config.budgetMin}-$${config.budgetMax}/day
+CTA: ${config.cta}
+
+Generate a Facebook Ads campaign as JSON:
+
+{
+  "targeting": {
+    "demographics": {
+      "age_min": 25,
+      "age_max": 55,
+      "genders": ["all"],
+      "description": "<why these demographics>"
+    },
+    "interests": [
+      "Home improvement",
+      "Home organization",
+      "DIY projects",
+      "3D printing",
+      "<add 6-8 more specific interests relevant to ${room} organization>"
+    ],
+    "behaviors": [
+      "Engaged Shoppers",
+      "Online Buyers",
+      "<add 1-2 more relevant behaviors>"
+    ],
+    "locations": {
+      "countries": ["US"],
+      "description": "<targeting rationale>"
+    },
+    "psychographics": {
+      "lifestyle": "<typical customer lifestyle>",
+      "values": ["<value 1>", "<value 2>"],
+      "painPoints": ["<${room} organization pain point 1>", "<pain point 2>"]
+    }
+  },
+  "creative": {
+    "headlines": [
+      "<headline 1 - problem/solution for ${room}>",
+      "<headline 2 - modular/expandable angle>",
+      "<headline 3 - local 3D printed quality>",
+      "<headline 4 - ${tier === 'conversion' ? 'price/value' : 'curiosity'}>",
+      "<headline 5 - social proof or question>"
+    ],
+    "primaryText": [
+      {
+        "version": "short",
+        "text": "<90 chars — ${tier} focused>",
+        "hook": "<first 3 words>"
+      },
+      {
+        "version": "medium",
+        "text": "<125 chars — ${tier} focused>",
+        "hook": "<first 3 words>"
+      },
+      {
+        "version": "long",
+        "text": "<250 chars — ${tier} focused, ${tier === 'conversion' ? 'include price and what is included' : 'focus on the problem and system'}>",
+        "hook": "<first 3 words>"
+      }
+    ],
+    "descriptions": [
+      "<description 1 - features>",
+      "<description 2 - benefits>",
+      "<description 3 - trust/local>"
+    ],
+    "callsToAction": [
+      {
+        "text": "${config.cta === 'LEARN_MORE' ? 'Learn More' : 'Shop Now'}",
+        "type": "${config.cta}",
+        "rationale": "<why this CTA for ${tier} tier>"
+      }
+    ]
+  },
+  "budget": {
+    "dailyBudget": ${Math.round((config.budgetMin + config.budgetMax) / 2)},
+    "bidStrategy": "LOWEST_COST_WITHOUT_CAP"
+  },
+  "adSet": {
+    "name": "Multiboard ${tier.charAt(0).toUpperCase() + tier.slice(1)} - ${room}",
+    "targeting": {},
+    "daily_budget": ${Math.round((config.budgetMin + config.budgetMax) / 2) * 100},
+    "billing_event": "IMPRESSIONS",
+    "optimization_goal": "${config.objective === 'REACH' ? 'REACH' : config.objective === 'LINK_CLICKS' ? 'LINK_CLICKS' : 'OFFSITE_CONVERSIONS'}",
+    "status": "PAUSED"
+  },
+  "ads": [
+    {
+      "name": "Multiboard ${tier} - ${room} - V1",
+      "status": "PAUSED",
+      "creative": {
+        "object_story_spec": {
+          "page_id": "<PAGE_ID>",
+          "link_data": {
+            "message": "<primary text>",
+            "link": "<CAMPAIGN_URL>",
+            "name": "<headline>",
+            "description": "<description>",
+            "call_to_action": {
+              "type": "${config.cta}",
+              "value": { "link": "<CAMPAIGN_URL>" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+
+IMPORTANT for ${tier} tier:
+${tier === 'awareness' ? '- Focus on education: what IS Multiboard, why wall tiles matter\n- Broad targeting, low budget, Learn More CTA' : ''}
+${tier === 'consideration' ? '- Focus on specific room use cases and transformations\n- Retarget engaged users, medium budget, Shop Now CTA' : ''}
+${tier === 'conversion' ? '- Focus on specific product, include price and what\'s included\n- Retarget product page visitors, higher budget, Shop Now CTA' : ''}`
+        }
+      ]
+    }
+  ];
+
+  const response = await anthropicClient.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 2000,
+    system: systemPrompt,
+    messages
+  });
+
+  const responseText = response.content[0].text;
+  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('Failed to parse Multiboard ad campaign response');
+  }
+
+  const result = JSON.parse(jsonMatch[0]);
+
+  return {
+    ...result,
+    tier,
+    room,
+    product: product.name || campaign.title,
+    generatedAt: new Date().toISOString()
+  };
+}
+
+/**
  * Check if Facebook AI is configured
  */
 function isConfigured() {
@@ -347,5 +554,6 @@ function isConfigured() {
 
 module.exports = {
   generateCampaignAds,
+  generateMultiboardAdCampaign,
   isConfigured
 };

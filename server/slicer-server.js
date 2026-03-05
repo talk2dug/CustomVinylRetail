@@ -679,9 +679,17 @@ async function handleSlicerRoute(pathname, req, res, db) {
       const rawDb = db.db || db.getDb();
       const firstItem = items[0];
 
+      // Merge default_transform for any item that the client didn't send a transform for
+      const mergedTransforms = Object.assign({}, transforms || {});
+      for (const item of items) {
+        if (!mergedTransforms[item.id] && item.default_transform) {
+          try { mergedTransforms[item.id] = JSON.parse(item.default_transform); } catch {}
+        }
+      }
+
       const result = await slicer.slicePlate(stlPaths, {
         stl_ids,
-        transforms: transforms || {},
+        transforms: mergedTransforms,
         printer_model: printer_model || 'kobra3',
         material: material || firstItem.default_material || 'pla',
         quality: quality || firstItem.default_quality || 'standard',
@@ -696,6 +704,107 @@ async function handleSlicerRoute(pathname, req, res, db) {
       sendJson(res, 200, result);
     } catch (err) {
       console.error('[Slicer] Plate slice error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // ========================================================================
+  // SAVED BUILD PLATES
+  // ========================================================================
+
+  // GET /api/slicer/plates — list all saved build plates
+  if (req.method === 'GET' && route === '/plates') {
+    try {
+      const plates = db.listSavedBuildPlates();
+      for (const plate of plates) {
+        try {
+          const items = JSON.parse(plate.items || '[]');
+          plate._itemSummary = items.map(it => {
+            const cat = db.getStlCatalogItem(it.stl_id);
+            return { stl_id: it.stl_id, qty: it.qty || 1, name: cat ? cat.name : `#${it.stl_id}` };
+          });
+          plate._totalParts = items.reduce((sum, it) => sum + (it.qty || 1), 0);
+        } catch { plate._itemSummary = []; plate._totalParts = 0; }
+      }
+      sendJson(res, 200, { plates });
+    } catch (err) {
+      console.error('[Slicer] List plates error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/plates — create a saved build plate
+  if (req.method === 'POST' && route === '/plates') {
+    try {
+      const body = await parseBody(req);
+      const { name, printer_model, items, settings } = body;
+      if (!name) { sendError(res, 400, 'name is required'); return true; }
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        sendError(res, 400, 'items array is required');
+        return true;
+      }
+      const plate = db.createSavedBuildPlate({ name, printer_model, items, settings });
+      sendJson(res, 201, plate);
+    } catch (err) {
+      console.error('[Slicer] Create plate error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // GET /api/slicer/plates/:id — get a saved build plate
+  const plateGetMatch = route.match(/^\/plates\/(\d+)$/);
+  if (req.method === 'GET' && plateGetMatch) {
+    try {
+      const id = parseInt(plateGetMatch[1], 10);
+      const plate = db.getSavedBuildPlate(id);
+      if (!plate) { sendError(res, 404, 'Saved plate not found'); return true; }
+      // Enrich items
+      try {
+        const items = JSON.parse(plate.items || '[]');
+        plate._itemSummary = items.map(it => {
+          const cat = db.getStlCatalogItem(it.stl_id);
+          return { stl_id: it.stl_id, qty: it.qty || 1, name: cat ? cat.name : `#${it.stl_id}`, missing: !cat };
+        });
+        plate._totalParts = items.reduce((sum, it) => sum + (it.qty || 1), 0);
+      } catch { plate._itemSummary = []; plate._totalParts = 0; }
+      sendJson(res, 200, plate);
+    } catch (err) {
+      console.error('[Slicer] Get plate error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // PUT /api/slicer/plates/:id — update a saved build plate
+  const plateUpdateMatch = route.match(/^\/plates\/(\d+)$/);
+  if (req.method === 'PUT' && plateUpdateMatch) {
+    try {
+      const id = parseInt(plateUpdateMatch[1], 10);
+      const body = await parseBody(req);
+      const updated = db.updateSavedBuildPlate(id, body);
+      if (!updated) { sendError(res, 404, 'Saved plate not found'); return true; }
+      sendJson(res, 200, updated);
+    } catch (err) {
+      console.error('[Slicer] Update plate error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // DELETE /api/slicer/plates/:id — delete a saved build plate
+  const plateDeleteMatch = route.match(/^\/plates\/(\d+)$/);
+  if (req.method === 'DELETE' && plateDeleteMatch) {
+    try {
+      const id = parseInt(plateDeleteMatch[1], 10);
+      const plate = db.getSavedBuildPlate(id);
+      if (!plate) { sendError(res, 404, 'Saved plate not found'); return true; }
+      db.deleteSavedBuildPlate(id);
+      sendJson(res, 200, { success: true, deleted: plate.name });
+    } catch (err) {
+      console.error('[Slicer] Delete plate error:', err);
       sendError(res, 500, err.message);
     }
     return true;

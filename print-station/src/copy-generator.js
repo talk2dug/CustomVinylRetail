@@ -170,7 +170,32 @@ async function generateCampaignCopy(campaign, options = {}) {
     }
   }
 
-  const systemPrompt = `You are an elite e-commerce copywriter specializing in custom vinyl decals, stickers, and apparel.
+  // Detect multiboard campaigns
+  const campaignSlug = (campaign?.slug || '').toLowerCase();
+  const campaignProductType = (campaign?.productType || '').toLowerCase();
+  const isMultiboard = campaignProductType === 'multiboard' ||
+                       campaignSlug.includes('multiboard') ||
+                       (campaign?.title && /multiboard|wall.?organiz/i.test(campaign.title));
+
+  const systemPrompt = isMultiboard
+    ? `You are an elite e-commerce copywriter for Blue Ridge Custom Co — Authorized Multiboard Reseller.
+We 3D print modular wall organization systems under license from Multiboard.
+Your copy is:
+- Problem-focused — lead with the clutter/disorganization pain point
+- Practical and direct — no fluff or hype language
+- Room-specific when possible (kitchen, garage, craft room, desk)
+- Always mentions expandability and the modular snap system
+- Never claims we designed or manufactured the original system
+- Uses "wall tiles" not "MU tiles", "storage bins" not "Multibins"
+- Includes "Authorized Multiboard Reseller" in product-focused copy
+
+Brand voice: ${tone === 'casual' ? 'Friendly, practical, like a neighbor who just organized their garage and wants to tell you about it' :
+              tone === 'professional' ? 'Confident, trustworthy, quality-focused with local pride' :
+              tone === 'urgent' ? 'Energetic, value-focused, emphasizing the package deal savings' :
+              'Practical with light humor, genuine enthusiasm for organization'}
+
+Output ONLY valid JSON - no markdown, no explanation, no code blocks.`
+    : `You are an elite e-commerce copywriter specializing in custom vinyl decals, stickers, and apparel.
 Your copy is:
 - Benefit-focused, not feature-focused
 - Emotionally resonant and authentic

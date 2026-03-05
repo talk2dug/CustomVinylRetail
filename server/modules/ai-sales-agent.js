@@ -167,29 +167,72 @@ const DEFAULT_CONFIG = {
     'metal-print': {
       displayName: 'Metal Prints',
       enabled: true,
-      postingWeight: 0.55,
+      postingWeight: 0.20,
+      fbPage: 'blueridge',
       shopifyProductTypes: ['Metal Print', 'Metal Print Wall Art', 'Metal art', 'Metal art piece'],
       captionStyles: { showcase: 0.3, lifestyle: 0.3, quality: 0.2, humor: 0.1, urgency: 0.1 },
       defaultHashtags: '#metalprint #wallart #homedecor #metalwallart #artprint #BlueRidgeCustomCo',
       targetAudience: 'Homeowners, interior design enthusiasts, car lovers, art collectors'
     },
     'tshirt': {
-      displayName: 'T-Shirts',
+      displayName: 'T-Shirts & Apparel',
       enabled: true,
-      postingWeight: 0.30,
+      postingWeight: 0.15,
+      fbPage: 'swayze',
       shopifyProductTypes: ['tshirt', 'T-Shirt'],
       captionStyles: { humor: 0.4, showcase: 0.2, urgency: 0.2, lifestyle: 0.2 },
-      defaultHashtags: '#customtee #graphictee #tshirt #trending #shopsmall #BlueRidgeCustomCo',
+      defaultHashtags: '#customtee #graphictee #tshirt #trending #shopsmall #SwayzeCustomVinyl',
       targetAudience: 'GenX, Millennials, meme culture, casual fashion'
     },
     'sticker': {
-      displayName: 'Stickers',
+      displayName: 'Stickers & Decals',
       enabled: true,
       postingWeight: 0.15,
+      fbPage: 'swayze',
       shopifyProductTypes: ['sticker', 'sticker-pack', 'Decals', 'Decal', 'Bumper stickers', 'Sticker Pack'],
       captionStyles: { humor: 0.4, showcase: 0.3, lifestyle: 0.2, urgency: 0.1 },
-      defaultHashtags: '#stickers #vinylsticker #customsticker #stickerlife #BlueRidgeCustomCo',
+      defaultHashtags: '#stickers #vinylsticker #customsticker #stickerlife #SwayzeCustomVinyl',
       targetAudience: 'Young adults, sticker collectors, laptop customizers'
+    },
+    'racing': {
+      displayName: 'Race Car Decals & Apparel',
+      enabled: true,
+      postingWeight: 0.15,
+      fbPage: 'swayze',
+      shopifyProductTypes: ['racing', 'Race Decal', 'Number Kit', 'Livery'],
+      captionStyles: { showcase: 0.3, lifestyle: 0.3, urgency: 0.2, quality: 0.2 },
+      defaultHashtags: '#grassrootsracing #racecar #SCCA #ARA #NASA #numberkits #racelivery #SwayzeCustomVinyl',
+      targetAudience: 'Amateur racers, SCCA/ARA/NASA competitors, car enthusiasts, motorsports fans'
+    },
+    'custom-vinyl': {
+      displayName: 'Custom Vinyl',
+      enabled: true,
+      postingWeight: 0.15,
+      fbPage: 'swayze',
+      shopifyProductTypes: ['custom-vinyl', 'Custom Vinyl', 'Car Decal', 'Heat Transfer'],
+      captionStyles: { showcase: 0.3, lifestyle: 0.3, quality: 0.2, urgency: 0.2 },
+      defaultHashtags: '#customvinyl #cardecals #heattransfer #vinylcutting #customdesign #SwayzeCustomVinyl',
+      targetAudience: 'Car enthusiasts, DIY crafters, small businesses, sports teams'
+    },
+    'multiboard': {
+      displayName: 'MultiBoard',
+      enabled: true,
+      postingWeight: 0.10,
+      fbPage: 'blueridge',
+      shopifyProductTypes: ['multiboard', 'Multiboard', 'Wall Organizer'],
+      captionStyles: { showcase: 0.3, lifestyle: 0.3, quality: 0.2, urgency: 0.2 },
+      defaultHashtags: '#multiboard #wallorganizer #3dprinted #homeorganization #modular #BlueRidgeCustomCo',
+      targetAudience: 'Homeowners, organizers, makers, garage enthusiasts, craft room owners'
+    },
+    'laser-engraving': {
+      displayName: 'Laser Engraving',
+      enabled: true,
+      postingWeight: 0.10,
+      fbPage: 'blueridge',
+      shopifyProductTypes: ['laser-engraving', 'Laser Engraving', 'Engraved'],
+      captionStyles: { showcase: 0.3, quality: 0.3, lifestyle: 0.2, urgency: 0.2 },
+      defaultHashtags: '#laserengraving #customgifts #personalizedgifts #woodengraving #BlueRidgeCustomCo',
+      targetAudience: 'Gift buyers, couples, corporate buyers, wedding planners, personalization lovers'
     }
   },
   // Phase 2a: Psychology-enriched caption style definitions
@@ -489,9 +532,23 @@ function categorizeProduct(campaignType, campaignSlug) {
   const slug = (campaignSlug || '').toLowerCase();
   const type = (campaignType || '').toLowerCase();
 
-  if (type === 'apparel' || slug.includes('trend') || slug.includes('shirt') || slug.includes('apparel')) return 'tshirt';
+  // Direct campaign_type matches first
+  if (type === 'racing') return 'racing';
+  if (type === 'custom-vinyl') return 'custom-vinyl';
+  if (type === 'multiboard') return 'multiboard';
+  if (type === 'laser-engraving') return 'laser-engraving';
+  if (type === 'sticker') return 'sticker';
+  if (type === 'apparel') return 'tshirt';
+  if (type === 'custom-art') return 'metal-print';
+
+  // Keyword-based fallback from slug
+  if (slug.includes('race') || slug.includes('racing') || slug.includes('number kit') || slug.includes('livery') || slug.includes('scca') || slug.includes('nasa-racing') || slug.includes('ara')) return 'racing';
+  if (slug.includes('custom vinyl') || slug.includes('custom-vinyl') || slug.includes('heat transfer') || slug.includes('car decal') || slug.includes('custom cut')) return 'custom-vinyl';
+  if (slug.includes('multiboard') || slug.includes('wall organiz') || slug.includes('pegboard')) return 'multiboard';
+  if (slug.includes('laser') || slug.includes('engrav') || slug.includes('etch')) return 'laser-engraving';
   if (slug.includes('sticker') || slug.includes('decal') || slug.includes('bumper')) return 'sticker';
-  if (type === 'custom-art' || slug.includes('metal') || slug.includes('print') || slug.includes('art')) return 'metal-print';
+  if (slug.includes('trend') || slug.includes('shirt') || slug.includes('apparel') || slug.includes('hoodie')) return 'tshirt';
+  if (slug.includes('metal') || slug.includes('print') || slug.includes('art')) return 'metal-print';
   return 'other';
 }
 
@@ -626,14 +683,17 @@ async function callOllamaForStrategy(analysis) {
   const styleSummary = analysis.byStyle.slice(0, 5).map(s => `${s.caption_style}: ${(s.avg_weighted_score || 0).toFixed(1)} wtd`).join('; ');
   const hourSummary = analysis.byHour.slice(0, 3).map(h => `${h.posted_hour}:00=${(h.avg_weighted_score || 0).toFixed(1)}`).join(', ');
 
+  const catKeys = Object.keys(currentWeights);
+  const defaultWeights = Object.fromEntries(catKeys.map(k => [k, currentWeights[k].weight]));
+
   const prompt = `You are a JSON API. Respond with ONLY raw JSON, no explanation, no markdown, no code fences.
 
-Marketing strategy for online store (metal prints, t-shirts, stickers).
+Marketing strategy for online store (metal prints, t-shirts, stickers, racing decals, custom vinyl, multiboard, laser engraving).
 Data: ${catSummary}. Styles: ${styleSummary}. Best hours: ${hourSummary}.
 Current weights: ${JSON.stringify(currentWeights)}.
 
 Respond with ONLY this JSON format (no other text):
-{"categoryWeightAdjustments":{"metal-print":0.55,"tshirt":0.30,"sticker":0.15},"bestPostingHours":[10,14,19],"recommendations":["one tip"],"confidence":0.7}`;
+{"categoryWeightAdjustments":${JSON.stringify(defaultWeights)},"bestPostingHours":[10,14,19],"recommendations":["one tip"],"confidence":0.7}`;
 
   try {
     const result = await callOllama(prompt, { temperature: 0.5, maxTokens: 300, timeout: 240000 });
@@ -990,7 +1050,7 @@ async function executeContentPlan() {
       const scheduledFor = `${entry.planned_date}T${entry.planned_time || '12:00'}:00Z`;
       const postId = crypto.randomUUID().slice(0, 20);
       const hashtags = catConfig.defaultHashtags || '';
-      const collectionUrl = `https://blueridgecustomco.us/collections/all`;
+      const collectionUrl = COLLECTION_URL_MAP[entry.product_category] || 'https://blueridgecustomco.us/collections/all';
 
       const postText = caption.text || `Check out ${product.title}! Available now at Blue Ridge Custom Co.`;
       const postHashtags = caption.hashtags || hashtags;
@@ -1003,6 +1063,9 @@ async function executeContentPlan() {
         console.log(`[AI Agent] A/B test "${activeTest.test_name}": assigned variant ${abVariant} to post ${postId}`);
       }
 
+      // A3: Use proper campaign_type mapping for correct FB page routing
+      const campaignType = getCampaignType(entry.product_category);
+
       _db.prepare(`
         INSERT INTO scheduled_facebook_posts
         (id, campaign_slug, product_uid, product_name, campaign_type,
@@ -1014,7 +1077,7 @@ async function executeContentPlan() {
         `agent-${entry.product_category}`,
         String(product.id),
         product.title,
-        entry.product_category === 'tshirt' ? 'apparel' : 'custom-art',
+        campaignType,
         imageUrl,
         postText,
         postHashtags,
@@ -1053,6 +1116,22 @@ async function selectProduct(category, catConfig, preferredUid) {
   }
 
   const shopify = require('../integrations/shopify');
+
+  // A6: Category-specific product selection
+  if (category === 'racing') {
+    return await selectRacingProduct();
+  }
+  if (category === 'multiboard') {
+    return await selectMultiboardProduct();
+  }
+  if (category === 'laser-engraving') {
+    return await selectLaserProduct(shopify);
+  }
+  if (category === 'custom-vinyl') {
+    return await selectCustomVinylProduct(shopify);
+  }
+
+  // Default Shopify product type selection (metal-print, tshirt, sticker)
   const productTypes = catConfig.shopifyProductTypes || [];
 
   // Get recently posted product IDs (avoid repeats)
@@ -1088,6 +1167,128 @@ async function selectProduct(category, catConfig, preferredUid) {
   const finalPool = withImages.length > 0 ? withImages : pool;
 
   return finalPool[Math.floor(Math.random() * finalPool.length)];
+}
+
+// A6: Racing product selection — uses car_templates DB table
+async function selectRacingProduct() {
+  try {
+    const templates = _db.prepare(`
+      SELECT * FROM car_templates WHERE active = 1 ORDER BY RANDOM() LIMIT 1
+    `).get();
+    if (templates) {
+      // Build a product-like object from the car template
+      const imagePath = templates.preview_image || templates.image_path;
+      return {
+        id: `racing-${templates.id}`,
+        title: templates.name || `Race Car Number Kit - ${templates.car_make || 'Custom'}`,
+        images: imagePath ? [{ src: imagePath }] : [],
+        product_type: 'racing',
+        body_html: templates.description || 'Custom race car decal package — number kits, sponsor panels, full liveries.'
+      };
+    }
+  } catch (e) {
+    console.log(`[AI Agent] car_templates query failed, using generic racing post: ${e.message}`);
+  }
+
+  // Fallback: generic racing product post
+  return {
+    id: 'racing-generic',
+    title: 'Custom Race Car Number Kit & Decal Package',
+    images: [],
+    product_type: 'racing',
+    body_html: 'Number kits, sponsor panels, full liveries for SCCA, ARA, NASA racers.'
+  };
+}
+
+// A6: MultiBoard product selection — uses multiboard_products DB table
+async function selectMultiboardProduct() {
+  try {
+    const product = _db.prepare(`
+      SELECT * FROM multiboard_products WHERE shopify_product_id IS NOT NULL ORDER BY RANDOM() LIMIT 1
+    `).get();
+    if (product) {
+      const shopify = require('../integrations/shopify');
+      try {
+        const shopifyProduct = await shopify.getProduct(product.shopify_product_id);
+        if (shopifyProduct) return shopifyProduct;
+      } catch (e) { /* fall through */ }
+
+      // Return DB product as product-like object
+      return {
+        id: product.shopify_product_id || `multiboard-${product.id}`,
+        title: product.name || 'Multiboard Wall Organization Kit',
+        images: product.image_url ? [{ src: product.image_url }] : [],
+        product_type: 'multiboard',
+        body_html: product.description || 'Modular 3D printed wall organization system.'
+      };
+    }
+  } catch (e) {
+    console.log(`[AI Agent] multiboard_products query failed: ${e.message}`);
+  }
+
+  return {
+    id: 'multiboard-generic',
+    title: 'Multiboard Starter Kit - Wall Organization System',
+    images: [],
+    product_type: 'multiboard',
+    body_html: '3D printed modular wall tiles. Snap-together system for any room.'
+  };
+}
+
+// A6: Laser engraving product selection
+async function selectLaserProduct(shopify) {
+  // Try Shopify first
+  try {
+    const batch = await shopify.listProducts({ product_type: 'Laser Engraving', limit: 50, status: 'active' });
+    if (batch?.products?.length > 0) {
+      const withImages = batch.products.filter(p => p.images?.length > 0);
+      const pool = withImages.length > 0 ? withImages : batch.products;
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+  } catch (e) { /* fall through */ }
+
+  // Try keyword search
+  try {
+    for (const keyword of ['laser', 'engrav', 'wood', 'acrylic']) {
+      const batch = await shopify.listProducts({ title: keyword, limit: 20, status: 'active' });
+      if (batch?.products?.length > 0) {
+        return batch.products[Math.floor(Math.random() * batch.products.length)];
+      }
+    }
+  } catch (e) { /* fall through */ }
+
+  // Generic fallback
+  return {
+    id: 'laser-generic',
+    title: 'Custom Laser Engraving - Personalized Gifts',
+    images: [],
+    product_type: 'laser-engraving',
+    body_html: 'Precision laser engraving on wood, leather, acrylic, glass, and coated metal.'
+  };
+}
+
+// A6: Custom vinyl product selection
+async function selectCustomVinylProduct(shopify) {
+  // Try Shopify with relevant product types
+  try {
+    for (const pType of ['Custom Vinyl', 'Car Decal', 'custom-vinyl']) {
+      const batch = await shopify.listProducts({ product_type: pType, limit: 50, status: 'active' });
+      if (batch?.products?.length > 0) {
+        const withImages = batch.products.filter(p => p.images?.length > 0);
+        const pool = withImages.length > 0 ? withImages : batch.products;
+        return pool[Math.floor(Math.random() * pool.length)];
+      }
+    }
+  } catch (e) { /* fall through */ }
+
+  // Fallback: promote the designer tool
+  return {
+    id: 'custom-vinyl-designer',
+    title: 'Custom Vinyl - Design Your Own Decals & Stickers',
+    images: [],
+    product_type: 'custom-vinyl',
+    body_html: 'Use our free online designer or upload your own artwork. Custom cut vinyl for cars, laptops, walls, and more.'
+  };
 }
 
 // Phase 2b: Psychology-enriched caption generation
@@ -1129,12 +1330,25 @@ async function generateCaption(product, category, style, styleDef, catConfig, ho
 
   const styleDescription = isRichStyle ? styleDef.description : (styleDef || '');
 
+  // A7: Category-specific context for richer AI prompts
+  const categoryContextMap = {
+    'racing': 'Grassroots racing community (SCCA, ARA, NASA). Individual racers building their look on a budget. Number kits, sponsor panels, full liveries. We are fellow racers — speak their language.',
+    'custom-vinyl': 'Custom cut vinyl — car decals, stickers, heat transfers, wall art. Use our free online designer tool or upload your own design. Fast turnaround, professional results.',
+    'multiboard': '3D printed modular wall organizers. Authorized Multiboard Reseller. Snap-together wall tiles for kitchen, garage, craft room, desk. Printed locally in Asheville, NC.',
+    'laser-engraving': 'Precision laser engraving on wood, leather, acrylic, glass, coated metal, slate. Personalized gifts, custom pieces, corporate orders. Local Asheville craftsmanship.',
+    'metal-print': 'Vibrant sublimation metal prints on brushed aluminum. Scratch-resistant, waterproof, UV-safe. Stunning wall art that lasts a lifetime.',
+    'tshirt': 'Custom graphic tees, hoodies, and apparel. Trending designs, pop culture, humor. DTG and screen printing.',
+    'sticker': 'Vinyl stickers and decals. Weatherproof, durable, fun designs. Bumper stickers, laptop stickers, custom cuts.'
+  };
+  const categoryContext = categoryContextMap[category] || '';
+  const categoryLine = categoryContext ? `\nCategory context: ${categoryContext}` : '';
+
   const prompt = `You are a social media expert for Blue Ridge Custom Co.
 Write ONE engaging Facebook post for this product.
 
 Product: ${product.title}
 Category: ${catConfig.displayName}
-Target audience: ${catConfig.targetAudience}
+Target audience: ${catConfig.targetAudience}${categoryLine}
 
 Style: ${style} — ${styleDescription}${psychologyInstruction}${structureInstruction}${hookInstruction}${bannedList}${ctaExample}
 
@@ -1182,6 +1396,31 @@ Respond with ONLY raw JSON, no explanation, no markdown, no code fences:
     hook_formula: hookFormula
   };
 }
+
+// A3: Map agent category to campaign_type for FB scheduler routing
+function getCampaignType(category) {
+  const map = {
+    'metal-print': 'custom-art',
+    'tshirt': 'apparel',
+    'sticker': 'sticker',
+    'racing': 'racing',
+    'custom-vinyl': 'custom-vinyl',
+    'multiboard': 'multiboard',
+    'laser-engraving': 'laser-engraving'
+  };
+  return map[category] || 'custom-art';
+}
+
+// A5: Map each category to its Shopify collection URL
+const COLLECTION_URL_MAP = {
+  'metal-print': 'https://blueridgecustomco.us/collections/metal-prints',
+  'tshirt': 'https://blueridgecustomco.us/collections/apparel',
+  'sticker': 'https://blueridgecustomco.us/collections/stickers',
+  'racing': 'https://blueridgecustomco.us/collections/racing',
+  'custom-vinyl': 'https://blueridgecustomco.us/collections/custom-vinyl',
+  'multiboard': 'https://blueridgecustomco.us/collections/multiboard',
+  'laser-engraving': 'https://blueridgecustomco.us/collections/laser-engraving'
+};
 
 function pickWeighted(items) {
   const total = items.reduce((sum, item) => sum + item.weight, 0);

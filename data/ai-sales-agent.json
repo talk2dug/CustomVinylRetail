@@ -2,8 +2,8 @@
   "version": 2,
   "agentState": {
     "enabled": true,
-    "lastCycleAt": "2026-03-04T19:07:34.915Z",
-    "cycleCount": 11,
+    "lastCycleAt": "2026-03-05T00:17:30.681Z",
+    "cycleCount": 6,
     "currentStrategy": null
   },
   "platforms": {
@@ -11,9 +11,9 @@
       "enabled": true,
       "postsPerDay": 2,
       "bestHours": [
-        10,
-        14,
-        19
+        17,
+        15,
+        13
       ],
       "maxPostsPerWeek": 14
     },
@@ -37,7 +37,8 @@
     "metal-print": {
       "displayName": "Metal Prints",
       "enabled": true,
-      "postingWeight": 0.64,
+      "postingWeight": 0.20,
+      "fbPage": "blueridge",
       "shopifyProductTypes": [
         "Metal Print",
         "Metal Print Wall Art",
@@ -55,26 +56,28 @@
       "targetAudience": "Homeowners, interior design enthusiasts, car lovers, art collectors"
     },
     "tshirt": {
-      "displayName": "T-Shirts",
+      "displayName": "T-Shirts & Apparel",
       "enabled": true,
-      "postingWeight": 0.36,
+      "postingWeight": 0.15,
+      "fbPage": "swayze",
       "shopifyProductTypes": [
         "tshirt",
         "T-Shirt"
       ],
       "captionStyles": {
-        "humor": 0.41,
+        "humor": 0.4,
         "showcase": 0.2,
         "urgency": 0.2,
-        "lifestyle": 0.19
+        "lifestyle": 0.2
       },
-      "defaultHashtags": "#customtee #graphictee #tshirt #trending #shopsmall #BlueRidgeCustomCo",
+      "defaultHashtags": "#customtee #graphictee #tshirt #trending #shopsmall #SwayzeCustomVinyl",
       "targetAudience": "GenX, Millennials, meme culture, casual fashion"
     },
     "sticker": {
-      "displayName": "Stickers",
-      "enabled": false,
+      "displayName": "Stickers & Decals",
+      "enabled": true,
       "postingWeight": 0.15,
+      "fbPage": "swayze",
       "shopifyProductTypes": [
         "sticker",
         "sticker-pack",
@@ -89,9 +92,214 @@
         "lifestyle": 0.2,
         "urgency": 0.1
       },
-      "defaultHashtags": "#stickers #vinylsticker #customsticker #stickerlife #BlueRidgeCustomCo",
+      "defaultHashtags": "#stickers #vinylsticker #customsticker #stickerlife #SwayzeCustomVinyl",
       "targetAudience": "Young adults, sticker collectors, laptop customizers"
+    },
+    "racing": {
+      "displayName": "Race Car Decals & Apparel",
+      "enabled": true,
+      "postingWeight": 0.15,
+      "fbPage": "swayze",
+      "shopifyProductTypes": ["racing", "Race Decal", "Number Kit", "Livery"],
+      "captionStyles": {
+        "showcase": 0.3,
+        "lifestyle": 0.3,
+        "urgency": 0.2,
+        "quality": 0.2
+      },
+      "defaultHashtags": "#grassrootsracing #racecar #SCCA #ARA #NASA #numberkits #racelivery #SwayzeCustomVinyl",
+      "targetAudience": "Amateur racers, SCCA/ARA/NASA competitors, car enthusiasts, motorsports fans"
+    },
+    "custom-vinyl": {
+      "displayName": "Custom Vinyl",
+      "enabled": true,
+      "postingWeight": 0.15,
+      "fbPage": "swayze",
+      "shopifyProductTypes": ["custom-vinyl", "Custom Vinyl", "Car Decal", "Heat Transfer"],
+      "captionStyles": {
+        "showcase": 0.3,
+        "lifestyle": 0.3,
+        "quality": 0.2,
+        "urgency": 0.2
+      },
+      "defaultHashtags": "#customvinyl #cardecals #heattransfer #vinylcutting #customdesign #SwayzeCustomVinyl",
+      "targetAudience": "Car enthusiasts, DIY crafters, small businesses, sports teams"
+    },
+    "multiboard": {
+      "displayName": "MultiBoard",
+      "enabled": true,
+      "postingWeight": 0.10,
+      "fbPage": "blueridge",
+      "shopifyProductTypes": ["multiboard", "Multiboard", "Wall Organizer"],
+      "captionStyles": {
+        "showcase": 0.3,
+        "lifestyle": 0.3,
+        "quality": 0.2,
+        "urgency": 0.2
+      },
+      "defaultHashtags": "#multiboard #wallorganizer #3dprinted #homeorganization #modular #BlueRidgeCustomCo",
+      "targetAudience": "Homeowners, organizers, makers, garage enthusiasts, craft room owners"
+    },
+    "laser-engraving": {
+      "displayName": "Laser Engraving",
+      "enabled": true,
+      "postingWeight": 0.10,
+      "fbPage": "blueridge",
+      "shopifyProductTypes": ["laser-engraving", "Laser Engraving", "Engraved"],
+      "captionStyles": {
+        "showcase": 0.3,
+        "quality": 0.3,
+        "lifestyle": 0.2,
+        "urgency": 0.2
+      },
+      "defaultHashtags": "#laserengraving #customgifts #personalizedgifts #woodengraving #BlueRidgeCustomCo",
+      "targetAudience": "Gift buyers, couples, corporate buyers, wedding planners, personalization lovers"
     }
+  },
+  "captionStyleDefinitions": {
+    "showcase": {
+      "description": "Highlight the product quality, details, and craftsmanship. Describe what makes it special.",
+      "psychology": "Contrast Effect — show before/after or compare to generic alternatives. Anchoring — lead with the premium aspect so everything else feels like bonus value.",
+      "structure": "AIDA — Attention (visual hook), Interest (unique detail), Desire (imagine owning it), Action (soft CTA)",
+      "hookFormulas": [
+        "curiosity_gap",
+        "pattern_interrupt",
+        "specific_number"
+      ],
+      "bannedPhrases": [
+        "transform your space",
+        "elevate your",
+        "perfect for any room",
+        "ALERT",
+        "must-have",
+        "game-changer",
+        "next level"
+      ],
+      "exampleCTA": "Tag someone who needs this on their wall"
+    },
+    "lifestyle": {
+      "description": "Show the product in context. Describe a scene where it fits. Make it aspirational.",
+      "psychology": "Identity Signaling — the product says something about who you are. Mere Exposure Effect — paint a familiar scene the audience already loves.",
+      "structure": "BAB — Before (life without it), After (life with it), Bridge (this product)",
+      "hookFormulas": [
+        "before_after",
+        "scenario_paint",
+        "identity_call"
+      ],
+      "bannedPhrases": [
+        "transform your space",
+        "elevate your",
+        "perfect for any room",
+        "imagine this",
+        "picture this"
+      ],
+      "exampleCTA": "What room would you put this in?"
+    },
+    "humor": {
+      "description": "Use wit, puns, or relatable humor. Be playful and casual. Match Gen X/Millennial humor.",
+      "psychology": "Humor Effect — funny content gets shared more and remembered longer. In-Group Signaling — reference shared experiences that make the audience feel \"seen\".",
+      "structure": "Story — Setup (relatable situation) + Punchline (unexpected twist) + Product tie-in",
+      "hookFormulas": [
+        "pattern_interrupt",
+        "hot_take",
+        "relatable_confession"
+      ],
+      "bannedPhrases": [
+        "ALERT",
+        "stop scrolling",
+        "you NEED this",
+        "obsessed",
+        "literally dying"
+      ],
+      "exampleCTA": "Drop a [emoji] if this is you"
+    },
+    "urgency": {
+      "description": "Create FOMO. Limited availability, trending now, selling fast. Drive immediate action.",
+      "psychology": "Loss Aversion — people feel losses 2x more than gains. Scarcity — limited quantity or time triggers action. Social Proof — others buying validates the choice.",
+      "structure": "PAS — Problem (you're missing out), Agitate (everyone else has it), Solve (get yours now)",
+      "hookFormulas": [
+        "social_proof_opener",
+        "scarcity_signal",
+        "urgency_stat"
+      ],
+      "bannedPhrases": [
+        "ALERT",
+        "ACT NOW",
+        "BUY NOW",
+        "don't miss out",
+        "limited time only",
+        "while supplies last"
+      ],
+      "exampleCTA": "Link in comments (only a few left)"
+    },
+    "quality": {
+      "description": "Focus on materials, durability, craftsmanship. Premium positioning.",
+      "psychology": "Authority Bias — technical details signal expertise. Zero-Risk Bias — quality emphasis reduces purchase anxiety.",
+      "structure": "AIDA — Attention (surprising quality fact), Interest (process/material detail), Desire (longevity/value), Action (learn more)",
+      "hookFormulas": [
+        "specific_number",
+        "myth_buster",
+        "behind_the_scenes"
+      ],
+      "bannedPhrases": [
+        "top-notch",
+        "world-class",
+        "best in class",
+        "premium quality",
+        "second to none"
+      ],
+      "exampleCTA": "Ask me anything about our process"
+    }
+  },
+  "contentPillars": {
+    "0": {
+      "style": "lifestyle",
+      "weight": 1.2,
+      "label": "Sunday Lifestyle"
+    },
+    "1": {
+      "style": "showcase",
+      "weight": 1,
+      "label": "Monday Showcase"
+    },
+    "2": {
+      "style": "humor",
+      "weight": 1,
+      "label": "Tuesday Fun"
+    },
+    "3": {
+      "style": "quality",
+      "weight": 1,
+      "label": "Wednesday Craft"
+    },
+    "4": {
+      "style": "lifestyle",
+      "weight": 1,
+      "label": "Thursday Lifestyle"
+    },
+    "5": {
+      "style": "urgency",
+      "weight": 1.2,
+      "label": "Friday Deals"
+    },
+    "6": {
+      "style": "showcase",
+      "weight": 1,
+      "label": "Saturday Showcase"
+    }
+  },
+  "strategy": {
+    "learningRate": 0.1,
+    "underexposedBoostDays": 7,
+    "repostCooldownDays": 14,
+    "abTestMinSample": 10,
+    "engagementWindowDays": 30,
+    "recycleMinAgeDays": 28,
+    "recycleMinScoreMultiplier": 1.5,
+    "recycleChance": 0.2,
+    "maxCategoryPostsPerWeek": 3,
+    "maxStylePerCategoryPerWeek": 2,
+    "minPostSpacingHours": 6
   },
   "telegram": {
     "dailyReportHour": 20,

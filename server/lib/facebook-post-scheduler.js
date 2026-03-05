@@ -33,7 +33,7 @@ const FB_PAGE_ACCESS_TOKEN_SWAYZE = process.env.FB_PAGE_ACCESS_TOKEN_SWAYZE || "
 const FB_PAGE_ID_SWAYZE = process.env.FB_PAGE_ID_SWAYZE || "";
 
 // Product categories that should go to Swayzes Custom Vinyl
-const SWAYZE_CATEGORIES = ["apparel", "stickers", "sticker", "bumper", "clothing", "t-shirt", "tshirt", "shirt", "hoodie", "decal", "decals", "vinyl"];
+const SWAYZE_CATEGORIES = ["apparel", "stickers", "sticker", "bumper", "clothing", "t-shirt", "tshirt", "shirt", "hoodie", "decal", "decals", "vinyl", "racing", "custom-vinyl"];
 
 /**
  * Get Facebook credentials based on product category
@@ -151,21 +151,24 @@ async function generateAiPostForItem(item, campaign, style = 'showcase', collect
     // Detect product type from campaign slug and productType
     const campaignProductType = (campaign?.productType || '').toLowerCase();
     const campaignSlug = (campaign?.slug || '').toLowerCase();
-    const isSticker = campaignSlug.includes('sticker') || campaignSlug.includes('decal') || campaignSlug.includes('bumper');
-    const isMetalPrint = !isSticker && (campaignProductType === 'custom-art' || campaignProductType === 'metal-print');
+    const isSticker = campaignProductType === 'sticker' || campaignSlug.includes('sticker') || campaignSlug.includes('decal') || campaignSlug.includes('bumper');
+    const isRacing = campaignProductType === 'racing' || campaignSlug.includes('racing') || campaignSlug.includes('race') || campaignSlug.includes('livery');
+    const isCustomVinyl = campaignProductType === 'custom-vinyl' || campaignSlug.includes('custom-vinyl') || campaignSlug.includes('custom vinyl');
+    const isLaserEngraving = campaignProductType === 'laser-engraving' || campaignSlug.includes('laser') || campaignSlug.includes('engrav');
+    const isMetalPrint = !isSticker && !isRacing && !isCustomVinyl && !isLaserEngraving && (campaignProductType === 'custom-art' || campaignProductType === 'metal-print');
     const isMultiboard = campaignProductType === 'multiboard' ||
                          campaignSlug.includes('multiboard') ||
                          (item.name && /multiboard|wall.?organiz|tile.?grid/i.test(item.name));
 
     console.log(`[FB Scheduler] AI detection - apparelType: "${apparelType}", campaignProductType: "${campaignProductType}", campaignSlug: "${campaignSlug}"`);
 
-    // Art products include both metal prints and stickers (not apparel, not multiboard)
-    const isArtProduct = !apparelType && !isMultiboard && (
+    // Art products include metal prints and stickers (not apparel, not multiboard, not new categories)
+    const isArtProduct = !apparelType && !isMultiboard && !isRacing && !isCustomVinyl && !isLaserEngraving && (
       isMetalPrint || isSticker ||
       ['canvas', 'poster', 'wall-art', 'decal', 'sticker'].includes(campaignProductType) ||
       (item.name && /lighthouse|print|art|canvas|poster|wall|decor/i.test(item.name))
     );
-    console.log(`[FB Scheduler] AI detection result - isArtProduct: ${isArtProduct}, isSticker: ${isSticker}, isMetalPrint: ${isMetalPrint}, isMultiboard: ${isMultiboard}`);
+    console.log(`[FB Scheduler] AI detection result - isArtProduct: ${isArtProduct}, isSticker: ${isSticker}, isMetalPrint: ${isMetalPrint}, isMultiboard: ${isMultiboard}, isRacing: ${isRacing}, isCustomVinyl: ${isCustomVinyl}, isLaser: ${isLaserEngraving}`);
 
     // Style prompts - enriched with psychology & copy frameworks (Phase 2c)
     const artStylePrompts = {
@@ -189,14 +192,72 @@ async function generateAiPostForItem(item, campaign, style = 'showcase', collect
       urgency: 'Use PAS: disorganization costs time daily. Agitate the frustration. Package deal value as the solve. Apply Loss Aversion — calculate time wasted looking for things.'
     };
 
-    const stylePrompts = isMultiboard ? multiboardStylePrompts : (isArtProduct ? artStylePrompts : apparelStylePrompts);
+    // A8: New category style prompts
+    const racingStylePrompts = {
+      showcase: 'Use AIDA: hook with a specific racing detail visible in the image. Build interest with the customization options. Create desire through identity — what this says about the racer. Contrast against generic number stickers.',
+      lifestyle: 'Use BAB: bare/stock car before, race-ready look after. Paint a race day scene — grid, paddock, victory lap. Use Identity Signaling — you built this car, the livery should match your ambition.',
+      quality: 'Use AIDA: lead with material durability (track-rated vinyl, 3M laminate). Build interest with precision cuts and color matching. Authority Bias through racing experience.',
+      urgency: 'Use PAS: race season is here and your car needs to stand out. Agitate — plain cars get forgotten. Apply Scarcity — custom work has lead times, book early.'
+    };
+
+    const customVinylStylePrompts = {
+      showcase: 'Use AIDA: hook with the transformation — what bare surface becomes with custom vinyl. Build interest with the design process. Create desire through personalization.',
+      lifestyle: 'Use BAB: generic car/wall/laptop before, personalized statement after. Paint a specific scene. Identity Signaling — custom vinyl says you care about details.',
+      quality: 'Use AIDA: lead with vinyl durability (weatherproof, UV-rated, 5+ year outdoor life). Build interest with the free online designer tool. Authority Bias through material specs.',
+      urgency: 'Use PAS: everyone has the same look. Agitate the sameness. Custom vinyl is the solve. Social Proof — show what others have created.'
+    };
+
+    const laserEngravingStylePrompts = {
+      showcase: 'Use AIDA: hook with the precision and detail visible in the engraving. Build interest with the material choice. Create desire through the permanence — this lasts forever.',
+      lifestyle: 'Use BAB: generic gift before, personalized keepsake after. Paint a specific gifting moment — wedding, anniversary, graduation. Identity Signaling — thoughtful people give personalized gifts.',
+      quality: 'Use AIDA: lead with laser precision specs. Build interest with material options (wood, leather, acrylic, glass, metal). Authority Bias through craftsmanship details.',
+      urgency: 'Use PAS: generic gifts get forgotten. Agitate — another gift card? Apply Scarcity — custom work needs lead time, order early for special occasions.'
+    };
+
+    const stylePrompts = isRacing ? racingStylePrompts :
+                         isCustomVinyl ? customVinylStylePrompts :
+                         isLaserEngraving ? laserEngravingStylePrompts :
+                         isMultiboard ? multiboardStylePrompts :
+                         isArtProduct ? artStylePrompts :
+                         apparelStylePrompts;
 
     // Different system prompts for stickers, metal prints, multiboard, and apparel (Phase 2c)
     const BANNED_PHRASES_GLOBAL = 'NEVER use: "transform your space", "elevate your", "perfect for any room", "ALERT", "must-have", "game-changer", "next level", "ACT NOW", "BUY NOW", "don\'t miss out", "obsessed", "literally dying", "stop scrolling"';
     const NO_LINKS_RULE = 'CRITICAL: Do NOT include any links or URLs in the post body. The link will be added as a comment separately.';
 
     let systemPrompt;
-    if (isMultiboard) {
+    if (isRacing) {
+      systemPrompt = `You are a social media expert for Swayze Custom Vinyl — vinyl and apparel for grassroots racers.
+We serve SCCA, ARA, NASA, and club-level competitors.
+- Speak racer-to-racer — we race too
+- Practical, direct, and enthusiastic about the sport
+- Focus on individual racers building their look on a budget
+- Mention our services: number kits, sponsor panels, full liveries, crew apparel
+- Frame us as the shop that gets racing
+- End with a conversational CTA like "What series do you run?" — NOT "Shop now"
+${BANNED_PHRASES_GLOBAL}
+${NO_LINKS_RULE}`;
+    } else if (isCustomVinyl) {
+      systemPrompt = `You are a social media expert for Swayze Custom Vinyl.
+We create custom cut vinyl — car decals, stickers, heat transfers, wall art, and more.
+- Highlight our free online designer tool and upload-your-own-design option
+- Casual, creative, maker-friendly tone
+- Emphasize customization and self-expression
+- Mention quality materials (weatherproof, UV-rated vinyl)
+- End with a conversational CTA like "What would you design?" — NOT "Shop now"
+${BANNED_PHRASES_GLOBAL}
+${NO_LINKS_RULE}`;
+    } else if (isLaserEngraving) {
+      systemPrompt = `You are a social media expert for Blue Ridge Custom Co — precision laser engraving in Asheville, NC.
+We engrave on wood, leather, acrylic, glass, coated metal, and slate.
+- Focus on the personalization angle — names, dates, messages, logos
+- Great for gifts (weddings, anniversaries, graduations, corporate)
+- Mention we accept custom designs and "bring your own item"
+- Warm, personal tone — these are keepsakes and memories
+- End with a conversational CTA like "Who would you engrave something for?" — NOT "Shop now"
+${BANNED_PHRASES_GLOBAL}
+${NO_LINKS_RULE}`;
+    } else if (isMultiboard) {
       systemPrompt = `You are a social media expert for Blue Ridge Custom Co — Authorized Multiboard Reseller.
 We 3D print modular wall organization systems under license from Multiboard.
 - Practical and direct — no fluff or hype language
@@ -926,17 +987,22 @@ async function processScheduledPost(post, db, options = {}) {
       }
     }
 
-    // Add prefix for custom-art posts (metal prints, stickers, decals)
-    if (post.campaignType === 'custom-art') {
-      // Detect product type from campaign slug
+    // Add prefix for specific campaign types
+    const cType = (post.campaignType || '').toLowerCase();
+    if (cType === 'custom-art') {
       const campaignSlug = (post.campaignSlug || '').toLowerCase();
       const isSticker = campaignSlug.includes('sticker') || campaignSlug.includes('decal') || campaignSlug.includes('bumper');
-
       if (isSticker) {
         postText = `New Sticker Design just dropped ✨\n\n${postText}`;
       } else {
         postText = `New Metal Print Artwork just dropped ✨\n\n${postText}`;
       }
+    } else if (cType === 'racing') {
+      postText = `🏁 Race-Ready Vinyl\n\n${postText}`;
+    } else if (cType === 'custom-vinyl') {
+      postText = `✂️ Custom Vinyl\n\n${postText}`;
+    } else if (cType === 'laser-engraving') {
+      postText = `🔥 Laser Engraved\n\n${postText}`;
     }
 
     // Append hashtags (Phase 1a: link moved to first comment)

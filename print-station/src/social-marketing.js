@@ -334,21 +334,38 @@ async function generatePostContent(items, options = {}) {
     })
     .join('\n');
 
+  // Detect Multiboard products
+  const campaignProductType = (campaign?.productType || productType || '').toLowerCase();
+  const campaignSlug = (campaign?.slug || '').toLowerCase();
+  const isMultiboard = campaignProductType === 'multiboard' ||
+                       campaignSlug.includes('multiboard') ||
+                       (selectedItems.some(item => item.name && /multiboard|wall.?organiz|tile.?grid/i.test(item.name)));
+
   // Product type descriptions
   const productTypeDescriptions = {
     apparel: 'custom printed apparel (t-shirts, hoodies, etc.)',
     stickers: 'custom vinyl stickers and decals',
     tumblers: 'custom printed tumblers and drinkware',
+    multiboard: 'modular wall organization systems (snap-together tiles, hooks, bins, shelves)',
     other: 'custom printed products'
   };
 
   // Style-specific prompts
-  const stylePrompts = {
+  const multiboardStylePrompts = {
+    showcase: 'Highlight the modular design and how the system solves wall organization.',
+    lifestyle: 'Show how this transforms a specific room — use the room context provided.',
+    quality: 'Emphasize 3D print quality, local Asheville production, and the snap system.',
+    urgency: 'Focus on the package deal value and expandability.'
+  };
+
+  const defaultStylePrompts = {
     showcase: 'Create a product showcase post highlighting the variety and quality of these items.',
     lifestyle: 'Create a lifestyle-focused post showing how these products fit into everyday life.',
     quality: 'Create a post emphasizing the craftsmanship, durability, and premium quality.',
     urgency: 'Create an urgency-driven post with limited availability or seasonal appeal.'
   };
+
+  const stylePrompts = isMultiboard ? multiboardStylePrompts : defaultStylePrompts;
 
   // Build campaign context string (general campaign info, apparel info is now per-item above)
   let campaignContextStr = '';
@@ -371,7 +388,23 @@ async function generatePostContent(items, options = {}) {
     }
   }
 
-  const systemPrompt = `You are a social media marketing expert for Blue Ridge Custom Co, a custom vinyl decals, stickers, and apparel company.
+  const systemPrompt = isMultiboard
+    ? `You are a social media expert for Blue Ridge Custom Co — Authorized Multiboard Reseller.
+We 3D print modular wall organization systems under license from Multiboard.
+- Practical and direct — no fluff or hype language
+- Light humor is fine
+- Printed locally in Asheville, NC
+- Frame Multiboard as "the system" — not just hooks and bins
+- Always include "Authorized Multiboard Reseller" in product-focused posts
+- Say "wall tiles" not "MU tiles", "storage bins" not "Multibins"
+CONTENT RULES:
+- Lead with the problem being solved
+- Use specific room contexts (kitchen, garage, craft room, desk)
+- Include price in conversion posts
+- Mention expandability
+- Don't claim to be the manufacturer
+- Don't use "our design" or "we designed"`
+    : `You are a social media marketing expert for Blue Ridge Custom Co, a custom vinyl decals, stickers, and apparel company.
 Your posts are engaging, authentic, and drive action without being pushy.
 You understand Facebook's algorithm and craft content that encourages engagement.
 Keep posts casual and friendly - avoid corporate speak.
@@ -971,8 +1004,119 @@ function isConfigured() {
   return Boolean(ANTHROPIC_API_KEY && FB_PAGE_ACCESS_TOKEN && FB_PAGE_ID);
 }
 
+/**
+ * Generate a Multiboard-specific social media post using pillar-based content strategy
+ *
+ * @param {Object} product - Multiboard product from DB
+ * @param {string} pillar - 'awareness' | 'consideration' | 'trust' | 'conversion'
+ * @param {string} room - 'kitchen' | 'garage' | 'craft' | 'desk' | 'general'
+ * @param {Object} options - Additional options
+ * @returns {Promise<{text: string, hashtags: string, pillar: string, room: string, productId: string}>}
+ */
+async function generateMultiboardPost(product, pillar, room, options = {}) {
+  if (!anthropicClient) {
+    throw new Error('ANTHROPIC_API_KEY not configured');
+  }
+
+  const price = product.price_cents ? `$${(product.price_cents / 100).toFixed(2)}` : '';
+  const included = product.whats_included
+    ? (typeof product.whats_included === 'string' ? JSON.parse(product.whats_included) : product.whats_included)
+    : [];
+
+  const systemPromptText = `You are a social media expert for Blue Ridge Custom Co — Authorized Multiboard Reseller.
+We 3D print modular wall organization systems under license from Multiboard.
+- Practical and direct — no fluff or hype language
+- Light humor is fine
+- Printed locally in Asheville, NC
+- Frame Multiboard as "the system" — not just hooks and bins
+- Always include "Authorized Multiboard Reseller" in product-focused posts
+- Say "wall tiles" not "MU tiles", "storage bins" not "Multibins"
+CONTENT RULES:
+- Lead with the problem being solved
+- Use specific room contexts (kitchen, garage, craft room, desk)
+- Include price in conversion posts
+- Mention expandability
+- Don't claim to be the manufacturer
+- Don't use "our design" or "we designed"`;
+
+  const pillarPrompts = {
+    awareness: `Write an educational Facebook post explaining what Multiboard is and how wall tiles solve ${room} clutter.
+The audience has never heard of Multiboard. Explain the snap-together concept in simple terms.
+Focus on the PROBLEM (messy ${room}, no wall organization) and introduce the SOLUTION (modular wall tiles).
+Do NOT mention price or specific products. This is about education and awareness.
+2-3 sentences, conversational tone.`,
+
+    consideration: `Write a use-case Facebook post showing how the ${product.name} transforms a ${room}.
+The reader knows what Multiboard is but hasn't bought yet. Paint a specific scenario.
+Mention what's included: ${included.join(', ')}.
+Show how it solves a real daily frustration in the ${room}.
+2-3 sentences, focus on the transformation.`,
+
+    trust: `Write a trust-building Facebook post about our local 3D printing quality and authorized reseller status.
+Mention: printed in Asheville NC, authorized Multiboard reseller, quality PETG/PLA+ filament.
+Focus on why buying from a local authorized reseller matters (quality control, support, customization).
+2-3 sentences, genuine and warm tone.`,
+
+    conversion: `Write a conversion Facebook post for ${product.name} at ${price}.
+What's included: ${included.join(', ')}.
+Grid size: ${product.grid_size || 'N/A'}.
+Hero angle: ${product.hero_description || ''}
+Include the price. List key items included. Mention expandability with add-ons.
+End with a clear call to action.
+2-4 sentences, direct and value-focused.`
+  };
+
+  const userPrompt = `${pillarPrompts[pillar] || pillarPrompts.awareness}
+
+Room context: ${room}
+Product: ${product.name}
+
+Generate the post and hashtags as JSON:
+{
+  "text": "Your post text here",
+  "hashtags": "#Multiboard #WallOrganization and 6-8 more relevant tags"
+}`;
+
+  const styleMap = {
+    awareness: 'showcase',
+    consideration: 'lifestyle',
+    trust: 'quality',
+    conversion: 'urgency'
+  };
+
+  try {
+    const response = await anthropicClient.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 500,
+      system: systemPromptText,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    const responseText = response.content[0].text;
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Failed to parse AI response');
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+
+    return {
+      text: result.text,
+      hashtags: typeof result.hashtags === 'string' ? result.hashtags : (result.hashtags || []).join(' '),
+      pillar,
+      room,
+      productId: product.id,
+      style: styleMap[pillar] || 'showcase'
+    };
+  } catch (err) {
+    console.error(`[Social Marketing] Multiboard post generation failed:`, err.message);
+    throw err;
+  }
+}
+
 module.exports = {
   generatePostContent,
+  generateMultiboardPost,
   createCollage,
   publishPost,
   schedulePost,
