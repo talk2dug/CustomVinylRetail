@@ -5800,6 +5800,500 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+
+  // ===========================================
+  // TikTok Shop Manager API (Shopify Publications)
+  // ===========================================
+
+  // GET /api/internal/tiktok-shop/publications - Find TikTok publication
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/internal/tiktok-shop/publications') {
+    (async () => {
+      try {
+        const shopify = require('./integrations/shopify');
+        const pub = await shopify.findTikTokPublication();
+        sendJson(res, 200, { success: true, data: pub });
+      } catch (err) {
+        console.error('[TikTok Shop] Error finding publication:', err.message);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/internal/tiktok-shop/products - Get products on TikTok publication + DB metadata
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/internal/tiktok-shop/products') {
+    (async () => {
+      try {
+        const shopify = require('./integrations/shopify');
+        const pub = await shopify.findTikTokPublication();
+        if (!pub) {
+          sendJson(res, 200, { success: true, data: [] });
+          return;
+        }
+        const products = await shopify.getProductsOnPublication(pub.id);
+        const rawDb = db.getDb();
+
+        // Merge DB metadata
+        const enriched = products.map(p => {
+          const row = rawDb.prepare('SELECT * FROM tiktok_shop_products WHERE shopify_product_id = ? OR shopify_gid = ?').get(p.numericId, p.id);
+          return {
+            ...p,
+            source: row?.source || 'other',
+            video_script: row?.video_script || null,
+            market_research: row?.market_research || null,
+            ai_score: row?.ai_score || 0,
+            notes: row?.notes || null,
+            db_id: row?.id || null
+          };
+        });
+
+        sendJson(res, 200, { success: true, data: enriched });
+      } catch (err) {
+        console.error('[TikTok Shop] Error loading products:', err.message);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // GET /api/internal/tiktok-shop/candidates - Get products NOT on TikTok
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/internal/tiktok-shop/candidates') {
+    (async () => {
+      try {
+        const shopify = require('./integrations/shopify');
+        const sourceFilter = (parsedUrl.query || {}).source || 'all';
+
+        // Get TikTok publication and currently published products
+        const pub = await shopify.findTikTokPublication();
+        let publishedIds = new Set();
+        if (pub) {
+          const published = await shopify.getProductsOnPublication(pub.id);
+          publishedIds = new Set(published.map(p => p.numericId));
+        }
+
+        // Get all Shopify products
+        const allProducts = await shopify.listAllProducts({ limit: 250 });
+        const rawDb = db.getDb();
+
+        // Filter out already-published
+        let candidates = allProducts.filter(p => !publishedIds.has(String(p.id)));
+
+        // Apply source filter
+        if (sourceFilter === 'multiboard') {
+          const mbRows = rawDb.prepare('SELECT shopify_product_id FROM multiboard_products WHERE shopify_product_id IS NOT NULL').all();
+          const mbIds = new Set(mbRows.map(r => String(r.shopify_product_id)));
+          candidates = candidates.filter(p => mbIds.has(String(p.id)));
+        } else if (sourceFilter === 'metal') {
+          const metalRows = rawDb.prepare(`
+            SELECT cap.shopify_product_id FROM custom_art_products cap
+            JOIN custom_art_materials cam ON cap.material_id = cam.id
+            WHERE cam.name = 'Metal' AND cap.shopify_product_id IS NOT NULL
+          `).all();
+          const metalIds = new Set(metalRows.map(r => String(r.shopify_product_id)));
+          candidates = candidates.filter(p => metalIds.has(String(p.id)));
+        }
+
+        // Map to consistent format
+        const result = candidates.map(p => ({
+          id: `gid://shopify/Product/${p.id}`,
+          numericId: String(p.id),
+          title: p.title,
+          handle: p.handle,
+          status: p.status,
+          image: p.image?.src || (p.images && p.images[0]?.src) || null,
+          minPrice: p.variants?.[0]?.price || null,
+          maxPrice: p.variants?.[p.variants.length - 1]?.price || null,
+          totalVariants: p.variants?.length || 0,
+          productType: p.product_type || '',
+          tags: p.tags ? (typeof p.tags === 'string' ? p.tags.split(', ') : p.tags) : []
+        }));
+
+        sendJson(res, 200, { success: true, data: result });
+      } catch (err) {
+        console.error('[TikTok Shop] Error loading candidates:', err.message);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/internal/tiktok-shop/publish - Publish product to TikTok
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/internal/tiktok-shop/publish') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { success: false, error: error.message }); return; }
+      (async () => {
+        try {
+          const { productId, productData } = JSON.parse(body || '{}');
+          if (!productId) {
+            sendJson(res, 400, { success: false, error: 'productId required' });
+            return;
+          }
+
+          const shopify = require('./integrations/shopify');
+          const pub = await shopify.findTikTokPublication();
+          if (!pub) {
+            sendJson(res, 404, { success: false, error: 'TikTok publication not found in Shopify' });
+            return;
+          }
+
+          // Publish to TikTok channel
+          const numericId = String(productId).replace(/.*\//, '');
+          await shopify.publishToPublications(numericId, [pub.id]);
+
+          // Upsert DB record
+          const rawDb = db.getDb();
+          rawDb.prepare(`
+            INSERT INTO tiktok_shop_products (shopify_product_id, shopify_gid, title, handle, image_url, price, product_type, source, published)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ON CONFLICT(shopify_product_id) DO UPDATE SET
+              published = 1, shopify_gid = excluded.shopify_gid, title = excluded.title,
+              handle = excluded.handle, image_url = excluded.image_url, price = excluded.price,
+              product_type = excluded.product_type, updated_at = CURRENT_TIMESTAMP
+          `).run(
+            numericId,
+            String(productId).startsWith('gid://') ? productId : `gid://shopify/Product/${numericId}`,
+            productData?.title || '',
+            productData?.handle || '',
+            productData?.image || '',
+            productData?.minPrice || productData?.price || '',
+            productData?.productType || '',
+            productData?.source || 'other'
+          );
+
+          console.log(`[TikTok Shop] Published product ${numericId} to TikTok`);
+          sendJson(res, 200, { success: true, data: { productId: numericId, published: true } });
+        } catch (err) {
+          console.error('[TikTok Shop] Publish error:', err.message);
+          sendJson(res, 500, { success: false, error: err.message });
+        }
+      })();
+    });
+    return;
+  }
+
+  // POST /api/internal/tiktok-shop/unpublish - Unpublish product from TikTok
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/internal/tiktok-shop/unpublish') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { success: false, error: error.message }); return; }
+      (async () => {
+        try {
+          const { productId } = JSON.parse(body || '{}');
+          if (!productId) {
+            sendJson(res, 400, { success: false, error: 'productId required' });
+            return;
+          }
+
+          const shopify = require('./integrations/shopify');
+          const pub = await shopify.findTikTokPublication();
+          if (!pub) {
+            sendJson(res, 404, { success: false, error: 'TikTok publication not found' });
+            return;
+          }
+
+          const numericId = String(productId).replace(/.*\//, '');
+          await shopify.unpublishFromPublication(numericId, [pub.id]);
+
+          // Update DB
+          const rawDb = db.getDb();
+          rawDb.prepare('UPDATE tiktok_shop_products SET published = 0, updated_at = CURRENT_TIMESTAMP WHERE shopify_product_id = ?').run(numericId);
+
+          console.log(`[TikTok Shop] Unpublished product ${numericId} from TikTok`);
+          sendJson(res, 200, { success: true, data: { productId: numericId, published: false } });
+        } catch (err) {
+          console.error('[TikTok Shop] Unpublish error:', err.message);
+          sendJson(res, 500, { success: false, error: err.message });
+        }
+      })();
+    });
+    return;
+  }
+
+  // POST /api/internal/tiktok-shop/bulk-publish - Publish multiple products
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/internal/tiktok-shop/bulk-publish') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { success: false, error: error.message }); return; }
+      (async () => {
+        try {
+          const { products } = JSON.parse(body || '{}');
+          if (!Array.isArray(products) || !products.length) {
+            sendJson(res, 400, { success: false, error: 'products array required' });
+            return;
+          }
+
+          const shopify = require('./integrations/shopify');
+          const pub = await shopify.findTikTokPublication();
+          if (!pub) {
+            sendJson(res, 404, { success: false, error: 'TikTok publication not found' });
+            return;
+          }
+
+          const rawDb = db.getDb();
+          const results = [];
+          for (const item of products) {
+            const numericId = String(item.productId || item.id).replace(/.*\//, '');
+            try {
+              await shopify.publishToPublications(numericId, [pub.id]);
+              rawDb.prepare(`
+                INSERT INTO tiktok_shop_products (shopify_product_id, shopify_gid, title, handle, image_url, price, product_type, source, published)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                ON CONFLICT(shopify_product_id) DO UPDATE SET
+                  published = 1, updated_at = CURRENT_TIMESTAMP
+              `).run(
+                numericId,
+                `gid://shopify/Product/${numericId}`,
+                item.title || '', item.handle || '', item.image || '',
+                item.minPrice || item.price || '', item.productType || '', item.source || 'other'
+              );
+              results.push({ productId: numericId, success: true });
+            } catch (e) {
+              results.push({ productId: numericId, success: false, error: e.message });
+            }
+          }
+
+          console.log(`[TikTok Shop] Bulk published ${results.filter(r => r.success).length}/${products.length} products`);
+          sendJson(res, 200, { success: true, data: { results, published: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length } });
+        } catch (err) {
+          console.error('[TikTok Shop] Bulk publish error:', err.message);
+          sendJson(res, 500, { success: false, error: err.message });
+        }
+      })();
+    });
+    return;
+  }
+
+  // POST /api/internal/tiktok-shop/clear-all - Unpublish all products from TikTok
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/internal/tiktok-shop/clear-all') {
+    (async () => {
+      try {
+        const shopify = require('./integrations/shopify');
+        const pub = await shopify.findTikTokPublication();
+        if (!pub) {
+          sendJson(res, 404, { success: false, error: 'TikTok publication not found' });
+          return;
+        }
+
+        const products = await shopify.getProductsOnPublication(pub.id);
+        let removed = 0;
+        const rawDb = db.getDb();
+        for (const p of products) {
+          try {
+            await shopify.unpublishFromPublication(p.numericId, [pub.id]);
+            rawDb.prepare('UPDATE tiktok_shop_products SET published = 0, updated_at = CURRENT_TIMESTAMP WHERE shopify_product_id = ?').run(p.numericId);
+            removed++;
+          } catch (e) {
+            console.error(`[TikTok Shop] Failed to unpublish ${p.numericId}:`, e.message);
+          }
+        }
+
+        console.log(`[TikTok Shop] Cleared all: ${removed}/${products.length} unpublished`);
+        sendJson(res, 200, { success: true, data: { removed, total: products.length } });
+      } catch (err) {
+        console.error('[TikTok Shop] Clear all error:', err.message);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/internal/tiktok-shop/generate-script - Generate TikTok video script via Ollama
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/internal/tiktok-shop/generate-script') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { success: false, error: error.message }); return; }
+      (async () => {
+        try {
+          const { productId, title, product_type, price, description } = JSON.parse(body || '{}');
+          if (!productId) {
+            sendJson(res, 400, { success: false, error: 'productId required' });
+            return;
+          }
+
+          const prompt = `Write a TikTok video script for selling this product:
+Title: ${title || 'Unknown Product'}
+Type: ${product_type || 'Custom Product'}
+Price: $${price || '0'}
+Description: ${description || 'No description available'}
+
+Format the script as:
+HOOK (0-3 seconds): [attention-grabbing opening]
+SHOW (3-15 seconds): [demonstrate the product]
+TELL (15-30 seconds): [key benefits and features]
+CTA (last 5 seconds): [call to action with urgency]
+
+Keep it casual, energetic, and under 60 seconds total. Include suggested text overlays and trending sounds.`;
+
+          const http = require('http');
+          const script = await new Promise((resolve, reject) => {
+            const postData = JSON.stringify({
+              model: 'llama3.1:8b',
+              prompt,
+              stream: false,
+              options: { temperature: 0.7, num_predict: 800 }
+            });
+            const req2 = http.request({
+              hostname: '127.0.0.1',
+              port: 11434,
+              path: '/api/generate',
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 120000
+            }, (r) => {
+              let data = '';
+              r.on('data', chunk => data += chunk);
+              r.on('end', () => {
+                try {
+                  const parsed = JSON.parse(data);
+                  resolve(parsed.response || '');
+                } catch (e) { reject(e); }
+              });
+            });
+            req2.on('error', reject);
+            req2.on('timeout', () => { req2.destroy(); reject(new Error('Ollama timeout')); });
+            req2.write(postData);
+            req2.end();
+          });
+
+          // Save to DB
+          const numericId = String(productId).replace(/.*\//, '');
+          const rawDb = db.getDb();
+          rawDb.prepare(`
+            INSERT INTO tiktok_shop_products (shopify_product_id, shopify_gid, title, price, product_type, video_script)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(shopify_product_id) DO UPDATE SET
+              video_script = excluded.video_script, updated_at = CURRENT_TIMESTAMP
+          `).run(numericId, `gid://shopify/Product/${numericId}`, title || '', price || '', product_type || '', script);
+
+          console.log(`[TikTok Shop] Generated video script for product ${numericId}`);
+          sendJson(res, 200, { success: true, data: { script } });
+        } catch (err) {
+          console.error('[TikTok Shop] Generate script error:', err.message);
+          sendJson(res, 500, { success: false, error: err.message });
+        }
+      })();
+    });
+    return;
+  }
+
+  // POST /api/internal/tiktok-shop/market-research - Generate market research via Ollama
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/internal/tiktok-shop/market-research') {
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { success: false, error: error.message }); return; }
+      (async () => {
+        try {
+          const { productId, title, product_type, price, tags } = JSON.parse(body || '{}');
+          if (!productId) {
+            sendJson(res, 400, { success: false, error: 'productId required' });
+            return;
+          }
+
+          const prompt = `Analyze this product for TikTok Shop selling potential:
+Title: ${title || 'Unknown Product'}
+Type: ${product_type || 'Custom Product'}
+Price: $${price || '0'}
+Tags: ${Array.isArray(tags) ? tags.join(', ') : (tags || 'none')}
+
+Provide:
+1. TARGET AUDIENCE: Age range, interests, TikTok communities
+2. TRENDING HASHTAGS: 5-8 relevant hashtags
+3. COMPETITION: How saturated is this niche on TikTok Shop
+4. CONTENT IDEAS: 3 video concepts that could go viral
+5. BEST POSTING TIMES: Optimal days/times for this product type
+6. TIKTOK SCORE: Rate 1-10 how well this product fits TikTok's audience
+
+Keep it concise and actionable.`;
+
+          const http = require('http');
+          const research = await new Promise((resolve, reject) => {
+            const postData = JSON.stringify({
+              model: 'llama3.1:8b',
+              prompt,
+              stream: false,
+              options: { temperature: 0.7, num_predict: 800 }
+            });
+            const req2 = http.request({
+              hostname: '127.0.0.1',
+              port: 11434,
+              path: '/api/generate',
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 120000
+            }, (r) => {
+              let data = '';
+              r.on('data', chunk => data += chunk);
+              r.on('end', () => {
+                try {
+                  const parsed = JSON.parse(data);
+                  resolve(parsed.response || '');
+                } catch (e) { reject(e); }
+              });
+            });
+            req2.on('error', reject);
+            req2.on('timeout', () => { req2.destroy(); reject(new Error('Ollama timeout')); });
+            req2.write(postData);
+            req2.end();
+          });
+
+          // Extract TikTok score if present
+          let aiScore = 0;
+          const scoreMatch = research.match(/TIKTOK\s*SCORE[:\s]*(\d+)/i);
+          if (scoreMatch) aiScore = parseInt(scoreMatch[1], 10);
+
+          // Save to DB
+          const numericId = String(productId).replace(/.*\//, '');
+          const rawDb = db.getDb();
+          rawDb.prepare(`
+            INSERT INTO tiktok_shop_products (shopify_product_id, shopify_gid, title, price, product_type, market_research, ai_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(shopify_product_id) DO UPDATE SET
+              market_research = excluded.market_research, ai_score = excluded.ai_score, updated_at = CURRENT_TIMESTAMP
+          `).run(numericId, `gid://shopify/Product/${numericId}`, title || '', price || '', product_type || '', research, aiScore);
+
+          console.log(`[TikTok Shop] Generated market research for product ${numericId} (score: ${aiScore})`);
+          sendJson(res, 200, { success: true, data: { research, aiScore } });
+        } catch (err) {
+          console.error('[TikTok Shop] Market research error:', err.message);
+          sendJson(res, 500, { success: false, error: err.message });
+        }
+      })();
+    });
+    return;
+  }
+
+  // GET /api/internal/tiktok-shop/stats - Return summary stats
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/internal/tiktok-shop/stats') {
+    (async () => {
+      try {
+        const shopify = require('./integrations/shopify');
+        const pub = await shopify.findTikTokPublication();
+        let publishedCount = 0;
+        if (pub) {
+          const products = await shopify.getProductsOnPublication(pub.id);
+          publishedCount = products.length;
+        }
+
+        const rawDb = db.getDb();
+        const withScripts = rawDb.prepare("SELECT COUNT(*) as count FROM tiktok_shop_products WHERE video_script IS NOT NULL AND video_script != ''").get();
+        const withResearch = rawDb.prepare("SELECT COUNT(*) as count FROM tiktok_shop_products WHERE market_research IS NOT NULL AND market_research != ''").get();
+
+        const allProducts = await shopify.listAllProducts({ limit: 250 });
+        const candidateCount = allProducts.length - publishedCount;
+
+        sendJson(res, 200, {
+          success: true,
+          data: {
+            published: publishedCount,
+            candidates: Math.max(0, candidateCount),
+            withScripts: withScripts?.count || 0,
+            withResearch: withResearch?.count || 0,
+            capacity: { used: publishedCount, limit: 100 }
+          }
+        });
+      } catch (err) {
+        console.error('[TikTok Shop] Stats error:', err.message);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    })();
+    return;
+  }
   // ===========================================
   // Lumaprints Fulfillment API
   // ===========================================

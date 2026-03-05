@@ -1802,6 +1802,9 @@ function switchView(viewId) {
   }
 
   // Shopify Manager view
+  if (viewId === 'tiktokShopManagerView') {
+    initTikTokShopManager();
+  }
   if (viewId === 'shopifyManagerView') {
     initShopifyManager();
   }
@@ -30199,3 +30202,353 @@ window.updateStickersQuantity = updateStickersQuantity;
 window.toggleCutSettings = toggleCutSettings;
 window.loadSavedOrderSheets = loadSavedOrderSheets;
 window.reprintSavedOrder = reprintSavedOrder;
+
+// =============== TikTok Shop Manager ===============
+const tiktokShopState = {
+  products: [],
+  candidates: [],
+  selectedProduct: null,
+  activeTab: 'published',
+  sourceFilter: 'all',
+  selectedCandidates: new Set(),
+  capacity: { used: 0, limit: 100 },
+  initialized: false,
+  loading: false
+};
+
+function initTikTokShopManager() {
+  if (tiktokShopState.initialized) {
+    loadTikTokShopData();
+    return;
+  }
+  tiktokShopState.initialized = true;
+
+  // Tab switching
+  const tabPublished = document.getElementById('tiktokShopTabPublished');
+  const tabCandidates = document.getElementById('tiktokShopTabCandidates');
+  if (tabPublished) tabPublished.addEventListener('click', () => {
+    tiktokShopState.activeTab = 'published';
+    tabPublished.classList.add('active');
+    tabCandidates?.classList.remove('active');
+    document.getElementById('tiktokShopBulkBar').style.display = 'none';
+    renderTikTokProductList();
+  });
+  if (tabCandidates) tabCandidates.addEventListener('click', () => {
+    tiktokShopState.activeTab = 'candidates';
+    tabCandidates.classList.add('active');
+    tabPublished?.classList.remove('active');
+    document.getElementById('tiktokShopBulkBar').style.display = 'flex';
+    renderTikTokProductList();
+  });
+
+  // Source filter
+  const sourceFilter = document.getElementById('tiktokShopSourceFilter');
+  if (sourceFilter) sourceFilter.addEventListener('change', () => {
+    tiktokShopState.sourceFilter = sourceFilter.value;
+    loadTikTokShopCandidates();
+  });
+
+  // Refresh button
+  const refreshBtn = document.getElementById('tiktokShopRefreshBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => loadTikTokShopData());
+
+  // Clear All button
+  const clearAllBtn = document.getElementById('tiktokShopClearAllBtn');
+  if (clearAllBtn) clearAllBtn.addEventListener('click', handleTikTokClearAll);
+
+  // Bulk actions
+  const selectAll = document.getElementById('tiktokShopSelectAll');
+  if (selectAll) selectAll.addEventListener('change', (e) => {
+    tiktokShopState.selectedCandidates.clear();
+    if (e.target.checked) {
+      tiktokShopState.candidates.forEach(p => tiktokShopState.selectedCandidates.add(p.numericId));
+    }
+    renderTikTokProductList();
+    updateTikTokSelectedCount();
+  });
+
+  const bulkPublishBtn = document.getElementById('tiktokShopBulkPublishBtn');
+  if (bulkPublishBtn) bulkPublishBtn.addEventListener('click', handleTikTokBulkPublish);
+
+  loadTikTokShopData();
+}
+
+async function loadTikTokShopData() {
+  if (tiktokShopState.loading) return;
+  tiktokShopState.loading = true;
+  const listEl = document.getElementById('tiktokShopProductList');
+  if (listEl) listEl.innerHTML = '<div class="muted" style="padding:20px;text-align:center;">Loading...</div>';
+
+  try {
+    const [productsRes, statsRes] = await Promise.all([
+      printStation.tiktokShop.getProducts(),
+      printStation.tiktokShop.getStats()
+    ]);
+    tiktokShopState.products = productsRes?.data || [];
+    if (statsRes?.data?.capacity) {
+      tiktokShopState.capacity = statsRes.data.capacity;
+    }
+    const capEl = document.getElementById('tiktokShopCapacity');
+    if (capEl) capEl.textContent = `${tiktokShopState.capacity.used}/${tiktokShopState.capacity.limit}`;
+
+    await loadTikTokShopCandidates();
+  } catch (err) {
+    console.error('[TikTok Shop] Load error:', err);
+    if (listEl) listEl.innerHTML = `<div style="padding:20px;text-align:center;color:#dc2626;">Error: ${err.message}</div>`;
+  } finally {
+    tiktokShopState.loading = false;
+  }
+}
+
+async function loadTikTokShopCandidates() {
+  try {
+    const source = tiktokShopState.sourceFilter === 'all' ? '' : tiktokShopState.sourceFilter;
+    const res = await printStation.tiktokShop.getCandidates(source);
+    tiktokShopState.candidates = res?.data || [];
+    tiktokShopState.selectedCandidates.clear();
+    const selectAll = document.getElementById('tiktokShopSelectAll');
+    if (selectAll) selectAll.checked = false;
+    updateTikTokSelectedCount();
+    renderTikTokProductList();
+  } catch (err) {
+    console.error('[TikTok Shop] Load candidates error:', err);
+  }
+}
+
+function renderTikTokProductList() {
+  const listEl = document.getElementById('tiktokShopProductList');
+  if (!listEl) return;
+
+  const items = tiktokShopState.activeTab === 'published' ? tiktokShopState.products : tiktokShopState.candidates;
+
+  if (!items.length) {
+    listEl.innerHTML = `<div class="muted" style="padding:30px;text-align:center;">${
+      tiktokShopState.activeTab === 'published' ? 'No products published to TikTok yet' : 'No candidate products found'
+    }</div>`;
+    return;
+  }
+
+  listEl.innerHTML = items.map(p => {
+    const isCandidate = tiktokShopState.activeTab === 'candidates';
+    const isSelected = tiktokShopState.selectedCandidates.has(p.numericId);
+    const selectedClass = (tiktokShopState.selectedProduct?.numericId === p.numericId) ? 'border:2px solid #00f2ea;' : 'border:1px solid #e5e7eb;';
+    const aiScore = p.ai_score ? `<span style="background:#f0f9ff;color:#0284c7;padding:2px 6px;border-radius:4px;font-size:11px;">AI: ${p.ai_score}/10</span>` : '';
+    const scriptBadge = p.video_script ? '<span style="background:#f0fdf4;color:#16a34a;padding:2px 6px;border-radius:4px;font-size:11px;">Script</span>' : '';
+
+    return `<div class="inventory-card" style="padding:10px;cursor:pointer;${selectedClass}display:flex;gap:10px;align-items:center;" onclick="selectTikTokProduct('${p.numericId}')">
+      ${isCandidate ? `<input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation();toggleTikTokCandidate('${p.numericId}')" style="flex-shrink:0;" />` : ''}
+      <img src="${p.image || '/images/placeholder.png'}" alt="" style="width:50px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0;" onerror="this.src='/images/placeholder.png'" />
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.title || 'Untitled'}</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;">
+          <span style="font-size:13px;color:#666;">$${p.minPrice || '0.00'}</span>
+          ${p.productType ? `<span style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:11px;">${p.productType}</span>` : ''}
+          ${aiScore}
+          ${scriptBadge}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectTikTokProduct(numericId) {
+  const allProducts = [...tiktokShopState.products, ...tiktokShopState.candidates];
+  const product = allProducts.find(p => p.numericId === numericId);
+  if (!product) return;
+
+  tiktokShopState.selectedProduct = product;
+  renderTikTokProductList(); // Re-render to update selection highlight
+
+  const panel = document.getElementById('tiktokShopDetailPanel');
+  if (!panel) return;
+
+  const isPublished = tiktokShopState.products.some(p => p.numericId === numericId);
+  const actionBtn = isPublished
+    ? `<button class="secondary" style="color:#dc2626;" onclick="handleTikTokUnpublish('${numericId}')">Unpublish from TikTok</button>`
+    : `<button class="primary" onclick="handleTikTokPublish('${numericId}')">Publish to TikTok</button>`;
+
+  panel.innerHTML = `
+    <div class="inventory-card" style="margin-bottom:12px;">
+      <div style="display:flex;gap:12px;align-items:start;">
+        <img src="${product.image || '/images/placeholder.png'}" alt="" style="width:80px;height:80px;object-fit:cover;border-radius:6px;" onerror="this.src='/images/placeholder.png'" />
+        <div style="flex:1;">
+          <h4 style="margin:0 0 4px 0;">${product.title || 'Untitled'}</h4>
+          <div style="color:#666;font-size:13px;">$${product.minPrice || '0.00'} &middot; ${product.productType || 'N/A'} &middot; ${product.totalVariants || 0} variants</div>
+          ${product.ai_score ? `<div style="margin-top:4px;"><strong>AI Score:</strong> ${product.ai_score}/10</div>` : ''}
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            ${actionBtn}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="inventory-card" style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h4 style="margin:0;">Video Script</h4>
+        <button class="secondary" style="padding:4px 10px;font-size:12px;" onclick="handleTikTokGenerateScript('${numericId}')" id="tiktokShopGenScriptBtn">Generate Script</button>
+      </div>
+      <div id="tiktokShopScriptContent" style="font-size:13px;white-space:pre-wrap;color:#444;max-height:250px;overflow-y:auto;">
+        ${product.video_script ? product.video_script : '<span class="muted">No script generated yet. Click "Generate Script" to create one.</span>'}
+      </div>
+    </div>
+
+    <div class="inventory-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h4 style="margin:0;">Market Research</h4>
+        <button class="secondary" style="padding:4px 10px;font-size:12px;" onclick="handleTikTokMarketResearch('${numericId}')" id="tiktokShopResearchBtn">Research</button>
+      </div>
+      <div id="tiktokShopResearchContent" style="font-size:13px;white-space:pre-wrap;color:#444;max-height:250px;overflow-y:auto;">
+        ${product.market_research ? product.market_research : '<span class="muted">No research yet. Click "Research" to analyze this product.</span>'}
+      </div>
+    </div>
+  `;
+}
+
+function toggleTikTokCandidate(numericId) {
+  if (tiktokShopState.selectedCandidates.has(numericId)) {
+    tiktokShopState.selectedCandidates.delete(numericId);
+  } else {
+    tiktokShopState.selectedCandidates.add(numericId);
+  }
+  updateTikTokSelectedCount();
+  renderTikTokProductList();
+}
+
+function updateTikTokSelectedCount() {
+  const countEl = document.getElementById('tiktokShopSelectedCount');
+  const count = tiktokShopState.selectedCandidates.size;
+  if (countEl) countEl.textContent = count > 0 ? `${count} selected` : '';
+}
+
+async function handleTikTokPublish(numericId) {
+  const product = [...tiktokShopState.products, ...tiktokShopState.candidates].find(p => p.numericId === numericId);
+  if (!product) return;
+
+  try {
+    await printStation.tiktokShop.publish({
+      productId: numericId,
+      productData: { title: product.title, handle: product.handle, image: product.image, minPrice: product.minPrice, productType: product.productType }
+    });
+    await loadTikTokShopData();
+    selectTikTokProduct(numericId);
+  } catch (err) {
+    alert('Publish failed: ' + err.message);
+  }
+}
+
+async function handleTikTokUnpublish(numericId) {
+  if (!confirm('Remove this product from TikTok Shop?')) return;
+  try {
+    await printStation.tiktokShop.unpublish({ productId: numericId });
+    tiktokShopState.selectedProduct = null;
+    document.getElementById('tiktokShopDetailPanel').innerHTML = '<div class="muted" style="padding:40px;text-align:center;">Select a product to view details</div>';
+    await loadTikTokShopData();
+  } catch (err) {
+    alert('Unpublish failed: ' + err.message);
+  }
+}
+
+async function handleTikTokBulkPublish() {
+  const selected = Array.from(tiktokShopState.selectedCandidates);
+  if (!selected.length) { alert('No products selected'); return; }
+  if (!confirm(`Publish ${selected.length} products to TikTok Shop?`)) return;
+
+  const btn = document.getElementById('tiktokShopBulkPublishBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Publishing...'; }
+
+  try {
+    const products = selected.map(id => {
+      const p = tiktokShopState.candidates.find(c => c.numericId === id);
+      return { productId: id, title: p?.title, handle: p?.handle, image: p?.image, minPrice: p?.minPrice, productType: p?.productType };
+    });
+    const res = await printStation.tiktokShop.bulkPublish({ products });
+    alert(`Published ${res?.data?.published || 0} of ${selected.length} products`);
+    await loadTikTokShopData();
+  } catch (err) {
+    alert('Bulk publish failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Publish Selected'; }
+  }
+}
+
+async function handleTikTokClearAll() {
+  if (!confirm('Remove ALL products from TikTok Shop? This cannot be undone.')) return;
+  const btn = document.getElementById('tiktokShopClearAllBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Clearing...'; }
+
+  try {
+    const res = await printStation.tiktokShop.clearAll();
+    alert(`Removed ${res?.data?.removed || 0} products from TikTok Shop`);
+    tiktokShopState.selectedProduct = null;
+    document.getElementById('tiktokShopDetailPanel').innerHTML = '<div class="muted" style="padding:40px;text-align:center;">Select a product to view details</div>';
+    await loadTikTokShopData();
+  } catch (err) {
+    alert('Clear all failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Clear All'; }
+  }
+}
+
+async function handleTikTokGenerateScript(numericId) {
+  const product = [...tiktokShopState.products, ...tiktokShopState.candidates].find(p => p.numericId === numericId);
+  if (!product) return;
+
+  const btn = document.getElementById('tiktokShopGenScriptBtn');
+  const contentEl = document.getElementById('tiktokShopScriptContent');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
+  if (contentEl) contentEl.innerHTML = '<div class="muted">Generating script with AI... This may take up to 2 minutes.</div>';
+
+  try {
+    const res = await printStation.tiktokShop.generateScript({
+      productId: numericId,
+      title: product.title,
+      product_type: product.productType,
+      price: product.minPrice,
+      description: product.title
+    });
+    if (contentEl) contentEl.textContent = res?.data?.script || 'No script generated';
+    // Update local state
+    product.video_script = res?.data?.script || null;
+  } catch (err) {
+    if (contentEl) contentEl.innerHTML = `<span style="color:#dc2626;">Error: ${err.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate Script'; }
+  }
+}
+
+async function handleTikTokMarketResearch(numericId) {
+  const product = [...tiktokShopState.products, ...tiktokShopState.candidates].find(p => p.numericId === numericId);
+  if (!product) return;
+
+  const btn = document.getElementById('tiktokShopResearchBtn');
+  const contentEl = document.getElementById('tiktokShopResearchContent');
+  if (btn) { btn.disabled = true; btn.textContent = 'Analyzing...'; }
+  if (contentEl) contentEl.innerHTML = '<div class="muted">Running market research with AI... This may take up to 2 minutes.</div>';
+
+  try {
+    const res = await printStation.tiktokShop.marketResearch({
+      productId: numericId,
+      title: product.title,
+      product_type: product.productType,
+      price: product.minPrice,
+      tags: product.tags
+    });
+    if (contentEl) contentEl.textContent = res?.data?.research || 'No research generated';
+    // Update local state
+    product.market_research = res?.data?.research || null;
+    product.ai_score = res?.data?.aiScore || 0;
+    renderTikTokProductList();
+  } catch (err) {
+    if (contentEl) contentEl.innerHTML = `<span style="color:#dc2626;">Error: ${err.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Research'; }
+  }
+}
+
+// Expose to window for onclick handlers
+window.selectTikTokProduct = selectTikTokProduct;
+window.toggleTikTokCandidate = toggleTikTokCandidate;
+window.handleTikTokPublish = handleTikTokPublish;
+window.handleTikTokUnpublish = handleTikTokUnpublish;
+window.handleTikTokGenerateScript = handleTikTokGenerateScript;
+window.handleTikTokMarketResearch = handleTikTokMarketResearch;

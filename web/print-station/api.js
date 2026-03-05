@@ -291,6 +291,21 @@ window.printStation = {
     getInventory: (query) => apiRequest(`/api/ebay/inventory${query ? '?' + new URLSearchParams(query) : ''}`),
     getPolicies: () => apiRequest('/api/ebay/policies'),
   },
+  // ============================================================================
+  // TIKTOK SHOP MANAGER
+  // ============================================================================
+  tiktokShop: {
+    getPublications: () => apiRequest('/api/internal/tiktok-shop/publications'),
+    getProducts: () => apiRequest('/api/internal/tiktok-shop/products'),
+    getCandidates: (source) => apiRequest(`/api/internal/tiktok-shop/candidates${source ? '?source=' + source : ''}`),
+    publish: (data) => apiRequest('/api/internal/tiktok-shop/publish', { method: 'POST', body: data }),
+    unpublish: (data) => apiRequest('/api/internal/tiktok-shop/unpublish', { method: 'POST', body: data }),
+    bulkPublish: (data) => apiRequest('/api/internal/tiktok-shop/bulk-publish', { method: 'POST', body: data }),
+    clearAll: () => apiRequest('/api/internal/tiktok-shop/clear-all', { method: 'POST' }),
+    generateScript: (data) => apiRequest('/api/internal/tiktok-shop/generate-script', { method: 'POST', body: data }),
+    marketResearch: (data) => apiRequest('/api/internal/tiktok-shop/market-research', { method: 'POST', body: data }),
+    getStats: () => apiRequest('/api/internal/tiktok-shop/stats'),
+  },
 
 
 
