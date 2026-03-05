@@ -33,14 +33,124 @@ const ads = require('./integrations/ads');
 const { classifyMarketingProfile } = require('./utils/classifier');
 const metalPrints = require('./metal-prints-server');
 const { handleLeonardoRoute } = require('./leonardo-server');
+const { handleMultiboardRoute } = require('./multiboard-server');
+const { handleHowtoRoute } = require('./multiboard-howto-server');
+const { handleSlicerRoute } = require('./slicer-server');
+const { handleQuoteRoute } = require('./quote-server');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
 const stickerSheets = require('./sticker-sheet-generator');
 const taskTracker = require('./task-tracker');
+const kioskManager = require('./modules/kiosk-manager');
+// Sales & Marketing modules
+const seoEngine = require('./modules/seo-engine');
+const emailSequences = require('./modules/email-sequences');
+const cartRecovery = require('./modules/cart-recovery');
+const listingOptimizer = require('./modules/listing-optimizer');
+const reviewSystem = require('./modules/reviews');
+const referralProgram = require('./modules/referral-program');
+const crossSell = require('./modules/cross-sell');
+const salesAnalytics = require('./modules/sales-analytics');
+const trendMonitor = require('./modules/trend-monitor');
+const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
+const aiSalesAgent = require('./modules/ai-sales-agent');
+const telegramPrinterBot = require('./modules/telegram-printer-bot');
 // Shared utilities
 const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
 const { sendJson, handleOptions } = require('./utils/http');
+
+// ============================================================================
+// IMAGE RESIZE CACHE
+// ============================================================================
+// Disk-based cache for resized image thumbnails to reduce CPU usage
+const IMAGE_CACHE_DIR = path.join(os.tmpdir(), 'vinyl-image-cache');
+const IMAGE_CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+const IMAGE_CACHE_MAX_SIZE = 500; // Max cached files
+
+// Ensure cache directory exists
+try {
+  if (!fs.existsSync(IMAGE_CACHE_DIR)) {
+    fs.mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn('[ImageCache] Failed to create cache dir:', err.message);
+}
+
+/**
+ * Generate cache key for resized image
+ */
+function getImageCacheKey(filePath, width, quality, mtime) {
+  const hash = crypto.createHash('md5')
+    .update(`${filePath}:${width}:${quality}:${mtime}`)
+    .digest('hex');
+  return hash;
+}
+
+/**
+ * Get cached image path if exists and valid
+ */
+function getCachedImage(cacheKey, ext) {
+  const cachePath = path.join(IMAGE_CACHE_DIR, `${cacheKey}${ext}`);
+  try {
+    if (fs.existsSync(cachePath)) {
+      const stat = fs.statSync(cachePath);
+      // Check if cache is still valid (not expired)
+      if (Date.now() - stat.mtimeMs < IMAGE_CACHE_MAX_AGE) {
+        return cachePath;
+      }
+      // Expired, remove it
+      fs.unlinkSync(cachePath);
+    }
+  } catch (err) {
+    // Ignore errors
+  }
+  return null;
+}
+
+/**
+ * Clean up old cache files periodically
+ */
+let lastImageCacheClean = 0;
+function cleanImageCache() {
+  const now = Date.now();
+  // Only clean once per hour
+  if (now - lastImageCacheClean < 60 * 60 * 1000) return;
+  lastImageCacheClean = now;
+
+  try {
+    const files = fs.readdirSync(IMAGE_CACHE_DIR);
+    const fileStats = [];
+
+    for (const file of files) {
+      const filePath = path.join(IMAGE_CACHE_DIR, file);
+      try {
+        const stat = fs.statSync(filePath);
+        if (now - stat.mtimeMs > IMAGE_CACHE_MAX_AGE) {
+          // Delete expired files
+          fs.unlinkSync(filePath);
+        } else {
+          fileStats.push({ path: filePath, mtime: stat.mtimeMs });
+        }
+      } catch (e) {
+        // Ignore individual file errors
+      }
+    }
+
+    // If still over max size, delete oldest files
+    if (fileStats.length > IMAGE_CACHE_MAX_SIZE) {
+      fileStats.sort((a, b) => a.mtime - b.mtime);
+      const toDelete = fileStats.slice(0, fileStats.length - IMAGE_CACHE_MAX_SIZE);
+      for (const f of toDelete) {
+        try {
+          fs.unlinkSync(f.path);
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.warn('[ImageCache] Cleanup error:', err.message);
+  }
+}
 
 function parseMarketingTags(rawTags) {
   try {
@@ -1168,36 +1278,6 @@ const VALID_QUOTE_STATUSES = new Set([
 ]);
 
 db.initDatabase();
-
-// TikTok Shop products tracking table
-try {
-  const tiktokDb = db.getDb();
-  tiktokDb.exec(`
-    CREATE TABLE IF NOT EXISTS tiktok_shop_products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      shopify_product_id TEXT NOT NULL UNIQUE,
-      shopify_gid TEXT,
-      title TEXT,
-      handle TEXT,
-      image_url TEXT,
-      price TEXT,
-      product_type TEXT,
-      source TEXT DEFAULT 'other',
-      published INTEGER DEFAULT 0,
-      video_script TEXT,
-      market_research TEXT,
-      notes TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE INDEX IF NOT EXISTS idx_tiktok_shop_source ON tiktok_shop_products(source);
-    CREATE INDEX IF NOT EXISTS idx_tiktok_shop_published ON tiktok_shop_products(published);
-  `);
-  console.log('[TikTok Shop] Table initialized');
-} catch (e) {
-  console.error('[TikTok Shop] Table init error:', e.message);
-}
-
 ensureOutputDir();
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(RACE_QUOTE_FILES_DIR, { recursive: true });
@@ -2254,23 +2334,47 @@ function serveLibraryAsset(req, res, assetPath) {
     return;
   }
 
-  res.writeHead(200, headers);
-
-  const stream = fs.createReadStream(safePath);
-  stream.on('error', (error) => {
-    console.error('Failed to stream library asset:', error);
-    if (!res.headersSent) {
-      res.writeHead(500, { 'Content-Type': 'text/plain' });
-    }
-    res.end('Unable to read asset.');
-  });
-
+  // If not transformable, stream directly
   if (!isTransformableImage) {
+    res.writeHead(200, headers);
+    const stream = fs.createReadStream(safePath);
+    stream.on('error', (error) => {
+      console.error('Failed to stream library asset:', error);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+      }
+      res.end('Unable to read asset.');
+    });
     stream.pipe(res);
     return;
   }
 
+  // For resizable images, check cache first
   const targetWidth = Math.min(Math.max(Math.round(maxWidth), 1), 2400);
+  const ext = mimeType === 'image/jpeg' ? '.jpg' : mimeType === 'image/png' ? '.png' : '.webp';
+  const cacheKey = getImageCacheKey(safePath, targetWidth, quality, stat.mtimeMs);
+  const cachedPath = getCachedImage(cacheKey, ext);
+
+  // Periodically clean cache
+  cleanImageCache();
+
+  if (cachedPath) {
+    // Serve from cache
+    try {
+      const cachedStat = fs.statSync(cachedPath);
+      headers['Content-Length'] = cachedStat.size;
+      headers['X-Cache'] = 'HIT';
+      res.writeHead(200, headers);
+      fs.createReadStream(cachedPath).pipe(res);
+      return;
+    } catch (err) {
+      // Cache file disappeared, regenerate
+    }
+  }
+
+  // Generate and cache
+  headers['X-Cache'] = 'MISS';
+
   const transformer = sharp();
   transformer.rotate();
   transformer.resize({ width: targetWidth, withoutEnlargement: true });
@@ -2283,6 +2387,9 @@ function serveLibraryAsset(req, res, assetPath) {
     transformer.webp({ quality });
   }
 
+  // Collect transformed data to cache and respond
+  const chunks = [];
+  transformer.on('data', (chunk) => chunks.push(chunk));
   transformer.on('error', (error) => {
     console.error('Image transform error:', error);
     if (!res.headersSent) {
@@ -2290,8 +2397,33 @@ function serveLibraryAsset(req, res, assetPath) {
     }
     res.end('Unable to process image.');
   });
+  transformer.on('end', () => {
+    const buffer = Buffer.concat(chunks);
 
-  stream.pipe(transformer).pipe(res);
+    // Save to cache asynchronously (don't block response)
+    const cachePath = path.join(IMAGE_CACHE_DIR, `${cacheKey}${ext}`);
+    fs.writeFile(cachePath, buffer, (err) => {
+      if (err) {
+        console.warn('[ImageCache] Failed to write cache:', err.message);
+      }
+    });
+
+    // Send response
+    headers['Content-Length'] = buffer.length;
+    res.writeHead(200, headers);
+    res.end(buffer);
+  });
+
+  // Read source and transform
+  const stream = fs.createReadStream(safePath);
+  stream.on('error', (error) => {
+    console.error('Failed to read library asset:', error);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+    }
+    res.end('Unable to read asset.');
+  });
+  stream.pipe(transformer);
 }
 
 function serveSavedFile(res, fileName) {
@@ -2836,8 +2968,7 @@ function serveCatalogResponse(req, res, catalogType = 'apparel') {
                   // Convert paths like "/mnt/websit/Rockbands/uploads/file.jpg"
                   // to "/mnt/websit/Rockbands/uploads/previews/file.jpg"
                   design.image = design.image.replace(/\/uploads\/([^\/]+\.(jpg|jpeg|png|JPG|JPEG|PNG))$/, '/uploads/previews/$1');
-                  // Also convert PNG to JPG in preview path
-                  design.image = design.image.replace(/\/(previews\/[^\/]+)\.(png|PNG)$/, '/$1.jpg');
+                  // Note: Previously converted PNG to JPG here, but the JPG files don't exist - keep original extension
                 }
               });
             }
@@ -3370,6 +3501,583 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // SEO: robots.txt and sitemap.xml (must be handled before static files)
+  if (parsedUrl.pathname === '/robots.txt' || parsedUrl.pathname === '/sitemap.xml') {
+    if (seoEngine.handleSeoRoute(req, res, parsedUrl, db)) return;
+  }
+
+  // =============================================
+  // Sales & Marketing API Routes
+  // =============================================
+  // SEO API
+  if (parsedUrl.pathname.startsWith('/api/seo/')) {
+    if (seoEngine.handleSeoRoute(req, res, parsedUrl, db)) return;
+  }
+  // Reviews API
+  if (parsedUrl.pathname.startsWith('/api/reviews') || parsedUrl.pathname.startsWith('/api/admin/reviews')) {
+    if (reviewSystem.handleReviewRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Loyalty & Referral API
+  if (parsedUrl.pathname.startsWith('/api/loyalty/') || parsedUrl.pathname.startsWith('/api/referral/') || parsedUrl.pathname === '/api/admin/loyalty/stats') {
+    if (referralProgram.handleLoyaltyRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Cross-sell & Bundles API
+  if (parsedUrl.pathname.startsWith('/api/cross-sell/') || parsedUrl.pathname === '/api/bundles') {
+    if (crossSell.handleCrossSellRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Cart Recovery API
+  if (parsedUrl.pathname.startsWith('/api/cart-recovery/')) {
+    if (cartRecovery.handleCartRecoveryRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Listing Optimizer API
+  if (parsedUrl.pathname.startsWith('/api/listings/')) {
+    if (listingOptimizer.handleListingRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data), db)) return;
+  }
+  // Sales Analytics API
+  if (parsedUrl.pathname.startsWith('/api/analytics/')) {
+    if (salesAnalytics.handleAnalyticsRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Trend Monitor API
+  if (parsedUrl.pathname.startsWith('/api/trends')) {
+    if (trendMonitor.handleTrendMonitorRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data), db)) return;
+  }
+  // Email Sequences API
+  // Pipeline Monitor API
+  if (parsedUrl.pathname.startsWith('/api/pipeline/')) {
+    if (salesPipelineMonitor.handlePipelineRoute(req, res, parsedUrl, sendJson, db)) return;
+  }
+  // AI Sales Agent API
+  if (parsedUrl.pathname.startsWith('/api/agent/')) {
+    if (aiSalesAgent.handleAgentRoute(req, res, parsedUrl, sendJson, db)) return;
+  }
+
+  // Printer Notification API (from Electron print station)
+  if (parsedUrl.pathname.startsWith('/api/notify/')) {
+    if (!requireInternalKey(req, res)) return;
+    const { parseBody: parseB } = require('./utils/http');
+
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/notify/printer-event') {
+      try {
+        const body = await parseB(req);
+        await telegramPrinterBot.handlePrinterEvent(body);
+        sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error('[Notify] Printer event error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/notify/printer-heartbeat') {
+      try {
+        const body = await parseB(req);
+        telegramPrinterBot.updateCache(body);
+        sendJson(res, 200, { ok: true, cached: (body.printers || []).length });
+      } catch (err) {
+        console.error('[Notify] Heartbeat error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+  }
+
+  if (parsedUrl.pathname.startsWith('/api/email-sequences')) {
+    if (emailSequences.handleEmailSequenceRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // SMS API
+  if (parsedUrl.pathname.startsWith('/api/sms/')) {
+    const sms = require('./sms');
+    if (parsedUrl.pathname === '/api/sms/send' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        (async () => {
+          try {
+            const { to, message } = JSON.parse(body);
+            if (!sms.isConfigured()) {
+              sendJson(res, 503, { error: 'SMS not configured' });
+              return;
+            }
+            const result = await sms.sendSms({ to, body: message });
+            sendJson(res, 200, { success: true, result });
+          } catch (err) {
+            sendJson(res, 400, { error: err.message });
+          }
+        })();
+      });
+      return;
+    }
+    if (parsedUrl.pathname === '/api/sms/bulk' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        (async () => {
+          try {
+            const { recipients, message } = JSON.parse(body);
+            if (!sms.isConfigured()) {
+              sendJson(res, 503, { error: 'SMS not configured' });
+              return;
+            }
+            const results = await sms.sendBulkSms({ to: recipients, body: message });
+            sendJson(res, 200, { success: true, sent: results.filter(Boolean).length, total: recipients.length });
+          } catch (err) {
+            sendJson(res, 400, { error: err.message });
+          }
+        })();
+      });
+      return;
+    }
+    if (parsedUrl.pathname === '/api/sms/status' && req.method === 'GET') {
+      const sms = require('./sms');
+      sendJson(res, 200, { configured: sms.isConfigured() });
+      return;
+    }
+  }
+  // Ads Management API
+  if (parsedUrl.pathname.startsWith('/api/ads/')) {
+    if (parsedUrl.pathname === '/api/ads/insights' && req.method === 'GET') {
+      (async () => {
+        try {
+          const period = parsedUrl.query?.period || '7';
+          const insights = await ads.getMetaInsights(period);
+          sendJson(res, 200, insights);
+        } catch (err) {
+          sendJson(res, 500, { error: err.message });
+        }
+      })();
+      return;
+    }
+    if (parsedUrl.pathname === '/api/ads/social-stats' && req.method === 'GET') {
+      (async () => {
+        try {
+          const stats = await ads.getDashboardSocialStats();
+          sendJson(res, 200, stats);
+        } catch (err) {
+          sendJson(res, 500, { error: err.message });
+        }
+      })();
+      return;
+    }
+    if (parsedUrl.pathname === '/api/ads/create-campaign' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        (async () => {
+          try {
+            const campaign = JSON.parse(body);
+            const result = await ads.createAdCampaign(campaign);
+            sendJson(res, 200, result);
+          } catch (err) {
+            sendJson(res, 500, { error: err.message });
+          }
+        })();
+      });
+      return;
+    }
+    if (parsedUrl.pathname === '/api/ads/generate-creative' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        (async () => {
+          try {
+            const { product, platform } = JSON.parse(body);
+            const creative = ads.generateAdCreative(product, platform || 'meta');
+            sendJson(res, 200, creative);
+          } catch (err) {
+            sendJson(res, 500, { error: err.message });
+          }
+        })();
+      });
+      return;
+    }
+  }
+
+  // ===========================================
+  // Kiosk Display System (secured with INTERNAL_API_KEY)
+  // ===========================================
+  // Remote display management for trade shows/markets
+  // All kiosk endpoints require API key via query param (?key=) or header (x-api-key)
+
+  // Helper to check kiosk API key (supports both query param and header)
+  const checkKioskKey = (req, parsedUrl) => {
+    if (!INTERNAL_API_KEY) return true; // No key configured = allow all
+    const queryKey = parsedUrl.query.key;
+    const headerKey = req.headers['x-api-key'];
+    return queryKey === INTERNAL_API_KEY || headerKey === INTERNAL_API_KEY;
+  };
+
+  // Kiosk display page (full-screen client for kiosk devices)
+  // Requires ?key= query param so kiosk devices can bookmark the URL
+  if (req.method === 'GET' && parsedUrl.pathname === '/kiosk') {
+    if (!checkKioskKey(req, parsedUrl)) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    try {
+      const html = fs.readFileSync(path.join(WEB_DIR, 'kiosk.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch (e) {
+      sendJson(res, 404, { error: 'Kiosk page not found' });
+    }
+    return;
+  }
+
+  // Kiosk admin control panel (requires ?key= query param)
+  if (req.method === 'GET' && parsedUrl.pathname === '/kiosk-admin') {
+    if (!checkKioskKey(req, parsedUrl)) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    try {
+      const html = fs.readFileSync(path.join(WEB_DIR, 'kiosk-admin.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch (e) {
+      sendJson(res, 404, { error: 'Kiosk admin page not found' });
+    }
+    return;
+  }
+
+  // Kiosk API endpoints (requires x-api-key header or ?key= query param)
+  if (parsedUrl.pathname.startsWith('/api/kiosk/')) {
+    if (!checkKioskKey(req, parsedUrl)) {
+      sendJson(res, 401, { error: 'Invalid or missing API key' });
+      return;
+    }
+
+    const handlers = kioskManager.getApiHandlers();
+
+    // GET /api/kiosk/displays - list connected displays
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/displays') {
+      return handlers.getDisplays(req, res);
+    }
+
+    // GET /api/kiosk/content - list available content
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/content') {
+      return handlers.getContent(req, res);
+    }
+
+    // GET /api/kiosk/campaigns - get all campaigns for slideshow display
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/campaigns') {
+      try {
+        const campaigns = listCampaigns();
+        // Resolve campaign items to include full image URLs
+        const resolved = campaigns.map(c => {
+          const campaign = { ...c };
+          // Resolve hero image
+          if (campaign.hero && campaign.hero.image) {
+            campaign.hero.image = campaign.hero.image.startsWith('http')
+              ? campaign.hero.image
+              : campaign.hero.image;
+          }
+          // Resolve mockup image
+          if (campaign.sharedMockup && campaign.sharedMockup.image) {
+            campaign.sharedMockup.image = campaign.sharedMockup.image.startsWith('http')
+              ? campaign.sharedMockup.image
+              : campaign.sharedMockup.image;
+          }
+          return campaign;
+        });
+        sendJson(res, 200, { campaigns: resolved });
+      } catch (e) {
+        sendJson(res, 500, { error: e.message || 'Failed to load campaigns' });
+      }
+      return;
+    }
+
+    // POST /api/kiosk/display/:id/content - send content to a display
+    const contentMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/display\/([^/]+)\/content$/);
+    if (contentMatch && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          handlers.setContent(req, res, contentMatch[1], data);
+        } catch (e) {
+          sendJson(res, 400, { error: 'Invalid JSON' });
+        }
+      });
+      return;
+    }
+
+    // POST /api/kiosk/display/:id/rename - rename a display
+    const renameMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/display\/([^/]+)\/rename$/);
+    if (renameMatch && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          handlers.renameDisplay(req, res, renameMatch[1], data);
+        } catch (e) {
+          sendJson(res, 400, { error: 'Invalid JSON' });
+        }
+      });
+      return;
+    }
+
+    // POST /api/kiosk/broadcast - send content to all displays
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/kiosk/broadcast') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          handlers.broadcast(req, res, data);
+        } catch (e) {
+          sendJson(res, 400, { error: 'Invalid JSON' });
+        }
+      });
+      return;
+    }
+
+    // ========================================
+    // Promotions API
+    // ========================================
+
+    // GET /api/kiosk/promotions - list all promotions
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/promotions') {
+      sendJson(res, 200, { promotions: kioskManager.promotions });
+      return;
+    }
+
+    // GET /api/kiosk/promotions/:displayId - get promotions for a specific display
+    const promoDisplayMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/promotions\/display\/([^/]+)$/);
+    if (promoDisplayMatch && req.method === 'GET') {
+      const displayId = promoDisplayMatch[1];
+      const promos = kioskManager.getPromotionsForDisplay(displayId);
+      sendJson(res, 200, { promotions: promos });
+      return;
+    }
+
+    // POST /api/kiosk/promotions - create a new promotion (with file upload)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/kiosk/promotions') {
+      const form = formidable({
+        uploadDir: kioskManager.getPromotionsDir(),
+        keepExtensions: true,
+        maxFileSize: 50 * 1024 * 1024, // 50MB
+        filter: ({ mimetype }) => mimetype && (mimetype.startsWith('image/') || mimetype.startsWith('video/'))
+      });
+
+      form.parse(req, (err, fields, files) => {
+        if (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+
+        // Handle file upload
+        let imageUrl = null;
+        let imageFile = null;
+        const file = files.image?.[0] || files.image;
+        if (file) {
+          imageFile = path.basename(file.filepath || file.path);
+          imageUrl = `/kiosk-promotions/${imageFile}`;
+        }
+
+        // Parse fields (formidable may return arrays)
+        const getField = (name) => {
+          const val = fields[name];
+          return Array.isArray(val) ? val[0] : val;
+        };
+
+        const promotion = {
+          title: getField('title') || 'Untitled Promotion',
+          description: getField('description') || '',
+          type: getField('type') || 'sale', // sale, special, announcement
+          imageUrl,
+          imageFile,
+          priority: parseInt(getField('priority')) || 1,
+          enabled: getField('enabled') !== 'false',
+          targetDisplays: fields.targetDisplays ?
+            (Array.isArray(fields.targetDisplays) ? fields.targetDisplays : [fields.targetDisplays]) :
+            [],
+          showInSlideshow: getField('showInSlideshow') !== 'false',
+          duration: parseInt(getField('duration')) || 8, // seconds to show
+          startsAt: getField('startsAt') ? new Date(getField('startsAt')).getTime() : null,
+          expiresAt: getField('expiresAt') ? new Date(getField('expiresAt')).getTime() : null
+        };
+
+        const saved = kioskManager.addPromotion(promotion);
+        sendJson(res, 200, { success: true, promotion: saved });
+      });
+      return;
+    }
+
+    // PUT /api/kiosk/promotions/:id - update a promotion
+    const promoUpdateMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/promotions\/([^/]+)$/);
+    if (promoUpdateMatch && req.method === 'PUT') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const updates = JSON.parse(body);
+          const result = kioskManager.updatePromotion(promoUpdateMatch[1], updates);
+          if (result) {
+            sendJson(res, 200, { success: true, promotion: result });
+          } else {
+            sendJson(res, 404, { error: 'Promotion not found' });
+          }
+        } catch (e) {
+          sendJson(res, 400, { error: 'Invalid JSON' });
+        }
+      });
+      return;
+    }
+
+    // DELETE /api/kiosk/promotions/:id - delete a promotion
+    const promoDeleteMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/promotions\/([^/]+)$/);
+    if (promoDeleteMatch && req.method === 'DELETE') {
+      const success = kioskManager.deletePromotion(promoDeleteMatch[1]);
+      if (success) {
+        sendJson(res, 200, { success: true });
+      } else {
+        sendJson(res, 404, { error: 'Promotion not found' });
+      }
+      return;
+    }
+
+    // ========================================
+    // Shopify Collections API for Kiosk
+    // ========================================
+
+    // GET /api/kiosk/shopify/collections - list Shopify collections
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/shopify/collections') {
+      try {
+        if (!shopify.isConfigured()) {
+          sendJson(res, 503, { error: 'Shopify not configured' });
+          return;
+        }
+        const collections = await shopify.listCollections();
+        sendJson(res, 200, { collections });
+      } catch (e) {
+        sendJson(res, 500, { error: e.message || 'Failed to fetch collections' });
+      }
+      return;
+    }
+
+    // GET /api/kiosk/shopify/collections/:id/products - get products from a collection
+    const shopifyCollectionMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/shopify\/collections\/(\d+)\/products$/);
+    if (shopifyCollectionMatch && req.method === 'GET') {
+      try {
+        if (!shopify.isConfigured()) {
+          sendJson(res, 503, { error: 'Shopify not configured' });
+          return;
+        }
+        const collectionId = shopifyCollectionMatch[1];
+        const limit = parseInt(parsedUrl.query.limit) || 50;
+        const products = await shopify.getCollectionProducts(collectionId, Math.min(limit, 250));
+
+        // Get mockups from local database for these products
+        const shopifyIds = products.map(p => String(p.id));
+        const mockupData = db.getMockupsForShopifyProducts(shopifyIds);
+
+        // Extract product data and enrich with mockups
+        const productData = products.map(p => {
+          const localData = mockupData[String(p.id)];
+          let mockupImages = [];
+
+          if (localData) {
+            // Add mockups from the custom_art_mockups table
+            if (localData.mockups && localData.mockups.length > 0) {
+              mockupImages = localData.mockups.map(m => m.url || m.filePath).filter(Boolean);
+            }
+            // Also add the product's mockup_path if set
+            if (localData.mockupPath) {
+              mockupImages.unshift(localData.mockupPath);
+            }
+          }
+
+          return {
+            id: p.id,
+            title: p.title,
+            handle: p.handle,
+            vendor: p.vendor,
+            product_type: p.product_type,
+            images: (p.images || []).map(img => ({
+              id: img.id,
+              src: img.src,
+              alt: img.alt,
+              width: img.width,
+              height: img.height
+            })),
+            // Prefer mockups from database, fallback to Shopify images
+            featuredImage: mockupImages[0] || p.image?.src || (p.images && p.images[0]?.src) || null,
+            mockups: mockupImages,
+            hasLocalMockups: mockupImages.length > 0
+          };
+        });
+
+        sendJson(res, 200, { products: productData });
+      } catch (e) {
+        sendJson(res, 500, { error: e.message || 'Failed to fetch collection products' });
+      }
+      return;
+    }
+
+    // POST /api/kiosk/shopify/slideshow - save a Shopify slideshow configuration
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/kiosk/shopify/slideshow') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const slideshow = kioskManager.saveShopifySlideshow(data);
+          sendJson(res, 200, { success: true, slideshow });
+        } catch (e) {
+          sendJson(res, 400, { error: e.message || 'Invalid request' });
+        }
+      });
+      return;
+    }
+
+    // GET /api/kiosk/shopify/slideshows - list saved Shopify slideshows
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/shopify/slideshows') {
+      const slideshows = kioskManager.getShopifySlideshows();
+      sendJson(res, 200, { slideshows });
+      return;
+    }
+
+    // DELETE /api/kiosk/shopify/slideshow/:id - delete a saved slideshow
+    const slideshowDeleteMatch = parsedUrl.pathname.match(/^\/api\/kiosk\/shopify\/slideshow\/([^/]+)$/);
+    if (slideshowDeleteMatch && req.method === 'DELETE') {
+      const success = kioskManager.deleteShopifySlideshow(slideshowDeleteMatch[1]);
+      sendJson(res, success ? 200 : 404, { success });
+      return;
+    }
+
+    // POST /api/kiosk/rotating-slides - toggle rotating slides on/off
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/kiosk/rotating-slides') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          kioskManager.setRotatingEnabled(data.enabled === true, data.selectedSlides || null);
+          sendJson(res, 200, { success: true, enabled: data.enabled, selectedSlides: data.selectedSlides });
+        } catch (e) {
+          sendJson(res, 400, { success: false, error: e.message });
+        }
+      });
+      return;
+    }
+
+    // GET /api/kiosk/rotating-slides - get current rotating slides state
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/kiosk/rotating-slides') {
+      sendJson(res, 200, {
+        enabled: kioskManager.rotatingEnabled,
+        serviceSlides: kioskManager.serviceSlides,
+        selectedSlideIds: kioskManager.selectedSlideIds
+      });
+      return;
+    }
+
+    // 404 for unknown kiosk routes
+    sendJson(res, 404, { error: 'Kiosk endpoint not found' });
+    return;
+  }
+
   // ===========================================
   // Print Station Auto-Updates
   // ===========================================
@@ -3479,12 +4187,30 @@ const requestHandler = async (req, res) => {
         const etsy = require('./integrations/etsy');
         const tokens = await etsy.completeOAuthFlow(code, state);
 
-        // Get shop info
+        // Get shop info and auto-save shop ID
         let shopInfo = null;
         try {
           const shops = await etsy.getMyShops();
           if (shops.results && shops.results.length > 0) {
             shopInfo = shops.results[0];
+            // Auto-save shop ID to .env so it persists
+            if (shopInfo.shop_id) {
+              try {
+                const envPath = path.resolve(__dirname, '..', '.env');
+                let envContent = fs.readFileSync(envPath, 'utf8');
+                if (envContent.includes('ETSY_SHOP_ID=')) {
+                  envContent = envContent.replace(/ETSY_SHOP_ID=.*/, `ETSY_SHOP_ID=${shopInfo.shop_id}`);
+                } else {
+                  envContent += `\nETSY_SHOP_ID=${shopInfo.shop_id}\n`;
+                }
+                fs.writeFileSync(envPath, envContent);
+                // Also update the runtime environment
+                process.env.ETSY_SHOP_ID = String(shopInfo.shop_id);
+                console.log(`[Etsy OAuth] Auto-saved ETSY_SHOP_ID=${shopInfo.shop_id} to .env`);
+              } catch (envErr) {
+                console.error('[Etsy OAuth] Could not auto-save shop ID to .env:', envErr.message);
+              }
+            }
           }
         } catch (e) {
           console.log('[Etsy OAuth] Could not fetch shop info:', e.message);
@@ -3499,10 +4225,7 @@ const requestHandler = async (req, res) => {
               <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
                 <p><strong>Shop Name:</strong> ${shopInfo.shop_name || 'N/A'}</p>
                 <p><strong>Shop ID:</strong> ${shopInfo.shop_id}</p>
-                <p style="color: #6b7280; font-size: 14px; margin-top: 12px;">
-                  Add this to your .env file:<br>
-                  <code style="background: #1f2937; color: #10b981; padding: 4px 8px; border-radius: 4px;">ETSY_SHOP_ID=${shopInfo.shop_id}</code>
-                </p>
+                <p style="color: #10b981; font-weight: bold;">Shop ID has been automatically saved!</p>
               </div>
             ` : ''}
             <p>Token expires in: ${Math.round(tokens.expires_in / 3600)} hours</p>
@@ -3922,7 +4645,7 @@ const requestHandler = async (req, res) => {
         }
 
         const payload = JSON.parse(body || '{}');
-        const { shopifyProductId, publish = false, priceMultiplier = 1.15, storeLevel = 'basic' } = payload;
+        const { shopifyProductId, publish = false, priceMultiplier = 1.13, storeLevel = 'basic' } = payload;
 
         if (!shopifyProductId) {
           sendJson(res, 400, { error: 'shopifyProductId required' });
@@ -3941,6 +4664,7 @@ const requestHandler = async (req, res) => {
           publish,
           priceMultiplier,
           storeLevel,
+          categoryId: '180098' // Stickers & Decals
         });
 
         sendJson(res, 200, {
@@ -3971,6 +4695,7 @@ const requestHandler = async (req, res) => {
         const {
           publish = false,
           priceMultiplier = 1.15,
+          categoryId = '360', // Art Prints category (simpler requirements)
           limit = 50,
           skipExisting = true
         } = payload;
@@ -4033,7 +4758,7 @@ const requestHandler = async (req, res) => {
 
           try {
             // Convert to eBay format
-            const ebayItem = ebay.shopifyToEbayItem(product, { priceMultiplier });
+            const ebayItem = ebay.shopifyToEbayItem(product, { priceMultiplier, categoryId });
 
             // Create inventory item
             await ebay.createOrUpdateInventoryItem(sku, ebayItem);
@@ -4045,7 +4770,7 @@ const requestHandler = async (req, res) => {
                 description: ebayItem.description,
                 price: ebayItem.price,
                 quantity: 999,
-                categoryId: ebayItem.categoryId,
+                categoryId,
                 fulfillmentPolicyId,
                 returnPolicyId,
                 locationKey
@@ -4244,7 +4969,7 @@ const requestHandler = async (req, res) => {
         }
 
         const payload = JSON.parse(body || '{}');
-        const { sku, price, categoryId } = payload;
+        const { sku, price, categoryId = '159889' } = payload;
 
         if (!sku) {
           sendJson(res, 400, { error: 'sku required' });
@@ -4423,38 +5148,26 @@ const requestHandler = async (req, res) => {
       try {
         const notification = JSON.parse(body || '{}');
 
-        console.log('[eBay] Marketplace account deletion notification received:', JSON.stringify(notification, null, 2));
+        console.log('[eBay] Marketplace account deletion notification received for user:', notification.notification?.data?.username || 'unknown');
 
-        // Log the deletion request for compliance
+        // Log the deletion request for compliance (append-only JSONL to avoid reading entire file)
         const fs = require('fs');
         const path = require('path');
         const logDir = path.join(__dirname, '..', 'data');
-        const logFile = path.join(logDir, 'ebay-account-deletions.json');
+        const logFile = path.join(logDir, 'ebay-account-deletions.jsonl');
 
         // Ensure data directory exists
         if (!fs.existsSync(logDir)) {
           fs.mkdirSync(logDir, { recursive: true });
         }
 
-        // Load existing log or create new
-        let deletionLog = [];
-        if (fs.existsSync(logFile)) {
-          try {
-            deletionLog = JSON.parse(fs.readFileSync(logFile, 'utf8'));
-          } catch (e) {
-            deletionLog = [];
-          }
-        }
-
-        // Add this notification
-        deletionLog.push({
+        // Append single JSON line (no need to read/parse/rewrite entire file)
+        const logEntry = JSON.stringify({
           timestamp: new Date().toISOString(),
           notification: notification,
           processed: true
         });
-
-        // Save log
-        fs.writeFileSync(logFile, JSON.stringify(deletionLog, null, 2));
+        fs.appendFileSync(logFile, logEntry + '\n');
 
         // If we have stored tokens for this user, we should clean them up
         // The notification contains userId which we can match against stored tokens
@@ -5009,10 +5722,19 @@ const requestHandler = async (req, res) => {
             return;
           }
 
-          // Load Shopify product from database
-          const product = db.getShopifyProduct(shopify_product_id);
+          // Load Shopify product via Shopify API (full product data with variants/images)
+          const shopify = require('./integrations/shopify');
+          let product;
+          try {
+            product = await shopify.getProductFull(shopify_product_id);
+          } catch (shopErr) {
+            // Fallback: try qr_products table by shopify_product_id column
+            const rawDb = db.getDb();
+            const row = rawDb.prepare('SELECT * FROM qr_products WHERE shopify_product_id = ? OR id = ?').get(shopify_product_id, shopify_product_id);
+            if (row) product = row;
+          }
           if (!product) {
-            sendJson(res, 404, { error: `Shopify product ${shopify_product_id} not found in database` });
+            sendJson(res, 404, { error: `Shopify product ${shopify_product_id} not found` });
             return;
           }
 
@@ -6539,6 +7261,26 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Serve sticker catalog image by category/filename
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/sticker-catalog/image/')) {
+    handleStickerCatalogImage(req, res, parsedUrl).catch(err => {
+      console.error('[Sticker Catalog Image Error]', err);
+      res.statusCode = 404;
+      res.end('Not found');
+    });
+    return;
+  }
+
+  // Get or generate contour for a sticker (lazy generation with caching)
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/stickers/contour/')) {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerContour(req, res, parsedUrl).catch(err => {
+      console.error('[Sticker Contour Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
   // Generate sticker sheets from manual selection
   if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/generate') {
     if (!requireInternalKey(req, res)) return;
@@ -6554,6 +7296,16 @@ const requestHandler = async (req, res) => {
     if (!requireInternalKey(req, res)) return;
     handleStickerSheetFromOrder(req, res).catch(err => {
       console.error('[Sticker Sheet From Order Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Generate sticker sheets from manual visual layout
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/generate-from-layout') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetFromLayout(req, res).catch(err => {
+      console.error('[Sticker Sheet From Layout Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
     });
     return;
@@ -6585,6 +7337,1454 @@ const requestHandler = async (req, res) => {
       console.error('[Sticker Sheets List Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
     });
+    return;
+  }
+
+  // List saved order sticker sheets
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sticker-sheets/saved-orders') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetsSavedOrders(req, res).catch(err => {
+      console.error('[Sticker Sheets Saved Orders Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Get sheets for a specific order
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/sticker-sheets/order/')) {
+    if (!requireInternalKey(req, res)) return;
+    const orderNumber = decodeURIComponent(parsedUrl.pathname.replace('/api/sticker-sheets/order/', ''));
+    handleStickerSheetsGetOrder(req, res, orderNumber).catch(err => {
+      console.error('[Sticker Sheets Get Order Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Send sticker sheets to Cameo cutter
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/send-to-cameo') {
+    if (!requireInternalKey(req, res)) return;
+    handleStickerSheetsSendToCameo(req, res).catch(err => {
+      console.error('[Sticker Sheets Send to Cameo Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Delete a sticker sheet batch
+  if (req.method === 'DELETE' && parsedUrl.pathname.startsWith('/api/sticker-sheets/batch/')) {
+    if (!requireInternalKey(req, res)) return;
+    const batchName = decodeURIComponent(parsedUrl.pathname.replace('/api/sticker-sheets/batch/', ''));
+    handleDeleteStickerSheetBatch(req, res, batchName).catch(err => {
+      console.error('[Delete Sticker Sheet Batch Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // ===== VINYL CUTTER API =====
+
+  // Vectorize an image for vinyl cutting (with color detection)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/vectorize') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylVectorize(req, res).catch(err => {
+      console.error('[Vinyl Vectorize Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Generate vinyl cut files with color separation
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/generate') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylGenerate(req, res).catch(err => {
+      console.error('[Vinyl Generate Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // List generated vinyl cut batches
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/vinyl-cutter/list') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylList(req, res).catch(err => {
+      console.error('[Vinyl List Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Delete a vinyl cut batch
+  if (req.method === 'DELETE' && parsedUrl.pathname.startsWith('/api/vinyl-cutter/batch/')) {
+    if (!requireInternalKey(req, res)) return;
+    const batchName = decodeURIComponent(parsedUrl.pathname.replace('/api/vinyl-cutter/batch/', ''));
+    handleVinylDeleteBatch(req, res, batchName).catch(err => {
+      console.error('[Vinyl Delete Batch Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Send vinyl cut file to Silhouette
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/send-to-silhouette') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylSendToSilhouette(req, res).catch(err => {
+      console.error('[Vinyl Send to Silhouette Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // ===== STUDIO3 CATALOG API =====
+  // Store parsed Studio3 file data for catalog/training purposes
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/studio3/catalog') {
+    if (!requireInternalKey(req, res)) return;
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const { filename, metadata, pathCount, imageCount, thumbnail, paths, type } = data;
+        const validType = (type === 'decal') ? 'decal' : 'sticker';
+
+        if (!filename) {
+          sendJson(res, 400, { success: false, error: 'filename is required' });
+          return;
+        }
+
+        // Store in SQLite database
+        const dbInstance = require('./db').getDb();
+        const id = `studio3_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        dbInstance.prepare(`
+          INSERT INTO studio3_catalog (id, filename, metadata, path_count, image_count, thumbnail, paths, type, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `).run(id, filename, JSON.stringify(metadata || {}), pathCount || 0, imageCount || 0, thumbnail || null, JSON.stringify(paths || []), validType);
+
+        console.log(`[Studio3 Catalog] Added: ${filename} (${pathCount} paths, ${imageCount} images, type: ${validType})`);
+        sendJson(res, 200, { success: true, id, filename });
+
+      } catch (err) {
+        console.error('[Studio3 Catalog] Error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // List Studio3 catalog entries
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/studio3/catalog') {
+    if (!requireInternalKey(req, res)) return;
+
+    try {
+      const db = require('./db').getDb();
+      const rows = db.prepare(`
+        SELECT id, filename, metadata, path_count, image_count, thumbnail, type, created_at
+        FROM studio3_catalog
+        ORDER BY created_at DESC
+        LIMIT 500
+      `).all();
+
+      sendJson(res, 200, {
+        success: true,
+        count: rows.length,
+        entries: rows.map(row => ({
+          id: row.id,
+          filename: row.filename,
+          metadata: JSON.parse(row.metadata || '{}'),
+          pathCount: row.path_count,
+          imageCount: row.image_count,
+          thumbnail: row.thumbnail,
+          type: row.type || 'sticker',
+          createdAt: row.created_at
+        }))
+      });
+
+    } catch (err) {
+      console.error('[Studio3 Catalog] List error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Get a specific Studio3 catalog entry with full data (including paths)
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/studio3/catalog/')) {
+    if (!requireInternalKey(req, res)) return;
+
+    const id = decodeURIComponent(parsedUrl.pathname.replace('/api/studio3/catalog/', ''));
+
+    try {
+      const db = require('./db').getDb();
+      const row = db.prepare(`SELECT * FROM studio3_catalog WHERE id = ?`).get(id);
+
+      if (!row) {
+        sendJson(res, 404, { success: false, error: 'Entry not found' });
+        return;
+      }
+
+      sendJson(res, 200, {
+        success: true,
+        entry: {
+          id: row.id,
+          filename: row.filename,
+          metadata: JSON.parse(row.metadata || '{}'),
+          pathCount: row.path_count,
+          imageCount: row.image_count,
+          thumbnail: row.thumbnail,
+          type: row.type || 'sticker',
+          paths: JSON.parse(row.paths || '[]'),
+          createdAt: row.created_at
+        }
+      });
+
+    } catch (err) {
+      console.error('[Studio3 Catalog] Get error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Delete a Studio3 catalog entry
+  if (req.method === 'DELETE' && parsedUrl.pathname.startsWith('/api/studio3/catalog/')) {
+    if (!requireInternalKey(req, res)) return;
+
+    const id = decodeURIComponent(parsedUrl.pathname.replace('/api/studio3/catalog/', ''));
+
+    try {
+      const db = require('./db').getDb();
+      db.prepare(`DELETE FROM studio3_catalog WHERE id = ?`).run(id);
+      console.log(`[Studio3 Catalog] Deleted: ${id}`);
+      sendJson(res, 200, { success: true });
+
+    } catch (err) {
+      console.error('[Studio3 Catalog] Delete error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Bulk update Studio3 catalog entry types (sticker/decal)
+  if (req.method === 'PATCH' && parsedUrl.pathname === '/api/studio3/catalog') {
+    if (!requireInternalKey(req, res)) return;
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const { ids, type } = data;
+        const validType = (type === 'decal') ? 'decal' : 'sticker';
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+          sendJson(res, 400, { success: false, error: 'ids array is required' });
+          return;
+        }
+
+        const db = require('./db').getDb();
+        const stmt = db.prepare(`UPDATE studio3_catalog SET type = ? WHERE id = ?`);
+        const updateMany = db.transaction((items) => {
+          for (const id of items) stmt.run(validType, id);
+        });
+        updateMany(ids);
+
+        console.log(`[Studio3 Catalog] Bulk updated ${ids.length} items to type: ${validType}`);
+        sendJson(res, 200, { success: true, count: ids.length, type: validType });
+
+      } catch (err) {
+        console.error('[Studio3 Catalog] Bulk patch error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Update a single Studio3 catalog entry type (sticker/decal)
+  if (req.method === 'PATCH' && parsedUrl.pathname.startsWith('/api/studio3/catalog/')) {
+    if (!requireInternalKey(req, res)) return;
+
+    const id = decodeURIComponent(parsedUrl.pathname.replace('/api/studio3/catalog/', ''));
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const validType = (data.type === 'decal') ? 'decal' : 'sticker';
+
+        const db = require('./db').getDb();
+        db.prepare(`UPDATE studio3_catalog SET type = ? WHERE id = ?`).run(validType, id);
+        console.log(`[Studio3 Catalog] Updated type: ${id} -> ${validType}`);
+        sendJson(res, 200, { success: true, id, type: validType });
+
+      } catch (err) {
+        console.error('[Studio3 Catalog] Patch error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // ===== CONTOUR TRAINING API =====
+  // Train contour style from Studio3 catalog
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/contour/train') {
+    if (!requireInternalKey(req, res)) return;
+
+    try {
+      const dbModule = require('./db');
+      const db = dbModule.getDb();
+      const contourTrainer = require('./lib/contour-trainer');
+      const stickerGen = require('./sticker-sheet-generator');
+
+      // Check that we have any files to train on
+      const totalWithPaths = db.prepare(`SELECT COUNT(*) as cnt FROM studio3_catalog WHERE path_count > 0`).get();
+      if (totalWithPaths.cnt === 0) {
+        sendJson(res, 400, { success: false, error: 'No Studio3 files with paths in catalog. Import .studio3 files first.' });
+        return;
+      }
+
+      // Train separate sticker and decal profiles
+      const results = await contourTrainer.trainBothProfiles(db);
+
+      // Reload profiles in sticker generator
+      stickerGen.reloadStyleProfile();
+
+      const stickerCount = results.sticker?.sampleCount || 0;
+      const decalCount = results.decal?.sampleCount || 0;
+      console.log(`[Contour Training] Trained sticker (${stickerCount} files) and decal (${decalCount} files)`);
+
+      sendJson(res, 200, {
+        success: true,
+        sticker: results.sticker ? {
+          sampleCount: results.sticker.sampleCount,
+          profile: results.sticker.profile,
+          errors: results.sticker.errors
+        } : null,
+        decal: results.decal ? {
+          sampleCount: results.decal.sampleCount,
+          profile: results.decal.profile,
+          errors: results.decal.errors
+        } : null
+      });
+
+    } catch (err) {
+      console.error('[Contour Training] Error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Get current style profile
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/contour/profile') {
+    if (!requireInternalKey(req, res)) return;
+
+    try {
+      const db = require('./db');
+      const contourTrainer = require('./lib/contour-trainer');
+      const dbInstance = db.getDb();
+
+      const stickerProfile = contourTrainer.loadStyleProfile(dbInstance, 'sticker');
+      const decalProfile = contourTrainer.loadStyleProfile(dbInstance, 'decal');
+
+      if (!stickerProfile && !decalProfile) {
+        sendJson(res, 404, { success: false, error: 'No style profiles found. Run training first.' });
+        return;
+      }
+
+      sendJson(res, 200, {
+        success: true,
+        sticker: stickerProfile || null,
+        decal: decalProfile || null
+      });
+
+    } catch (err) {
+      console.error('[Contour Profile] Error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Compare auto-generated contour to manual Studio3 contour
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/contour/compare') {
+    if (!requireInternalKey(req, res)) return;
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const { autoPath, manualPath, studio3Id } = data;
+
+        const contourTrainer = require('./lib/contour-trainer');
+
+        // If studio3Id provided, load manual path from catalog
+        let manual = manualPath;
+        if (studio3Id && !manual) {
+          const dbInstance = require('./db').getDb();
+          const row = dbInstance.prepare(`SELECT paths FROM studio3_catalog WHERE id = ?`).get(studio3Id);
+          if (row && row.paths) {
+            const paths = JSON.parse(row.paths);
+            manual = paths[0]; // Use first path
+          }
+        }
+
+        if (!autoPath || !manual) {
+          sendJson(res, 400, { success: false, error: 'Both autoPath and manualPath (or studio3Id) required' });
+          return;
+        }
+
+        const comparison = contourTrainer.compareContours(autoPath, manual);
+        sendJson(res, 200, { success: true, comparison });
+
+      } catch (err) {
+        console.error('[Contour Compare] Error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // ===== SKU CATALOG API - POS System =====
+
+  // List all SKU designs
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sku/designs') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const db = require('./db');
+      const activeOnly = parsedUrl.query.activeOnly === 'true';
+      const designs = db.listSkuDesigns({ activeOnly });
+      sendJson(res, 200, { success: true, designs });
+    } catch (err) {
+      console.error('[SKU Designs] List error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Create SKU design
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sku/designs') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const db = require('./db');
+        const design = db.createSkuDesign(data);
+        console.log(`[SKU Designs] Created: ${design.id} - ${design.name}`);
+        sendJson(res, 200, { success: true, design });
+      } catch (err) {
+        console.error('[SKU Designs] Create error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Get or update or delete specific SKU design
+  if (parsedUrl.pathname.startsWith('/api/sku/designs/')) {
+    const designId = decodeURIComponent(parsedUrl.pathname.replace('/api/sku/designs/', ''));
+
+    if (req.method === 'GET') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        const design = db.getSkuDesignById(designId);
+        if (!design) {
+          sendJson(res, 404, { success: false, error: 'Design not found' });
+          return;
+        }
+        const variants = db.listSkuVariants({ designId });
+        sendJson(res, 200, { success: true, design, variants });
+      } catch (err) {
+        console.error('[SKU Designs] Get error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'PUT') {
+      if (!requireInternalKey(req, res)) return;
+      collectRequestBody(req, async (error, body) => {
+        if (error) {
+          sendJson(res, 400, { success: false, error: 'Invalid request body' });
+          return;
+        }
+        try {
+          const data = JSON.parse(body);
+          const db = require('./db');
+          const design = db.updateSkuDesign(designId, data);
+          sendJson(res, 200, { success: true, design });
+        } catch (err) {
+          console.error('[SKU Designs] Update error:', err);
+          sendJson(res, 500, { success: false, error: err.message });
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        const result = db.deleteSkuDesign(designId);
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('[SKU Designs] Delete error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+  }
+
+  // List SKU variants (optionally by design)
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sku/variants') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const db = require('./db');
+      const designId = parsedUrl.query.designId;
+      const activeOnly = parsedUrl.query.activeOnly === 'true';
+      const variants = db.listSkuVariants({ designId, activeOnly });
+      sendJson(res, 200, { success: true, variants });
+    } catch (err) {
+      console.error('[SKU Variants] List error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Create SKU variant
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sku/variants') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const db = require('./db');
+        const variant = db.createSkuVariant(data);
+        console.log(`[SKU Variants] Created: ${variant.sku}`);
+        sendJson(res, 200, { success: true, variant });
+      } catch (err) {
+        console.error('[SKU Variants] Create error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Get variant by SKU code (for scanner lookup)
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/sku/variants/')) {
+    const sku = decodeURIComponent(parsedUrl.pathname.replace('/api/sku/variants/', ''));
+    // This endpoint can be public for QR scanning
+    try {
+      const db = require('./db');
+      const variant = db.getSkuVariantBySku(sku);
+      if (!variant) {
+        sendJson(res, 404, { success: false, error: 'SKU not found' });
+        return;
+      }
+      // Get design info for display
+      const design = db.getSkuDesignById(variant.designId);
+      sendJson(res, 200, {
+        success: true,
+        variant,
+        design: design ? { id: design.id, name: design.name, thumbnail: design.thumbnail } : null
+      });
+    } catch (err) {
+      console.error('[SKU Variants] Get error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Update or delete SKU variant by ID
+  if (parsedUrl.pathname.match(/^\/api\/sku\/variant\/[^/]+$/)) {
+    const variantId = decodeURIComponent(parsedUrl.pathname.replace('/api/sku/variant/', ''));
+
+    if (req.method === 'PUT') {
+      if (!requireInternalKey(req, res)) return;
+      collectRequestBody(req, async (error, body) => {
+        if (error) {
+          sendJson(res, 400, { success: false, error: 'Invalid request body' });
+          return;
+        }
+        try {
+          const data = JSON.parse(body);
+          const db = require('./db');
+          const variant = db.updateSkuVariant(variantId, data);
+          sendJson(res, 200, { success: true, variant });
+        } catch (err) {
+          console.error('[SKU Variants] Update error:', err);
+          sendJson(res, 500, { success: false, error: err.message });
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        const result = db.deleteSkuVariant(variantId);
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('[SKU Variants] Delete error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+  }
+
+  // Record SKU scan (webhook target for QR codes)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sku/scan') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const { sku, scanType, cartSessionId } = data;
+        const db = require('./db');
+
+        // Look up variant
+        const variant = db.getSkuVariantBySku(sku);
+        if (!variant) {
+          sendJson(res, 404, { success: false, error: 'SKU not found' });
+          return;
+        }
+
+        // Record scan
+        const scanId = db.recordSkuScan({
+          variantId: variant.id,
+          sku,
+          scanType: scanType || 'sale',
+          cartSessionId
+        });
+
+        // Get design for response
+        const design = db.getSkuDesignById(variant.designId);
+
+        console.log(`[SKU Scan] ${sku} scanned (${scanType || 'sale'})`);
+        sendJson(res, 200, {
+          success: true,
+          scanId,
+          variant,
+          design: design ? { id: design.id, name: design.name, thumbnail: design.thumbnail } : null
+        });
+      } catch (err) {
+        console.error('[SKU Scan] Error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // ===== CART API - POS System =====
+
+  // Create new cart session
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/cart') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const db = require('./db');
+      const cart = db.createCartSession();
+      console.log(`[Cart] Created: ${cart.id}`);
+      sendJson(res, 200, { success: true, cart });
+    } catch (err) {
+      console.error('[Cart] Create error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Get active cart session
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/cart/active') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const db = require('./db');
+      let cart = db.getActiveCartSession();
+      if (!cart) {
+        // Create one if none exists
+        cart = db.createCartSession();
+      }
+      const items = db.listCartItems(cart.id);
+      sendJson(res, 200, { success: true, cart, items });
+    } catch (err) {
+      console.error('[Cart] Get active error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Cart operations by ID
+  if (parsedUrl.pathname.match(/^\/api\/cart\/[^/]+$/)) {
+    const cartId = decodeURIComponent(parsedUrl.pathname.replace('/api/cart/', ''));
+
+    if (req.method === 'GET') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        const cart = db.getCartSessionById(cartId);
+        if (!cart) {
+          sendJson(res, 404, { success: false, error: 'Cart not found' });
+          return;
+        }
+        const items = db.listCartItems(cartId);
+        sendJson(res, 200, { success: true, cart, items });
+      } catch (err) {
+        console.error('[Cart] Get error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      if (!requireInternalKey(req, res)) return;
+      try {
+        const db = require('./db');
+        db.updateCartSession(cartId, { status: 'abandoned' });
+        sendJson(res, 200, { success: true });
+      } catch (err) {
+        console.error('[Cart] Delete error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+  }
+
+  // Add item to cart
+  if (req.method === 'POST' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/items$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const cartId = decodeURIComponent(parsedUrl.pathname.replace('/api/cart/', '').replace('/items', ''));
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const { sku, quantity } = data;
+        const db = require('./db');
+
+        // Look up variant
+        const variant = db.getSkuVariantBySku(sku);
+        if (!variant) {
+          sendJson(res, 404, { success: false, error: 'SKU not found' });
+          return;
+        }
+
+        // Check if item already in cart
+        const existingItems = db.listCartItems(cartId);
+        const existing = existingItems.find(i => i.sku === sku);
+
+        let item;
+        if (existing) {
+          // Update quantity
+          item = db.updateCartItem(existing.id, { quantity: existing.quantity + (quantity || 1) });
+        } else {
+          // Add new item
+          item = db.addCartItem(cartId, {
+            variantId: variant.id,
+            sku,
+            quantity: quantity || 1,
+            unitPriceCents: variant.priceCents
+          });
+        }
+
+        const cart = db.getCartSessionById(cartId);
+        const items = db.listCartItems(cartId);
+        const design = db.getSkuDesignById(variant.designId);
+
+        console.log(`[Cart] Added ${sku} to ${cartId}`);
+        sendJson(res, 200, {
+          success: true,
+          item,
+          cart,
+          items,
+          addedVariant: variant,
+          addedDesign: design ? { id: design.id, name: design.name, thumbnail: design.thumbnail } : null
+        });
+      } catch (err) {
+        console.error('[Cart] Add item error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Update cart item quantity
+  if (req.method === 'PUT' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/items\/[^/]+$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const parts = parsedUrl.pathname.split('/');
+    const itemId = decodeURIComponent(parts[parts.length - 1]);
+
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { success: false, error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body);
+        const db = require('./db');
+        const item = db.updateCartItem(itemId, { quantity: data.quantity });
+        if (!item) {
+          sendJson(res, 404, { success: false, error: 'Item not found' });
+          return;
+        }
+        const cart = db.getCartSessionById(item.cartSessionId);
+        const items = db.listCartItems(item.cartSessionId);
+        sendJson(res, 200, { success: true, item, cart, items });
+      } catch (err) {
+        console.error('[Cart] Update item error:', err);
+        sendJson(res, 500, { success: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Remove cart item
+  if (req.method === 'DELETE' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/items\/[^/]+$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const parts = parsedUrl.pathname.split('/');
+    const cartId = decodeURIComponent(parts[3]);
+    const itemId = decodeURIComponent(parts[5]);
+
+    try {
+      const db = require('./db');
+      const result = db.removeCartItem(itemId);
+      if (!result.success) {
+        sendJson(res, 404, result);
+        return;
+      }
+      const cart = db.getCartSessionById(cartId);
+      const items = db.listCartItems(cartId);
+      sendJson(res, 200, { success: true, cart, items });
+    } catch (err) {
+      console.error('[Cart] Remove item error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Clear cart
+  if (req.method === 'POST' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/clear$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const cartId = decodeURIComponent(parsedUrl.pathname.replace('/api/cart/', '').replace('/clear', ''));
+
+    try {
+      const db = require('./db');
+      db.clearCartItems(cartId);
+      const cart = db.getCartSessionById(cartId);
+      sendJson(res, 200, { success: true, cart, items: [] });
+    } catch (err) {
+      console.error('[Cart] Clear error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Checkout cart - create Square payment link
+  if (req.method === 'POST' && parsedUrl.pathname.match(/^\/api\/cart\/[^/]+\/checkout$/)) {
+    if (!requireInternalKey(req, res)) return;
+    const cartId = decodeURIComponent(parsedUrl.pathname.replace('/api/cart/', '').replace('/checkout', ''));
+
+    try {
+      const db = require('./db');
+      const cart = db.getCartSessionById(cartId);
+      if (!cart) {
+        sendJson(res, 404, { success: false, error: 'Cart not found' });
+        return;
+      }
+
+      const items = db.listCartItems(cartId);
+      if (items.length === 0) {
+        sendJson(res, 400, { success: false, error: 'Cart is empty' });
+        return;
+      }
+
+      // Check if Square is configured
+      if (!process.env.SQUARE_ACCESS_TOKEN) {
+        sendJson(res, 503, { success: false, error: 'Square integration not configured' });
+        return;
+      }
+
+      const { SquareClient, SquareEnvironment } = require('square');
+      const squareClient = new SquareClient({
+        token: process.env.SQUARE_ACCESS_TOKEN,
+        environment: process.env.NODE_ENV === 'production' ? SquareEnvironment.Production : SquareEnvironment.Sandbox
+      });
+
+      // Build line items for Square
+      const lineItems = [];
+      for (const item of items) {
+        const variant = db.getSkuVariantBySku(item.sku);
+        const design = variant ? db.getSkuDesignById(variant.designId) : null;
+        lineItems.push({
+          name: design ? `${design.name} - ${variant.colorName} (${variant.sizeInches}")` : item.sku,
+          quantity: String(item.quantity),
+          basePriceMoney: {
+            amount: BigInt(item.unitPriceCents),
+            currency: 'USD'
+          }
+        });
+      }
+
+      // Create payment link
+      const response = await squareClient.checkout.paymentLinks.create({
+        idempotencyKey: `cart_${cartId}_${Date.now()}`,
+        quickPay: {
+          name: `POS Sale - ${items.length} item${items.length > 1 ? 's' : ''}`,
+          priceMoney: {
+            amount: BigInt(cart.totalCents),
+            currency: 'USD'
+          },
+          locationId: process.env.SQUARE_LOCATION_ID || (await getSquareLocationId(squareClient))
+        }
+      });
+
+      const paymentLink = response.result.paymentLink;
+
+      // Update cart with payment link
+      db.updateCartSession(cartId, {
+        status: 'checkout',
+        squarePaymentLink: paymentLink.url,
+        squareOrderId: paymentLink.orderId
+      });
+
+      console.log(`[Cart Checkout] ${cartId} -> ${paymentLink.url}`);
+      sendJson(res, 200, {
+        success: true,
+        paymentLink: paymentLink.url,
+        orderId: paymentLink.orderId,
+        cart: db.getCartSessionById(cartId)
+      });
+    } catch (err) {
+      console.error('[Cart Checkout] Error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // Get pricing table
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sku/pricing') {
+    try {
+      const db = require('./db');
+      const STICKER_PRICE_TABLE = {
+        2: { 1: 325, 2: 350, 3: 375 },
+        3: { 1: 350, 2: 375, 3: 400, 4: 425 },
+        4: { 1: 375, 2: 425, 3: 450, 4: 500 },
+        6: { 1: 425, 2: 500, 3: 575, 4: 700 },
+        8: { 1: 500, 2: 575, 3: 650, 4: 750 },
+        10: { 1: 575, 2: 650, 3: 750, 4: 850 },
+        12: { 1: 650, 2: 750, 3: 850, 4: 950 }
+      };
+      sendJson(res, 200, { success: true, priceTable: STICKER_PRICE_TABLE });
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
+  // ===== QR PRODUCT CATALOG API =====
+
+  // Product catalog management page (requires ?key= query param)
+  if (req.method === 'GET' && parsedUrl.pathname === '/product-catalog') {
+    if (!checkKioskKey(req, parsedUrl)) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    try {
+      const html = fs.readFileSync(path.join(WEB_DIR, 'product-catalog.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch (e) {
+      sendJson(res, 404, { error: 'Product catalog page not found' });
+    }
+    return;
+  }
+
+  // Public product detail endpoint (no auth - for QR code scanning)
+  if (req.method === 'GET' && parsedUrl.pathname.match(/^\/api\/products\/public\/[^/]+$/)) {
+    const productId = parsedUrl.pathname.split('/').pop();
+    try {
+      const db = require('./db');
+      const product = db.getQrProductById(productId);
+      if (!product || !product.active) {
+        sendJson(res, 404, { error: 'Product not found' });
+        return;
+      }
+      sendJson(res, 200, {
+        success: true,
+        product: {
+          id: product.id,
+          title: product.title,
+          description: product.description,
+          priceCents: product.priceCents,
+          photoUrl: product.photoPath ? `/product-photos/${path.basename(product.photoPath)}` : null,
+          category: product.category,
+          size: product.size,
+          color: product.color,
+          decalText: product.decalText,
+          isHeatTransfer: product.isHeatTransfer,
+          quantity: product.quantity
+        }
+      });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  // --- QR Product → Shopify sync helper ---
+  async function syncQrProductToShopify(productId, dbRef) {
+    try {
+      const product = dbRef.getQrProductById(productId);
+      if (!product) return { productId, success: false, error: 'Product not found.' };
+
+      const storeBaseUrl = (process.env.STORE_BASE_URL || 'https://store.swayzecustomvinyl.com').replace(/\/$/, '');
+      let isUpdate = !!product.shopifyProductId;
+      let existingProductId = product.shopifyProductId || null;
+
+      // Check Shopify for existing product by tag if no local ID stored
+      if (!existingProductId) {
+        try {
+          const found = await shopify.findProductByTag(`qr-product-${productId}`);
+          if (found && found.id) {
+            existingProductId = found.id;
+            isUpdate = true;
+            dbRef.updateQrProduct(productId, { shopifyProductId: String(found.id), shopifyHandle: found.handle || null });
+          }
+        } catch (_) { /* not found, will create */ }
+      }
+
+      // Build image array
+      const images = [];
+      if (product.photoPath) {
+        const photoFilename = path.basename(product.photoPath);
+        images.push({ src: `${storeBaseUrl}/product-photos/${encodeURIComponent(photoFilename)}`, position: 1 });
+      }
+
+      // Build description HTML
+      let bodyHtml = '';
+      if (product.description) bodyHtml += `<p>${product.description}</p>`;
+      const details = [];
+      if (product.size) details.push(`Size: ${product.size}`);
+      if (product.color) details.push(`Color: ${product.color}`);
+      if (product.isHeatTransfer) details.push('Heat Transfer Vinyl');
+      if (details.length) bodyHtml += `<p>${details.join(' &bull; ')}</p>`;
+
+      // Build tags
+      const tags = ['qr-product', `qr-product-${productId}`];
+      if (product.category) tags.push(product.category.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
+      if (product.isHeatTransfer) tags.push('heat-transfer');
+
+      // Determine product_type from category
+      const productType = product.category || (product.isHeatTransfer ? 'Heat Transfer' : 'Decal');
+
+      const shopifyPayload = {
+        title: product.title,
+        body_html: bodyHtml || product.title,
+        vendor: 'Blue Ridge Custom Co',
+        product_type: productType,
+        tags: tags.join(', '),
+        status: product.active ? 'active' : 'draft'
+      };
+      if (images.length) shopifyPayload.images = images;
+
+      // Single variant — only sent on create
+      if (!isUpdate) {
+        shopifyPayload.variants = [{
+          price: (product.priceCents / 100).toFixed(2),
+          sku: `QR-${productId}`,
+          inventory_management: 'shopify',
+          inventory_policy: 'deny',
+          requires_shipping: true,
+          taxable: true
+        }];
+      }
+
+      let resultProduct;
+      if (isUpdate) {
+        try {
+          resultProduct = await shopify.updateProduct(existingProductId, shopifyPayload);
+        } catch (upErr) {
+          if (upErr?.status === 404 || String(upErr?.message || '').includes('Not Found')) {
+            console.log(`[QR Shopify] Product ${existingProductId} gone from Shopify, creating new...`);
+            dbRef.updateQrProduct(productId, { shopifyProductId: null, shopifyHandle: null });
+            shopifyPayload.variants = [{
+              price: (product.priceCents / 100).toFixed(2),
+              sku: `QR-${productId}`,
+              inventory_management: 'shopify',
+              inventory_policy: 'deny',
+              requires_shipping: true,
+              taxable: true
+            }];
+            resultProduct = await shopify.createProduct(shopifyPayload);
+            isUpdate = false;
+          } else {
+            throw upErr;
+          }
+        }
+      } else {
+        resultProduct = await shopify.createProduct(shopifyPayload);
+      }
+
+      if (!resultProduct?.id) {
+        return { productId, success: false, error: 'Shopify did not return a product ID.' };
+      }
+
+      // Store Shopify IDs locally
+      dbRef.updateQrProduct(productId, {
+        shopifyProductId: String(resultProduct.id),
+        shopifyHandle: resultProduct.handle || null
+      });
+
+      // Publish to all sales channels
+      await shopify.publishEverywhere(resultProduct.id).catch(e => {
+        console.log('[QR Shopify] publishEverywhere warning:', e?.message || e);
+      });
+
+      console.log(`[QR Shopify] ${isUpdate ? 'Updated' : 'Created'} "${product.title}" → Shopify ID ${resultProduct.id}`);
+      return { productId, success: true, shopifyProductId: String(resultProduct.id), handle: resultProduct.handle, updated: isUpdate };
+    } catch (e) {
+      console.error(`[QR Shopify] Error syncing ${productId}:`, e);
+      return { productId, success: false, error: e?.message || String(e) };
+    }
+  }
+
+  // All other product endpoints require API key
+  if (parsedUrl.pathname.startsWith('/api/products')) {
+    if (!requireInternalKey(req, res)) return;
+
+    const db = require('./db');
+
+    // GET /api/products - list products
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/products') {
+      try {
+        const products = db.listQrProducts({
+          activeOnly: parsedUrl.query.activeOnly === 'true',
+          category: parsedUrl.query.category || undefined,
+          search: parsedUrl.query.search || undefined
+        });
+        // Add photo URLs
+        const productsWithUrls = products.map(p => ({
+          ...p,
+          photoUrl: p.photoPath ? `/product-photos/${path.basename(p.photoPath)}` : null
+        }));
+        sendJson(res, 200, { success: true, products: productsWithUrls });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // GET /api/products/categories - list categories
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/products/categories') {
+      try {
+        const categories = db.listQrProductCategories();
+        sendJson(res, 200, { success: true, categories });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // POST /api/products - create product
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/products') {
+      try {
+        const body = await getReqBodyJson(req);
+        if (!body.title) {
+          sendJson(res, 400, { error: 'Title is required' });
+          return;
+        }
+        const product = db.createQrProduct({
+          title: body.title,
+          description: body.description || '',
+          priceCents: parseInt(body.priceCents, 10) || 0,
+          category: body.category || '',
+          size: body.size || '',
+          color: body.color || '',
+          decalText: body.decalText || '',
+          isHeatTransfer: !!body.isHeatTransfer,
+          quantity: parseInt(body.quantity, 10) || 1
+        });
+        sendJson(res, 201, { success: true, product });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // POST /api/products/:id/photo - upload photo
+    const photoMatch = parsedUrl.pathname.match(/^\/api\/products\/([^/]+)\/photo$/);
+    if (req.method === 'POST' && photoMatch) {
+      const productId = photoMatch[1];
+      try {
+        const existing = db.getQrProductById(productId);
+        if (!existing) {
+          sendJson(res, 404, { error: 'Product not found' });
+          return;
+        }
+
+        const productsDir = path.join(LIBRARY_ROOT, 'uploads', 'products');
+        if (!fs.existsSync(productsDir)) {
+          fs.mkdirSync(productsDir, { recursive: true });
+        }
+
+        const { files } = await parseMultipartForm(req, {
+          uploadDir: productsDir,
+          maxFiles: 1,
+          maxFileSize: 10 * 1024 * 1024
+        });
+
+        const upload = listFormFiles(files.photo || files.file || files.image)[0];
+        if (!upload || !upload.filepath) {
+          sendJson(res, 400, { error: 'No photo uploaded' });
+          return;
+        }
+
+        // Rename to a safe filename
+        const ext = path.extname(upload.originalFilename || '.jpg').toLowerCase();
+        const safeExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext) ? ext : '.jpg';
+        const finalName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${safeExt}`;
+        const finalPath = path.join(productsDir, finalName);
+        fs.renameSync(upload.filepath, finalPath);
+
+        // Delete old photo if exists
+        if (existing.photoPath) {
+          try { fs.unlinkSync(existing.photoPath); } catch (_) {}
+        }
+
+        const updated = db.updateQrProduct(productId, { photoPath: finalPath });
+        sendJson(res, 200, {
+          success: true,
+          product: {
+            ...updated,
+            photoUrl: `/product-photos/${finalName}`
+          }
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // GET /api/products/:id - get single product
+    const getMatch = parsedUrl.pathname.match(/^\/api\/products\/([^/]+)$/);
+    if (req.method === 'GET' && getMatch) {
+      try {
+        const product = db.getQrProductById(getMatch[1]);
+        if (!product) {
+          sendJson(res, 404, { error: 'Product not found' });
+          return;
+        }
+        sendJson(res, 200, {
+          success: true,
+          product: {
+            ...product,
+            photoUrl: product.photoPath ? `/product-photos/${path.basename(product.photoPath)}` : null
+          }
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // PUT /api/products/:id - update product
+    const putMatch = parsedUrl.pathname.match(/^\/api\/products\/([^/]+)$/);
+    if (req.method === 'PUT' && putMatch) {
+      try {
+        const body = await getReqBodyJson(req);
+        const updated = db.updateQrProduct(putMatch[1], body);
+        if (!updated) {
+          sendJson(res, 404, { error: 'Product not found' });
+          return;
+        }
+        sendJson(res, 200, {
+          success: true,
+          product: {
+            ...updated,
+            photoUrl: updated.photoPath ? `/product-photos/${path.basename(updated.photoPath)}` : null
+          }
+        });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // DELETE /api/products/:id - delete product
+    const delMatch = parsedUrl.pathname.match(/^\/api\/products\/([^/]+)$/);
+    if (req.method === 'DELETE' && delMatch) {
+      try {
+        const result = db.deleteQrProduct(delMatch[1]);
+        if (!result.success) {
+          sendJson(res, 404, { error: result.error });
+          return;
+        }
+        // Delete photo file
+        if (result.deleted.photoPath) {
+          try { fs.unlinkSync(result.deleted.photoPath); } catch (_) {}
+        }
+        sendJson(res, 200, { success: true });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // POST /api/products/shopify/export - export QR product(s) to Shopify
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/products/shopify/export') {
+      try {
+        const body = await getReqBodyJson(req);
+        const productIds = body?.productIds || (body?.productId ? [body.productId] : []);
+        if (!Array.isArray(productIds) || !productIds.length) {
+          sendJson(res, 400, { error: 'productIds array or productId is required.' });
+          return;
+        }
+        if (!shopify.isConfigured()) {
+          sendJson(res, 503, { error: 'Shopify is not configured.' });
+          return;
+        }
+        const results = [];
+        for (const pid of productIds) {
+          results.push(await syncQrProductToShopify(pid, db));
+        }
+        sendJson(res, 200, { success: true, results });
+      } catch (e) {
+        console.error('[QR Shopify] Export error:', e);
+        sendJson(res, 500, { error: e?.message || 'Unable to export to Shopify.' });
+      }
+      return;
+    }
+
+    // POST /api/products/shopify/export-all - export all active QR products to Shopify
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/products/shopify/export-all') {
+      try {
+        if (!shopify.isConfigured()) {
+          sendJson(res, 503, { error: 'Shopify is not configured.' });
+          return;
+        }
+        const allProducts = db.listQrProducts({ activeOnly: true });
+        if (!allProducts.length) {
+          sendJson(res, 200, { success: true, total: 0, synced: 0, failed: 0, results: [] });
+          return;
+        }
+        const results = [];
+        for (const product of allProducts) {
+          results.push(await syncQrProductToShopify(product.id, db));
+        }
+        const synced = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+        sendJson(res, 200, { success: true, total: allProducts.length, synced, failed, results });
+      } catch (e) {
+        console.error('[QR Shopify] Export-all error:', e);
+        sendJson(res, 500, { error: e?.message || 'Unable to batch export.' });
+      }
+      return;
+    }
+
+    // POST /api/products/generate-labels - generate label sticker sheets
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/products/generate-labels') {
+      try {
+        const body = await getReqBodyJson(req);
+        const { productIds, format } = body;
+
+        if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+          sendJson(res, 400, { error: 'productIds array is required' });
+          return;
+        }
+
+        const labelFormat = format || 'sticker-sheet';
+        const validFormats = ['sticker-sheet', 'avery-5160', 'silhouette-grid'];
+        if (!validFormats.includes(labelFormat)) {
+          sendJson(res, 400, { error: `Invalid format. Must be one of: ${validFormats.join(', ')}` });
+          return;
+        }
+
+        // Fetch all requested products
+        const products = [];
+        for (const id of productIds) {
+          const product = db.getQrProductById(id);
+          if (product) {
+            products.push(product);
+          } else {
+            console.warn(`[Labels] Product not found: ${id}`);
+          }
+        }
+
+        if (products.length === 0) {
+          sendJson(res, 404, { error: 'No valid products found' });
+          return;
+        }
+
+        // Determine base URL and photo directory
+        const baseUrl = process.env.ASSET_BASE_URL || `https://${req.headers.host}`;
+        const photoDir = path.join(LIBRARY_ROOT, 'uploads', 'products');
+
+        // Generate timestamp-based output directory
+        const prefix = labelFormat === 'avery-5160' ? 'avery-labels' : labelFormat === 'silhouette-grid' ? 'silhouette-labels' : 'product-labels';
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const outputDir = path.join(STICKER_OUTPUT_DIR, `${prefix}-${timestamp}`);
+        await fs.promises.mkdir(outputDir, { recursive: true });
+
+        console.log(`[Labels] Generating ${labelFormat} sheets for ${products.length} products -> ${outputDir}`);
+
+        let result;
+        if (labelFormat === 'avery-5160') {
+          result = await stickerSheets.generateAvery5160Sheets(products, baseUrl, photoDir, outputDir, prefix);
+        } else if (labelFormat === 'silhouette-grid') {
+          result = await stickerSheets.generateSilhouetteGridSheets(products, baseUrl, photoDir, outputDir, prefix);
+        } else {
+          result = await stickerSheets.generateProductLabelSheets(products, baseUrl, photoDir, outputDir, prefix);
+        }
+
+        // Build web-accessible URLs for sheets
+        const sheets = (result.sheets || []).map(sheet => {
+          return {
+            ...sheet,
+            printUrl: `/sticker-sheets/${prefix}-${timestamp}/${sheet.printFilename}`,
+            cutUrl: sheet.cutFilename ? `/sticker-sheets/${prefix}-${timestamp}/${sheet.cutFilename}` : undefined,
+            cricutUrl: sheet.cricutFilename ? `/sticker-sheets/${prefix}-${timestamp}/${sheet.cricutFilename}` : undefined
+          };
+        });
+
+        sendJson(res, 200, {
+          success: true,
+          format: labelFormat,
+          totalSheets: result.totalSheets,
+          totalStickers: result.totalStickers,
+          batchName: `${prefix}-${timestamp}`,
+          sheets,
+          outputDir: result.outputDir
+        });
+      } catch (err) {
+        console.error('[Label Generate Error]', err);
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    sendJson(res, 404, { error: 'Unknown product endpoint' });
     return;
   }
 
@@ -6625,6 +8825,48 @@ const requestHandler = async (req, res) => {
     handleLeonardoRoute(parsedUrl.pathname, req, res).catch(err => {
       console.error('[Leonardo API Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Multiboard Designer API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/multiboard')) {
+    if (!requireInternalKey(req, res)) return;
+    handleMultiboardRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Multiboard API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Multiboard How-To API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/howtos')) {
+    // Allow image requests without API key (used in build doc browser windows)
+    const isImageReq = parsedUrl.pathname.startsWith('/api/howtos/images/');
+    if (!isImageReq && !requireInternalKey(req, res)) return;
+    handleHowtoRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Howtos API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Slicer API (3D model catalog, slicing, G-code cache)
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/slicer')) {
+    if (!requireInternalKey(req, res)) return;
+    handleSlicerRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Slicer API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Print Quotes API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/quotes')) {
+    if (!requireInternalKey(req, res)) return;
+    handleQuoteRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Quotes API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;
   }
@@ -8199,232 +10441,6 @@ const requestHandler = async (req, res) => {
   }
 
   // ============================================================================
-  // PRINT STATION CATALOG API - shared staging catalog for all print stations
-  // ============================================================================
-  if (segments[0] === 'api' && segments[1] === 'print-station-catalog') {
-    if (!requireInternalKey(req, res)) return;
-
-    // GET /api/print-station-catalog - List items
-    // GET /api/print-station-catalog/:id - Get single item
-    if (req.method === 'GET') {
-      if (segments[2] === 'categories') {
-        // GET /api/print-station-catalog/categories - List categories with counts
-        try {
-          const categories = db.listPrintStationCatalogCategories();
-          sendJson(res, 200, { success: true, categories });
-        } catch (err) {
-          console.error('Unable to list print station categories:', err);
-          sendJson(res, 500, { error: 'Unable to list categories.' });
-        }
-        return;
-      }
-
-      if (segments[2] === 'phashes') {
-        // GET /api/print-station-catalog/phashes - Get all phashes for deduplication
-        try {
-          const phashes = db.getAllPrintStationPhashes();
-          sendJson(res, 200, { success: true, phashes });
-        } catch (err) {
-          console.error('Unable to get phashes:', err);
-          sendJson(res, 500, { error: 'Unable to get phashes.' });
-        }
-        return;
-      }
-
-      if (segments[2]) {
-        // GET /api/print-station-catalog/:id - Get single item
-        const itemId = sanitizeCopy(segments[2], 80);
-        const item = db.getPrintStationCatalogItemById(itemId);
-        if (!item) {
-          sendJson(res, 404, { error: 'Item not found.' });
-          return;
-        }
-        sendJson(res, 200, { success: true, item });
-        return;
-      }
-
-      // GET /api/print-station-catalog - List items with optional filters
-      try {
-        const query = parsedUrl.query || {};
-        const items = db.listPrintStationCatalogItems({
-          status: query.status,
-          search: query.search,
-          category: query.category,
-          limit: query.limit ? parseInt(query.limit, 10) : 500,
-          offset: query.offset ? parseInt(query.offset, 10) : 0
-        });
-        sendJson(res, 200, { success: true, items });
-      } catch (err) {
-        console.error('Unable to list print station catalog:', err);
-        sendJson(res, 500, { error: 'Unable to list catalog.' });
-      }
-      return;
-    }
-
-    // POST /api/print-station-catalog - Create or upsert item
-    if (req.method === 'POST' && segments.length === 2) {
-      collectRequestBody(req, (error, body) => {
-        if (error) {
-          sendJson(res, 413, { error: error.message });
-          return;
-        }
-        try {
-          const payload = body ? JSON.parse(body || '{}') : {};
-          if (!payload.originalPath) {
-            sendJson(res, 400, { error: 'originalPath is required.' });
-            return;
-          }
-          const item = db.upsertPrintStationCatalogItem({
-            originalPath: payload.originalPath,
-            category: payload.category,
-            title: payload.title,
-            fileType: payload.fileType,
-            size: payload.size,
-            hash: payload.hash,
-            phash: payload.phash,
-            optimizedPath: payload.optimizedPath,
-            tags: payload.tags,
-            status: payload.status,
-            importedBy: payload.importedBy
-          });
-          sendJson(res, 201, { success: true, item });
-        } catch (err) {
-          console.error('Unable to create print station catalog item:', err);
-          sendJson(res, 500, { error: err.message || 'Unable to create item.' });
-        }
-      });
-      return;
-    }
-
-    // POST /api/print-station-catalog/batch - Batch upsert items
-    if (req.method === 'POST' && segments[2] === 'batch') {
-      collectRequestBody(req, (error, body) => {
-        if (error) {
-          sendJson(res, 413, { error: error.message });
-          return;
-        }
-        try {
-          const payload = body ? JSON.parse(body || '{}') : {};
-          const items = payload.items || [];
-          if (!Array.isArray(items) || items.length === 0) {
-            sendJson(res, 400, { error: 'items array is required.' });
-            return;
-          }
-          const results = items.map((itemData) => {
-            try {
-              return { success: true, item: db.upsertPrintStationCatalogItem(itemData) };
-            } catch (err) {
-              return { success: false, error: err.message, originalPath: itemData.originalPath };
-            }
-          });
-          sendJson(res, 201, { success: true, results });
-        } catch (err) {
-          console.error('Unable to batch create print station catalog items:', err);
-          sendJson(res, 500, { error: err.message || 'Unable to batch create items.' });
-        }
-      });
-      return;
-    }
-
-    // POST /api/print-station-catalog/approve-category - Approve all items in a category
-    if (req.method === 'POST' && segments[2] === 'approve-category') {
-      collectRequestBody(req, (error, body) => {
-        if (error) {
-          sendJson(res, 413, { error: error.message });
-          return;
-        }
-        try {
-          const payload = body ? JSON.parse(body || '{}') : {};
-          const count = db.approvePrintStationCategory(payload.category);
-          sendJson(res, 200, { success: true, updated: count });
-        } catch (err) {
-          console.error('Unable to approve category:', err);
-          sendJson(res, 500, { error: err.message || 'Unable to approve category.' });
-        }
-      });
-      return;
-    }
-
-    // PATCH /api/print-station-catalog/:id - Update single item
-    if (req.method === 'PATCH' && segments[2]) {
-      const itemId = sanitizeCopy(segments[2], 80);
-      const existing = db.getPrintStationCatalogItemById(itemId);
-      if (!existing) {
-        sendJson(res, 404, { error: 'Item not found.' });
-        return;
-      }
-
-      collectRequestBody(req, (error, body) => {
-        if (error) {
-          sendJson(res, 413, { error: error.message });
-          return;
-        }
-        try {
-          const payload = body ? JSON.parse(body || '{}') : {};
-          const updated = db.updatePrintStationCatalogItem(itemId, {
-            originalPath: payload.originalPath,
-            category: payload.category,
-            title: payload.title,
-            fileType: payload.fileType,
-            size: payload.size,
-            hash: payload.hash,
-            phash: payload.phash,
-            optimizedPath: payload.optimizedPath,
-            tags: payload.tags,
-            status: payload.status
-          });
-          sendJson(res, 200, { success: true, item: updated });
-        } catch (err) {
-          console.error('Unable to update print station catalog item:', err);
-          sendJson(res, 500, { error: err.message || 'Unable to update item.' });
-        }
-      });
-      return;
-    }
-
-    // PATCH /api/print-station-catalog - Batch update multiple items
-    if (req.method === 'PATCH' && segments.length === 2) {
-      collectRequestBody(req, (error, body) => {
-        if (error) {
-          sendJson(res, 413, { error: error.message });
-          return;
-        }
-        try {
-          const payload = body ? JSON.parse(body || '{}') : {};
-          const ids = payload.ids || [];
-          if (!Array.isArray(ids) || ids.length === 0) {
-            sendJson(res, 400, { error: 'ids array is required.' });
-            return;
-          }
-          const count = db.updateManyPrintStationCatalogItems(ids, payload.updates || {});
-          sendJson(res, 200, { success: true, updated: count });
-        } catch (err) {
-          console.error('Unable to batch update print station catalog items:', err);
-          sendJson(res, 500, { error: err.message || 'Unable to batch update items.' });
-        }
-      });
-      return;
-    }
-
-    // DELETE /api/print-station-catalog/:id - Delete single item
-    if (req.method === 'DELETE' && segments[2]) {
-      const itemId = sanitizeCopy(segments[2], 80);
-      try {
-        const result = db.deletePrintStationCatalogItem(itemId);
-        if (!result.success) {
-          sendJson(res, 404, { error: result.error });
-          return;
-        }
-        sendJson(res, 200, { success: true, deleted: result.deleted });
-      } catch (err) {
-        console.error('Unable to delete print station catalog item:', err);
-        sendJson(res, 500, { error: err.message || 'Unable to delete item.' });
-      }
-      return;
-    }
-  }
-
-  // ============================================================================
   // DATABASE BACKUP API
   // ============================================================================
   if (segments[0] === 'api' && segments[1] === 'backups') {
@@ -8703,6 +10719,123 @@ const requestHandler = async (req, res) => {
 
   if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/artwork') {
     handleArtworkUpload(req, res);
+    return;
+  }
+
+  // =====================================================
+  // Export Mockups to Google Drive folder structure
+  // =====================================================
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/export-mockups') {
+    const { spawn } = require('child_process');
+    const scriptPath = path.join(__dirname, '..', 'scripts', 'export-mockups-to-drive.js');
+
+    // Check if script exists
+    if (!fs.existsSync(scriptPath)) {
+      sendJson(res, 404, { error: 'Export script not found' });
+      return;
+    }
+
+    // Run the export script
+    const child = spawn('node', [scriptPath], {
+      cwd: path.join(__dirname, '..'),
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        // Parse stats from output
+        const statsMatch = stdout.match(/Campaigns: (\d+)[\s\S]*Customer Orders: (\d+)[\s\S]*Total Files: (\d+)/);
+        const exportPath = path.join(__dirname, '..', 'exports', 'google-drive-mockups');
+
+        sendJson(res, 200, {
+          success: true,
+          message: 'Export completed successfully',
+          exportPath: exportPath,
+          stats: statsMatch ? {
+            campaigns: parseInt(statsMatch[1], 10),
+            customerOrders: parseInt(statsMatch[2], 10),
+            totalFiles: parseInt(statsMatch[3], 10)
+          } : null,
+          output: stdout
+        });
+      } else {
+        sendJson(res, 500, {
+          success: false,
+          error: 'Export failed',
+          stderr: stderr,
+          stdout: stdout,
+          exitCode: code
+        });
+      }
+    });
+
+    child.on('error', (err) => {
+      sendJson(res, 500, {
+        success: false,
+        error: `Failed to run export script: ${err.message}`
+      });
+    });
+    return;
+  }
+
+  // =====================================================
+  // Sync Catalog Items to Google Drive
+  // =====================================================
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/gdrive/sync-catalog') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { error: 'Invalid request body' });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(body);
+        const { items, category } = data;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+          sendJson(res, 400, { error: 'No items provided' });
+          return;
+        }
+
+        // Use gdrive-sync library
+        const gdriveSync = require('./lib/gdrive-sync');
+
+        // Convert items to the format expected by syncCatalogItems
+        const syncItems = items.map(item => ({
+          category: item.category || category,
+          subPath: item.subPath || `uploads/previews/${item.filename}`,
+          source: item.source || 'library'
+        }));
+
+        const decalCount = syncItems.filter(i => i.source === 'decal-icons').length;
+        const libraryCount = syncItems.filter(i => i.source === 'library').length;
+        console.log(`[GDrive Sync] Syncing ${syncItems.length} items (${libraryCount} library, ${decalCount} decal-icons)`);
+
+        const result = await gdriveSync.syncCatalogItems(syncItems);
+
+        sendJson(res, 200, {
+          success: result.success,
+          synced: result.synced,
+          failed: result.failed,
+          errors: result.errors,
+          message: `Synced ${result.synced} items to Google Drive Canva folder`
+        });
+      } catch (err) {
+        console.error('[GDrive Sync] Error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+    });
     return;
   }
 
@@ -10810,6 +12943,53 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // Serve campaign mockups - route /api/uploads/campaigns/mockups/:filename
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/uploads/campaigns/mockups/')) {
+    const filename = parsedUrl.pathname.replace('/api/uploads/campaigns/mockups/', '');
+    if (!filename || filename.includes('..') || filename.includes('/')) {
+      sendJson(res, 400, { error: 'Invalid filename.' });
+      return;
+    }
+    // Try multiple possible locations for campaign mockups
+    const possibleDirs = [
+      path.join(CAMPAIGNS_DIR, 'mockups'),
+      path.join(WEB_DIR, 'library', 'data', 'campaigns', 'mockups'),
+      path.join(APP_ROOT, 'web', 'library', 'data', 'campaigns', 'mockups')
+    ];
+    let filePath = null;
+    for (const dir of possibleDirs) {
+      const candidate = path.join(dir, filename);
+      if (fs.existsSync(candidate)) {
+        filePath = candidate;
+        break;
+      }
+    }
+    if (!filePath) {
+      console.log(`[Campaign Mockup Serve] File not found in any location: ${filename}`);
+      console.log(`[Campaign Mockup Serve] Searched: ${possibleDirs.join(', ')}`);
+      sendJson(res, 404, { error: 'Campaign mockup not found.' });
+      return;
+    }
+    const ext = path.extname(filename).toLowerCase();
+    const mimeTypes = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp'
+    };
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Content-Length': stat.size,
+      'Cache-Control': 'public, max-age=86400',
+      'Access-Control-Allow-Origin': '*'
+    });
+    fs.createReadStream(filePath).pipe(res);
+    return;
+  }
+
   // ============================================================================
   // FACEBOOK POST SCHEDULING & MOCKUP TEMPLATE ENDPOINTS
   // ============================================================================
@@ -12139,9 +14319,13 @@ const requestHandler = async (req, res) => {
                     if (templateSuffix) updateFields.template_suffix = templateSuffix;
                     try { await shopify.updateProduct(created.id, updateFields); } catch (_) {}
                   }
+                  // Track that we need to upload images separately since initial create succeeded with images
+                  var imagesIncludedInCreate = true;
                 } catch (eCreate) {
                   console.error(`[Product Create] REST create failed: ${eCreate?.message}`);
                   // Fallback 1: ultra-minimal REST create (title + variants)
+                  // NOTE: Images are NOT included in fallback paths, so we must upload them separately
+                  var imagesIncludedInCreate = false;
                   try {
                     console.log(`[Product Create] Trying minimal REST create...`);
                     const minimal = { title, variants: variantsForApi.length ? variantsForApi : [{ price: (Number(priceCentsRaw)||0)/100 }] };
@@ -12170,8 +14354,11 @@ const requestHandler = async (req, res) => {
                     try { await shopify.updateProduct(created.id, updateFields); } catch (_) {}
                   }
                 }
-                // If images specified, attach them after product creation to avoid strict validation on create
-                if (created && created.id && imageUrls.length && !(String(process.env.SHOPIFY_API_VERSION||'') === '2024-10' || String(process.env.SHOPIFY_API_VERSION||'').startsWith('2024-'))) {
+                // If images specified, attach them after product creation
+                // Skip only if using 2024+ API AND images were successfully included in the initial create payload
+                const shouldUploadImagesSeparately = !imagesIncludedInCreate || !(String(process.env.SHOPIFY_API_VERSION||'') === '2024-10' || String(process.env.SHOPIFY_API_VERSION||'').startsWith('2024-'));
+                console.log(`[Image Upload] imagesIncludedInCreate=${imagesIncludedInCreate}, shouldUploadImagesSeparately=${shouldUploadImagesSeparately}, imageUrls.length=${imageUrls.length}`);
+                if (created && created.id && imageUrls.length && shouldUploadImagesSeparately) {
                   let imageSuccess = 0;
                   let imageFailed = 0;
                   for (const url of imageUrls) {
@@ -14681,6 +16868,39 @@ const requestHandler = async (req, res) => {
     return;
   }
 
+  // ============================================================================
+  // B2B PORTAL - SUBDOMAIN HANDLING
+  // ============================================================================
+  // Serve B2B portal files when accessed via b2b.* subdomain or /b2b/ path
+  const hostHeader = req.headers.host || '';
+  const isB2BSubdomain = hostHeader.startsWith('b2b.') || hostHeader.includes('b2b-portal');
+
+  if ((req.method === 'GET' || req.method === 'HEAD') && (isB2BSubdomain || parsedUrl.pathname.startsWith('/b2b/'))) {
+    let assetPath = parsedUrl.pathname;
+
+    // If B2B subdomain, serve from /b2b/ directory
+    if (isB2BSubdomain) {
+      assetPath = '/b2b' + (assetPath === '/' ? '' : assetPath);
+    }
+
+    // Remove /b2b prefix to get the file path within b2b directory
+    if (assetPath.startsWith('/b2b/')) {
+      assetPath = assetPath.slice(4); // Remove '/b2b'
+    } else if (assetPath === '/b2b') {
+      assetPath = '/';
+    }
+
+    // Default to index.html
+    if (assetPath === '/' || assetPath === '') {
+      assetPath = 'b2b/index.html';
+    } else {
+      assetPath = 'b2b' + assetPath;
+    }
+
+    serveWebAsset(req, res, assetPath);
+    return;
+  }
+
   // Serve index.html for root path
   if (
     (req.method === 'GET' || req.method === 'HEAD') &&
@@ -14695,6 +16915,68 @@ const requestHandler = async (req, res) => {
     (parsedUrl.pathname === '/kiosk' || parsedUrl.pathname === '/kiosk.html')
   ) {
     serveWebAsset(req, res, 'kiosk.html');
+    return;
+  }
+
+  // Serve product catalog photos
+  if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname.startsWith('/product-photos/')) {
+    const fileName = decodeURIComponent(parsedUrl.pathname.replace('/product-photos/', ''));
+    const productsDir = path.join(LIBRARY_ROOT, 'uploads', 'products');
+    const filePath = path.join(productsDir, fileName);
+
+    if (!filePath.startsWith(productsDir)) {
+      sendJson(res, 403, { error: 'Invalid path' });
+      return;
+    }
+
+    if (fs.existsSync(filePath)) {
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp'
+      };
+      res.writeHead(200, {
+        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+        'Cache-Control': 'public, max-age=86400'
+      });
+      fs.createReadStream(filePath).pipe(res);
+    } else {
+      sendJson(res, 404, { error: 'File not found' });
+    }
+    return;
+  }
+
+  // Serve kiosk promotion images
+  if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname.startsWith('/kiosk-promotions/')) {
+    const fileName = parsedUrl.pathname.replace('/kiosk-promotions/', '');
+    const promosDir = kioskManager.getPromotionsDir();
+    const filePath = path.join(promosDir, fileName);
+
+    // Security: prevent path traversal
+    if (!filePath.startsWith(promosDir)) {
+      sendJson(res, 403, { error: 'Invalid path' });
+      return;
+    }
+
+    if (fs.existsSync(filePath)) {
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm'
+      };
+      res.writeHead(200, {
+        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+        'Cache-Control': 'public, max-age=86400'
+      });
+      fs.createReadStream(filePath).pipe(res);
+    } else {
+      sendJson(res, 404, { error: 'File not found' });
+    }
     return;
   }
 
@@ -15351,89 +17633,6 @@ Return ONLY valid JSON, no markdown or explanation.`;
       });
     } catch (e) {
       console.error('[Mockup Backgrounds Upload] Error:', e);
-      sendJson(res, 500, { error: e?.message || 'Upload failed' });
-    }
-    return;
-  }
-
-  // Print Station Catalog - Upload optimized preview image
-  if (req.method === 'POST' && parsedUrl.pathname === '/api/print-station-catalog/upload') {
-    if (!requireInternalKey(req, res)) return;
-    try {
-      const contentType = req.headers['content-type'] || '';
-      if (!contentType.includes('multipart/form-data')) {
-        sendJson(res, 400, { error: 'Expected multipart/form-data' });
-        return;
-      }
-
-      const destDir = path.join(LIBRARY_ROOT, 'print-station-catalog');
-      await fs.promises.mkdir(destDir, { recursive: true });
-
-      const { fields, files } = await parseMultipartForm(req, {
-        uploadDir: destDir,
-        maxFileSize: 50 * 1024 * 1024,
-        filter: ({ mimetype }) => mimetype && mimetype.startsWith('image/')
-      });
-
-      const file = files.file?.[0] || files.file;
-      if (!file) {
-        sendJson(res, 400, { error: 'No file uploaded' });
-        return;
-      }
-
-      // Get hash from fields for naming (or generate unique id)
-      const hash = fieldValue(fields, 'hash') || crypto.randomBytes(8).toString('hex');
-      const itemId = fieldValue(fields, 'itemId');
-
-      console.log('[Print Station Catalog Upload] File received:', {
-        filepath: file.filepath,
-        originalFilename: file.originalFilename,
-        mimetype: file.mimetype,
-        size: file.size,
-        hash,
-        itemId
-      });
-
-      // Verify temp file exists
-      if (!fs.existsSync(file.filepath)) {
-        console.error('[Print Station Catalog Upload] Temp file does not exist:', file.filepath);
-        sendJson(res, 500, { error: 'Uploaded file not found on server' });
-        return;
-      }
-
-      const ext = path.extname(file.originalFilename || '').toLowerCase() || '.jpg';
-      const destFilename = `${hash}${ext}`;
-      const destPath = path.join(destDir, destFilename);
-
-      // Move uploaded file to destination (use copy+unlink for cross-filesystem support)
-      try {
-        await fs.promises.rename(file.filepath, destPath);
-      } catch (renameErr) {
-        console.log('[Print Station Catalog Upload] Rename failed, using copy:', renameErr.code);
-        await fs.promises.copyFile(file.filepath, destPath);
-        await fs.promises.unlink(file.filepath).catch(() => {});
-      }
-
-      const webPath = `/library/print-station-catalog/${destFilename}`;
-
-      // If itemId provided, update the catalog item with the optimized path
-      if (itemId) {
-        try {
-          db.updatePrintStationCatalogItem(itemId, { optimizedPath: webPath });
-        } catch (updateErr) {
-          console.warn('[Print Station Catalog Upload] Could not update item:', updateErr.message);
-        }
-      }
-
-      sendJson(res, 200, {
-        success: true,
-        filePath: webPath,
-        filename: destFilename,
-        hash,
-        itemId
-      });
-    } catch (e) {
-      console.error('[Print Station Catalog Upload] Error:', e);
       sendJson(res, 500, { error: e?.message || 'Upload failed' });
     }
     return;
@@ -16832,661 +19031,979 @@ Return ONLY valid JSON, no markdown or explanation.`;
   }
 
   // ============================================================================
-  // TIKTOK SHOP MANAGEMENT API
+  // B2B METAL PRINTS PORTAL API
   // ============================================================================
 
-  // GET /api/internal/tiktok-shop/publications — Get TikTok publication info
-  if (
-    req.method === 'GET' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'publications'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
-    try {
-      const pub = await shopify.findTikTokPublication();
-      if (!pub) {
-        sendJson(res, 200, { success: true, publication: null, message: 'TikTok sales channel not found' });
+  // Helper: Extract B2B auth token and validate session
+  function requireB2BAuth() {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) {
+      sendJson(res, 401, { error: 'Authorization required.' });
+      return null;
+    }
+    const user = db.getB2BUserByToken(token);
+    if (!user) {
+      sendJson(res, 401, { error: 'Invalid or expired session.' });
+      return null;
+    }
+    return user;
+  }
+
+  function requireB2BAdmin() {
+    const user = requireB2BAuth();
+    if (!user) return null;
+    if (user.role !== 'admin') {
+      sendJson(res, 403, { error: 'Admin access required.' });
+      return null;
+    }
+    return user;
+  }
+
+  // B2B Auth: Login
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/auth/login') {
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
         return;
       }
-      const products = await shopify.getProductsOnPublication(pub.id);
-      sendJson(res, 200, { success: true, publication: pub, productCount: products.length });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to get TikTok publication info.' });
+      try {
+        const payload = JSON.parse(body || '{}');
+        const user = db.verifyB2BCredentials(payload.email, payload.password);
+        if (!user) {
+          sendJson(res, 401, { error: 'Invalid email or password.' });
+          return;
+        }
+        const session = db.createB2BSession(user.id);
+        sendJson(res, 200, {
+          success: true,
+          token: session.token,
+          expiresAt: session.expiresAt,
+          user
+        });
+      } catch (err) {
+        console.error('[B2B] Login failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to log in.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Auth: Logout
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/auth/logout') {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (token) {
+      db.deleteB2BSession(token);
+    }
+    sendJson(res, 200, { success: true });
+    return;
+  }
+
+  // B2B Auth: Get Profile
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/b2b/auth/profile') {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const company = db.getB2BCompanyById(user.companyId);
+    sendJson(res, 200, { user, company });
+    return;
+  }
+
+  // B2B Company: List Users
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/b2b/company/users') {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const users = db.listB2BUsers(user.companyId);
+    sendJson(res, 200, { users });
+    return;
+  }
+
+  // B2B Company: Add User (Admin only)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/company/users') {
+    const admin = requireB2BAdmin();
+    if (!admin) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        if (!payload.email || !payload.password || !payload.name) {
+          sendJson(res, 400, { error: 'Email, password, and name are required.' });
+          return;
+        }
+        // Check if email already exists
+        const existing = db.getB2BUserByEmail(payload.email);
+        if (existing) {
+          sendJson(res, 400, { error: 'Email already registered.' });
+          return;
+        }
+        const newUser = db.createB2BUser({
+          companyId: admin.companyId,
+          email: payload.email,
+          password: payload.password,
+          name: payload.name,
+          phone: payload.phone,
+          role: payload.role || 'user'
+        });
+        sendJson(res, 201, { success: true, user: newUser });
+      } catch (err) {
+        console.error('[B2B] Add user failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to add user.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Company: Update User (Admin only)
+  const b2bUpdateUserMatch = parsedUrl.pathname.match(/^\/api\/b2b\/company\/users\/([^/]+)$/);
+  if (req.method === 'PATCH' && b2bUpdateUserMatch) {
+    const admin = requireB2BAdmin();
+    if (!admin) return;
+    const userId = b2bUpdateUserMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const targetUser = db.getB2BUserById(userId);
+        if (!targetUser || targetUser.companyId !== admin.companyId) {
+          sendJson(res, 404, { error: 'User not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const updated = db.updateB2BUser(userId, {
+          name: payload.name,
+          phone: payload.phone,
+          role: payload.role,
+          status: payload.status,
+          password: payload.password
+        });
+        sendJson(res, 200, { success: true, user: updated });
+      } catch (err) {
+        console.error('[B2B] Update user failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to update user.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Company: Delete User (Admin only)
+  if (req.method === 'DELETE' && b2bUpdateUserMatch) {
+    const admin = requireB2BAdmin();
+    if (!admin) return;
+    const userId = b2bUpdateUserMatch[1];
+    try {
+      const targetUser = db.getB2BUserById(userId);
+      if (!targetUser || targetUser.companyId !== admin.companyId) {
+        sendJson(res, 404, { error: 'User not found.' });
+        return;
+      }
+      if (targetUser.id === admin.id) {
+        sendJson(res, 400, { error: 'Cannot delete yourself.' });
+        return;
+      }
+      db.deleteB2BUser(userId);
+      sendJson(res, 200, { success: true });
+    } catch (err) {
+      console.error('[B2B] Delete user failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to delete user.' });
     }
     return;
   }
 
-  // GET /api/internal/tiktok-shop/products — List products on TikTok + local metadata
-  if (
-    req.method === 'GET' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'products'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+  // B2B Orders: List
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/b2b/orders') {
+    const user = requireB2BAuth();
+    if (!user) return;
     try {
-      const pub = await shopify.findTikTokPublication();
-      if (!pub) { sendJson(res, 200, { success: true, products: [] }); return; }
-      const liveProducts = await shopify.getProductsOnPublication(pub.id);
+      const status = parsedUrl.query.status;
+      const limit = parseInt(parsedUrl.query.limit) || 50;
+      const offset = parseInt(parsedUrl.query.offset) || 0;
+      const orders = db.listB2BOrders({ companyId: user.companyId, status, limit, offset });
+      sendJson(res, 200, { orders });
+    } catch (err) {
+      console.error('[B2B] List orders failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to list orders.' });
+    }
+    return;
+  }
 
-      // Enrich with local metadata
-      const tiktokDb = db.getDb();
-      const products = liveProducts.map(p => {
-        const local = tiktokDb.prepare('SELECT * FROM tiktok_shop_products WHERE shopify_product_id = ? OR shopify_gid = ?').get(p.numericId, p.id);
-        return {
-          ...p,
-          source: local?.source || 'other',
-          videoScript: local?.video_script || null,
-          marketResearch: local?.market_research || null,
-          notes: local?.notes || null,
-          localId: local?.id || null
-        };
+  // B2B Orders: Create
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/orders') {
+    const user = requireB2BAuth();
+    if (!user) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        const order = db.createB2BOrder({
+          companyId: user.companyId,
+          userId: user.id,
+          shippingName: payload.shippingName,
+          shippingAddressLine1: payload.shippingAddressLine1,
+          shippingAddressLine2: payload.shippingAddressLine2,
+          shippingCity: payload.shippingCity,
+          shippingState: payload.shippingState,
+          shippingZip: payload.shippingZip,
+          shippingCountry: payload.shippingCountry,
+          shippingPhone: payload.shippingPhone,
+          notes: payload.notes
+        });
+        sendJson(res, 201, { success: true, order });
+      } catch (err) {
+        console.error('[B2B] Create order failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to create order.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Orders: Get by ID
+  const b2bOrderMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)$/);
+  if (req.method === 'GET' && b2bOrderMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bOrderMatch[1];
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      const items = db.listB2BOrderItems(orderId);
+      sendJson(res, 200, { order, items });
+    } catch (err) {
+      console.error('[B2B] Get order failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to get order.' });
+    }
+    return;
+  }
+
+  // B2B Orders: Update
+  if (req.method === 'PATCH' && b2bOrderMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bOrderMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const order = db.getB2BOrderById(orderId);
+        if (!order || order.companyId !== user.companyId) {
+          sendJson(res, 404, { error: 'Order not found.' });
+          return;
+        }
+        if (order.status !== 'draft') {
+          sendJson(res, 400, { error: 'Cannot modify submitted order.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const updated = db.updateB2BOrder(orderId, {
+          shippingName: payload.shippingName,
+          shippingAddressLine1: payload.shippingAddressLine1,
+          shippingAddressLine2: payload.shippingAddressLine2,
+          shippingCity: payload.shippingCity,
+          shippingState: payload.shippingState,
+          shippingZip: payload.shippingZip,
+          shippingCountry: payload.shippingCountry,
+          shippingPhone: payload.shippingPhone,
+          notes: payload.notes
+        });
+        sendJson(res, 200, { success: true, order: updated });
+      } catch (err) {
+        console.error('[B2B] Update order failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to update order.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Orders: Add Item
+  const b2bAddItemMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/items$/);
+  if (req.method === 'POST' && b2bAddItemMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bAddItemMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const order = db.getB2BOrderById(orderId);
+        if (!order || order.companyId !== user.companyId) {
+          sendJson(res, 404, { error: 'Order not found.' });
+          return;
+        }
+        if (order.status !== 'draft') {
+          sendJson(res, 400, { error: 'Cannot modify submitted order.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        if (!payload.size) {
+          sendJson(res, 400, { error: 'Size is required.' });
+          return;
+        }
+        const item = db.addB2BOrderItem(orderId, {
+          size: payload.size,
+          quantity: payload.quantity || 1,
+          customDimensions: payload.customDimensions,
+          notes: payload.notes
+        });
+        sendJson(res, 201, { success: true, item });
+      } catch (err) {
+        console.error('[B2B] Add item failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to add item.' });
+      }
+    });
+    return;
+  }
+
+  // B2B Orders: Upload Image for Item
+  const b2bUploadMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/items\/([^/]+)\/upload$/);
+  if (req.method === 'POST' && b2bUploadMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bUploadMatch[1];
+    const itemId = b2bUploadMatch[2];
+
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      if (order.status !== 'draft') {
+        sendJson(res, 400, { error: 'Cannot modify submitted order.' });
+        return;
+      }
+      const item = db.getB2BOrderItemById(itemId);
+      if (!item || item.orderId !== orderId) {
+        sendJson(res, 404, { error: 'Item not found.' });
+        return;
+      }
+
+      const uploadDir = path.join(__dirname, '..', 'uploads', 'b2b-metal-prints', orderId);
+      fs.mkdirSync(uploadDir, { recursive: true });
+
+      const form = formidable({
+        uploadDir,
+        keepExtensions: true,
+        maxFileSize: 50 * 1024 * 1024, // 50MB
+        filter: ({ mimetype }) => mimetype && mimetype.startsWith('image/')
       });
 
-      sendJson(res, 200, { success: true, products, publicationId: pub.id });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to list TikTok products.' });
+      form.parse(req, async (err, fields, files) => {
+        if (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+
+        const file = files.image?.[0] || files.image;
+        if (!file) {
+          sendJson(res, 400, { error: 'No image file provided.' });
+          return;
+        }
+
+        let width = 0, height = 0;
+        if (sharp) {
+          try {
+            const metadata = await sharp(file.filepath).metadata();
+            width = metadata.width || 0;
+            height = metadata.height || 0;
+          } catch (e) {
+            console.warn('[B2B] Could not get image metadata:', e.message);
+          }
+        }
+
+        db.updateB2BOrderItem(itemId, {
+          imagePath: file.filepath,
+          imageOriginalName: file.originalFilename,
+          imageWidth: width,
+          imageHeight: height,
+          uploadedAt: new Date().toISOString()
+        });
+
+        const updatedItem = db.getB2BOrderItemById(itemId);
+        sendJson(res, 200, { success: true, item: updatedItem });
+      });
+    } catch (err) {
+      console.error('[B2B] Upload failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to upload image.' });
     }
     return;
   }
 
-  // GET /api/internal/tiktok-shop/candidates — Eligible products not on TikTok
-  if (
-    req.method === 'GET' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'candidates'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
+  // B2B Orders: Delete Item
+  const b2bDeleteItemMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/items\/([^/]+)$/);
+  if (req.method === 'DELETE' && b2bDeleteItemMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bDeleteItemMatch[1];
+    const itemId = b2bDeleteItemMatch[2];
     try {
-      const sourceFilter = parsedUrl.query.source || 'all';
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      if (order.status !== 'draft') {
+        sendJson(res, 400, { error: 'Cannot modify submitted order.' });
+        return;
+      }
+      const item = db.getB2BOrderItemById(itemId);
+      if (!item || item.orderId !== orderId) {
+        sendJson(res, 404, { error: 'Item not found.' });
+        return;
+      }
+      db.deleteB2BOrderItem(itemId);
+      sendJson(res, 200, { success: true });
+    } catch (err) {
+      console.error('[B2B] Delete item failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to delete item.' });
+    }
+    return;
+  }
 
-      // Get current TikTok products for exclusion
-      const pub = await shopify.findTikTokPublication();
-      const liveIds = new Set();
-      if (pub) {
-        const live = await shopify.getProductsOnPublication(pub.id);
-        live.forEach(p => liveIds.add(p.numericId));
+  // B2B Orders: Submit Order
+  const b2bSubmitMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/submit$/);
+  if (req.method === 'POST' && b2bSubmitMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bSubmitMatch[1];
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      if (order.status !== 'draft') {
+        sendJson(res, 400, { error: 'Order already submitted.' });
+        return;
       }
 
-      const candidates = [];
-      const tiktokDb = db.getDb();
+      const items = db.listB2BOrderItems(orderId);
+      if (items.length === 0) {
+        sendJson(res, 400, { error: 'Order has no items.' });
+        return;
+      }
 
-      // Metal prints from custom_art_products
-      if (sourceFilter === 'all' || sourceFilter === 'metal') {
-        try {
-          const metalProducts = tiktokDb.prepare(`
-            SELECT p.id, p.shopify_product_id, p.title, p.shopify_handle, p.status,
-                   a.title as artwork_title, a.file_path as artwork_path
-            FROM custom_art_products p
-            LEFT JOIN custom_art_artwork a ON p.artwork_id = a.id
-            WHERE p.material_id = 'mat_metal' AND p.shopify_product_id IS NOT NULL AND p.status = 'active'
-            ORDER BY p.title
-          `).all();
-          metalProducts.forEach(p => {
-            if (!liveIds.has(String(p.shopify_product_id))) {
-              candidates.push({
-                id: `gid://shopify/Product/${p.shopify_product_id}`,
-                numericId: String(p.shopify_product_id),
-                title: p.title || p.artwork_title || 'Metal Print',
-                handle: p.shopify_handle || '',
-                source: 'metal',
-                image: null,
-                productType: 'Metal Print'
-              });
-            }
+      // Validate all items have images
+      const missingUploads = items.filter(item => !item.imagePath);
+      if (missingUploads.length > 0) {
+        sendJson(res, 400, { error: `${missingUploads.length} item(s) missing image uploads.` });
+        return;
+      }
+
+      // Check for items needing quotes
+      const needsQuote = items.filter(item => item.needsQuote && !item.quoteApproved);
+      if (needsQuote.length > 0) {
+        sendJson(res, 400, { error: `${needsQuote.length} item(s) require quote approval.` });
+        return;
+      }
+
+      // Validate shipping address
+      if (!order.shippingName || !order.shippingAddressLine1 || !order.shippingCity || !order.shippingState || !order.shippingZip) {
+        sendJson(res, 400, { error: 'Complete shipping address required.' });
+        return;
+      }
+
+      // Calculate totals
+      const totals = db.calculateB2BOrderTotals(orderId);
+
+      // Update status
+      db.updateB2BOrder(orderId, {
+        status: 'submitted',
+        submittedAt: new Date().toISOString()
+      });
+
+      const updatedOrder = db.getB2BOrderById(orderId);
+      sendJson(res, 200, { success: true, order: updatedOrder, totals });
+    } catch (err) {
+      console.error('[B2B] Submit order failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to submit order.' });
+    }
+    return;
+  }
+
+  // B2B Orders: Checkout (Generate Square Payment Link)
+  const b2bCheckoutMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/checkout$/);
+  if (req.method === 'POST' && b2bCheckoutMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bCheckoutMatch[1];
+
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      if (order.status !== 'submitted') {
+        sendJson(res, 400, { error: 'Order must be submitted before checkout.' });
+        return;
+      }
+      if (order.paymentStatus === 'paid') {
+        sendJson(res, 400, { error: 'Order already paid.' });
+        return;
+      }
+
+      if (!squareClient) {
+        sendJson(res, 500, { error: 'Payment system not configured.' });
+        return;
+      }
+
+      const locationId = await getSquareLocationId();
+      const idempotencyKey = crypto.randomUUID();
+
+      const lineItems = [{
+        name: `B2B Metal Print Order #${order.orderNumber}`,
+        quantity: '1',
+        basePriceMoney: {
+          amount: BigInt(order.totalCents),
+          currency: 'USD'
+        }
+      }];
+
+      const portalUrl = process.env.B2B_PORTAL_URL || `https://${req.headers.host}`;
+      const response = await squareClient.checkout.paymentLinks.create({
+        idempotencyKey,
+        order: {
+          locationId,
+          referenceId: `b2b-order-${order.id}`,
+          lineItems
+        },
+        checkoutOptions: {
+          redirectUrl: `${portalUrl}/b2b/order-detail.html?id=${order.id}&status=paid`
+        }
+      });
+
+      const paymentLink = response.result.paymentLink;
+      db.setB2BOrderPaymentLink(orderId, { url: paymentLink.url, linkId: paymentLink.id });
+
+      sendJson(res, 200, { success: true, paymentUrl: paymentLink.url });
+    } catch (err) {
+      console.error('[B2B] Checkout failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to create payment link.' });
+    }
+    return;
+  }
+
+  // B2B Pricing
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/b2b/pricing') {
+    sendJson(res, 200, {
+      pricing: [
+        { size: '5x7', priceCents: 1500, priceDisplay: '$15.00' },
+        { size: '8x10', priceCents: 2200, priceDisplay: '$22.00' },
+        { size: '11x14', priceCents: 3200, priceDisplay: '$32.00' }
+      ],
+      customSizes: 'Contact for quote'
+    });
+    return;
+  }
+
+  // B2B Orders: Get Image (for viewing uploaded images)
+  const b2bImageMatch = parsedUrl.pathname.match(/^\/api\/b2b\/orders\/([^/]+)\/items\/([^/]+)\/image$/);
+  if (req.method === 'GET' && b2bImageMatch) {
+    const user = requireB2BAuth();
+    if (!user) return;
+    const orderId = b2bImageMatch[1];
+    const itemId = b2bImageMatch[2];
+
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order || order.companyId !== user.companyId) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      const item = db.getB2BOrderItemById(itemId);
+      if (!item || item.orderId !== orderId || !item.imagePath) {
+        sendJson(res, 404, { error: 'Image not found.' });
+        return;
+      }
+
+      const imagePath = item.imagePath;
+      if (!fs.existsSync(imagePath)) {
+        sendJson(res, 404, { error: 'Image file not found.' });
+        return;
+      }
+
+      const ext = path.extname(imagePath).toLowerCase();
+      const mimeTypes = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+      res.writeHead(200, { 'Content-Type': contentType });
+      fs.createReadStream(imagePath).pipe(res);
+    } catch (err) {
+      console.error('[B2B] Get image failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to get image.' });
+    }
+    return;
+  }
+
+  // ============================================================================
+  // B2B INTERNAL/ADMIN API (requires INTERNAL_API_KEY)
+  // ============================================================================
+
+  // Internal: List all B2B companies
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/internal/b2b/companies') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const status = parsedUrl.query.status;
+      const companies = db.listB2BCompanies({ status });
+      sendJson(res, 200, { companies });
+    } catch (err) {
+      console.error('[B2B Admin] List companies failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to list companies.' });
+    }
+    return;
+  }
+
+  // Internal: Create B2B company with admin user
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/internal/b2b/companies') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        if (!payload.companyName || !payload.adminEmail || !payload.adminPassword || !payload.adminName) {
+          sendJson(res, 400, { error: 'companyName, adminEmail, adminPassword, and adminName are required.' });
+          return;
+        }
+
+        // Check if admin email already exists
+        const existingUser = db.getB2BUserByEmail(payload.adminEmail);
+        if (existingUser) {
+          sendJson(res, 400, { error: 'Admin email already registered.' });
+          return;
+        }
+
+        // Create company + admin user atomically
+        const result = db.getDb().transaction(() => {
+          const company = db.createB2BCompany({
+            companyName: payload.companyName,
+            contactEmail: payload.adminEmail,
+            contactPhone: payload.contactPhone,
+            billingAddress: payload.billingAddress,
+            shippingAddress: payload.shippingAddress,
+            taxExempt: payload.taxExempt,
+            taxId: payload.taxId,
+            paymentTerms: payload.paymentTerms,
+            notes: payload.notes
           });
-        } catch (_) { /* custom_art_products may not exist */ }
-      }
 
-      // Multiboard products
-      if (sourceFilter === 'all' || sourceFilter === 'multiboard') {
-        try {
-          const multiboardProducts = tiktokDb.prepare(`
-            SELECT id, shopify_product_id, title, shopify_handle, status
-            FROM multiboard_products
-            WHERE shopify_product_id IS NOT NULL AND status = 'active'
-            ORDER BY title
-          `).all();
-          multiboardProducts.forEach(p => {
-            if (!liveIds.has(String(p.shopify_product_id))) {
-              candidates.push({
-                id: `gid://shopify/Product/${p.shopify_product_id}`,
-                numericId: String(p.shopify_product_id),
-                title: p.title || 'Multiboard Product',
-                handle: p.shopify_handle || '',
-                source: 'multiboard',
-                image: null,
-                productType: 'Multiboard'
-              });
-            }
+          const adminUser = db.createB2BUser({
+            companyId: company.id,
+            email: payload.adminEmail,
+            password: payload.adminPassword,
+            name: payload.adminName,
+            phone: payload.adminPhone,
+            role: 'admin',
+            isPrimaryContact: true
           });
-        } catch (_) { /* multiboard_products may not exist */ }
-      }
 
-      // All Shopify products (paginated)
-      if (sourceFilter === 'all' || sourceFilter === 'other') {
-        try {
-          let page = await shopify.listProducts({ limit: 250 });
-          for (const p of page.products) {
-            const numId = String(p.id);
-            if (!liveIds.has(numId) && !candidates.find(c => c.numericId === numId)) {
-              candidates.push({
-                id: `gid://shopify/Product/${p.id}`,
-                numericId: numId,
-                title: p.title || 'Product',
-                handle: p.handle || '',
-                source: 'other',
-                image: p.images?.[0]?.src || null,
-                price: p.variants?.[0]?.price || null,
-                productType: p.product_type || ''
+          return { company, adminUser };
+        })();
+
+        sendJson(res, 201, { success: true, ...result });
+      } catch (err) {
+        console.error('[B2B Admin] Create company failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to create company.' });
+      }
+    });
+    return;
+  }
+
+  // Internal: Update B2B company
+  const b2bAdminCompanyMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/companies\/([^/]+)$/);
+  if (req.method === 'PATCH' && b2bAdminCompanyMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const companyId = b2bAdminCompanyMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const company = db.getB2BCompanyById(companyId);
+        if (!company) {
+          sendJson(res, 404, { error: 'Company not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const updated = db.updateB2BCompany(companyId, payload);
+        sendJson(res, 200, { success: true, company: updated });
+      } catch (err) {
+        console.error('[B2B Admin] Update company failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to update company.' });
+      }
+    });
+    return;
+  }
+
+  // Internal: Delete B2B company (cascades to users, sessions, orders)
+  if (req.method === 'DELETE' && b2bAdminCompanyMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const companyId = b2bAdminCompanyMatch[1];
+    try {
+      const result = db.deleteB2BCompany(companyId);
+      if (!result.success) {
+        sendJson(res, 404, { error: result.error });
+        return;
+      }
+      sendJson(res, 200, { success: true, deleted: result.deleted });
+    } catch (err) {
+      console.error('[B2B Admin] Delete company failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to delete company.' });
+    }
+    return;
+  }
+
+  // Internal: List users for a B2B company
+  const b2bAdminUsersMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/companies\/([^/]+)\/users$/);
+  if (req.method === 'GET' && b2bAdminUsersMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const companyId = b2bAdminUsersMatch[1];
+    try {
+      const company = db.getB2BCompanyById(companyId);
+      if (!company) {
+        sendJson(res, 404, { error: 'Company not found.' });
+        return;
+      }
+      const users = db.listB2BUsers(companyId);
+      sendJson(res, 200, { users });
+    } catch (err) {
+      console.error('[B2B Admin] List users failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to list users.' });
+    }
+    return;
+  }
+
+  // Internal: List B2B production queue
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/internal/b2b/orders') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const queue = parsedUrl.query.queue === 'production';
+      if (queue) {
+        const orders = db.listB2BProductionQueue();
+        sendJson(res, 200, { orders });
+      } else {
+        const status = parsedUrl.query.status;
+        const paymentStatus = parsedUrl.query.paymentStatus;
+        const limit = parseInt(parsedUrl.query.limit) || 100;
+        const offset = parseInt(parsedUrl.query.offset) || 0;
+        const orders = db.listB2BOrders({ status, paymentStatus, limit, offset });
+        sendJson(res, 200, { orders });
+      }
+    } catch (err) {
+      console.error('[B2B Admin] List orders failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to list orders.' });
+    }
+    return;
+  }
+
+  // Internal: Get B2B order details
+  const b2bAdminOrderMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/orders\/([^/]+)$/);
+  if (req.method === 'GET' && b2bAdminOrderMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const orderId = b2bAdminOrderMatch[1];
+    try {
+      const order = db.getB2BOrderById(orderId);
+      if (!order) {
+        sendJson(res, 404, { error: 'Order not found.' });
+        return;
+      }
+      const items = db.listB2BOrderItems(orderId);
+      const company = db.getB2BCompanyById(order.companyId);
+      sendJson(res, 200, { order, items, company });
+    } catch (err) {
+      console.error('[B2B Admin] Get order failed:', err);
+      sendJson(res, 500, { error: err.message || 'Unable to get order.' });
+    }
+    return;
+  }
+
+  // Internal: Update B2B order status
+  const b2bAdminStatusMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/orders\/([^/]+)\/status$/);
+  if (req.method === 'PATCH' && b2bAdminStatusMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const orderId = b2bAdminStatusMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const order = db.getB2BOrderById(orderId);
+        if (!order) {
+          sendJson(res, 404, { error: 'Order not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        const validStatuses = ['received', 'being_printed', 'shipped', 'completed'];
+        if (payload.status && !validStatuses.includes(payload.status)) {
+          sendJson(res, 400, { error: `Invalid status. Valid: ${validStatuses.join(', ')}` });
+          return;
+        }
+
+        const updates = {};
+        if (payload.status) updates.status = payload.status;
+        if (payload.status === 'shipped') updates.shippedAt = new Date().toISOString();
+        if (payload.status === 'completed') updates.completedAt = new Date().toISOString();
+        if (payload.internalNotes !== undefined) updates.internalNotes = payload.internalNotes;
+
+        const updated = db.updateB2BOrder(orderId, updates);
+        sendJson(res, 200, { success: true, order: updated });
+      } catch (err) {
+        console.error('[B2B Admin] Update status failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to update status.' });
+      }
+    });
+    return;
+  }
+
+  // Internal: Add tracking to B2B order
+  const b2bAdminTrackingMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/orders\/([^/]+)\/tracking$/);
+  if (req.method === 'POST' && b2bAdminTrackingMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const orderId = b2bAdminTrackingMatch[1];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const order = db.getB2BOrderById(orderId);
+        if (!order) {
+          sendJson(res, 404, { error: 'Order not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        if (!payload.carrier || !payload.trackingNumber) {
+          sendJson(res, 400, { error: 'carrier and trackingNumber are required.' });
+          return;
+        }
+
+        const updated = db.updateB2BOrder(orderId, {
+          trackingCarrier: payload.carrier,
+          trackingNumber: payload.trackingNumber,
+          status: 'shipped',
+          shippedAt: new Date().toISOString()
+        });
+
+        // TODO: Send shipping notification email to customer
+        sendJson(res, 200, { success: true, order: updated });
+      } catch (err) {
+        console.error('[B2B Admin] Add tracking failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to add tracking.' });
+      }
+    });
+    return;
+  }
+
+  // Internal: Approve quote for custom size item
+  const b2bAdminQuoteMatch = parsedUrl.pathname.match(/^\/api\/internal\/b2b\/orders\/([^/]+)\/items\/([^/]+)\/quote$/);
+  if (req.method === 'POST' && b2bAdminQuoteMatch) {
+    if (!requireInternalKey(req, res)) return;
+    const orderId = b2bAdminQuoteMatch[1];
+    const itemId = b2bAdminQuoteMatch[2];
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const item = db.getB2BOrderItemById(itemId);
+        if (!item || item.orderId !== orderId) {
+          sendJson(res, 404, { error: 'Item not found.' });
+          return;
+        }
+        const payload = JSON.parse(body || '{}');
+        if (!payload.priceCents) {
+          sendJson(res, 400, { error: 'priceCents is required.' });
+          return;
+        }
+
+        const updated = db.updateB2BOrderItem(itemId, {
+          quotePriceCents: payload.priceCents,
+          quoteApproved: true
+        });
+
+        // Recalculate order totals
+        db.calculateB2BOrderTotals(orderId);
+
+        sendJson(res, 200, { success: true, item: updated });
+      } catch (err) {
+        console.error('[B2B Admin] Approve quote failed:', err);
+        sendJson(res, 500, { error: err.message || 'Unable to approve quote.' });
+      }
+    });
+    return;
+  }
+
+  // Square webhook handler for B2B payments
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/b2b/webhooks/square') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const event = JSON.parse(body || '{}');
+        console.log('[B2B Square Webhook] Received:', event.type);
+
+        if (event.type === 'payment.completed' || event.type === 'payment.updated') {
+          const payment = event.data?.object?.payment;
+          if (payment && payment.status === 'COMPLETED') {
+            // Try to find order by payment link ID
+            const orderId = payment.order_id;
+            let order = null;
+
+            // Check reference ID first
+            if (payment.reference_id && payment.reference_id.startsWith('b2b-order-')) {
+              const extractedId = payment.reference_id.replace('b2b-order-', '');
+              order = db.getB2BOrderById(extractedId);
+            }
+
+            // Fallback: find by payment link ID
+            if (!order) {
+              order = db.findB2BOrderByPaymentLinkId(payment.payment_link_id);
+            }
+
+            if (order) {
+              db.markB2BOrderPaid(order.id, {
+                paymentId: payment.id,
+                status: payment.status,
+                amount: payment.amount_money,
+                receiptUrl: payment.receipt_url
               });
+
+              // Update status to received (ready for production)
+              db.updateB2BOrder(order.id, { status: 'received' });
+
+              console.log(`[B2B Square Webhook] Order ${order.orderNumber} marked as paid`);
             }
           }
-        } catch (_) { /* Shopify API error */ }
-      }
-
-      sendJson(res, 200, { success: true, candidates, count: candidates.length });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to list candidates.' });
-    }
-    return;
-  }
-
-  // POST /api/internal/tiktok-shop/publish — Publish single product to TikTok
-  if (
-    req.method === 'POST' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'publish'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
-    try {
-      const body = await getReqBodyJson(req);
-      const { productId, source } = body || {};
-      if (!productId) { sendJson(res, 400, { error: 'productId required.' }); return; }
-
-      const pub = await shopify.findTikTokPublication();
-      if (!pub) { sendJson(res, 404, { error: 'TikTok sales channel not found in Shopify.' }); return; }
-
-      const numericId = String(productId).replace(/.*\//, '');
-      await shopify.publishToPublications(numericId, [pub.id]);
-
-      // Track locally
-      const tiktokDb = db.getDb();
-      tiktokDb.prepare(`
-        INSERT INTO tiktok_shop_products (shopify_product_id, shopify_gid, source, published)
-        VALUES (?, ?, ?, 1)
-        ON CONFLICT(shopify_product_id) DO UPDATE SET published = 1, source = COALESCE(excluded.source, source), updated_at = CURRENT_TIMESTAMP
-      `).run(numericId, `gid://shopify/Product/${numericId}`, source || 'other');
-
-      sendJson(res, 200, { success: true, productId: numericId });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to publish product.' });
-    }
-    return;
-  }
-
-  // POST /api/internal/tiktok-shop/unpublish — Remove single product from TikTok
-  if (
-    req.method === 'POST' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'unpublish'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
-    try {
-      const body = await getReqBodyJson(req);
-      const { productId } = body || {};
-      if (!productId) { sendJson(res, 400, { error: 'productId required.' }); return; }
-
-      const pub = await shopify.findTikTokPublication();
-      if (!pub) { sendJson(res, 404, { error: 'TikTok sales channel not found.' }); return; }
-
-      const numericId = String(productId).replace(/.*\//, '');
-      await shopify.unpublishFromPublication(numericId, [pub.id]);
-
-      // Update local tracking
-      const tiktokDb = db.getDb();
-      tiktokDb.prepare(`UPDATE tiktok_shop_products SET published = 0, updated_at = CURRENT_TIMESTAMP WHERE shopify_product_id = ?`).run(numericId);
-
-      sendJson(res, 200, { success: true, productId: numericId });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to unpublish product.' });
-    }
-    return;
-  }
-
-  // POST /api/internal/tiktok-shop/clear-all — Unpublish ALL products from TikTok
-  if (
-    req.method === 'POST' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'clear-all'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
-    try {
-      const pub = await shopify.findTikTokPublication();
-      if (!pub) { sendJson(res, 404, { error: 'TikTok sales channel not found.' }); return; }
-
-      const liveProducts = await shopify.getProductsOnPublication(pub.id);
-      let removed = 0;
-      const errors = [];
-
-      for (const product of liveProducts) {
-        try {
-          await shopify.unpublishFromPublication(product.id, [pub.id]);
-          removed++;
-        } catch (e) {
-          errors.push({ productId: product.numericId, error: e?.message });
         }
+
+        sendJson(res, 200, { received: true });
+      } catch (err) {
+        console.error('[B2B Square Webhook] Error:', err);
+        sendJson(res, 500, { error: err.message });
       }
-
-      // Update local tracking
-      const tiktokDb = db.getDb();
-      tiktokDb.prepare(`UPDATE tiktok_shop_products SET published = 0, updated_at = CURRENT_TIMESTAMP`).run();
-
-      sendJson(res, 200, { success: true, removed, total: liveProducts.length, errors: errors.length ? errors : undefined });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to clear TikTok products.' });
-    }
+    });
     return;
-  }
-
-  // POST /api/internal/tiktok-shop/bulk-publish — Publish batch of products
-  if (
-    req.method === 'POST' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'bulk-publish'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
-    try {
-      const body = await getReqBodyJson(req);
-      const { productIds, source } = body || {};
-      if (!Array.isArray(productIds) || !productIds.length) { sendJson(res, 400, { error: 'productIds array required.' }); return; }
-
-      const pub = await shopify.findTikTokPublication();
-      if (!pub) { sendJson(res, 404, { error: 'TikTok sales channel not found.' }); return; }
-
-      let published = 0;
-      const errors = [];
-      const tiktokDb = db.getDb();
-
-      for (const pid of productIds) {
-        try {
-          const numericId = String(pid).replace(/.*\//, '');
-          await shopify.publishToPublications(numericId, [pub.id]);
-          tiktokDb.prepare(`
-            INSERT INTO tiktok_shop_products (shopify_product_id, shopify_gid, source, published)
-            VALUES (?, ?, ?, 1)
-            ON CONFLICT(shopify_product_id) DO UPDATE SET published = 1, source = COALESCE(excluded.source, source), updated_at = CURRENT_TIMESTAMP
-          `).run(numericId, `gid://shopify/Product/${numericId}`, source || 'other');
-          published++;
-        } catch (e) {
-          errors.push({ productId: pid, error: e?.message });
-        }
-      }
-
-      sendJson(res, 200, { success: true, published, total: productIds.length, errors: errors.length ? errors : undefined });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to bulk publish.' });
-    }
-    return;
-  }
-
-  // POST /api/internal/tiktok-shop/generate-script — AI-generate TikTok video script
-  if (
-    req.method === 'POST' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'generate-script'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    try {
-      const body = await getReqBodyJson(req);
-      const { productId, title, productType, source, price } = body || {};
-      if (!title) { sendJson(res, 400, { error: 'Product title required.' }); return; }
-
-      const isMultiboard = (source === 'multiboard' || (productType || '').toLowerCase().includes('multiboard'));
-      const isMetal = (source === 'metal' || (productType || '').toLowerCase().includes('metal'));
-
-      let styleGuide = '';
-      if (isMultiboard) {
-        styleGuide = `This is a MULTIBOARD product — a modular organization system. Style: "Satisfying organization" content.
-- Hook: Show messy desk/space → cut to organized multiboard setup
-- Content: ASMR-style assembly, satisfying click sounds, before/after transformation
-- CTA: "Link in bio" with urgency
-- Music: Lo-fi beats or trending satisfying sounds
-- Camera: Close-up detail shots, overhead desk shots, smooth transitions`;
-      } else if (isMetal) {
-        styleGuide = `This is a METAL PRINT — HD aluminum art print with vivid colors and light reflection.
-- Hook: Unboxing reveal or dramatic room transformation
-- Content: Show light reflecting off the metal surface, multiple angles, room staging
-- CTA: "Link in bio" — emphasize uniqueness and premium quality
-- Music: Ambient/aesthetic trending sounds
-- Camera: Slow pans, natural light reflection, room before/after`;
-      } else {
-        styleGuide = `General product showcase style.
-- Hook: Problem/solution or visual reveal
-- Content: Product features and benefits, lifestyle context
-- CTA: "Link in bio" with value proposition
-- Music: Trending TikTok sounds
-- Camera: Mix of close-ups and lifestyle shots`;
-      }
-
-      const prompt = `Generate a TikTok video script for this product. Return ONLY valid JSON.
-
-Product: "${title}"
-${price ? `Price: $${price}` : ''}
-Type: ${productType || source || 'General'}
-
-Style Guide:
-${styleGuide}
-
-Return JSON with these fields:
-- hook: (string) 2-3 second attention grabber, first thing shown/said
-- scenes: (array of objects) Each with: { duration: "Xs", visual: "what to show", text: "on-screen text or voiceover", action: "camera/editing instruction" }
-- cta: (string) Call-to-action text
-- music: (string) Music/sound recommendation
-- hashtags: (array of strings) 5-8 relevant hashtags
-- estimatedLength: (string) Total video length estimate
-- notes: (string) Additional production tips`;
-
-      // Try Claude first, fall back to Ollama
-      const anthropicKey = process.env.ANTHROPIC_API_KEY;
-      let scriptText = null;
-
-      if (anthropicKey) {
-        const anthropicRes = await new Promise((resolve, reject) => {
-          const postData = JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2048,
-            messages: [{ role: 'user', content: prompt }]
-          });
-          const reqOpts = {
-            hostname: 'api.anthropic.com',
-            port: 443,
-            path: '/v1/messages',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': anthropicKey,
-              'anthropic-version': '2023-06-01',
-              'Content-Length': Buffer.byteLength(postData)
-            }
-          };
-          const aiReq = https.request(reqOpts, (aiRes) => {
-            let data = '';
-            aiRes.on('data', chunk => data += chunk);
-            aiRes.on('end', () => {
-              try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse AI response')); }
-            });
-          });
-          aiReq.on('error', reject);
-          aiReq.write(postData);
-          aiReq.end();
-        });
-        scriptText = anthropicRes?.content?.[0]?.text || '';
-      } else {
-        // Ollama fallback
-        const ollamaUrl = process.env.LLM_API_URL || 'http://localhost:11434';
-        const ollamaModel = process.env.LLM_MODEL || 'llama3.1:8b';
-        const ollamaRes = await new Promise((resolve, reject) => {
-          const postData = JSON.stringify({
-            model: ollamaModel,
-            messages: [{ role: 'user', content: prompt }],
-            stream: false,
-            options: { temperature: 0.7 }
-          });
-          const u = new URL(`${ollamaUrl}/api/chat`);
-          const reqOpts = {
-            hostname: u.hostname,
-            port: u.port || 11434,
-            path: u.pathname,
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          };
-          const proto = u.protocol === 'https:' ? https : http;
-          const aiReq = proto.request(reqOpts, (aiRes) => {
-            let data = '';
-            aiRes.on('data', chunk => data += chunk);
-            aiRes.on('end', () => {
-              try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse Ollama response')); }
-            });
-          });
-          aiReq.on('error', reject);
-          aiReq.write(postData);
-          aiReq.end();
-        });
-        scriptText = ollamaRes?.message?.content || '';
-      }
-
-      // Parse JSON from response (may be wrapped in markdown code fences)
-      let script = null;
-      try {
-        const cleaned = scriptText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        script = JSON.parse(cleaned);
-      } catch (_) {
-        script = { raw: scriptText };
-      }
-
-      // Save to DB
-      if (productId) {
-        const numericId = String(productId).replace(/.*\//, '');
-        const tiktokDb = db.getDb();
-        tiktokDb.prepare(`
-          INSERT INTO tiktok_shop_products (shopify_product_id, shopify_gid, title, source, video_script)
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(shopify_product_id) DO UPDATE SET video_script = excluded.video_script, title = COALESCE(excluded.title, title), updated_at = CURRENT_TIMESTAMP
-        `).run(numericId, `gid://shopify/Product/${numericId}`, title, source || 'other', JSON.stringify(script));
-      }
-
-      sendJson(res, 200, { success: true, script });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to generate script.' });
-    }
-    return;
-  }
-
-  // POST /api/internal/tiktok-shop/market-research — AI market research for product category
-  if (
-    req.method === 'POST' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'market-research'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    try {
-      const body = await getReqBodyJson(req);
-      const { productId, title, productType, source, category } = body || {};
-      if (!title && !category) { sendJson(res, 400, { error: 'Product title or category required.' }); return; }
-
-      const prompt = `You are a TikTok Shop marketing analyst. Analyze this product category for TikTok Shop selling. Return ONLY valid JSON.
-
-Product: "${title || category}"
-Category: ${productType || source || 'Home Decor'}
-
-Return JSON with:
-- trendingStyles: (array of strings) Current TikTok content trends for this product type
-- competitorInsights: (string) What successful TikTok sellers in this niche are doing
-- pricingBenchmark: (object) { low: "$X", mid: "$X", high: "$X", recommendation: "..." }
-- contentStrategy: (array of objects) [{ type: "video type", description: "what to show", frequency: "how often" }]
-- hashtags: (array of strings) Top 10 hashtags for this product category
-- audienceInsights: (object) { demographics: "...", peakTimes: "...", interests: "..." }
-- viralPotential: (string) Assessment of viral potential and why
-- recommendations: (array of strings) Top 3 actionable recommendations`;
-
-      const anthropicKey = process.env.ANTHROPIC_API_KEY;
-      let researchText = null;
-
-      if (anthropicKey) {
-        const anthropicRes = await new Promise((resolve, reject) => {
-          const postData = JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2048,
-            messages: [{ role: 'user', content: prompt }]
-          });
-          const reqOpts = {
-            hostname: 'api.anthropic.com',
-            port: 443,
-            path: '/v1/messages',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': anthropicKey,
-              'anthropic-version': '2023-06-01',
-              'Content-Length': Buffer.byteLength(postData)
-            }
-          };
-          const aiReq = https.request(reqOpts, (aiRes) => {
-            let data = '';
-            aiRes.on('data', chunk => data += chunk);
-            aiRes.on('end', () => {
-              try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse AI response')); }
-            });
-          });
-          aiReq.on('error', reject);
-          aiReq.write(postData);
-          aiReq.end();
-        });
-        researchText = anthropicRes?.content?.[0]?.text || '';
-      } else {
-        const ollamaUrl = process.env.LLM_API_URL || 'http://localhost:11434';
-        const ollamaModel = process.env.LLM_MODEL || 'llama3.1:8b';
-        const ollamaRes = await new Promise((resolve, reject) => {
-          const postData = JSON.stringify({
-            model: ollamaModel,
-            messages: [{ role: 'user', content: prompt }],
-            stream: false,
-            options: { temperature: 0.7 }
-          });
-          const u = new URL(`${ollamaUrl}/api/chat`);
-          const reqOpts = {
-            hostname: u.hostname,
-            port: u.port || 11434,
-            path: u.pathname,
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          };
-          const proto = u.protocol === 'https:' ? https : http;
-          const aiReq = proto.request(reqOpts, (aiRes) => {
-            let data = '';
-            aiRes.on('data', chunk => data += chunk);
-            aiRes.on('end', () => {
-              try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse Ollama response')); }
-            });
-          });
-          aiReq.on('error', reject);
-          aiReq.write(postData);
-          aiReq.end();
-        });
-        researchText = ollamaRes?.message?.content || '';
-      }
-
-      let research = null;
-      try {
-        const cleaned = researchText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        research = JSON.parse(cleaned);
-      } catch (_) {
-        research = { raw: researchText };
-      }
-
-      // Save to DB
-      if (productId) {
-        const numericId = String(productId).replace(/.*\//, '');
-        const tiktokDb = db.getDb();
-        tiktokDb.prepare(`
-          INSERT INTO tiktok_shop_products (shopify_product_id, shopify_gid, title, source, market_research)
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(shopify_product_id) DO UPDATE SET market_research = excluded.market_research, title = COALESCE(excluded.title, title), updated_at = CURRENT_TIMESTAMP
-        `).run(numericId, `gid://shopify/Product/${numericId}`, title, source || 'other', JSON.stringify(research));
-      }
-
-      sendJson(res, 200, { success: true, research });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to generate market research.' });
-    }
-    return;
-  }
-
-  // GET /api/internal/tiktok-shop/stats — Capacity and breakdown
-  if (
-    req.method === 'GET' &&
-    segments[0] === 'api' &&
-    segments[1] === 'internal' &&
-    segments[2] === 'tiktok-shop' &&
-    segments[3] === 'stats'
-  ) {
-    if (!requireInternalKey(req, res)) return;
-    if (!shopify.isConfigured()) { sendJson(res, 503, { error: 'Shopify not configured.' }); return; }
-    try {
-      const pub = await shopify.findTikTokPublication();
-      let productCount = 0;
-      let breakdown = { multiboard: 0, metal: 0, other: 0 };
-
-      if (pub) {
-        const products = await shopify.getProductsOnPublication(pub.id);
-        productCount = products.length;
-
-        // Try to get breakdown from local DB
-        const tiktokDb = db.getDb();
-        for (const p of products) {
-          const local = tiktokDb.prepare('SELECT source FROM tiktok_shop_products WHERE shopify_product_id = ?').get(p.numericId);
-          const src = local?.source || 'other';
-          if (src === 'multiboard') breakdown.multiboard++;
-          else if (src === 'metal') breakdown.metal++;
-          else breakdown.other++;
-        }
-      }
-
-      sendJson(res, 200, {
-        success: true,
-        capacity: { current: productCount, max: 100, available: Math.max(0, 100 - productCount) },
-        breakdown,
-        publicationFound: !!pub
-      });
-    } catch (e) {
-      sendJson(res, 500, { error: e?.message || 'Unable to get stats.' });
-    }
-    return;
-  }
-
-  // Delegate to Sales Pipeline Monitor routes (/api/pipeline/*)
-  if (segments[0] === 'api' && segments[1] === 'pipeline') {
-    try {
-      const { handlePipelineRoute } = require('./modules/sales-pipeline-monitor');
-      if (handlePipelineRoute(req, res, parsedUrl, sendJson)) return;
-    } catch (e) {
-      console.error('[Server] Pipeline route error:', e.message);
-    }
-  }
-
-  // Delegate to AI Sales Agent routes (/api/agent/*)
-  if (segments[0] === 'api' && segments[1] === 'agent') {
-    try {
-      const { handleAgentRoute } = require('./modules/ai-sales-agent');
-      if (handleAgentRoute(req, res, parsedUrl, sendJson)) return;
-    } catch (e) {
-      console.error('[Server] Agent route error:', e.message);
-    }
   }
 
   res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -17648,6 +20165,47 @@ async function handleShopifyOrderWebhook(orderPayload, { topic } = {}) {
       console.error('Metal prints webhook handling failed:', metalError);
       // Don't throw - let the main order processing continue even if metal prints fails
     }
+
+    // Sales analytics: record order
+    try {
+      const customerEmail = o.email || o.contact_email || o.customer?.email;
+      const totalCents = o.total_price ? Math.round(parseFloat(o.total_price) * 100) : 0;
+      salesAnalytics.recordOrder({
+        id: o.id || o.order_number,
+        channel: 'shopify',
+        totalCents,
+        items: (o.line_items || []).map(li => ({
+          title: li.title,
+          category: li.product_type || 'other',
+          priceCents: li.price ? Math.round(parseFloat(li.price) * 100) : 0,
+          quantity: li.quantity || 1
+        })),
+        customerEmail,
+        source: 'shopify'
+      });
+
+      // Cart recovery: mark cart as recovered
+      if (customerEmail) {
+        cartRecovery.markCartRecoveredByEmail(customerEmail, totalCents);
+      }
+
+      // Loyalty: award purchase points
+      if (customerEmail) {
+        referralProgram.awardPurchasePoints(customerEmail, totalCents, o.id);
+        referralProgram.completeReferral(customerEmail, totalCents);
+      }
+
+      // Email sequences: trigger post-purchase follow-up + cancel win-back
+      if (customerEmail) {
+        const customerName = o.customer?.first_name || o.shipping_address?.first_name || '';
+        emailSequences.enqueueSequence('post_purchase', { email: customerEmail, name: customerName }, { orderId: o.id, totalCents });
+        emailSequences.cancelSequence('win_back', customerEmail);
+        emailSequences.cancelSequence('abandoned_cart', customerEmail);
+      }
+    } catch (analyticsError) {
+      console.error('Sales analytics/loyalty tracking error:', analyticsError.message);
+      // Non-critical — don't throw
+    }
   } catch (e) {
     console.error('Shopify order ingest error:', e);
     throw e;
@@ -17676,6 +20234,14 @@ if (require.main === module) {
       console.log('HTTPS enabled using provided certificate paths.');
     }
 
+    // Initialize Kiosk Display Manager WebSocket server
+    try {
+      kioskManager.init(server);
+      console.log('[Server] Kiosk display manager initialized');
+    } catch (error) {
+      console.error('[Server] Failed to initialize kiosk manager:', error.message);
+    }
+
     // Start Facebook post scheduler daemon
     try {
       const { startSchedulerDaemon } = require('./lib/facebook-post-scheduler');
@@ -17685,22 +20251,122 @@ if (require.main === module) {
       console.error('[Server] Failed to start Facebook scheduler:', error.message);
     }
 
-    // Start Sales Pipeline Monitor daemon (every 15 min)
+    // Start sales pipeline monitor daemon (runs every 15 minutes)
     try {
-      const { startMonitorDaemon } = require('./modules/sales-pipeline-monitor');
-      startMonitorDaemon(db, { intervalMinutes: 15 });
+      salesPipelineMonitor.startMonitorDaemon(db, {
+        intervalMinutes: 15,
+        enableAlerts: true
+      });
       console.log('[Server] Sales pipeline monitor started');
     } catch (error) {
       console.error('[Server] Failed to start pipeline monitor:', error.message);
     }
 
-    // Start AI Sales Agent daemon (every 30 min)
+    // Start AI Sales Agent daemon (runs every 30 minutes)
     try {
-      const { startAgent } = require('./modules/ai-sales-agent');
-      startAgent(db, { intervalMinutes: 30 });
-      console.log('[Server] AI sales agent started');
+      aiSalesAgent.startAgent(db);
+      console.log('[Server] AI Sales Agent started');
     } catch (error) {
-      console.error('[Server] Failed to start AI agent:', error.message);
+      console.error('[Server] Failed to start AI Sales Agent:', error.message);
+    }
+
+    // Start Telegram printer bot polling for /printerstatus commands
+    try {
+      telegramPrinterBot.startPolling();
+      console.log('[Server] Telegram printer bot polling started');
+    } catch (error) {
+      console.error('[Server] Failed to start printer bot polling:', error.message);
+    }
+
+    // Start abandoned cart recovery processor (runs every 15 minutes)
+    try {
+      setInterval(() => {
+        const { sendOrdersEmail } = require('./mailer');
+        const pending = cartRecovery.processAbandonedCarts();
+        for (const item of pending) {
+          try {
+            const email = emailSequences.generateSequenceEmail(
+              'abandoned_cart', item.sequenceStep, item.customer, item.cart
+            );
+            sendOrdersEmail({
+              to: item.customer.email,
+              subject: email.subject,
+              text: email.text,
+              html: email.html
+            }).then(() => {
+              cartRecovery.recordEmailSent(item.cartId);
+              salesAnalytics.recordEmailEvent('sent', 'abandoned_cart');
+              console.log(`[CartRecovery] Sent email ${item.sequenceStep + 1}/3 to ${item.customer.email}`);
+            }).catch(err => {
+              console.error(`[CartRecovery] Failed to send email to ${item.customer.email}:`, err.message);
+            });
+          } catch (emailErr) {
+            console.error('[CartRecovery] Email generation error:', emailErr.message);
+          }
+        }
+      }, 15 * 60 * 1000); // Every 15 minutes
+      console.log('[Server] Cart recovery processor started (15-min interval)');
+    } catch (error) {
+      console.error('[Server] Failed to start cart recovery:', error.message);
+    }
+
+    // Start email sequence scheduler (runs every 5 minutes)
+    try {
+      setInterval(async () => {
+        try {
+          const { sendOrdersEmail } = require('./mailer');
+          const sendFn = async (to, subject, html) => {
+            await sendOrdersEmail({ to, subject, html, text: html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() });
+            salesAnalytics.recordEmailEvent('sent', 'sequence');
+          };
+          const processed = await emailSequences.processSequenceQueue(sendFn);
+          if (processed > 0) {
+            console.log(`[EmailSeq] Processed ${processed} queued emails`);
+          }
+        } catch (err) {
+          console.error('[EmailSeq] Scheduler error:', err.message);
+        }
+      }, 5 * 60 * 1000); // Every 5 minutes
+      console.log('[Server] Email sequence scheduler started (5-min interval)');
+    } catch (error) {
+      console.error('[Server] Failed to start email sequence scheduler:', error.message);
+    }
+
+    // Start trend monitor scanner (runs every 4 hours)
+    try {
+      const trendSettings = trendMonitor.loadData()?.settings || trendMonitor.DEFAULT_SETTINGS;
+      const scanIntervalMs = (trendSettings.scanIntervalHours || 4) * 60 * 60 * 1000;
+
+      // Initial scan 60 seconds after startup
+      setTimeout(() => {
+        try {
+          const currentSettings = trendMonitor.loadData()?.settings || trendMonitor.DEFAULT_SETTINGS;
+          if (currentSettings.enabled) {
+            trendMonitor.runTrendScan(currentSettings).catch(err => {
+              console.error('[TrendMonitor] Initial scan error:', err.message);
+            });
+          }
+        } catch (err) {
+          console.error('[TrendMonitor] Initial scan error:', err.message);
+        }
+      }, 60000);
+
+      setInterval(() => {
+        try {
+          const currentSettings = trendMonitor.loadData()?.settings || trendMonitor.DEFAULT_SETTINGS;
+          if (currentSettings.enabled) {
+            trendMonitor.runTrendScan(currentSettings).catch(err => {
+              console.error('[TrendMonitor] Scan error:', err.message);
+            });
+          }
+        } catch (err) {
+          console.error('[TrendMonitor] Scheduler error:', err.message);
+        }
+      }, scanIntervalMs);
+
+      console.log(`[Server] Trend monitor started (${trendSettings.scanIntervalHours}h interval)`);
+    } catch (error) {
+      console.error('[Server] Failed to start trend monitor:', error.message);
     }
   });
 }
@@ -17843,9 +20509,9 @@ async function handleStickerSheetsList(req, res) {
 
         return {
           sheetNumber: parseInt(sheetNum, 10),
-          printUrl: `/api/library/${relativePrint.split('/').map(p => encodeURIComponent(p)).join('/')}`,
-          cutUrl: relativeCut ? `/api/library/${relativeCut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
-          cricutUrl: relativeCricut ? `/api/library/${relativeCricut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+          printUrl: `/library/${relativePrint.split('/').map(p => encodeURIComponent(p)).join('/')}`,
+          cutUrl: relativeCut ? `/library/${relativeCut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+          cricutUrl: relativeCricut ? `/library/${relativeCricut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
           printFile: pf,
           printFilename: pf,
           cutFile: cutFile || null,
@@ -17874,11 +20540,229 @@ async function handleStickerSheetsList(req, res) {
 }
 
 /**
+ * Delete a sticker sheet batch by name
+ */
+async function handleDeleteStickerSheetBatch(req, res, batchName) {
+  try {
+    if (!batchName || batchName.includes('..') || batchName.includes('/') || batchName.includes('\\')) {
+      return sendJson(res, 400, { success: false, error: 'Invalid batch name' });
+    }
+
+    const batchDir = path.join(STICKER_OUTPUT_DIR, batchName);
+
+    // Check if directory exists
+    try {
+      const stats = await fs.promises.stat(batchDir);
+      if (!stats.isDirectory()) {
+        return sendJson(res, 404, { success: false, error: 'Batch not found' });
+      }
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        return sendJson(res, 404, { success: false, error: 'Batch not found' });
+      }
+      throw err;
+    }
+
+    // Delete all files in the directory first
+    const files = await fs.promises.readdir(batchDir);
+    for (const file of files) {
+      await fs.promises.unlink(path.join(batchDir, file));
+    }
+
+    // Then delete the directory
+    await fs.promises.rmdir(batchDir);
+
+    console.log(`[Sticker Sheets] Deleted batch: ${batchName}`);
+    sendJson(res, 200, { success: true, message: `Batch '${batchName}' deleted successfully` });
+  } catch (err) {
+    console.error('[Delete Sticker Sheet Batch Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+// Orders output folder
+const STICKER_ORDERS_DIR = path.join(STICKER_OUTPUT_DIR, 'orders');
+
+/**
+ * List saved order sticker sheets (organized by order number)
+ */
+async function handleStickerSheetsSavedOrders(req, res) {
+  try {
+    await fs.promises.mkdir(STICKER_ORDERS_DIR, { recursive: true });
+
+    const entries = await fs.promises.readdir(STICKER_ORDERS_DIR, { withFileTypes: true });
+    const orders = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+
+      const orderDir = path.join(STICKER_ORDERS_DIR, entry.name);
+      const files = await fs.promises.readdir(orderDir);
+      const stats = await fs.promises.stat(orderDir);
+
+      const printFiles = files.filter(f => f.endsWith('_PRINT.png') || f.endsWith('-print.png'));
+
+      orders.push({
+        orderNumber: entry.name,
+        createdAt: (stats.birthtime || stats.mtime).toISOString().split('T')[0],
+        sheetCount: printFiles.length
+      });
+    }
+
+    // Sort by creation date (newest first)
+    orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    sendJson(res, 200, { success: true, orders, count: orders.length });
+  } catch (err) {
+    console.error('[Sticker Sheets Saved Orders Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Get sheets for a specific order
+ */
+async function handleStickerSheetsGetOrder(req, res, orderNumber) {
+  try {
+    const orderDir = path.join(STICKER_ORDERS_DIR, orderNumber);
+
+    if (!await fs.promises.access(orderDir).then(() => true).catch(() => false)) {
+      return sendJson(res, 404, { success: false, error: 'Order not found' });
+    }
+
+    const files = await fs.promises.readdir(orderDir);
+    const printFiles = files.filter(f => f.endsWith('_PRINT.png') || f.endsWith('-print.png'));
+    const cutFiles = files.filter(f => f.endsWith('_CUT.svg') || f.endsWith('-cut.svg'));
+    const cricutFiles = files.filter(f => f.endsWith('_CRICUT.svg') || f.endsWith('_CRICUT.png'));
+
+    const sheets = printFiles.map((pf, idx) => {
+      const oldMatch = pf.match(/-(\d+)-print\.png$/);
+      const newMatch = pf.match(/_Sheet(\d+)_PRINT\.png$/);
+      const sheetNum = oldMatch?.[1] || newMatch?.[1] || String(idx + 1);
+
+      const cutFile = cutFiles.find(cf =>
+        cf.includes(`-${sheetNum}-cut.svg`) || cf.includes(`_Sheet${sheetNum}_CUT.svg`)
+      ) || cutFiles[idx];
+
+      const cricutFile = cricutFiles.find(cf =>
+        cf.includes(`_Sheet${sheetNum}_CRICUT`)
+      ) || cricutFiles[idx];
+
+      const relativePrint = path.relative(LIBRARY_ROOT, path.join(orderDir, pf)).replace(/\\/g, '/');
+      const relativeCut = cutFile ? path.relative(LIBRARY_ROOT, path.join(orderDir, cutFile)).replace(/\\/g, '/') : null;
+      const relativeCricut = cricutFile ? path.relative(LIBRARY_ROOT, path.join(orderDir, cricutFile)).replace(/\\/g, '/') : null;
+
+      return {
+        sheetNumber: parseInt(sheetNum, 10),
+        printUrl: `/library/${relativePrint.split('/').map(p => encodeURIComponent(p)).join('/')}`,
+        cutUrl: relativeCut ? `/library/${relativeCut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+        cricutUrl: relativeCricut ? `/library/${relativeCricut.split('/').map(p => encodeURIComponent(p)).join('/')}` : null,
+        printFilename: pf,
+        cutFilename: cutFile || null,
+        cricutFilename: cricutFile || null
+      };
+    });
+
+    sendJson(res, 200, {
+      success: true,
+      orderNumber,
+      sheets,
+      totalSheets: sheets.length,
+      totalStickers: 0  // We don't track this after the fact
+    });
+  } catch (err) {
+    console.error('[Sticker Sheets Get Order Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Send sticker sheets to Silhouette Cameo
+ */
+async function handleStickerSheetsSendToCameo(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { sheets, cutSettings = {} } = body;
+
+    if (!sheets || sheets.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'No sheets provided' });
+    }
+
+    const { depth = 5, speed = 5, offset = 3 } = cutSettings;
+
+    // For now, just return success - actual Cameo integration would happen here
+    // The sendto_silhouette.py script would be called with the cut files
+    console.log('[Cameo] Would send to Cameo:', { sheetCount: sheets.length, depth, speed, offset });
+
+    // TODO: Integrate with StickerSheets/sendto_silhouette.py
+    // const { exec } = require('child_process');
+    // for (const sheet of sheets) {
+    //   const cutFilePath = ... // Convert URL to local path
+    //   exec(`python sendto_silhouette.py "${cutFilePath}" --depth=${depth} --speed=${speed}`);
+    // }
+
+    sendJson(res, 200, {
+      success: true,
+      message: `Sent ${sheets.length} sheet(s) to Cameo`,
+      cutSettings: { depth, speed, offset }
+    });
+  } catch (err) {
+    console.error('[Sticker Sheets Send to Cameo Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
  * List available sticker categories
  */
+// Cache for catalog.json data
+let catalogCache = null;
+let catalogCacheTime = 0;
+const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Load and cache catalog.json
+ */
+async function loadCatalogJson() {
+  const now = Date.now();
+  if (catalogCache && (now - catalogCacheTime) < CATALOG_CACHE_TTL) {
+    return catalogCache;
+  }
+
+  // Try multiple locations for catalog.json
+  const catalogPaths = [
+    path.join(WEB_DIR, 'catalog.json'),
+    path.join(LIBRARY_WEB_DIR, 'catalog.json'),
+    path.join(APP_ROOT, 'web', 'catalog.json')
+  ];
+
+  for (const catalogPath of catalogPaths) {
+    try {
+      if (fs.existsSync(catalogPath)) {
+        const data = await fs.promises.readFile(catalogPath, 'utf8');
+        catalogCache = JSON.parse(data);
+        catalogCacheTime = now;
+        console.log('[Catalog] Loaded from:', catalogPath);
+        return catalogCache;
+      }
+    } catch (err) {
+      console.error('[Catalog Load Error]', catalogPath, err.message);
+    }
+  }
+
+  console.error('[Catalog] catalog.json not found in any location');
+  return null;
+}
+
 async function handleStickerSheetCategories(req, res) {
   try {
-    const categories = await stickerSheets.listStickerCategories(STICKER_CATALOG_ROOT);
+    const catalog = await loadCatalogJson();
+    if (!catalog || !catalog.categories) {
+      sendJson(res, 500, { success: false, error: 'Catalog not available' });
+      return;
+    }
+
+    const categories = catalog.categories.map(c => c.name).sort();
     sendJson(res, 200, { success: true, categories });
   } catch (err) {
     console.error('[Sticker Categories Error]', err);
@@ -17888,27 +20772,234 @@ async function handleStickerSheetCategories(req, res) {
 
 /**
  * List stickers in a category or all stickers
+ * Uses catalog.json for the design list
  */
 async function handleStickerSheetCatalog(req, res, parsedUrl) {
   try {
     const category = parsedUrl.searchParams?.get('category') || parsedUrl.query?.category || null;
-    const stickers = await stickerSheets.scanStickerCatalog(STICKER_CATALOG_ROOT, category);
+    const catalog = await loadCatalogJson();
 
-    // Add thumbnail URL for each sticker
-    const stickersWithUrls = stickers.map(s => {
-      // Convert absolute path to API URL
-      const relativePath = path.relative(LIBRARY_ROOT, s.imagePath).replace(/\\/g, '/');
-      const encodedPath = relativePath.split('/').map(p => encodeURIComponent(p)).join('/');
-      return {
-        ...s,
-        thumbnailUrl: `/api/library/${encodedPath}`
-      };
-    });
+    if (!catalog || !catalog.categories) {
+      sendJson(res, 500, { success: false, error: 'Catalog not available' });
+      return;
+    }
 
-    sendJson(res, 200, { success: true, stickers: stickersWithUrls, count: stickersWithUrls.length });
+    // Filter categories if specified
+    let categories = catalog.categories;
+    if (category) {
+      categories = categories.filter(c =>
+        c.name.toLowerCase() === category.toLowerCase() ||
+        c.slug.toLowerCase() === category.toLowerCase()
+      );
+    }
+
+    // Flatten designs from all matching categories
+    const stickers = [];
+    for (const cat of categories) {
+      if (!cat.designs) continue;
+      for (const design of cat.designs) {
+        // Convert URL to local file path for processing
+        // URL: https://blueridgecustomco.com/library/Category/uploads/previews/file.png
+        // Local: /home/ubuntu/vinylApp/web/library/Category/uploads/previews/file.png
+        let localPath = design.image;
+        if (design.image && design.image.startsWith('http')) {
+          try {
+            const imageUrl = new URL(design.image);
+            // Extract path after domain (e.g., /library/Category/...)
+            const urlPath = imageUrl.pathname;
+            // Map to local WEB_DIR
+            localPath = path.join(WEB_DIR, urlPath);
+          } catch (e) {
+            console.warn('[Sticker Catalog] Could not parse image URL:', design.image);
+          }
+        }
+
+        stickers.push({
+          category: cat.name,
+          id: design.id,
+          filename: design.id,
+          title: design.name || design.id,
+          // Use the image URL directly from catalog for display
+          thumbnailUrl: design.image,
+          // Use local path for sticker sheet generation
+          imagePath: localPath,
+          sources: design.sources || {}
+        });
+      }
+    }
+
+    sendJson(res, 200, { success: true, stickers, count: stickers.length });
   } catch (err) {
     console.error('[Sticker Catalog Error]', err);
     sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Serve a sticker image from the catalog
+ * URL format: /api/sticker-catalog/image/{relativePath}
+ * The relativePath is the full path from STICKER_CATALOG_ROOT (e.g., category/uploads/previews/file.jpg)
+ */
+async function handleStickerCatalogImage(req, res, parsedUrl) {
+  // Parse relative path from URL
+  const relativePath = decodeURIComponent(parsedUrl.pathname.replace('/api/sticker-catalog/image/', ''));
+  if (!relativePath) {
+    res.statusCode = 400;
+    res.end('Invalid path');
+    return;
+  }
+
+  // Security: prevent path traversal
+  if (relativePath.includes('..') || path.isAbsolute(relativePath)) {
+    res.statusCode = 400;
+    res.end('Invalid path');
+    return;
+  }
+
+  // Construct the full path from STICKER_CATALOG_ROOT
+  const fullPath = path.join(STICKER_CATALOG_ROOT, relativePath);
+
+  // Verify the path is within STICKER_CATALOG_ROOT
+  const resolvedPath = path.resolve(fullPath);
+  const resolvedRoot = path.resolve(STICKER_CATALOG_ROOT);
+  if (!resolvedPath.startsWith(resolvedRoot)) {
+    res.statusCode = 400;
+    res.end('Invalid path');
+    return;
+  }
+
+  // Check if file exists
+  if (!fs.existsSync(fullPath)) {
+    res.statusCode = 404;
+    res.end('Sticker not found');
+    return;
+  }
+
+  // Serve the image file
+  const ext = path.extname(fullPath).toLowerCase();
+  const mimeTypes = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif'
+  };
+
+  const contentType = mimeTypes[ext] || 'application/octet-stream';
+  const fileBuffer = await fs.promises.readFile(fullPath);
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+  res.end(fileBuffer);
+}
+
+/**
+ * Get or generate contour for a sticker (lazy generation with caching)
+ * URL format: /api/stickers/contour/{base64EncodedImagePath}
+ * Query params: ?forceRegenerate=true to bypass cache
+ *
+ * Returns: { success: true, contourPath: "M 0,0 C ...", width: 800, height: 600, cached: true/false }
+ */
+async function handleStickerContour(req, res, parsedUrl) {
+  try {
+    // Extract base64-encoded image path from URL
+    const encodedPath = parsedUrl.pathname.replace('/api/stickers/contour/', '');
+    if (!encodedPath) {
+      return sendJson(res, 400, { success: false, error: 'Image path is required' });
+    }
+
+    // Decode the path (it's base64 encoded to handle special characters in paths)
+    let imagePath;
+    try {
+      imagePath = Buffer.from(encodedPath, 'base64').toString('utf-8');
+    } catch (e) {
+      // Fallback: try URL decoding
+      imagePath = decodeURIComponent(encodedPath);
+    }
+
+    console.log('[Sticker Contour] Request for:', imagePath);
+
+    // Check for force regenerate flag
+    const forceRegenerate = parsedUrl.searchParams?.get('forceRegenerate') === 'true';
+
+    // Check cache first (unless force regenerate)
+    if (!forceRegenerate) {
+      const cached = db.getStickerContour(imagePath);
+      if (cached) {
+        console.log('[Sticker Contour] Cache hit for:', imagePath);
+        return sendJson(res, 200, {
+          success: true,
+          contourPath: cached.contourSvgPath,
+          width: cached.width,
+          height: cached.height,
+          cached: true
+        });
+      }
+    }
+
+    console.log('[Sticker Contour] Cache miss, generating contour for:', imagePath);
+
+    // Resolve the actual file path
+    // Handle various path formats:
+    // - Full server paths: /home/ubuntu/vinylApp/web/library/...
+    // - Relative library paths: /library/...
+    // - Already resolved paths
+    let resolvedPath = imagePath;
+
+    if (imagePath.startsWith('/library/')) {
+      resolvedPath = path.join(WEB_DIR, imagePath);
+    } else if (imagePath.startsWith('http')) {
+      // Extract path from URL
+      try {
+        const url = new URL(imagePath);
+        const urlPath = url.pathname;
+        if (urlPath.startsWith('/library/')) {
+          resolvedPath = path.join(WEB_DIR, urlPath);
+        } else {
+          resolvedPath = path.join(WEB_DIR, urlPath);
+        }
+      } catch (e) {
+        console.warn('[Sticker Contour] Could not parse URL:', imagePath);
+      }
+    }
+
+    // Decode URL-encoded characters (e.g., %20 -> space)
+    resolvedPath = decodeURIComponent(resolvedPath);
+
+    // Verify file exists
+    if (!fs.existsSync(resolvedPath)) {
+      console.error('[Sticker Contour] File not found:', resolvedPath);
+      return sendJson(res, 404, { success: false, error: 'Image file not found' });
+    }
+
+    // Generate contour using the bezier pipeline from sticker-sheet-generator
+    const contourResult = await stickerSheets.extractContourBezier(resolvedPath);
+
+    if (!contourResult || !contourResult.svgPath) {
+      throw new Error('Failed to generate contour');
+    }
+
+    // Cache the result
+    db.saveStickerContour(
+      imagePath,
+      contourResult.svgPath,
+      contourResult.width,
+      contourResult.height
+    );
+
+    console.log('[Sticker Contour] Generated and cached contour for:', imagePath);
+
+    return sendJson(res, 200, {
+      success: true,
+      contourPath: contourResult.svgPath,
+      width: contourResult.width,
+      height: contourResult.height,
+      cached: false
+    });
+
+  } catch (err) {
+    console.error('[Sticker Contour Error]', err);
+    return sendJson(res, 500, { success: false, error: err.message });
   }
 }
 
@@ -17923,12 +21014,33 @@ async function handleStickerSheetGenerate(req, res) {
       designs = [],
       stickerSizeInches = 3,
       offsetMm = 3,
-      filenamePrefix = 'sticker-sheet'
+      filenamePrefix = 'sticker-sheet',
+      removeBackgrounds = true
     } = body;
 
     if (!designs || !Array.isArray(designs) || designs.length === 0) {
       return sendJson(res, 400, { success: false, error: 'designs array is required' });
     }
+
+    // Convert URL image paths to local file paths
+    console.log('[Sticker Generate] Input designs:', designs.slice(0, 2).map(d => ({ title: d.title, imagePath: d.imagePath })));
+    const resolvedDesigns = designs.map(design => {
+      let localPath = design.imagePath;
+      if (design.imagePath && design.imagePath.startsWith('http')) {
+        try {
+          const imageUrl = new URL(design.imagePath);
+          // Extract path after domain (e.g., /library/Category/...)
+          const urlPath = imageUrl.pathname;
+          // Map to local WEB_DIR
+          localPath = path.join(WEB_DIR, urlPath);
+          console.log(`[Sticker Generate] URL -> Local: ${localPath}`);
+        } catch (e) {
+          console.warn('[Sticker Generate] Could not parse image URL:', design.imagePath);
+        }
+      }
+      return { ...design, imagePath: localPath };
+    });
+    console.log('[Sticker Generate] Resolved designs:', resolvedDesigns.slice(0, 2).map(d => ({ title: d.title, imagePath: d.imagePath })));
 
     // Ensure output directory exists
     await fs.promises.mkdir(STICKER_OUTPUT_DIR, { recursive: true });
@@ -17937,13 +21049,14 @@ async function handleStickerSheetGenerate(req, res) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const outputDir = path.join(STICKER_OUTPUT_DIR, `${filenamePrefix}-${timestamp}`);
 
-    console.log(`[Sticker Sheets] Generating sheets for ${designs.length} designs to ${outputDir}`);
+    console.log(`[Sticker Sheets] Generating sheets for ${resolvedDesigns.length} designs to ${outputDir}`);
 
-    const result = await stickerSheets.generateStickerSheets(designs, {
+    const result = await stickerSheets.generateStickerSheets(resolvedDesigns, {
       stickerSizeInches,
       offsetMm,
       outputDir,
-      filenamePrefix
+      filenamePrefix,
+      removeBackgrounds
     });
 
     sendJson(res, 200, {
@@ -18061,29 +21174,129 @@ async function handleStickerSheetFromOrder(req, res) {
       });
     }
 
-    // Generate sheets
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const outputDir = path.join(STICKER_OUTPUT_DIR, `order-${orderId}-${timestamp}`);
+    // Generate sheets - save to orders folder by order number
+    const orderNum = String(order.order_number || order.name || orderId).replace('#', '');
+    const outputDir = path.join(STICKER_ORDERS_DIR, orderNum);
     await fs.promises.mkdir(outputDir, { recursive: true });
 
-    console.log(`[Sticker Sheets] Generating sheets for order ${orderId} with ${designs.length} designs`);
+    console.log(`[Sticker Sheets] Generating sheets for order #${orderNum} with ${designs.length} designs`);
 
     const result = await stickerSheets.generateStickerSheets(designs, {
       stickerSizeInches,
       offsetMm,
       outputDir,
-      filenamePrefix: `order-${orderId}`
+      filenamePrefix: `order-${orderNum}`
     });
 
     sendJson(res, 200, {
       success: true,
       orderId,
-      orderNumber: order.order_number || order.name,
+      orderNumber: orderNum,
       ...result,
       notFound: notFound.length > 0 ? notFound : undefined
     });
   } catch (err) {
     console.error('[Sticker Sheet From Order Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Generate sticker sheets from a manual visual layout
+ * Body: { pages: [{ stickers: [{imagePath, x, y, width, height, angle}] }], sheetConfig, stickerSizeInches, offsetMm }
+ */
+async function handleStickerSheetFromLayout(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const {
+      pages = [],
+      sheetConfig = {},
+      stickerSizeInches = 3,
+      offsetMm = 0.25
+    } = body;
+
+    if (!pages || !Array.isArray(pages) || pages.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'pages array is required' });
+    }
+
+    // Count total stickers
+    let totalStickers = 0;
+    for (const page of pages) {
+      totalStickers += (page.stickers || []).length;
+    }
+
+    if (totalStickers === 0) {
+      return sendJson(res, 400, { success: false, error: 'No stickers in layout' });
+    }
+
+    console.log(`[Sticker Layout] Processing ${pages.length} page(s) with ${totalStickers} total stickers`);
+
+    // Ensure output directory exists
+    await fs.promises.mkdir(STICKER_OUTPUT_DIR, { recursive: true });
+
+    // Generate timestamp-based subfolder
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const outputDir = path.join(STICKER_OUTPUT_DIR, `layout-${timestamp}`);
+    await fs.promises.mkdir(outputDir, { recursive: true });
+
+    // Process each page and generate the sheets
+    const results = {
+      sheets: [],
+      totalStickers,
+      totalSheets: pages.length,
+      outputDir
+    };
+
+    for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
+      const page = pages[pageIdx];
+      const sheetNum = String(pageIdx + 1).padStart(2, '0');
+
+      try {
+        // Generate sheet from manual placement
+        const sheetResult = await stickerSheets.generateSheetFromLayout(
+          page.stickers,
+          {
+            outputDir,
+            sheetNum,
+            stickerSizeInches,
+            offsetMm
+          }
+        );
+
+        if (sheetResult) {
+          // Calculate web URLs
+          const webBasePath = outputDir.includes('/web/')
+            ? outputDir.split('/web/')[1]
+            : outputDir.replace(/^.*[/\\]web[/\\]/, '');
+
+          results.sheets.push({
+            sheetNumber: pageIdx + 1,
+            sheetName: `Sheet ${sheetNum}`,
+            stickerCount: (page.stickers || []).length,
+            printFile: sheetResult.printPath,
+            cutFile: sheetResult.cutPath,
+            cricutFile: sheetResult.cricutPath,
+            printFilename: path.basename(sheetResult.printPath),
+            cutFilename: path.basename(sheetResult.cutPath),
+            cricutFilename: sheetResult.cricutPath ? path.basename(sheetResult.cricutPath) : null,
+            printUrl: `/${webBasePath}/${path.basename(sheetResult.printPath)}`.replace(/\\/g, '/'),
+            cutUrl: `/${webBasePath}/${path.basename(sheetResult.cutPath)}`.replace(/\\/g, '/'),
+            cricutUrl: sheetResult.cricutPath ? `/${webBasePath}/${path.basename(sheetResult.cricutPath)}`.replace(/\\/g, '/') : null
+          });
+        }
+      } catch (err) {
+        console.error(`[Sticker Layout] Error generating sheet ${pageIdx + 1}:`, err);
+      }
+    }
+
+    console.log(`[Sticker Layout] Generated ${results.sheets.length} sheet(s)`);
+
+    sendJson(res, 200, {
+      success: true,
+      ...results
+    });
+  } catch (err) {
+    console.error('[Sticker Sheet From Layout Error]', err);
     sendJson(res, 500, { success: false, error: err.message });
   }
 }
@@ -18274,8 +21487,24 @@ async function handleMetalPrintCampaignExport(req, res) {
               continue;
             }
 
-            // Apply sublimation filter
-            const filteredBuffer = await sharp(inputBuffer)
+            // Apply sublimation filter and resize for Shopify (max 20 megapixels)
+            // First get metadata to check dimensions
+            const metadata = await sharp(inputBuffer).metadata();
+            const currentPixels = (metadata.width || 0) * (metadata.height || 0);
+            const maxPixels = 20000000; // 20 megapixels Shopify limit
+
+            let sharpPipeline = sharp(inputBuffer);
+
+            // Resize if over 20MP (with some margin)
+            if (currentPixels > maxPixels * 0.95) {
+              const scaleFactor = Math.sqrt(maxPixels * 0.9 / currentPixels);
+              const newWidth = Math.floor((metadata.width || 4000) * scaleFactor);
+              const newHeight = Math.floor((metadata.height || 4000) * scaleFactor);
+              console.log(`[Metal Print Campaign] Resizing image from ${metadata.width}x${metadata.height} (${(currentPixels/1000000).toFixed(1)}MP) to ${newWidth}x${newHeight} for Shopify`);
+              sharpPipeline = sharpPipeline.resize(newWidth, newHeight, { fit: 'inside', withoutEnlargement: true });
+            }
+
+            const filteredBuffer = await sharpPipeline
               .modulate({ brightness: 1.05, saturation: 1.4 })
               .linear(1.3, -(128 * 0.3))
               .recomb([
@@ -18378,6 +21607,24 @@ async function handleMetalPrintCampaignExport(req, res) {
                 });
                 shopifyProduct = { id: existingProduct.id, ...shopifyProduct };
                 console.log(`[Metal Print Campaign] Updated existing product: ${existingProduct.id}`);
+
+                // Check if product has images, if not add the image
+                try {
+                  const fullProd = await shopify.getProduct(existingProduct.id);
+                  const existingImages = fullProd?.images || [];
+                  if (existingImages.length === 0) {
+                    console.log(`[Metal Print Campaign] Product has no images, adding image...`);
+                    await shopify.addProductImage(existingProduct.id, {
+                      attachment: imageBase64,
+                      filename: `${productTitle.replace(/\s+/g, '-')}.png`
+                    });
+                    console.log(`[Metal Print Campaign] Added image to existing product`);
+                  } else {
+                    console.log(`[Metal Print Campaign] Product already has ${existingImages.length} image(s)`);
+                  }
+                } catch (imgErr) {
+                  console.log(`[Metal Print Campaign] Could not add image to existing product:`, imgErr.message || imgErr.detail || imgErr);
+                }
               } else {
                 // Create new product after deletion
                 shopifyProduct = await shopify.createProduct(productData);
@@ -18616,8 +21863,23 @@ async function handleMetalPrintCampaignExportSync(req, res) {
           continue;
         }
 
-        // Apply sublimation filter to inputBuffer
-        const filteredBuffer = await sharp(inputBuffer)
+        // Apply sublimation filter and resize for Shopify (max 20 megapixels)
+        const metadata = await sharp(inputBuffer).metadata();
+        const currentPixels = (metadata.width || 0) * (metadata.height || 0);
+        const maxPixels = 20000000; // 20 megapixels Shopify limit
+
+        let sharpPipeline = sharp(inputBuffer);
+
+        // Resize if over 20MP (with some margin)
+        if (currentPixels > maxPixels * 0.95) {
+          const scaleFactor = Math.sqrt(maxPixels * 0.9 / currentPixels);
+          const newWidth = Math.floor((metadata.width || 4000) * scaleFactor);
+          const newHeight = Math.floor((metadata.height || 4000) * scaleFactor);
+          console.log(`[Metal Print Campaign] Resizing image from ${metadata.width}x${metadata.height} (${(currentPixels/1000000).toFixed(1)}MP) to ${newWidth}x${newHeight} for Shopify`);
+          sharpPipeline = sharpPipeline.resize(newWidth, newHeight, { fit: 'inside', withoutEnlargement: true });
+        }
+
+        const filteredBuffer = await sharpPipeline
           .modulate({ brightness: 1.05, saturation: 1.4 })
           .linear(1.3, -(128 * 0.3))
           .recomb([
@@ -18736,6 +21998,24 @@ async function handleMetalPrintCampaignExportSync(req, res) {
             });
             console.log(`[Metal Print Campaign] Updated product: ${existingProduct.id} - ${productTitle}`);
             shopifyProduct = { id: existingProduct.id, ...shopifyProduct };
+
+            // Check if product has images, if not add the image
+            try {
+              const fullProd = await shopify.getProduct(existingProduct.id);
+              const existingImages = fullProd?.images || [];
+              if (existingImages.length === 0) {
+                console.log(`[Metal Print Campaign] Product has no images, adding image...`);
+                await shopify.addProductImage(existingProduct.id, {
+                  attachment: imageBase64,
+                  filename: `${productTitle.replace(/\s+/g, '-')}.png`
+                });
+                console.log(`[Metal Print Campaign] Added image to existing product`);
+              } else {
+                console.log(`[Metal Print Campaign] Product already has ${existingImages.length} image(s)`);
+              }
+            } catch (imgErr) {
+              console.log(`[Metal Print Campaign] Could not add image to existing product:`, imgErr.message || imgErr.detail || imgErr);
+            }
           }
         } else {
           // Create new product
@@ -18860,7 +22140,7 @@ async function handleArtworkUpload(req, res) {
   let createdCategoryDir = null;
 
   try {
-    const { fields, files } = await parseMultipartForm(req);
+    const { fields, files } = await parseMultipartForm(req, { maxFiles: 20 });
     const displayName = fieldValue(fields, 'displayName') || fieldValue(fields, 'name');
     if (!displayName) {
       throw userError('Display name is required.');
@@ -19499,4 +22779,583 @@ function normalizeMoneyInput(value) {
     return Math.round(numeric * 100);
   }
   return undefined;
+}
+
+// ============================================================================
+// VINYL CUTTER API HANDLERS
+// ============================================================================
+
+const VINYL_OUTPUT_DIR = path.join(LIBRARY_ROOT, 'vinyl-cuts');
+
+// Vectorization cache - stores results keyed by file path + mtime
+const vinylVectorizeCache = new Map();
+const VINYL_CACHE_MAX_SIZE = 100; // Max cached items
+const VINYL_CACHE_TTL = 30 * 60 * 1000; // 30 minutes TTL
+
+// Request queue for sequential processing
+let vinylVectorizeQueue = Promise.resolve();
+let vinylQueueLength = 0;
+
+/**
+ * Get cache key for an image (path + modification time)
+ */
+async function getVinylCacheKey(fullPath) {
+  try {
+    const stats = await fs.promises.stat(fullPath);
+    return `${fullPath}:${stats.mtimeMs}`;
+  } catch (err) {
+    return fullPath;
+  }
+}
+
+/**
+ * Clean up old cache entries
+ */
+function cleanVinylCache() {
+  const now = Date.now();
+  for (const [key, entry] of vinylVectorizeCache.entries()) {
+    if (now - entry.timestamp > VINYL_CACHE_TTL) {
+      vinylVectorizeCache.delete(key);
+    }
+  }
+  // If still over max size, remove oldest entries
+  if (vinylVectorizeCache.size > VINYL_CACHE_MAX_SIZE) {
+    const entries = Array.from(vinylVectorizeCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toRemove = entries.slice(0, entries.length - VINYL_CACHE_MAX_SIZE);
+    for (const [key] of toRemove) {
+      vinylVectorizeCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Core vectorization logic (called sequentially from queue)
+ * Uses per-color contour extraction for proper vinyl cutting
+ */
+async function doVinylVectorize(fullPath) {
+  const { extractColorContours } = require('./sticker-sheet-generator');
+
+  // Get image dimensions
+  const metadata = await sharp(fullPath).metadata();
+  const width = metadata.width;
+  const height = metadata.height;
+
+  // For vinyl cutting, we work directly with the original image
+  // Background removal is DISABLED - it can alter colors and remove parts of the design
+  // The color detection will skip white/near-white pixels anyway
+  console.log('[Vinyl Cutter] Using original image (background removal disabled)');
+  const imagePath = fullPath;
+  const isTemp = false;
+
+  // Extract per-color contours - this is how vinyl cutting actually works!
+  // Each color gets its own cut path that traces only that color's areas
+  console.log('[Vinyl Cutter] Extracting per-color contours...');
+  const colorContoursResult = await extractColorContours(imagePath);
+
+  // Clean up temp file if created
+  if (isTemp) {
+    try { await fs.promises.unlink(imagePath); } catch (e) { /* ignore */ }
+  }
+
+  // Return colors with their individual contour paths
+  // Each color now has: { hex, contourPath, count, percentage }
+  return {
+    colors: colorContoursResult.colors,
+    width: colorContoursResult.width || width,
+    height: colorContoursResult.height || height
+  };
+}
+
+/**
+ * Vectorize an image for vinyl cutting with color detection
+ * Uses request queuing (sequential processing) and caching
+ */
+async function handleVinylVectorize(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { imagePath } = body;
+
+    if (!imagePath) {
+      return sendJson(res, 400, { success: false, error: 'imagePath is required' });
+    }
+
+    // Get full path
+    let fullPath = imagePath;
+    if (!path.isAbsolute(imagePath)) {
+      fullPath = path.join(LIBRARY_ROOT, imagePath);
+    }
+
+    // Check if file exists
+    try {
+      await fs.promises.access(fullPath);
+    } catch (err) {
+      return sendJson(res, 404, { success: false, error: 'Image file not found' });
+    }
+
+    // Check cache first
+    const cacheKey = await getVinylCacheKey(fullPath);
+    const cached = vinylVectorizeCache.get(cacheKey);
+    if (cached) {
+      console.log('[Vinyl Cutter] Cache hit for:', path.basename(fullPath));
+      return sendJson(res, 200, {
+        success: true,
+        ...cached.data,
+        fromCache: true
+      });
+    }
+
+    // Queue the request for sequential processing
+    vinylQueueLength++;
+    console.log(`[Vinyl Cutter] Queuing vectorization (queue length: ${vinylQueueLength}):`, path.basename(fullPath));
+
+    // Add to queue - each request waits for previous ones to complete
+    const resultPromise = vinylVectorizeQueue.then(async () => {
+      console.log('[Vinyl Cutter] Processing:', path.basename(fullPath));
+      const result = await doVinylVectorize(fullPath);
+
+      // Cache the result
+      cleanVinylCache();
+      vinylVectorizeCache.set(cacheKey, {
+        data: result,
+        timestamp: Date.now()
+      });
+      console.log(`[Vinyl Cutter] Cached result (cache size: ${vinylVectorizeCache.size})`);
+
+      return result;
+    }).finally(() => {
+      vinylQueueLength--;
+    });
+
+    // Update the queue tail
+    vinylVectorizeQueue = resultPromise.catch(() => {}); // Prevent unhandled rejection
+
+    // Wait for our turn and get the result
+    const result = await resultPromise;
+
+    sendJson(res, 200, {
+      success: true,
+      ...result
+    });
+
+  } catch (err) {
+    console.error('[Vinyl Vectorize Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Generate vinyl cut files with color separation
+ */
+async function handleVinylGenerate(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { items, canvasSize, addWeedingLines, addRegistrationMarks } = body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'Items array is required' });
+    }
+
+    console.log('[Vinyl Cutter] Generating cut files for', items.length, 'items');
+    console.log('[Vinyl Cutter] Canvas size:', canvasSize);
+
+    // Debug: Log item data to understand coordinate system
+    for (const item of items) {
+      console.log('[Vinyl Cutter] Item:', {
+        left: item.left,
+        top: item.top,
+        width: item.width,
+        height: item.height,
+        scaleX: item.scaleX,
+        scaleY: item.scaleY,
+        angle: item.angle,
+        colorCount: item.colors?.length,
+        hasContours: item.colors?.some(c => c.contourPath)
+      });
+      if (item.colors) {
+        for (const c of item.colors) {
+          console.log(`[Vinyl Cutter]   Color ${c.hex}: contourPath ${c.contourPath ? c.contourPath.length + ' chars' : 'MISSING'}`);
+        }
+      }
+    }
+
+    // Create output directory
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const batchName = `cut-${timestamp}`;
+    const batchDir = path.join(VINYL_OUTPUT_DIR, batchName);
+    await fs.promises.mkdir(batchDir, { recursive: true });
+
+    // Import functions
+    const { createRegistrationMarks, createWeedingLines } = require('./sticker-sheet-generator');
+
+    // Canvas dimensions in mm (for SVG)
+    const widthMm = (canvasSize?.widthInches || 12) * 25.4;
+    const heightMm = (canvasSize?.heightInches || 12) * 25.4;
+    const dpi = canvasSize?.dpi || 300;
+
+    // Collect all unique colors
+    const colorSet = new Set();
+    items.forEach(item => {
+      if (item.colors && Array.isArray(item.colors)) {
+        item.colors.forEach(c => colorSet.add(c.hex || c));
+      }
+    });
+    const allColors = Array.from(colorSet);
+
+    const generatedFiles = [];
+
+    // Generate an SVG for each color layer
+    for (const color of allColors) {
+      const colorName = color.replace('#', '').toUpperCase();
+      const fileName = `cut_${colorName}.svg`;
+      const filePath = path.join(batchDir, fileName);
+
+      // Start SVG
+      let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="${widthMm}mm" height="${heightMm}mm"
+     viewBox="0 0 ${widthMm} ${heightMm}">
+  <title>Vinyl Cut - ${colorName}</title>
+  <desc>Color layer: ${color}</desc>
+`;
+
+      // Add paths for items that contain this color
+      // NEW: Each color now has its OWN contourPaths array - SEPARATE <path> elements per contour
+      // This ensures the cutter LIFTS between shapes instead of cutting travel lines
+      // Stroke width 1.5mm for better visibility in previews (cutters ignore stroke width)
+      svgContent += `  <g id="cut-paths" stroke="${color}" stroke-width="1.5" fill="none">\n`;
+
+      // Collect item bounds for per-item registration marks
+      const itemBounds = [];
+
+      let itemIndex = 0;
+      for (const item of items) {
+        if (item.colors && Array.isArray(item.colors)) {
+          // Find the color entry that matches - it contains the specific contour for this color
+          const colorEntry = item.colors.find(c => (c.hex || c) === color);
+
+          if (colorEntry && (colorEntry.contourPaths || colorEntry.contourPath)) {
+            // Convert canvas position (pixels at screen DPI) to mm
+            // The canvas uses 96 DPI for display, export uses 300 DPI
+            const displayDpi = 96;
+            const displayToMm = 25.4 / displayDpi;
+
+            // Position on canvas (convert from display pixels to mm)
+            const left = (item.left || 0) * displayToMm;
+            const top = (item.top || 0) * displayToMm;
+
+            // The contour path coordinates are in ORIGINAL image pixels
+            // item.origWidth/Height are passed from client (original image dimensions)
+            const origWidth = item.origWidth || 1000;
+            const origHeight = item.origHeight || 1000;
+
+            // item.width/height from client already includes scaleX/scaleY multiplication
+            // These are the DISPLAY dimensions (canvas pixels at 96 DPI)
+            const displayWidth = item.width || origWidth;
+            const displayHeight = item.height || origHeight;
+
+            // Calculate item dimensions in mm for registration marks
+            const itemWidthMm = displayWidth * displayToMm;
+            const itemHeightMm = displayHeight * displayToMm;
+
+            // Store bounds for registration marks (added after cut paths)
+            itemBounds.push({ left, top, width: itemWidthMm, height: itemHeightMm, index: itemIndex });
+
+            console.log(`[Vinyl Generate] Item: orig=${origWidth}x${origHeight}, display=${displayWidth}x${displayHeight}`);
+            const scaleX = (displayWidth / origWidth) * displayToMm;
+            const scaleY = (displayHeight / origHeight) * displayToMm;
+            const angle = item.angle || 0;
+
+            console.log(`[Vinyl Generate] Path transform: translate(${left.toFixed(2)}, ${top.toFixed(2)}) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`);
+
+            // Use contourPaths array if available (preferred - separate paths ensure blade lifts)
+            // Fall back to contourPath string for backward compatibility
+            const pathsToRender = colorEntry.contourPaths || [colorEntry.contourPath];
+
+            svgContent += `    <g transform="translate(${left}, ${top}) rotate(${angle}) scale(${scaleX}, ${scaleY})">\n`;
+
+            // Create SEPARATE <path> element for each contour
+            // This is CRITICAL - ensures cutter lifts blade between shapes
+            for (let i = 0; i < pathsToRender.length; i++) {
+              const pathData = pathsToRender[i];
+              if (pathData) {
+                svgContent += `      <path d="${pathData}" />\n`;
+              }
+            }
+
+            svgContent += `    </g>\n`;
+
+            console.log(`[Vinyl Generate] Added ${pathsToRender.length} separate path elements for ${color} (item ${itemIndex})`);
+            itemIndex++;
+          }
+        }
+      }
+
+      svgContent += `  </g>\n`;
+
+      // Add per-item registration marks (close to each decal)
+      if (addRegistrationMarks !== false && itemBounds.length > 0) {
+        svgContent += `  <g id="registration-marks">\n`;
+        for (const bounds of itemBounds) {
+          svgContent += createItemRegistrationMarks(bounds.left, bounds.top, bounds.width, bounds.height, bounds.index);
+        }
+        svgContent += `  </g>\n`;
+      }
+
+      // Add weeding lines if enabled
+      if (addWeedingLines) {
+        svgContent += createVinylWeedingLines(widthMm, heightMm);
+      }
+
+      svgContent += `</svg>`;
+
+      // Write file
+      await fs.promises.writeFile(filePath, svgContent, 'utf8');
+      generatedFiles.push({ name: fileName, color, path: filePath });
+
+      console.log('[Vinyl Cutter] Generated:', fileName);
+    }
+
+    // Create manifest file
+    const manifest = {
+      batchName,
+      created: new Date().toISOString(),
+      canvasSize,
+      itemCount: items.length,
+      colors: allColors,
+      files: generatedFiles.map(f => f.name),
+      options: { addWeedingLines, addRegistrationMarks }
+    };
+    await fs.promises.writeFile(
+      path.join(batchDir, 'manifest.json'),
+      JSON.stringify(manifest, null, 2),
+      'utf8'
+    );
+
+    sendJson(res, 200, {
+      success: true,
+      batchName,
+      files: generatedFiles,
+      colors: allColors
+    });
+
+  } catch (err) {
+    console.error('[Vinyl Generate Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Create registration marks SVG for a specific item's bounding box
+ * Places marks at the corners of the item with a small offset
+ * @param {number} leftMm - Item left position in mm
+ * @param {number} topMm - Item top position in mm
+ * @param {number} widthMm - Item width in mm
+ * @param {number} heightMm - Item height in mm
+ * @param {number} itemIndex - Item index for unique IDs
+ * @returns {string} SVG group with registration marks
+ */
+function createItemRegistrationMarks(leftMm, topMm, widthMm, heightMm, itemIndex = 0) {
+  const offset = 5; // mm outside the item bounding box
+  const markSize = 6; // mm - slightly smaller for per-item marks
+  const strokeWidth = 0.5;
+
+  // Calculate mark positions (outside the item bounds)
+  const x1 = leftMm - offset;           // Left edge
+  const x2 = leftMm + widthMm + offset; // Right edge
+  const y1 = topMm - offset;            // Top edge
+  const y2 = topMm + heightMm + offset; // Bottom edge
+
+  return `    <!-- Registration marks for item ${itemIndex} -->
+    <g id="regmarks-item-${itemIndex}" stroke="#000000" stroke-width="${strokeWidth}" fill="none">
+      <!-- Top-left -->
+      <circle cx="${x1}" cy="${y1}" r="${markSize/2}" />
+      <line x1="${x1 - markSize/2}" y1="${y1}" x2="${x1 + markSize/2}" y2="${y1}" />
+      <line x1="${x1}" y1="${y1 - markSize/2}" x2="${x1}" y2="${y1 + markSize/2}" />
+      <!-- Top-right -->
+      <circle cx="${x2}" cy="${y1}" r="${markSize/2}" />
+      <line x1="${x2 - markSize/2}" y1="${y1}" x2="${x2 + markSize/2}" y2="${y1}" />
+      <line x1="${x2}" y1="${y1 - markSize/2}" x2="${x2}" y2="${y1 + markSize/2}" />
+      <!-- Bottom-left -->
+      <circle cx="${x1}" cy="${y2}" r="${markSize/2}" />
+      <line x1="${x1 - markSize/2}" y1="${y2}" x2="${x1 + markSize/2}" y2="${y2}" />
+      <line x1="${x1}" y1="${y2 - markSize/2}" x2="${x1}" y2="${y2 + markSize/2}" />
+      <!-- Bottom-right -->
+      <circle cx="${x2}" cy="${y2}" r="${markSize/2}" />
+      <line x1="${x2 - markSize/2}" y1="${y2}" x2="${x2 + markSize/2}" y2="${y2}" />
+      <line x1="${x2}" y1="${y2 - markSize/2}" x2="${x2}" y2="${y2 + markSize/2}" />
+    </g>
+`;
+}
+
+/**
+ * Create registration marks SVG for vinyl cutting (canvas-level - legacy)
+ */
+function createVinylRegistrationMarks(widthMm, heightMm) {
+  const offset = 10; // mm from edge
+  const markSize = 8; // mm
+  const strokeWidth = 0.5;
+
+  return `  <g id="registration-marks" stroke="#000000" stroke-width="${strokeWidth}" fill="none">
+    <!-- Top-left -->
+    <circle cx="${offset}" cy="${offset}" r="${markSize/2}" />
+    <line x1="${offset - markSize}" y1="${offset}" x2="${offset + markSize}" y2="${offset}" />
+    <line x1="${offset}" y1="${offset - markSize}" x2="${offset}" y2="${offset + markSize}" />
+    <!-- Top-right -->
+    <circle cx="${widthMm - offset}" cy="${offset}" r="${markSize/2}" />
+    <line x1="${widthMm - offset - markSize}" y1="${offset}" x2="${widthMm - offset + markSize}" y2="${offset}" />
+    <line x1="${widthMm - offset}" y1="${offset - markSize}" x2="${widthMm - offset}" y2="${offset + markSize}" />
+    <!-- Bottom-left -->
+    <circle cx="${offset}" cy="${heightMm - offset}" r="${markSize/2}" />
+    <line x1="${offset - markSize}" y1="${heightMm - offset}" x2="${offset + markSize}" y2="${heightMm - offset}" />
+    <line x1="${offset}" y1="${heightMm - offset - markSize}" x2="${offset}" y2="${heightMm - offset + markSize}" />
+    <!-- Bottom-right -->
+    <circle cx="${widthMm - offset}" cy="${heightMm - offset}" r="${markSize/2}" />
+    <line x1="${widthMm - offset - markSize}" y1="${heightMm - offset}" x2="${widthMm - offset + markSize}" y2="${heightMm - offset}" />
+    <line x1="${widthMm - offset}" y1="${heightMm - offset - markSize}" x2="${widthMm - offset}" y2="${heightMm - offset + markSize}" />
+  </g>
+`;
+}
+
+/**
+ * Create weeding lines SVG for vinyl cutting
+ */
+function createVinylWeedingLines(widthMm, heightMm) {
+  const margin = 15; // mm from edge
+  return `  <g id="weeding-lines" stroke="#CCCCCC" stroke-width="0.25" stroke-dasharray="5,5" fill="none">
+    <rect x="${margin}" y="${margin}" width="${widthMm - margin*2}" height="${heightMm - margin*2}" />
+  </g>
+`;
+}
+
+/**
+ * List generated vinyl cut batches
+ */
+async function handleVinylList(req, res) {
+  try {
+    await fs.promises.mkdir(VINYL_OUTPUT_DIR, { recursive: true });
+
+    const entries = await fs.promises.readdir(VINYL_OUTPUT_DIR, { withFileTypes: true });
+    const batches = [];
+
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith('cut-')) {
+        const batchDir = path.join(VINYL_OUTPUT_DIR, entry.name);
+        try {
+          const files = await fs.promises.readdir(batchDir);
+          const svgFiles = files.filter(f => f.endsWith('.svg'));
+
+          // Try to read manifest
+          let manifest = null;
+          try {
+            const manifestPath = path.join(batchDir, 'manifest.json');
+            manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf8'));
+          } catch (e) {}
+
+          batches.push({
+            name: entry.name,
+            files: svgFiles,
+            created: manifest?.created || null,
+            colors: manifest?.colors || [],
+            itemCount: manifest?.itemCount || 0
+          });
+        } catch (e) {
+          console.warn('[Vinyl List] Error reading batch:', entry.name, e.message);
+        }
+      }
+    }
+
+    // Sort by name (timestamp) descending
+    batches.sort((a, b) => b.name.localeCompare(a.name));
+
+    sendJson(res, 200, batches);
+
+  } catch (err) {
+    console.error('[Vinyl List Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Delete a vinyl cut batch
+ */
+async function handleVinylDeleteBatch(req, res, batchName) {
+  try {
+    if (!batchName || batchName.includes('..') || batchName.includes('/') || batchName.includes('\\')) {
+      return sendJson(res, 400, { success: false, error: 'Invalid batch name' });
+    }
+
+    const batchDir = path.join(VINYL_OUTPUT_DIR, batchName);
+
+    // Check if directory exists
+    try {
+      const stats = await fs.promises.stat(batchDir);
+      if (!stats.isDirectory()) {
+        return sendJson(res, 404, { success: false, error: 'Batch not found' });
+      }
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        return sendJson(res, 404, { success: false, error: 'Batch not found' });
+      }
+      throw err;
+    }
+
+    // Delete all files in the directory first
+    const files = await fs.promises.readdir(batchDir);
+    for (const file of files) {
+      await fs.promises.unlink(path.join(batchDir, file));
+    }
+
+    // Then delete the directory
+    await fs.promises.rmdir(batchDir);
+
+    console.log('[Vinyl Cutter] Deleted batch:', batchName);
+    sendJson(res, 200, { success: true, message: `Batch '${batchName}' deleted successfully` });
+
+  } catch (err) {
+    console.error('[Vinyl Delete Batch Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * Send vinyl cut file to Silhouette
+ * Note: Since the Silhouette cutter is USB-connected to the local machine (not the server),
+ * this returns a download URL for the SVG file. The user can open it in Silhouette Studio.
+ */
+async function handleVinylSendToSilhouette(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { batchName, fileName } = body;
+
+    if (!batchName || !fileName) {
+      return sendJson(res, 400, { success: false, error: 'batchName and fileName are required' });
+    }
+
+    const filePath = path.join(VINYL_OUTPUT_DIR, batchName, fileName);
+
+    // Check if file exists
+    try {
+      await fs.promises.access(filePath);
+    } catch (err) {
+      return sendJson(res, 404, { success: false, error: 'Cut file not found' });
+    }
+
+    // Return the download URL for the SVG file
+    // The Silhouette is USB-connected to the user's local machine, so they need to
+    // download the file and open it in Silhouette Studio
+    const downloadUrl = `/library/vinyl-cuts/${batchName}/${fileName}`;
+
+    console.log('[Vinyl Cutter] Providing download URL for:', fileName);
+    sendJson(res, 200, {
+      success: true,
+      message: 'Download the SVG file and open it in Silhouette Studio',
+      downloadUrl: downloadUrl,
+      fileName: fileName
+    });
+
+  } catch (err) {
+    console.error('[Vinyl Send to Silhouette Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
 }

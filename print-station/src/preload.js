@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('printStation', {
   catalogRename: (payload) => ipcRenderer.invoke('catalog:rename', payload || {}),
   catalogDelete: (payload) => ipcRenderer.invoke('catalog:delete', payload || {}),
   catalogCreateFolder: (payload) => ipcRenderer.invoke('catalog:folder:create', payload || {}),
+  catalogExtractZip: (zipPath) => ipcRenderer.invoke('catalog:extract-zip', zipPath),
   uploadArtwork: (payload) => ipcRenderer.invoke('artwork:upload', payload),
   // Local catalogging
   selectFolder: (options) => ipcRenderer.invoke('dialog:selectFolder', options || {}),
@@ -168,6 +169,9 @@ contextBridge.exposeInMainWorld('printStation', {
   ,
   // Vectorize an image (convert raster to SVG)
   vectorizeImage: (imagePath) => ipcRenderer.invoke('image:vectorize', imagePath)
+  ,
+  // Remove background from an image
+  removeImageBackground: (payload) => ipcRenderer.invoke('image:removeBackground', payload || {})
   ,
   // Save a data URL to a temp image file
   saveTempImage: (payload) => ipcRenderer.invoke('image:saveTemp', payload || {})
@@ -339,8 +343,65 @@ contextBridge.exposeInMainWorld('printStation', {
     getCatalog: (category) => ipcRenderer.invoke('sticker-sheets:catalog', { category }),
     getGridInfo: (stickerSizeInches) => ipcRenderer.invoke('sticker-sheets:grid-info', { stickerSizeInches }),
     generate: (payload) => ipcRenderer.invoke('sticker-sheets:generate', payload || {}),
+    generateFromLayout: (layoutData) => ipcRenderer.invoke('sticker-sheets:generate-from-layout', layoutData || {}),
     fromOrder: (payload) => ipcRenderer.invoke('sticker-sheets:from-order', payload || {}),
-    list: () => ipcRenderer.invoke('sticker-sheets:list')
+    list: () => ipcRenderer.invoke('sticker-sheets:list'),
+    // New methods for order-based storage
+    listSavedOrders: () => ipcRenderer.invoke('sticker-sheets:list-saved-orders'),
+    getOrderSheets: (orderNumber) => ipcRenderer.invoke('sticker-sheets:get-order-sheets', { orderNumber }),
+    sendToCameo: (payload) => ipcRenderer.invoke('sticker-sheets:send-to-cameo', payload || {}),
+    // Lazy contour generation
+    getContour: (imagePath) => ipcRenderer.invoke('sticker-sheets:get-contour', { imagePath }),
+    // Delete a batch
+    deleteBatch: (batchName) => ipcRenderer.invoke('sticker-sheets:delete-batch', { batchName })
+  },
+
+  // Vinyl Cutter API
+  vinylCutter: {
+    vectorize: (imagePath) => ipcRenderer.invoke('vinyl-cutter:vectorize', { imagePath }),
+    generate: (data) => ipcRenderer.invoke('vinyl-cutter:generate', data || {}),
+    list: () => ipcRenderer.invoke('vinyl-cutter:list'),
+    delete: (batchName) => ipcRenderer.invoke('vinyl-cutter:delete', { batchName }),
+    sendToSilhouette: (payload) => ipcRenderer.invoke('vinyl-cutter:send-to-silhouette', payload || {})
+  },
+
+  // Silhouette Cameo API (local cutting via sendto_silhouette.py)
+  cameo: {
+    openCutFile: (options) => ipcRenderer.invoke('cameo:open-cut-file', options || {}),
+    getScriptPath: () => ipcRenderer.invoke('cameo:get-script-path')
+  },
+
+  // Studio3 Parser API (for .studio3 file import)
+  studio3: {
+    // Parse a complete .studio3 file - returns images, paths, metadata, svg
+    parse: (filepath) => ipcRenderer.invoke('studio3:parse', filepath),
+    // Extract just the embedded PNG images
+    extractImages: (filepath) => ipcRenderer.invoke('studio3:extractImages', filepath),
+    // Extract just the cut paths as coordinate arrays
+    extractPaths: (filepath) => ipcRenderer.invoke('studio3:extractPaths', filepath),
+    // Convert cut paths to SVG string
+    toSvg: (filepath, options) => ipcRenderer.invoke('studio3:toSvg', filepath, options || {}),
+    // Save extracted images to a directory
+    saveImages: (filepath, outputDir) => ipcRenderer.invoke('studio3:saveImages', filepath, outputDir),
+    // Open file browser for .studio3 files
+    browse: () => ipcRenderer.invoke('studio3:browse'),
+    // Batch parse multiple files (for catalog building)
+    batchParse: (filepaths) => ipcRenderer.invoke('studio3:batchParse', filepaths)
+  },
+
+  // Google Drive Sync API
+  gdrive: {
+    list: (folder) => ipcRenderer.invoke('gdrive:list', folder),
+    syncCustomArt: (fileIds) => ipcRenderer.invoke('gdrive:sync-custom-art', fileIds),
+    syncCatalog: (items) => ipcRenderer.invoke('gdrive:sync-catalog', items),
+    syncMockups: (filenames) => ipcRenderer.invoke('gdrive:sync-mockups', filenames),
+    syncRooms: (filenames) => ipcRenderer.invoke('gdrive:sync-rooms', filenames),
+    sync: (files) => ipcRenderer.invoke('gdrive:sync', files),
+    // Pull (reverse sync) methods
+    pullCollection: (categories) => ipcRenderer.invoke('gdrive:pull-collection', categories),
+    pullCustomArt: () => ipcRenderer.invoke('gdrive:pull-custom-art'),
+    pullMockups: () => ipcRenderer.invoke('gdrive:pull-mockups'),
+    pullRooms: () => ipcRenderer.invoke('gdrive:pull-rooms')
   },
 
   // Human Models API
@@ -380,6 +441,19 @@ contextBridge.exposeInMainWorld('printStation', {
     getSocialStats: (period) => ipcRenderer.invoke('dashboard:social-stats', { period })
   },
 
+  // AI Sales Agent APIs
+  agent: {
+    getStatus: () => ipcRenderer.invoke('agent:status'),
+    getEngagementSummary: () => ipcRenderer.invoke('agent:engagement-summary'),
+    getStrategy: () => ipcRenderer.invoke('agent:strategy'),
+    getCategories: () => ipcRenderer.invoke('agent:categories'),
+    updateCategory: (name, data) => ipcRenderer.invoke('agent:update-category', { name, data }),
+    getCalendar: () => ipcRenderer.invoke('agent:calendar'),
+    getDailyReport: () => ipcRenderer.invoke('agent:daily-report'),
+    getApprovals: () => ipcRenderer.invoke('agent:approvals'),
+    triggerRun: () => ipcRenderer.invoke('agent:run'),
+  },
+
   // Shopify Manager APIs
   shopifyManager: {
     listProducts: (query) => ipcRenderer.invoke('shopify-manager:products:list', query || {}),
@@ -389,20 +463,6 @@ contextBridge.exposeInMainWorld('printStation', {
     bulkUpdate: (payload) => ipcRenderer.invoke('shopify-manager:bulk:update', payload || {}),
     listCollections: () => ipcRenderer.invoke('shopify-manager:collections:list'),
     getCollectionProducts: (collectionId) => ipcRenderer.invoke('shopify-manager:collections:products', collectionId)
-  },
-
-  // TikTok Shop Manager APIs
-  tiktokShop: {
-    getPublications: () => ipcRenderer.invoke('tiktok-shop:publications'),
-    getProducts: () => ipcRenderer.invoke('tiktok-shop:products'),
-    getCandidates: (source) => ipcRenderer.invoke('tiktok-shop:candidates', { source }),
-    publish: (productId, source) => ipcRenderer.invoke('tiktok-shop:publish', { productId, source }),
-    unpublish: (productId) => ipcRenderer.invoke('tiktok-shop:unpublish', { productId }),
-    clearAll: () => ipcRenderer.invoke('tiktok-shop:clear-all'),
-    bulkPublish: (productIds, source) => ipcRenderer.invoke('tiktok-shop:bulk-publish', { productIds, source }),
-    generateScript: (payload) => ipcRenderer.invoke('tiktok-shop:generate-script', payload || {}),
-    marketResearch: (payload) => ipcRenderer.invoke('tiktok-shop:market-research', payload || {}),
-    getStats: () => ipcRenderer.invoke('tiktok-shop:stats')
   },
 
   // Copy Generator APIs - AI-powered ad copy
@@ -426,15 +486,156 @@ contextBridge.exposeInMainWorld('printStation', {
     stats: () => ipcRenderer.invoke('preview:cacheStats')
   },
 
-  // Migration: Move local catalog items to server
-  migration: {
-    getLocalCount: () => ipcRenderer.invoke('local:getLocalCount'),
-    migrateToServer: () => ipcRenderer.invoke('local:migrateToServer'),
-    onProgress: (cb) => {
+  // Multiboard Parts Browser — download events from webview
+  multiboardBrowser: {
+    onDownloadStart: (cb) => {
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('multiboard:download-start', handler);
+      return () => ipcRenderer.off('multiboard:download-start', handler);
+    },
+    onDownloadProgress: (cb) => {
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('multiboard:download-progress', handler);
+      return () => ipcRenderer.off('multiboard:download-progress', handler);
+    },
+    onDownloadComplete: (cb) => {
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('multiboard:download-complete', handler);
+      return () => ipcRenderer.off('multiboard:download-complete', handler);
+    }
+  },
+
+  // ============================================================================
+  // 3D PRINTER FLEET API
+  // ============================================================================
+  printerFleet: {
+    // Printer CRUD
+    listPrinters: (query) => ipcRenderer.invoke('fleet:printers:list', query || {}),
+    getPrinter: (id) => ipcRenderer.invoke('fleet:printers:get', id),
+    upsertPrinter: (printer) => ipcRenderer.invoke('fleet:printers:upsert', printer || {}),
+    updatePrinter: (id, updates) => ipcRenderer.invoke('fleet:printers:update', { id, updates }),
+    removePrinter: (id) => ipcRenderer.invoke('fleet:printers:remove', id),
+
+    // Status
+    getStatus: (id) => ipcRenderer.invoke('fleet:printers:status', id),
+    getAllStatus: () => ipcRenderer.invoke('fleet:printers:statusAll'),
+    reconnect: (id) => ipcRenderer.invoke('fleet:printers:reconnect', id),
+    testConnection: (apiUrl) => ipcRenderer.invoke('fleet:printers:testConnection', apiUrl),
+    getBuildVolume: (id) => ipcRenderer.invoke('fleet:printers:buildVolume', id),
+
+    // Files
+    selectGcodeFile: () => ipcRenderer.invoke('fleet:files:select'),
+    uploadGcode: (printerId, filePath) => ipcRenderer.invoke('fleet:files:upload', { printerId, filePath }),
+    listFiles: (printerId) => ipcRenderer.invoke('fleet:files:list', { printerId }),
+    deleteFile: (printerId, filename) => ipcRenderer.invoke('fleet:files:delete', { printerId, filename }),
+
+    // Webcam
+    getWebcamUrls: (printerId) => ipcRenderer.invoke('fleet:webcam:urls', printerId),
+
+    // Print control
+    startPrint: (printerId, filename, shopifyOrderId) =>
+      ipcRenderer.invoke('fleet:print:start', { printerId, filename, shopifyOrderId }),
+    pausePrint: (printerId) => ipcRenderer.invoke('fleet:print:pause', { printerId }),
+    resumePrint: (printerId) => ipcRenderer.invoke('fleet:print:resume', { printerId }),
+    cancelPrint: (printerId) => ipcRenderer.invoke('fleet:print:cancel', { printerId }),
+    emergencyStop: (printerId) => ipcRenderer.invoke('fleet:print:emergencyStop', { printerId }),
+    sendGcode: (printerId, command) => ipcRenderer.invoke('fleet:gcode:send', { printerId, command }),
+
+    // Jobs
+    listJobs: (query) => ipcRenderer.invoke('fleet:jobs:list', query || {}),
+    getActiveJobs: () => ipcRenderer.invoke('fleet:jobs:active'),
+    getJobStats: () => ipcRenderer.invoke('fleet:jobs:stats'),
+    clearStaleJobs: () => ipcRenderer.invoke('fleet:jobs:clearStale'),
+
+    // Real-time status events
+    onPrinterStatus: (cb) => {
       if (typeof cb !== 'function') return () => {};
       const handler = (_e, data) => cb(data || {});
-      ipcRenderer.on('local:migrateToServer:progress', handler);
-      return () => ipcRenderer.off('local:migrateToServer:progress', handler);
+      ipcRenderer.on('fleet:printer:status', handler);
+      return () => ipcRenderer.off('fleet:printer:status', handler);
     }
+  },
+
+  // ============================================================================
+  // 3D SLICER API (STL catalog, slicing, G-code cache)
+  // ============================================================================
+  slicer: {
+    // Presets (human-readable options)
+    getPresets: () => ipcRenderer.invoke('slicer:presets'),
+
+    // STL Catalog
+    listCatalog: (query) => ipcRenderer.invoke('slicer:catalog:list', query || {}),
+    getCategories: () => ipcRenderer.invoke('slicer:catalog:categories'),
+    getCategoriesWithCounts: () => ipcRenderer.invoke('slicer:catalog:categories:counts'),
+    mergeCategories: (from_categories, to_category) => ipcRenderer.invoke('slicer:catalog:categories:merge', { from_categories, to_category }),
+    renameCategory: (old_name, new_name) => ipcRenderer.invoke('slicer:catalog:categories:rename', { old_name, new_name }),
+    removeCategory: (category) => ipcRenderer.invoke('slicer:catalog:categories:remove', { category }),
+    bulkSetCategory: (stl_ids, category) => ipcRenderer.invoke('slicer:catalog:bulk-category', { stl_ids, category }),
+    listFolders: (category) => ipcRenderer.invoke('slicer:catalog:folders', category),
+    bulkSetFolder: (stl_ids, folder) => ipcRenderer.invoke('slicer:catalog:bulk-folder', { stl_ids, folder }),
+    renameFolder: (category, old_name, new_name) => ipcRenderer.invoke('slicer:catalog:folders:rename', { category, old_name, new_name }),
+    removeFolder: (category, folder) => ipcRenderer.invoke('slicer:catalog:folders:remove', { category, folder }),
+    getCatalogItem: (id) => ipcRenderer.invoke('slicer:catalog:get', id),
+    getPartGuide: (id) => ipcRenderer.invoke('slicer:catalog:guide', id),
+    uploadStl: (opts) => ipcRenderer.invoke('slicer:catalog:create', opts),
+    updateCatalogItem: (id, updates) => ipcRenderer.invoke('slicer:catalog:update', { id, updates }),
+    deleteCatalogItem: (id) => ipcRenderer.invoke('slicer:catalog:delete', id),
+    parsePartInfo: (name, description) => ipcRenderer.invoke('slicer:catalog:parsePartInfo', { name, description }),
+    fetchStlBytes: (stlId) => ipcRenderer.invoke('slicer:stl:fetch', stlId),
+
+    // Slicing
+    slice: (options) => ipcRenderer.invoke('slicer:slice', options),
+    sliceAndPrint: (sliceOptions, printerId) => ipcRenderer.invoke('slicer:sliceAndPrint', { sliceOptions, printerId }),
+    slicePlate: (options) => ipcRenderer.invoke('slicer:slicePlate', options),
+    slicePlateAndPrint: (sliceOptions, printerId) => ipcRenderer.invoke('slicer:slicePlateAndPrint', { sliceOptions, printerId }),
+    printGcode: (gcodeId, printerId) => ipcRenderer.invoke('slicer:printGcode', { gcodeId, printerId }),
+    fetchGcodeText: (gcodeId) => ipcRenderer.invoke('slicer:gcode:fetchText', gcodeId),
+
+    // Progress events from main process (step-by-step print progress)
+    onPrintProgress: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('slicer:printProgress', handler);
+      return () => ipcRenderer.removeListener('slicer:printProgress', handler);
+    },
+
+    // G-code cache
+    getGcodeForStl: (stlId) => ipcRenderer.invoke('slicer:gcodeForStl', stlId),
+    listCache: () => ipcRenderer.invoke('slicer:cache:list'),
+    deleteCache: (id) => ipcRenderer.invoke('slicer:cache:delete', id),
+    clearCache: () => ipcRenderer.invoke('slicer:cache:clear'),
+
+    // File dialog
+    selectStlFile: () => ipcRenderer.invoke('slicer:selectStlFile'),
+    extractZip: (zipPath) => ipcRenderer.invoke('slicer:extractZip', zipPath),
+    cleanupTemp: (dirPath) => ipcRenderer.invoke('slicer:cleanupTemp', dirPath),
+
+    // Bulk import
+    bulkScan: (directory) => ipcRenderer.invoke('slicer:stl:bulkScan', directory),
+    bulkUploadOne: (opts) => ipcRenderer.invoke('slicer:stl:bulkUploadOne', opts),
+
+    // STL thumbnail disk cache
+    getThumbsCached: (stlIds) => ipcRenderer.invoke('slicer:thumb:batchGet', stlIds),
+    saveThumbCache: (stlId, dataUrl) => ipcRenderer.invoke('slicer:thumb:save', { stlId, dataUrl }),
+    deleteThumbCache: (stlId) => ipcRenderer.invoke('slicer:thumb:delete', stlId),
+    clearThumbCache: () => ipcRenderer.invoke('slicer:thumb:clear'),
+
+    // Saved Build Plates
+    listPlates: () => ipcRenderer.invoke('slicer:plates:list'),
+    getPlate: (id) => ipcRenderer.invoke('slicer:plates:get', id),
+    createPlate: (data) => ipcRenderer.invoke('slicer:plates:create', data),
+    updatePlate: (id, updates) => ipcRenderer.invoke('slicer:plates:update', { id, updates }),
+    deletePlate: (id) => ipcRenderer.invoke('slicer:plates:delete', id)
+  },
+
+  printQuotes: {
+    list:         (query)                         => ipcRenderer.invoke('pq:list', query),
+    get:          (id)                            => ipcRenderer.invoke('pq:get', id),
+    create:       (data)                          => ipcRenderer.invoke('pq:create', data),
+    update:       (id, updates)                   => ipcRenderer.invoke('pq:update', { id, updates }),
+    delete:       (id)                            => ipcRenderer.invoke('pq:delete', id),
+    replaceItems: (quoteId, items)                => ipcRenderer.invoke('pq:items:replace', { quoteId, items }),
+    packPlates:   (quoteId, printerModel)         => ipcRenderer.invoke('pq:plates:pack', { quoteId, printerModel }),
+    listPlates:   (quoteId)                       => ipcRenderer.invoke('pq:plates:list', quoteId),
+    updatePlate:  (quoteId, plateId, updates)     => ipcRenderer.invoke('pq:plates:update', { quoteId, plateId, updates })
   }
 });

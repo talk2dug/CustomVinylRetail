@@ -251,7 +251,7 @@ async function buildAllCatalogs() {
   const apparelResult = await buildCatalogFromRoot({
     libraryRoot: LIBRARY_ROOT,
     outputFile: OUTPUT_FILE,
-    webSubPath: 'web/library',
+    webSubPath: 'library',
     catalogName: 'Apparel Ready'
   });
 

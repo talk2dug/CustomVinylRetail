@@ -565,23 +565,40 @@ async function previewSkuLabels() {
 
   const baseUrl = window.printStationConfig?.serverBaseUrl || 'https://store.swayzecustomvinyl.com';
 
+  const isCard = labelSize === '2.5x3';
   let html = '<div style="display:flex;flex-wrap:wrap;gap:16px;">';
 
   for (const v of variantsToPrint) {
     const qrUrl = `${baseUrl}/api/sku/scan?sku=${encodeURIComponent(v.sku)}`;
     const design = skuCatalogState.selectedDesign;
 
-    html += `
-      <div class="sku-label-preview" style="border:1px solid #000;padding:8px;width:${labelSize === '2x1' ? '180px' : '270px'};display:flex;gap:8px;align-items:center;">
-        <div id="qr-${v.id}" style="width:${labelSize === '2x1' ? '60px' : '100px'};height:${labelSize === '2x1' ? '60px' : '100px'};"></div>
-        <div style="flex:1;font-size:${labelSize === '2x1' ? '10px' : '12px'};">
-          <div style="font-weight:bold;">${escapeHtml(design?.name || '')}</div>
-          <div>${escapeHtml(v.colorName)} ${v.sizeInches}"</div>
-          <div style="font-family:monospace;">${escapeHtml(v.sku)}</div>
-          <div style="font-weight:bold;">$${(v.priceCents / 100).toFixed(2)}</div>
+    if (isCard) {
+      // 2.5" x 3" vertical card layout — QR on top, details below
+      html += `
+        <div class="sku-label-preview" style="border:2px solid #000;border-radius:8px;padding:12px;width:225px;height:270px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;box-sizing:border-box;">
+          <div style="font-weight:bold;font-size:14px;line-height:1.2;">${escapeHtml(design?.name || '')}</div>
+          <div id="qr-${v.id}" style="width:120px;height:120px;"></div>
+          <div style="font-size:12px;">
+            <div>${escapeHtml(v.colorName)} ${v.sizeInches}"</div>
+            <div style="font-family:monospace;font-size:11px;color:#555;">${escapeHtml(v.sku)}</div>
+          </div>
+          <div style="font-weight:bold;font-size:18px;">$${(v.priceCents / 100).toFixed(2)}</div>
         </div>
-      </div>
-    `;
+      `;
+    } else {
+      // Horizontal label layout (2x1, 3x2)
+      html += `
+        <div class="sku-label-preview" style="border:1px solid #000;padding:8px;width:${labelSize === '2x1' ? '180px' : '270px'};display:flex;gap:8px;align-items:center;">
+          <div id="qr-${v.id}" style="width:${labelSize === '2x1' ? '60px' : '100px'};height:${labelSize === '2x1' ? '60px' : '100px'};"></div>
+          <div style="flex:1;font-size:${labelSize === '2x1' ? '10px' : '12px'};">
+            <div style="font-weight:bold;">${escapeHtml(design?.name || '')}</div>
+            <div>${escapeHtml(v.colorName)} ${v.sizeInches}"</div>
+            <div style="font-family:monospace;">${escapeHtml(v.sku)}</div>
+            <div style="font-weight:bold;">$${(v.priceCents / 100).toFixed(2)}</div>
+          </div>
+        </div>
+      `;
+    }
   }
 
   html += '</div>';
@@ -591,7 +608,7 @@ async function previewSkuLabels() {
   if (typeof QRCode !== 'undefined') {
     for (const v of variantsToPrint) {
       const qrUrl = `${baseUrl}/api/sku/scan?sku=${encodeURIComponent(v.sku)}`;
-      const size = labelSize === '2x1' ? 60 : 100;
+      const size = isCard ? 120 : (labelSize === '2x1' ? 60 : 100);
       new QRCode(document.getElementById(`qr-${v.id}`), {
         text: qrUrl,
         width: size,

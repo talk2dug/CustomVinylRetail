@@ -135,6 +135,13 @@ function slicerWireEvents() {
     sortSelect.addEventListener('change', () => slicerRenderCatalog());
   }
 
+  // Sub-tab navigation
+  document.querySelectorAll('.slicer-sub-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      slicerShowSubTab(btn.dataset.tab);
+    });
+  });
+
   // Upload STL
   if (uploadBtn) {
     uploadBtn.addEventListener('click', slicerUploadStl);
@@ -1185,12 +1192,21 @@ function slicerPopulatePrinterDropdown() {
   if (!select) return;
 
   const printers = slicerState.printers || [];
-  select.innerHTML = '<option value="">Select a printer...</option>' +
-    printers.map(p => {
-      const label = `${p.name}${p.model ? ' (' + p.model + ')' : ''}`;
-      return `<option value="${p.id}">${slicerEsc(label)}</option>`;
-    }).join('');
+  const anycubic = printers.filter(p => (p.model || '').toLowerCase().includes('kobra'));
+  const creality = printers.filter(p => !(p.model || '').toLowerCase().includes('kobra'));
 
+  let html = '<option value="">Select a printer...</option>';
+  if (anycubic.length) {
+    html += '<optgroup label="Anycubic">';
+    anycubic.forEach(p => { html += `<option value="${p.id}">${slicerEsc(p.name)} (${slicerEsc(p.model || '')})</option>`; });
+    html += '</optgroup>';
+  }
+  if (creality.length) {
+    html += '<optgroup label="Creality">';
+    creality.forEach(p => { html += `<option value="${p.id}">${slicerEsc(p.name)} (${slicerEsc(p.model || '')})</option>`; });
+    html += '</optgroup>';
+  }
+  select.innerHTML = html;
 }
 
 // ============================================================================
@@ -2356,13 +2372,33 @@ function slicerTogglePlateItem(id) {
     // Remove from plate
     slicerState.plateItems.splice(idx, 1);
   } else {
-    // Add to plate
+    // Add to plate with qty=1
     const item = slicerState.catalog.find(i => i.id === id);
-    if (item) slicerState.plateItems.push(item);
+    if (item) {
+      slicerState.plateItems.push({ ...item, qty: 1 });
+      // Pre-populate plateTransforms from default_transform if not already set
+      if (!slicerState.plateTransforms[item.id] && item.default_transform) {
+        try {
+          const dt = JSON.parse(item.default_transform);
+          slicerState.plateTransforms[item.id] = {
+            rx: dt.rx || 0, ry: dt.ry || 0, rz: dt.rz || 0,
+            scale: dt.scale || 1, posX: 0, posZ: 0
+          };
+        } catch {}
+      }
+    }
   }
 
   slicerUpdatePlateBar();
   slicerUpdatePlateCheckmarks();
+}
+
+function slicerSetPlateItemQty(id, qty) {
+  const item = slicerState.plateItems.find(i => i.id === id);
+  if (item) {
+    item.qty = Math.max(1, Math.min(99, qty));
+    slicerUpdatePlateBar();
+  }
 }
 
 function slicerUpdatePlateBar() {
@@ -2377,13 +2413,20 @@ function slicerUpdatePlateBar() {
 
   bar.style.display = '';
   const n = slicerState.plateItems.length;
+  const totalParts = slicerState.plateItems.reduce((s, i) => s + (i.qty || 1), 0);
 
-  // Build chip list with folder origin + remove button
+  // Build chip list with qty controls + remove button
   const chipsHtml = slicerState.plateItems.map(item => {
+    const qty = item.qty || 1;
     const folderLabel = item.folder ? ` <span style="color:var(--muted);font-size:0.7rem;">${slicerEsc(item.folder)}</span>` : '';
     return `<span class="slicer-plate-chip" data-plate-id="${item.id}"
       style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:var(--bg-secondary,#1e293b);border:1px solid var(--border);border-radius:12px;font-size:0.8rem;white-space:nowrap;">
       ${slicerEsc(item.name)}${folderLabel}
+      <span style="display:inline-flex;align-items:center;gap:2px;margin-left:4px;background:rgba(255,255,255,0.08);border-radius:8px;padding:1px 4px;">
+        <button class="plate-qty-btn" data-qty-id="${item.id}" data-delta="-1" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.85rem;padding:0 2px;line-height:1;">-</button>
+        <span style="min-width:16px;text-align:center;font-weight:600;font-size:0.8rem;color:var(--text);">${qty}</span>
+        <button class="plate-qty-btn" data-qty-id="${item.id}" data-delta="1" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.85rem;padding:0 2px;line-height:1;">+</button>
+      </span>
       <span class="slicer-plate-chip-remove" data-remove-id="${item.id}" style="cursor:pointer;color:var(--danger);font-weight:700;margin-left:2px;line-height:1;">&times;</span>
     </span>`;
   }).join('');
@@ -2391,15 +2434,27 @@ function slicerUpdatePlateBar() {
   bar.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;">
       <div style="flex:1;min-width:0;">
-        <span style="font-weight:700;font-size:1rem;color:var(--accent);">${n} model${n !== 1 ? 's' : ''} on plate</span>
+        <span style="font-weight:700;font-size:1rem;color:var(--accent);">${totalParts} part${totalParts !== 1 ? 's' : ''} (${n} unique) on plate</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;max-height:80px;overflow-y:auto;">
           ${chipsHtml}
         </div>
       </div>
       <button id="slicerPlateClearBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Clear</button>
       <button id="slicerBulkCategoryBtn" class="secondary" style="padding:8px 14px;font-size:0.9rem;font-weight:600;">Set Category</button>
+      <button id="slicerPlateSaveBtn" class="secondary" style="padding:8px 14px;font-size:0.9rem;font-weight:600;">Save Plate</button>
       <button id="slicerPlateGoBtn" class="primary" style="padding:8px 18px;font-size:0.95rem;font-weight:600;">Slice Plate &rarr;</button>
     </div>`;
+
+  // Wire qty buttons
+  bar.querySelectorAll('.plate-qty-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.qtyId, 10);
+      const delta = parseInt(btn.dataset.delta, 10);
+      const item = slicerState.plateItems.find(i => i.id === id);
+      if (item) slicerSetPlateItemQty(id, (item.qty || 1) + delta);
+    });
+  });
 
   // Wire remove chip buttons
   bar.querySelectorAll('.slicer-plate-chip-remove').forEach(btn => {
@@ -2419,6 +2474,7 @@ function slicerUpdatePlateBar() {
     slicerUpdatePlateCheckmarks();
   });
   document.getElementById('slicerBulkCategoryBtn')?.addEventListener('click', slicerShowBulkCategoryPicker);
+  document.getElementById('slicerPlateSaveBtn')?.addEventListener('click', () => slicerSavePlate(slicerState._editingPlateId));
   document.getElementById('slicerPlateGoBtn')?.addEventListener('click', slicerShowBuildPlatePreview);
 
   slicerUpdatePlateBanner();
@@ -2765,22 +2821,26 @@ async function bpLoadAllModels(bedDims) {
   if (!pp) return;
 
   const items = pp._items || slicerState.plateItems;
+  const totalParts = items.reduce((s, i) => s + (i.qty || 1), 0);
   const statusText = document.getElementById('bpStatusText');
-  if (statusText) statusText.textContent = `Loading ${items.length} models...`;
+  if (statusText) statusText.textContent = `Loading ${totalParts} parts (${items.length} unique)...`;
 
-  // Fetch all STL buffers in parallel
+  // Fetch unique STL buffers in parallel (deduplicate by id)
+  const uniqueIds = [...new Set(items.map(i => i.id))];
   const failedNames = [];
-  const buffers = await Promise.all(
-    items.map(item => slicerFetchStlBuffer(item.id).catch(err => {
-      console.error('[BuildPlate] Failed to load STL for', item.name, '(id:', item.id, ')', err.message);
-      failedNames.push(item.name || `ID ${item.id}`);
+  const bufferMap = {};
+  const bufResults = await Promise.all(
+    uniqueIds.map(id => slicerFetchStlBuffer(id).catch(err => {
+      const item = items.find(i => i.id === id);
+      console.error('[BuildPlate] Failed to load STL for', item?.name, '(id:', id, ')', err.message);
+      failedNames.push(item?.name || `ID ${id}`);
       return null;
     }))
   );
-  if (failedNames.length > 0 && failedNames.length === items.length) {
-    // ALL models failed to load
-    if (statusText) statusText.textContent = `Failed to load all ${items.length} models — check server connection`;
-    console.error('[BuildPlate] All models failed to load. Items:', JSON.stringify(items.map(i => ({ id: i.id, name: i.name }))));
+  uniqueIds.forEach((id, idx) => { bufferMap[id] = bufResults[idx]; });
+
+  if (failedNames.length > 0 && failedNames.length === uniqueIds.length) {
+    if (statusText) statusText.textContent = `Failed to load all ${uniqueIds.length} models — check server connection`;
     return;
   } else if (failedNames.length > 0) {
     console.warn(`[BuildPlate] ${failedNames.length} model(s) failed to load:`, failedNames.join(', '));
@@ -2788,88 +2848,86 @@ async function bpLoadAllModels(bedDims) {
 
   const loader = new THREE.STLLoader();
   const modelInfos = [];
+  // Cache parsed+transformed base geometry per stl_id for cloning copies
+  const baseGeometryCache = {};
 
   for (let i = 0; i < items.length; i++) {
-    const buf = buffers[i];
+    const item = items[i];
+    const buf = bufferMap[item.id];
     if (!buf) continue;
 
-    const item = items[i];
-    const geometry = loader.parse(buf);
-    geometry.computeVertexNormals();
+    const qty = item.qty || 1;
 
-    // Convert from STL Z-up to Three.js Y-up so preview matches PrusaSlicer output
-    geometry.rotateX(-Math.PI / 2);
-
-    // Apply any previously saved transforms
-    const savedT = slicerState.plateTransforms[item.id];
-    if (savedT) {
-      if (savedT.rx) geometry.rotateX(savedT.rx);
-      if (savedT.ry) geometry.rotateY(savedT.ry);
-      if (savedT.rz) geometry.rotateZ(savedT.rz);
-      if (savedT.scale && savedT.scale !== 1) geometry.scale(savedT.scale, savedT.scale, savedT.scale);
+    // Auto-populate plateTransforms from item.default_transform if not already set
+    if (!slicerState.plateTransforms[item.id] && item.default_transform) {
+      try {
+        const dt = JSON.parse(item.default_transform);
+        slicerState.plateTransforms[item.id] = {
+          rx: dt.rx || 0, ry: dt.ry || 0, rz: dt.rz || 0,
+          scale: dt.scale || 1, posX: 0, posZ: 0
+        };
+      } catch {}
     }
 
-    // Auto-detect meter-unit STLs: if the raw geometry (before any user scaling)
-    // has a max dimension under 1mm, the file was likely exported in meters.
-    // Apply a x1000 correction so it renders at the correct mm scale.
-    geometry.computeBoundingBox();
-    const rawBox = geometry.boundingBox;
-    const rawMaxDim = Math.max(
-      rawBox.max.x - rawBox.min.x,
-      rawBox.max.y - rawBox.min.y,
-      rawBox.max.z - rawBox.min.z
-    );
-    if (rawMaxDim > 0 && rawMaxDim < 1.0 && (!savedT || !savedT.scale || savedT.scale === 1)) {
-      // STL is in meters — convert to mm
-      console.log(`[BuildPlate] Auto-scaling "${item.name}" from meters to mm (raw max dim: ${rawMaxDim.toFixed(4)})`);
-      geometry.scale(1000, 1000, 1000);
-      if (!slicerState.plateTransforms[item.id]) {
-        slicerState.plateTransforms[item.id] = { rx: 0, ry: 0, rz: 0, scale: 1, posX: 0, posZ: 0 };
+    // Parse and transform base geometry once per unique stl_id
+    if (!baseGeometryCache[item.id]) {
+      const geometry = loader.parse(buf);
+      geometry.computeVertexNormals();
+
+      // Convert from STL Z-up to Three.js Y-up so preview matches PrusaSlicer output
+      geometry.rotateX(-Math.PI / 2);
+
+      // Apply any previously saved transforms
+      const savedT = slicerState.plateTransforms[item.id];
+      if (savedT) {
+        if (savedT.rx) geometry.rotateX(savedT.rx);
+        if (savedT.ry) geometry.rotateY(savedT.ry);
+        if (savedT.rz) geometry.rotateZ(savedT.rz);
+        if (savedT.scale && savedT.scale !== 1) geometry.scale(savedT.scale, savedT.scale, savedT.scale);
       }
-      slicerState.plateTransforms[item.id].scale = 1000;
+
+      // Auto-detect meter-unit STLs
+      geometry.computeBoundingBox();
+      const rawBox = geometry.boundingBox;
+      const rawMaxDim = Math.max(rawBox.max.x - rawBox.min.x, rawBox.max.y - rawBox.min.y, rawBox.max.z - rawBox.min.z);
+      if (rawMaxDim > 0 && rawMaxDim < 1.0 && (!savedT || !savedT.scale || savedT.scale === 1)) {
+        console.log(`[BuildPlate] Auto-scaling "${item.name}" from meters to mm (raw max dim: ${rawMaxDim.toFixed(4)})`);
+        geometry.scale(1000, 1000, 1000);
+        if (!slicerState.plateTransforms[item.id]) {
+          slicerState.plateTransforms[item.id] = { rx: 0, ry: 0, rz: 0, scale: 1, posX: 0, posZ: 0 };
+        }
+        slicerState.plateTransforms[item.id].scale = 1000;
+      }
+
+      // Center in XZ, floor to Y=0
+      geometry.computeBoundingBox();
+      const gBox = geometry.boundingBox;
+      const cx = (gBox.max.x + gBox.min.x) / 2;
+      const cz = (gBox.max.z + gBox.min.z) / 2;
+      const minY = gBox.min.y;
+      geometry.translate(-cx, -minY, -cz);
+
+      baseGeometryCache[item.id] = geometry;
     }
 
-    // Center in XZ, floor to Y=0
-    geometry.computeBoundingBox();
-    const gBox = geometry.boundingBox;
-    const cx = (gBox.max.x + gBox.min.x) / 2;
-    const cz = (gBox.max.z + gBox.min.z) / 2;
-    const minY = gBox.min.y;
-    geometry.translate(-cx, -minY, -cz);
+    // Create qty meshes (first uses base geometry, rest clone it)
+    for (let c = 0; c < qty; c++) {
+      const geom = c === 0 ? baseGeometryCache[item.id] : baseGeometryCache[item.id].clone();
+      const mat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, specular: 0x222222, shininess: 40 });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.userData.stlId = item.id;
+      mesh.userData.itemIndex = i;
+      mesh.userData.copyIndex = c;
 
-    const material = new THREE.MeshPhongMaterial({
-      color: 0x38bdf8, specular: 0x222222, shininess: 40
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.userData.stlId = item.id;
-    mesh.userData.itemIndex = i;
+      const bbox = new THREE.Box3().setFromObject(mesh);
+      const size = bbox.getSize(new THREE.Vector3());
 
-    const bbox = new THREE.Box3().setFromObject(mesh);
-    const size = bbox.getSize(new THREE.Vector3());
-
-    modelInfos.push({ stlId: item.id, item, mesh, geometry, material, bbox, size });
+      modelInfos.push({ stlId: item.id, item, mesh, geometry: geom, material: mat, bbox, size, copyIndex: c });
+    }
   }
 
-  // Auto-arrange on bed (unless positions were previously saved)
-  const hasSavedPositions = modelInfos.some(info => {
-    const t = slicerState.plateTransforms[info.stlId];
-    return t && (t.posX !== undefined && t.posX !== 0 || t.posZ !== undefined && t.posZ !== 0);
-  });
-  if (hasSavedPositions) {
-    // Restore saved positions instead of auto-arranging
-    for (const info of modelInfos) {
-      const t = slicerState.plateTransforms[info.stlId];
-      if (t && t.posX !== undefined) {
-        info.mesh.position.set(t.posX, 0, t.posZ);
-        // Re-floor Y
-        info.mesh.updateMatrixWorld(true);
-        const bbox2 = new THREE.Box3().setFromObject(info.mesh);
-        info.mesh.position.y = -bbox2.min.y;
-      }
-    }
-  } else {
-    bpAutoArrange(modelInfos, bedDims);
-  }
+  // Always auto-arrange when we have copies (positions are per-mesh, not per-item)
+  bpAutoArrange(modelInfos, bedDims);
 
   // Add to scene
   for (const info of modelInfos) {
@@ -2879,16 +2937,15 @@ async function bpLoadAllModels(bedDims) {
       item: info.item,
       mesh: info.mesh,
       geometry: info.geometry,
-      material: info.material
+      material: info.material,
+      copyIndex: info.copyIndex
     });
-    // Save positions to plateTransforms
-    bpSavePosition({ stlId: info.stlId, mesh: info.mesh });
   }
 
   bpRenderModelList();
   bpCheckFit(bedDims);
 
-  if (statusText) statusText.textContent = `${modelInfos.length} model${modelInfos.length !== 1 ? 's' : ''} loaded`;
+  if (statusText) statusText.textContent = `${modelInfos.length} part${modelInfos.length !== 1 ? 's' : ''} loaded (${items.length} unique)`;
   const bedSizeEl = document.getElementById('bpBedSize');
   if (bedSizeEl) bedSizeEl.textContent = `Bed: ${bedDims.x} \u00d7 ${bedDims.y} mm`;
 }
@@ -2902,13 +2959,14 @@ function bpRenderModelList() {
   listEl.innerHTML = pp.meshes.map((entry, idx) => {
     const item = entry.item;
     const selected = idx === pp.selectedMeshIndex;
+    const copyLabel = entry.copyIndex > 0 ? ` (copy ${entry.copyIndex + 1})` : '';
     return `
       <div class="bp-model-item${selected ? ' bp-model-selected' : ''}" data-bp-idx="${idx}"
         style="padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:4px;
         border:1px solid ${selected ? 'var(--accent)' : 'rgba(255,255,255,0.1)'};
         background:${selected ? 'rgba(56,189,248,0.15)' : 'transparent'};">
         <div style="font-weight:600;font-size:0.85rem;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-          ${slicerEsc(item.name)}
+          ${slicerEsc(item.name)}${copyLabel}
         </div>
         <div class="muted" style="font-size:0.75rem;color:rgba(255,255,255,0.5);">
           ${item.dim_x ? `${item.dim_x.toFixed(1)} \u00d7 ${item.dim_y.toFixed(1)} \u00d7 ${item.dim_z.toFixed(1)} mm` : 'Dimensions unknown'}
@@ -3621,17 +3679,37 @@ function slicerShowPlateSettings() {
   // Render plate items list
   const listEl = document.getElementById('slicerPlateItemsList');
   if (listEl) {
-    listEl.innerHTML = slicerState.plateItems.map(item => `
-      <div class="slicer-plate-item-row" data-plate-item-id="${item.id}">
+    listEl.innerHTML = slicerState.plateItems.map(item => {
+      const qty = item.qty || 1;
+      return `
+      <div class="slicer-plate-item-row" data-plate-item-id="${item.id}" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
         <div style="flex:1;min-width:0;">
           <div style="font-weight:600;font-size:0.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${slicerEsc(item.name)}</div>
           <div class="muted" style="font-size:0.8rem;">
             ${item.category ? slicerEsc(item.category) + ' · ' : ''}${item.dim_x ? `${item.dim_x.toFixed(1)} x ${item.dim_y.toFixed(1)} x ${item.dim_z.toFixed(1)} mm` : ''}
           </div>
         </div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="plate-settings-qty-btn secondary" data-qty-id="${item.id}" data-delta="-1" style="padding:2px 8px;font-size:0.9rem;">-</button>
+          <span style="min-width:24px;text-align:center;font-weight:700;font-size:0.95rem;">${qty}</span>
+          <button class="plate-settings-qty-btn secondary" data-qty-id="${item.id}" data-delta="1" style="padding:2px 8px;font-size:0.9rem;">+</button>
+        </div>
         <button class="plate-item-remove" data-plate-remove-id="${item.id}" title="Remove from plate">&times;</button>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
+
+    // Wire qty buttons
+    listEl.querySelectorAll('.plate-settings-qty-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.dataset.qtyId, 10);
+        const delta = parseInt(btn.dataset.delta, 10);
+        const item = slicerState.plateItems.find(i => i.id === id);
+        if (item) {
+          slicerSetPlateItemQty(id, (item.qty || 1) + delta);
+          slicerShowPlateSettings(); // Re-render
+        }
+      });
+    });
 
     // Wire remove buttons
     listEl.querySelectorAll('.plate-item-remove').forEach(btn => {
@@ -3710,12 +3788,21 @@ function slicerPopulatePlatePrinterDropdown() {
   if (!select) return;
 
   const printers = slicerState.printers || [];
-  select.innerHTML = '<option value="">Select a printer...</option>' +
-    printers.map(p => {
-      const label = `${p.name}${p.model ? ' (' + p.model + ')' : ''}`;
-      return `<option value="${p.id}">${slicerEsc(label)}</option>`;
-    }).join('');
+  const anycubic = printers.filter(p => (p.model || '').toLowerCase().includes('kobra'));
+  const creality = printers.filter(p => !(p.model || '').toLowerCase().includes('kobra'));
 
+  let html = '<option value="">Select a printer...</option>';
+  if (anycubic.length) {
+    html += '<optgroup label="Anycubic">';
+    anycubic.forEach(p => { html += `<option value="${p.id}">${slicerEsc(p.name)} (${slicerEsc(p.model || '')})</option>`; });
+    html += '</optgroup>';
+  }
+  if (creality.length) {
+    html += '<optgroup label="Creality">';
+    creality.forEach(p => { html += `<option value="${p.id}">${slicerEsc(p.name)} (${slicerEsc(p.model || '')})</option>`; });
+    html += '</optgroup>';
+  }
+  select.innerHTML = html;
 }
 
 async function slicerSlicePlate() {
@@ -3733,20 +3820,26 @@ async function slicerSlicePlate() {
     }
   }
 
-  // Collect per-model transforms from the build plate preview
+  // Expand items by quantity and collect transforms
+  const expandedIds = [];
   const transforms = {};
   for (const item of slicerState.plateItems) {
+    const qty = item.qty || 1;
+    for (let c = 0; c < qty; c++) expandedIds.push(item.id);
     const t = slicerState.plateTransforms[item.id];
     if (t) {
+      // When qty > 1, clear positions so PrusaSlicer auto-arranges copies
       transforms[item.id] = {
         rx: t.rx || 0, ry: t.ry || 0, rz: t.rz || 0,
-        scale: t.scale || 1, posX: t.posX || 0, posZ: t.posZ || 0
+        scale: t.scale || 1,
+        posX: qty > 1 ? 0 : (t.posX || 0),
+        posZ: qty > 1 ? 0 : (t.posZ || 0)
       };
     }
   }
 
   const sliceOptions = {
-    stl_ids: slicerState.plateItems.map(i => i.id),
+    stl_ids: expandedIds,
     transforms,
     profile: slicerState.settings.profile || 'custom',
     printer_model: printerModel || 'kobra3',
@@ -3802,7 +3895,8 @@ async function slicerSlicePlate() {
     return;
   }
   slicerHideProgress();
-  showToast(`Plate slicing complete${cached}!`, 'success', 3000);
+  const estInfo = sliceResult.est_time_min ? ` — ${slicerFormatTime(sliceResult.est_time_min)}, ${sliceResult.est_weight_g ? sliceResult.est_weight_g.toFixed(1) + 'g filament' : ''}` : '';
+  showToast(`Plate slicing complete${cached}!${estInfo}`, 'success', 5000);
 
   // STEP 4: Show G-code 3D preview
   const action = await slicerShowGcodePreview({
@@ -3840,6 +3934,691 @@ async function slicerSlicePlate() {
         showToast('Print failed: ' + msg, 'error', 8000);
       }
     }
+  }
+}
+
+// ============================================================================
+// SAVE PLATE + SAVED PLATES + SLICE HISTORY
+// ============================================================================
+
+async function slicerSavePlate(editingPlateId) {
+  if (!slicerState.plateItems.length) return alert('No models on the plate');
+
+  const defaultName = slicerState._editingPlateName || '';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+  const printers = slicerState.printers || [];
+  const currentModel = slicerState.settings.printer_model || 'kobra3';
+
+  // Group printers by manufacturer
+  const anycubic = printers.filter(p => (p.model || '').toLowerCase().includes('kobra'));
+  const creality = printers.filter(p => !(p.model || '').toLowerCase().includes('kobra'));
+
+  const printerOptions = (() => {
+    let html = '<option value="">Auto-detect from settings</option>';
+    if (anycubic.length) {
+      html += '<optgroup label="Anycubic">';
+      anycubic.forEach(p => {
+        const m = slicerMapPrinterModel(p.model);
+        html += `<option value="${slicerEsc(m)}">${slicerEsc(p.name)} (${slicerEsc(p.model)})</option>`;
+      });
+      html += '</optgroup>';
+    }
+    if (creality.length) {
+      html += '<optgroup label="Creality">';
+      creality.forEach(p => {
+        const m = slicerMapPrinterModel(p.model);
+        html += `<option value="${slicerEsc(m)}">${slicerEsc(p.name)} (${slicerEsc(p.model)})</option>`;
+      });
+      html += '</optgroup>';
+    }
+    if (!printers.length) {
+      html += '<option value="kobra3">Anycubic Kobra 3</option>';
+      html += '<option value="ender3_s1pro">Creality Ender 3 S1 Pro</option>';
+    }
+    return html;
+  })();
+
+  const totalParts = slicerState.plateItems.reduce((s, i) => s + (i.qty || 1), 0);
+  const modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--card,#1e293b);border-radius:12px;padding:24px;max-width:480px;width:90%;';
+  modal.innerHTML = `
+    <h3 style="margin:0 0 16px;">${editingPlateId ? 'Update' : 'Save'} Build Plate</h3>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:0.85rem;color:var(--muted);margin-bottom:4px;display:block;">Plate Name</label>
+      <input id="savePlateNameInput" type="text" value="${slicerEsc(defaultName)}" placeholder="e.g. Snap Connectors Batch"
+        style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);font-size:0.95rem;box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:16px;">
+      <label style="font-size:0.85rem;color:var(--muted);margin-bottom:4px;display:block;">Printer Model</label>
+      <select id="savePlatePrinterSelect" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);font-size:0.95rem;">
+        ${printerOptions}
+      </select>
+    </div>
+    <div style="margin-bottom:16px;padding:10px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:0.85rem;">
+      <strong>${totalParts} part${totalParts !== 1 ? 's' : ''}</strong> (${slicerState.plateItems.length} unique) &mdash;
+      ${slicerState.plateItems.map(i => `${i.qty || 1}x ${slicerEsc(i.name)}`).join(', ')}
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="savePlateCancelBtn" class="secondary" style="padding:8px 16px;">Cancel</button>
+      <button id="savePlateConfirmBtn" class="primary" style="padding:8px 20px;font-weight:600;">${editingPlateId ? 'Update' : 'Save'}</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const nameInput = document.getElementById('savePlateNameInput');
+  const printerSelect = document.getElementById('savePlatePrinterSelect');
+  nameInput.focus();
+  nameInput.select();
+
+  // Set current printer model in dropdown
+  if (currentModel) printerSelect.value = currentModel;
+
+  return new Promise(resolve => {
+    const close = () => { overlay.remove(); resolve(); };
+
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    document.getElementById('savePlateCancelBtn').addEventListener('click', close);
+
+    document.getElementById('savePlateConfirmBtn').addEventListener('click', async () => {
+      const name = nameInput.value.trim();
+      if (!name) { nameInput.style.borderColor = '#ef4444'; return; }
+
+      const printerModel = printerSelect.value || currentModel || 'kobra3';
+      const items = slicerState.plateItems.map(item => ({
+        stl_id: item.id,
+        qty: item.qty || 1,
+        transform: slicerState.plateTransforms[item.id] || null
+      }));
+      const settings = { ...slicerState.settings };
+
+      try {
+        if (editingPlateId) {
+          await printStation.slicer.updatePlate(editingPlateId, { name, printer_model: printerModel, items, settings });
+          showToast(`Plate "${name}" updated!`, 'success', 3000);
+        } else {
+          await printStation.slicer.createPlate({ name, printer_model: printerModel, items, settings });
+          showToast(`Plate "${name}" saved!`, 'success', 3000);
+        }
+        slicerState._editingPlateName = '';
+        slicerState._editingPlateId = null;
+        overlay.remove();
+        resolve();
+      } catch (err) {
+        console.error('[Slicer] Save plate error:', err);
+        showToast('Failed to save plate: ' + (err.message || 'unknown'), 'error', 5000);
+      }
+    });
+
+    nameInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('savePlateConfirmBtn').click();
+      if (e.key === 'Escape') close();
+    });
+  });
+}
+
+// --- Sub-tab navigation ---
+
+function slicerShowSubTab(tabName) {
+  // Hide all tab panels
+  ['slicerCatalogWrapper', 'slicerSavedPlatesPanel', 'slicerSliceHistoryPanel'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  // Also hide settings panels when switching tabs
+  if (tabName !== 'catalog') {
+    const sp = document.getElementById('slicerSettingsPanel');
+    if (sp) sp.style.display = 'none';
+    const psp = document.getElementById('slicerPlateSettingsPanel');
+    if (psp) psp.style.display = 'none';
+  }
+
+  // Show the target panel
+  const panelMap = {
+    catalog: 'slicerCatalogWrapper',
+    savedPlates: 'slicerSavedPlatesPanel',
+    sliceHistory: 'slicerSliceHistoryPanel'
+  };
+  const targetEl = document.getElementById(panelMap[tabName]);
+  if (targetEl) targetEl.style.display = '';
+
+  // When switching to catalog, ensure catalog panel is visible
+  if (tabName === 'catalog') {
+    const cp = document.getElementById('slicerCatalogPanel');
+    if (cp) cp.style.display = '';
+  }
+
+  // Update tab button active states
+  document.querySelectorAll('.slicer-sub-tab').forEach(btn => {
+    const isActive = btn.dataset.tab === tabName;
+    btn.classList.toggle('active', isActive);
+    btn.style.color = isActive ? 'var(--text)' : 'var(--muted)';
+    btn.style.borderBottomColor = isActive ? 'var(--accent,#6366f1)' : 'transparent';
+  });
+
+  // Load data for the tab
+  if (tabName === 'savedPlates') slicerLoadSavedPlates();
+  if (tabName === 'sliceHistory') slicerLoadSliceHistory();
+}
+
+// --- Saved Plates ---
+
+async function slicerLoadSavedPlates() {
+  const panel = document.getElementById('slicerSavedPlatesPanel');
+  if (!panel) return;
+
+  panel.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Loading saved plates...</div>';
+
+  try {
+    const result = await printStation.slicer.listPlates();
+    const plates = result.plates || result || [];
+
+    if (!plates.length) {
+      panel.innerHTML = `
+        <div style="text-align:center;padding:60px 20px;">
+          <div style="font-size:1.1rem;color:var(--muted);margin-bottom:8px;">No saved build plates yet</div>
+          <div style="font-size:0.85rem;color:var(--muted);">Select items in the Catalog tab and click "Save Plate" to create one.</div>
+        </div>`;
+      return;
+    }
+
+    panel.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px;">
+        ${plates.map(plate => {
+          const items = typeof plate.items === 'string' ? JSON.parse(plate.items) : (plate.items || []);
+          const totalParts = items.reduce((s, i) => s + (i.qty || 1), 0);
+          const summary = (plate._itemSummary || []).map(s => `${s.qty}x ${slicerEsc(s.name)}`).join(', ') || `${totalParts} parts`;
+          const hasGcode = plate.est_time_min || plate.last_gcode_id;
+          const printerLabel = slicerPrinterModelLabel(plate.printer_model);
+          const updated = plate.updated_at ? new Date(plate.updated_at).toLocaleDateString() : '';
+
+          return `
+          <div class="inventory-card saved-plate-card" data-plate-id="${plate.id}" style="padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div>
+                <h3 style="margin:0 0 4px;font-size:1rem;">${slicerEsc(plate.name)}</h3>
+                <div class="muted" style="font-size:0.8rem;">${printerLabel} &middot; ${totalParts} part${totalParts !== 1 ? 's' : ''} &middot; Updated ${updated}</div>
+              </div>
+              ${hasGcode ? `<span style="background:#22c55e20;color:#4ade80;padding:2px 8px;border-radius:6px;font-size:0.75rem;font-weight:600;">Sliced</span>` : ''}
+            </div>
+            <div style="font-size:0.85rem;color:var(--muted);margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${summary}</div>
+            ${hasGcode ? `
+              <div style="display:flex;gap:12px;margin-bottom:10px;padding:8px 10px;background:rgba(255,255,255,0.04);border-radius:6px;font-size:0.85rem;">
+                <span>Time: <strong>${slicerFormatTime(plate.est_time_min)}</strong></span>
+                <span>Filament: <strong>${plate.est_weight_g ? plate.est_weight_g.toFixed(1) + 'g' : '?'}</strong></span>
+              </div>
+            ` : ''}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="saved-plate-action primary" data-action="slice" data-plate-id="${plate.id}" style="padding:6px 14px;font-size:0.85rem;">Slice</button>
+              <button class="saved-plate-action secondary" data-action="preview" data-plate-id="${plate.id}" style="padding:6px 14px;font-size:0.85rem;">Preview</button>
+              <button class="saved-plate-action secondary" data-action="edit" data-plate-id="${plate.id}" style="padding:6px 14px;font-size:0.85rem;">Edit</button>
+              <button class="saved-plate-action secondary" data-action="delete" data-plate-id="${plate.id}" style="padding:6px 10px;font-size:0.85rem;color:var(--danger);">Delete</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
+    // Wire action buttons
+    panel.querySelectorAll('.saved-plate-action').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const plateId = parseInt(btn.dataset.plateId, 10);
+        const action = btn.dataset.action;
+        const plate = plates.find(p => p.id === plateId);
+        if (!plate) return;
+
+        if (action === 'slice') slicerSliceSavedPlate(plate);
+        else if (action === 'preview') slicerPreviewSavedPlate(plate);
+        else if (action === 'edit') slicerEditSavedPlate(plate);
+        else if (action === 'delete') slicerDeleteSavedPlate(plate);
+      });
+    });
+  } catch (err) {
+    console.error('[Slicer] Load saved plates error:', err);
+    panel.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);">Failed to load saved plates: ${slicerEsc(err.message)}</div>`;
+  }
+}
+
+function slicerPrinterModelLabel(model) {
+  if (!model) return 'Unknown';
+  const m = model.toLowerCase();
+  if (m.includes('kobra') && m.includes('v2')) return 'Kobra 3 V2';
+  if (m.includes('kobra')) return 'Kobra 3';
+  if (m.includes('s1') && m.includes('pro')) return 'Ender 3 S1 Pro';
+  if (m.includes('ke') || m.includes('v3')) return 'Ender 3 V3 KE';
+  if (m.includes('ender')) return 'Ender 3';
+  return model;
+}
+
+async function slicerSliceSavedPlate(plate) {
+  // Show a printer picker popup then slice
+  const items = typeof plate.items === 'string' ? JSON.parse(plate.items) : (plate.items || []);
+  const settings = typeof plate.settings === 'string' ? JSON.parse(plate.settings) : (plate.settings || {});
+  if (!items.length) return alert('This plate has no items');
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+  const printers = slicerState.printers || [];
+  const anycubic = printers.filter(p => (p.model || '').toLowerCase().includes('kobra'));
+  const creality = printers.filter(p => !(p.model || '').toLowerCase().includes('kobra'));
+
+  let printerOptionsHtml = '<option value="">Select a printer...</option>';
+  if (anycubic.length) {
+    printerOptionsHtml += '<optgroup label="Anycubic">';
+    anycubic.forEach(p => { printerOptionsHtml += `<option value="${p.id}" data-model="${slicerEsc(p.model)}">${slicerEsc(p.name)} (${slicerEsc(p.model)})</option>`; });
+    printerOptionsHtml += '</optgroup>';
+  }
+  if (creality.length) {
+    printerOptionsHtml += '<optgroup label="Creality">';
+    creality.forEach(p => { printerOptionsHtml += `<option value="${p.id}" data-model="${slicerEsc(p.model)}">${slicerEsc(p.name)} (${slicerEsc(p.model)})</option>`; });
+    printerOptionsHtml += '</optgroup>';
+  }
+
+  const totalParts = items.reduce((s, i) => s + (i.qty || 1), 0);
+  const modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--card,#1e293b);border-radius:12px;padding:24px;max-width:440px;width:90%;';
+  modal.innerHTML = `
+    <h3 style="margin:0 0 12px;">Slice "${slicerEsc(plate.name)}"</h3>
+    <div class="muted" style="margin-bottom:16px;font-size:0.85rem;">${totalParts} part${totalParts !== 1 ? 's' : ''}</div>
+    <div style="margin-bottom:16px;">
+      <label style="font-size:0.85rem;color:var(--muted);margin-bottom:4px;display:block;">Send to Printer</label>
+      <select id="savedPlateSlicePrinter" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);font-size:0.95rem;">
+        ${printerOptionsHtml}
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="savedPlateSliceCancelBtn" class="secondary" style="padding:8px 16px;">Cancel</button>
+      <button id="savedPlateSliceGoBtn" class="primary" style="padding:8px 20px;font-weight:600;">Slice</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('savedPlateSliceCancelBtn').addEventListener('click', () => overlay.remove());
+
+  document.getElementById('savedPlateSliceGoBtn').addEventListener('click', async () => {
+    const select = document.getElementById('savedPlateSlicePrinter');
+    const printerId = select.value || null;
+    let printerModel = plate.printer_model || 'kobra3';
+    let printerName = '';
+
+    if (printerId) {
+      const printer = printers.find(p => String(p.id) === String(printerId));
+      if (printer) {
+        printerName = printer.name || '';
+        if (printer.model) printerModel = slicerMapPrinterModel(printer.model);
+      }
+    }
+
+    overlay.remove();
+
+    // Expand items by quantity
+    const expandedIds = [];
+    const transforms = {};
+    for (const item of items) {
+      const qty = item.qty || 1;
+      for (let c = 0; c < qty; c++) expandedIds.push(item.stl_id);
+      if (item.transform) {
+        transforms[item.stl_id] = {
+          rx: item.transform.rx || 0, ry: item.transform.ry || 0, rz: item.transform.rz || 0,
+          scale: item.transform.scale || 1,
+          posX: qty > 1 ? 0 : (item.transform.posX || 0),
+          posZ: qty > 1 ? 0 : (item.transform.posZ || 0)
+        };
+      }
+    }
+
+    const sliceOptions = {
+      stl_ids: expandedIds,
+      transforms,
+      profile: settings.profile || 'custom',
+      printer_model: printerModel,
+      material: settings.material,
+      quality: settings.quality,
+      strength: settings.strength,
+      speed: settings.speed,
+      texture: settings.texture,
+      surface: settings.surface,
+      supports: settings.supports,
+      auto_orient: settings.auto_orient
+    };
+
+    const sliceSteps = ['Slicing plate', 'Loading G-code preview'];
+    slicerShowProgress('Slicing Saved Plate...', sliceSteps, 0, `PrusaSlicer is processing ${totalParts} parts`);
+
+    let sliceResult;
+    try {
+      sliceResult = await printStation.slicer.slicePlate(sliceOptions);
+      if (sliceResult.error) throw new Error(sliceResult.error);
+    } catch (err) {
+      slicerHideProgress();
+      console.error('[Slicer] Saved plate slice error:', err);
+      showToast('Slice failed: ' + (err.message || 'unknown'), 'error', 8000);
+      return;
+    }
+
+    // Update plate's last_gcode_id
+    try {
+      await printStation.slicer.updatePlate(plate.id, { last_gcode_id: sliceResult.gcode_id });
+    } catch (e) { console.warn('[Slicer] Could not update plate gcode ref:', e); }
+
+    // Fetch gcode for preview
+    slicerUpdateProgress(1, 'Downloading G-code for 3D preview...');
+    let gcodeText;
+    try {
+      gcodeText = await printStation.slicer.fetchGcodeText(sliceResult.gcode_id);
+    } catch (err) {
+      slicerHideProgress();
+      showToast('Sliced! Could not load G-code preview: ' + err.message, 'warning', 6000);
+      slicerLoadSavedPlates(); // Refresh cards
+      return;
+    }
+
+    slicerHideProgress();
+    const estInfo = sliceResult.est_time_min ? ` (${slicerFormatTime(sliceResult.est_time_min)}, ${sliceResult.est_weight_g ? sliceResult.est_weight_g.toFixed(1) + 'g' : '?'})` : '';
+    showToast(`Plate sliced${estInfo}!`, 'success', 4000);
+
+    // Show gcode preview
+    const action = await slicerShowGcodePreview({
+      gcodeText,
+      gcodeId: sliceResult.gcode_id,
+      sliceResult,
+      printerId: printerId ? parseInt(printerId, 10) : null,
+      printerName
+    });
+
+    if (action === 'print' && printerId) {
+      const printSteps = ['Downloading G-code', 'Preparing file', 'Uploading to printer', 'Starting print'];
+      slicerShowProgress('Sending to Printer...', printSteps, 0, 'Downloading G-code from server...');
+      const offProgress = printStation.slicer.onPrintProgress(({ step, detail }) => {
+        slicerUpdateProgress(step - 1, detail);
+      });
+      try {
+        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10));
+        offProgress();
+        slicerHideProgress();
+        if (result.success) showToast(`Print started on ${printerName}!`, 'success', 6000);
+      } catch (err) {
+        offProgress();
+        slicerHideProgress();
+        showToast('Print failed: ' + (err.message || 'unknown'), 'error', 8000);
+      }
+    }
+
+    slicerLoadSavedPlates(); // Refresh cards with updated estimates
+  });
+}
+
+async function slicerPreviewSavedPlate(plate) {
+  const items = typeof plate.items === 'string' ? JSON.parse(plate.items) : (plate.items || []);
+  if (!items.length) return alert('This plate has no items');
+
+  // Load items into plate state and open build plate preview
+  if (!slicerState.catalog || !slicerState.catalog.length) {
+    await slicerLoadCatalog();
+  }
+
+  // Enable plate mode
+  if (!slicerState.plateMode) {
+    slicerState.plateMode = true;
+    const btn = document.getElementById('slicerPlateToggle');
+    if (btn) btn.classList.add('active');
+  }
+
+  // Load items
+  slicerState.plateItems = [];
+  slicerState.plateTransforms = {};
+  for (const item of items) {
+    const catalogItem = slicerState.catalog.find(i => i.id === item.stl_id);
+    if (catalogItem) {
+      slicerState.plateItems.push({ ...catalogItem, qty: item.qty || 1 });
+      if (item.transform) {
+        slicerState.plateTransforms[item.stl_id] = { ...item.transform };
+      }
+    }
+  }
+
+  slicerUpdatePlateBar();
+  slicerUpdatePlateCheckmarks();
+
+  // Switch to catalog tab and open build plate preview
+  slicerShowSubTab('catalog');
+  slicerShowBuildPlatePreview();
+}
+
+async function slicerEditSavedPlate(plate) {
+  const items = typeof plate.items === 'string' ? JSON.parse(plate.items) : (plate.items || []);
+  const settings = typeof plate.settings === 'string' ? JSON.parse(plate.settings) : (plate.settings || {});
+
+  // Load catalog if needed
+  if (!slicerState.catalog || !slicerState.catalog.length) {
+    await slicerLoadCatalog();
+  }
+
+  // Enable plate mode
+  if (!slicerState.plateMode) {
+    slicerState.plateMode = true;
+    const btn = document.getElementById('slicerPlateToggle');
+    if (btn) btn.classList.add('active');
+  }
+
+  // Load items into working state
+  slicerState.plateItems = [];
+  slicerState.plateTransforms = {};
+  for (const item of items) {
+    const catalogItem = slicerState.catalog.find(i => i.id === item.stl_id);
+    if (catalogItem) {
+      slicerState.plateItems.push({ ...catalogItem, qty: item.qty || 1 });
+      if (item.transform) {
+        slicerState.plateTransforms[item.stl_id] = { ...item.transform };
+      }
+    }
+  }
+
+  // Apply saved settings
+  if (settings) {
+    Object.assign(slicerState.settings, settings);
+  }
+
+  // Store editing state so Save Plate updates instead of creating
+  slicerState._editingPlateId = plate.id;
+  slicerState._editingPlateName = plate.name;
+
+  // Switch to catalog tab
+  slicerShowSubTab('catalog');
+  slicerUpdatePlateBar();
+  slicerUpdatePlateCheckmarks();
+  await slicerRenderCatalog();
+
+  showToast(`Editing plate "${plate.name}" — modify items, then click Save Plate to update.`, 'info', 5000);
+}
+
+async function slicerDeleteSavedPlate(plate) {
+  if (!confirm(`Delete plate "${plate.name}"? This cannot be undone.`)) return;
+
+  try {
+    await printStation.slicer.deletePlate(plate.id);
+    showToast(`Plate "${plate.name}" deleted.`, 'success', 3000);
+    slicerLoadSavedPlates();
+  } catch (err) {
+    console.error('[Slicer] Delete plate error:', err);
+    showToast('Delete failed: ' + (err.message || 'unknown'), 'error', 5000);
+  }
+}
+
+// --- Slice History ---
+
+async function slicerLoadSliceHistory() {
+  const panel = document.getElementById('slicerSliceHistoryPanel');
+  if (!panel) return;
+
+  panel.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">Loading slice history...</div>';
+
+  try {
+    const cacheList = await printStation.slicer.listCache();
+    const entries = (cacheList.entries || cacheList || []).filter(e => e.plate_stl_ids);
+
+    if (!entries.length) {
+      panel.innerHTML = `
+        <div style="text-align:center;padding:60px 20px;">
+          <div style="font-size:1.1rem;color:var(--muted);margin-bottom:8px;">No plate slice history</div>
+          <div style="font-size:0.85rem;color:var(--muted);">Sliced build plates will appear here with print time and filament estimates.</div>
+        </div>`;
+      return;
+    }
+
+    // Sort newest first
+    entries.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    panel.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px;">
+        ${entries.map(entry => {
+          const printerLabel = slicerPrinterModelLabel(entry.printer_model);
+          const date = entry.created_at ? new Date(entry.created_at).toLocaleDateString() : '';
+          const time = entry.created_at ? new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+          const fileName = entry.gcode_filename || entry.filename || 'plate.gcode';
+          const fileSize = entry.file_size ? slicerFormatBytes(entry.file_size) : '';
+          const materialLabel = entry.material ? entry.material.toUpperCase() : '';
+          const qualityLabel = entry.quality || '';
+
+          // Parse plate_stl_ids for item count
+          let itemCount = 0;
+          try {
+            const ids = typeof entry.plate_stl_ids === 'string' ? JSON.parse(entry.plate_stl_ids) : entry.plate_stl_ids;
+            itemCount = Array.isArray(ids) ? ids.length : 0;
+          } catch {}
+
+          return `
+          <div class="inventory-card slice-history-card" data-gcode-id="${entry.id}" style="padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:0.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${slicerEsc(fileName)}</div>
+                <div class="muted" style="font-size:0.8rem;">${printerLabel} &middot; ${materialLabel} &middot; ${qualityLabel} &middot; ${date} ${time}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:12px;margin-bottom:10px;padding:8px 10px;background:rgba(255,255,255,0.04);border-radius:6px;font-size:0.85rem;">
+              <span>Time: <strong>${slicerFormatTime(entry.est_time_min)}</strong></span>
+              <span>Filament: <strong>${entry.est_weight_g ? entry.est_weight_g.toFixed(1) + 'g' : '?'}</strong></span>
+              <span>Parts: <strong>${itemCount}</strong></span>
+              ${fileSize ? `<span>Size: <strong>${fileSize}</strong></span>` : ''}
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="slice-history-action primary" data-action="print" data-gcode-id="${entry.id}" style="padding:6px 14px;font-size:0.85rem;">Print</button>
+              <button class="slice-history-action secondary" data-action="download" data-gcode-id="${entry.id}" style="padding:6px 14px;font-size:0.85rem;">Download</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
+    // Wire action buttons
+    panel.querySelectorAll('.slice-history-action').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const gcodeId = parseInt(btn.dataset.gcodeId, 10);
+        const action = btn.dataset.action;
+
+        if (action === 'print') slicerPrintFromHistory(gcodeId);
+        else if (action === 'download') slicerDownloadGcode(gcodeId);
+      });
+    });
+  } catch (err) {
+    console.error('[Slicer] Load slice history error:', err);
+    panel.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);">Failed to load history: ${slicerEsc(err.message)}</div>`;
+  }
+}
+
+async function slicerPrintFromHistory(gcodeId) {
+  // Show printer picker
+  const printers = slicerState.printers || [];
+  if (!printers.length) return alert('No printers available');
+
+  const anycubic = printers.filter(p => (p.model || '').toLowerCase().includes('kobra'));
+  const creality = printers.filter(p => !(p.model || '').toLowerCase().includes('kobra'));
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+  let optionsHtml = '<option value="">Select a printer...</option>';
+  if (anycubic.length) {
+    optionsHtml += '<optgroup label="Anycubic">';
+    anycubic.forEach(p => { optionsHtml += `<option value="${p.id}">${slicerEsc(p.name)} (${slicerEsc(p.model)})</option>`; });
+    optionsHtml += '</optgroup>';
+  }
+  if (creality.length) {
+    optionsHtml += '<optgroup label="Creality">';
+    creality.forEach(p => { optionsHtml += `<option value="${p.id}">${slicerEsc(p.name)} (${slicerEsc(p.model)})</option>`; });
+    optionsHtml += '</optgroup>';
+  }
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--card,#1e293b);border-radius:12px;padding:24px;max-width:400px;width:90%;';
+  modal.innerHTML = `
+    <h3 style="margin:0 0 16px;">Print G-code</h3>
+    <div style="margin-bottom:16px;">
+      <label style="font-size:0.85rem;color:var(--muted);margin-bottom:4px;display:block;">Send to Printer</label>
+      <select id="historyPrintPrinterSelect" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);font-size:0.95rem;">
+        ${optionsHtml}
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button id="historyPrintCancelBtn" class="secondary" style="padding:8px 16px;">Cancel</button>
+      <button id="historyPrintGoBtn" class="primary" style="padding:8px 20px;font-weight:600;">Print</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('historyPrintCancelBtn').addEventListener('click', () => overlay.remove());
+
+  document.getElementById('historyPrintGoBtn').addEventListener('click', async () => {
+    const printerId = document.getElementById('historyPrintPrinterSelect').value;
+    if (!printerId) { showToast('Please select a printer', 'warning', 3000); return; }
+    const printer = printers.find(p => String(p.id) === String(printerId));
+    overlay.remove();
+
+    const printSteps = ['Downloading G-code', 'Preparing file', 'Uploading to printer', 'Starting print'];
+    slicerShowProgress('Sending to Printer...', printSteps, 0, 'Downloading G-code from server...');
+    const offProgress = printStation.slicer.onPrintProgress(({ step, detail }) => {
+      slicerUpdateProgress(step - 1, detail);
+    });
+
+    try {
+      const result = await printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10));
+      offProgress();
+      slicerHideProgress();
+      if (result.success) showToast(`Print started on ${printer ? printer.name : 'printer'}!`, 'success', 6000);
+    } catch (err) {
+      offProgress();
+      slicerHideProgress();
+      showToast('Print failed: ' + (err.message || 'unknown'), 'error', 8000);
+    }
+  });
+}
+
+async function slicerDownloadGcode(gcodeId) {
+  try {
+    showToast('Downloading G-code...', 'info', 2000);
+    const gcodeText = await printStation.slicer.fetchGcodeText(gcodeId);
+    if (!gcodeText) throw new Error('Empty G-code');
+    const blob = new Blob([gcodeText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `plate_${gcodeId}.gcode`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('G-code downloaded!', 'success', 3000);
+  } catch (err) {
+    console.error('[Slicer] Download gcode error:', err);
+    showToast('Download failed: ' + (err.message || 'unknown'), 'error', 5000);
   }
 }
 
