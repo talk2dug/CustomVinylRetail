@@ -903,8 +903,12 @@ ${productDesc}
   const aspects = getEbayAspects(shopifyProduct.product_type, shopifyProduct);
 
   // Determine which Shopify options are used (e.g., Size, Color)
+  // Each specification needs name + values for eBay's inventory item group API
   const shopifyOptions = (shopifyProduct.options || []).map(o => o.name);
-  const variesBy = shopifyOptions.map(name => ({ name }));
+  const variesBy = (shopifyProduct.options || []).map(o => ({
+    name: o.name,
+    values: o.values || []
+  }));
 
   // Build individual items per variant
   const items = [];
