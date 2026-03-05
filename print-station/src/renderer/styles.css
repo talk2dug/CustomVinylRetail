@@ -220,6 +220,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .view {
@@ -230,6 +232,8 @@ body {
 
 .view.active {
   display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
 .view-toolbar {
@@ -4073,4 +4077,118 @@ textarea:focus {
   content: '\2022';
   color: var(--muted);
   margin-right: 8px;
+}
+
+/* ── STL 3D Preview Modal ── */
+.stl-preview-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.92);
+}
+.stl-preview-modal.modal-visible {
+  display: flex;
+}
+.stl-preview-canvas-container {
+  flex: 1;
+  position: relative;
+  background: #1a1a2e;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 300px;
+}
+.stl-preview-canvas-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+.stl-render-mode-btns {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+.stl-render-mode-btns button {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(0,0,0,0.5);
+  color: #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.stl-render-mode-btns button.active {
+  background: var(--primary, #6366f1);
+  color: #fff;
+  border-color: var(--primary, #6366f1);
+}
+.stl-preview-info-panel {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+/* ── Slicer View ── */
+.slicer-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+.slicer-option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.slicer-option-group > label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #94a3b8);
+}
+.slicer-profile-select {
+  padding: 8px 12px;
+  width: 100%;
+  font-size: 0.95rem;
+  border: 1px solid var(--border, #334155);
+  border-radius: 6px;
+  background: var(--bg-secondary, #0f172a);
+  color: var(--text, #e2e8f0);
+}
+.slicer-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.slicer-btn-row.profile-locked {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.slicer-opt-btn {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--border, #334155);
+  border-radius: 6px;
+  background: var(--bg-secondary, #0f172a);
+  color: var(--text, #e2e8f0);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.slicer-opt-btn:hover {
+  border-color: var(--accent, #6366f1);
+  background: rgba(99, 102, 241, 0.1);
+}
+.slicer-opt-btn.active {
+  background: var(--accent, #6366f1);
+  color: #fff;
+  border-color: var(--accent, #6366f1);
+}
+.slicer-sub-tab.active {
+  color: var(--text, #e2e8f0) !important;
+  border-bottom-color: var(--accent, #6366f1) !important;
 }

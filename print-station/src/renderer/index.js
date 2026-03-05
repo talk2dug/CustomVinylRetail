@@ -1809,6 +1809,45 @@ function switchView(viewId) {
   if (viewId === 'tiktokShopView') {
     initTikTokShopManager();
   }
+
+  // AI Sales Agent view
+  if (viewId === 'aiAgentView') {
+    loadAiAgentDashboard();
+  }
+
+  // Trend Monitor view
+  if (viewId === 'trendMonitorView') {
+    if (typeof window.initTrendMonitorView === 'function') window.initTrendMonitorView();
+  }
+
+  // External view files (loaded as regular scripts, accessed via window)
+  if (viewId === 'slicerView') {
+    if (typeof window.initSlicerView === 'function') window.initSlicerView();
+  }
+  if (viewId === 'multiboardDesignerView') {
+    if (typeof window.initMultiboardDesignerView === 'function') window.initMultiboardDesignerView();
+  }
+  if (viewId === 'multiboardPartsBrowserView') {
+    if (typeof window.initMultiboardPartsBrowserView === 'function') window.initMultiboardPartsBrowserView();
+  }
+  if (viewId === 'printerFleetView') {
+    if (typeof window.initPrinterFleetView === 'function') window.initPrinterFleetView();
+  }
+  if (viewId === 'skuCatalogView') {
+    if (typeof window.initSkuCatalogView === 'function') window.initSkuCatalogView();
+  }
+  if (viewId === 'qrScannerView') {
+    if (typeof window.initQrScannerView === 'function') window.initQrScannerView();
+  }
+  if (viewId === 'productCatalogView') {
+    if (typeof window.initProductCatalogView === 'function') window.initProductCatalogView();
+  }
+  if (viewId === 'b2bManagementView') {
+    if (typeof window.initB2BManagementView === 'function') window.initB2BManagementView();
+  }
+  if (viewId === 'stickersView') {
+    if (typeof window.initStickersView === 'function') window.initStickersView();
+  }
 }
 
 // =============== Dashboard ===============
@@ -29089,11 +29128,6 @@ function renderTikTokProductList() {
   });
 }
 
-function escapeHtml(str) {
-  if (typeof str !== 'string') return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function updateTikTokBulkBar() {
   const bar = document.getElementById('tiktokShopBulkBar');
   const count = tiktokShopState.selectedIds.size;
@@ -29453,6 +29487,254 @@ async function handleTikTokResearch() {
     }
   } catch (e) {
     setTikTokStatus('Error: ' + e.message, 'error');
+  }
+}
+
+// =============== AI Sales Agent Dashboard ===============
+
+let aiAgentInitialized = false;
+
+async function aiAgentFetch(endpoint) {
+  const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
+  const res = await fetch(`${serverUrl}/api/agent/${endpoint}`, {
+    headers: { 'x-api-key': window.APP_CONFIG?.internalKey || '' }
+  });
+  if (!res.ok) throw new Error(`Agent API ${endpoint}: ${res.status}`);
+  return res.json();
+}
+
+async function aiAgentPost(endpoint, body) {
+  const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
+  const res = await fetch(`${serverUrl}/api/agent/${endpoint}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': window.APP_CONFIG?.internalKey || ''
+    },
+    body: JSON.stringify(body || {})
+  });
+  if (!res.ok) throw new Error(`Agent API POST ${endpoint}: ${res.status}`);
+  return res.json();
+}
+
+async function loadAiAgentDashboard() {
+  // Wire up buttons once
+  if (!aiAgentInitialized) {
+    aiAgentInitialized = true;
+    const refreshBtn = document.getElementById('aiAgentRefreshBtn');
+    const runBtn = document.getElementById('aiAgentRunNowBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => loadAiAgentDashboard());
+    if (runBtn) runBtn.addEventListener('click', async () => {
+      runBtn.disabled = true;
+      runBtn.textContent = 'Running...';
+      try {
+        await aiAgentPost('run');
+        await loadAiAgentDashboard();
+      } catch (e) {
+        console.error('[AI Agent] Run cycle error:', e);
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Run Cycle Now';
+      }
+    });
+  }
+
+  try {
+    const [status, engagement, strategy, calendar, categories, approvals, daily] = await Promise.allSettled([
+      aiAgentFetch('status'),
+      aiAgentFetch('engagement/summary'),
+      aiAgentFetch('strategy'),
+      aiAgentFetch('calendar'),
+      aiAgentFetch('categories'),
+      aiAgentFetch('approvals'),
+      aiAgentFetch('report/daily')
+    ]);
+
+    if (status.status === 'fulfilled') renderAiAgentStatus(status.value);
+    if (daily.status === 'fulfilled') renderAiDailyReport(daily.value);
+    if (engagement.status === 'fulfilled') renderAiEngagement(engagement.value);
+    if (strategy.status === 'fulfilled') renderAiStrategy(strategy.value);
+    if (calendar.status === 'fulfilled') renderAiCalendar(calendar.value);
+    if (categories.status === 'fulfilled') renderAiCategories(categories.value);
+    if (approvals.status === 'fulfilled') renderAiApprovals(approvals.value);
+  } catch (e) {
+    console.error('[AI Agent] Dashboard load error:', e);
+  }
+}
+
+function renderAiAgentStatus(data) {
+  const indicator = document.getElementById('aiAgentStatusIndicator');
+  const label = document.getElementById('aiAgentLastCycleLabel');
+  if (indicator) {
+    indicator.style.color = data.running ? '#22c55e' : '#94a3b8';
+    indicator.title = data.running ? 'Agent running' : 'Agent stopped';
+  }
+  if (label && data.lastCycleAt) {
+    const ago = Math.round((Date.now() - new Date(data.lastCycleAt).getTime()) / 60000);
+    label.textContent = ago < 60 ? `Last cycle: ${ago}m ago` : `Last cycle: ${Math.round(ago / 60)}h ago`;
+  }
+}
+
+function renderAiDailyReport(data) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '--'; };
+  set('aiDailyPostsPublished', data.postsPublished || 0);
+  set('aiDailyTotalLikes', data.totalLikes || 0);
+  set('aiDailyTotalComments', data.totalComments || 0);
+  set('aiDailyTotalShares', data.totalShares || 0);
+  set('aiDailyQueueDepth', data.queueDepth || 0);
+  set('aiDailyQueueDays', data.queueDays || 0);
+}
+
+function renderAiEngagement(data) {
+  const tbody = document.getElementById('aiEngagementCategoryBody');
+  const windowLabel = document.getElementById('aiEngagementWindow');
+  if (windowLabel) windowLabel.textContent = `${data.windowDays || 30}d window`;
+  if (!tbody) return;
+
+  const cats = data.byCategory || [];
+  if (!cats.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;" class="muted">No engagement data yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = cats.map(c => `
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px;font-weight:600;">${escapeHtml(c.product_category || 'Unknown')}</td>
+      <td style="text-align:right;padding:8px;">${c.post_count}</td>
+      <td style="text-align:right;padding:8px;">${c.avg_weighted_score || c.avg_engagement || 0}</td>
+      <td style="text-align:right;padding:8px;">${c.total_likes || 0}</td>
+      <td style="text-align:right;padding:8px;">${c.total_comments || 0}</td>
+      <td style="text-align:right;padding:8px;">${c.total_shares || 0}</td>
+    </tr>
+  `).join('');
+
+  // Best times
+  const timesEl = document.getElementById('aiBestTimes');
+  if (timesEl && data.byHour && data.byHour.length) {
+    timesEl.innerHTML = data.byHour.slice(0, 5).map(h =>
+      `<span style="display:inline-block;padding:4px 10px;margin:3px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:0.85rem;">${String(h.posted_hour).padStart(2, '0')}:00 <span class="muted">(${h.avg_weighted_score || h.avg_engagement})</span></span>`
+    ).join('');
+  } else if (timesEl) {
+    timesEl.innerHTML = '<span class="muted">Not enough data</span>';
+  }
+}
+
+function renderAiStrategy(data) {
+  const barsEl = document.getElementById('aiWeightBars');
+  const decisionsEl = document.getElementById('aiDecisionsList');
+
+  if (barsEl && data.currentWeights) {
+    const entries = Object.entries(data.currentWeights);
+    if (entries.length) {
+      const maxW = Math.max(...entries.map(([_, v]) => v.weight || 0), 1);
+      barsEl.innerHTML = entries.map(([name, v]) => {
+        const pct = Math.round(((v.weight || 0) / maxW) * 100);
+        return `<div style="margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:2px;"><span>${escapeHtml(name)}</span><span>${v.weight || 0}</span></div>
+          <div style="background:var(--surface);border-radius:4px;height:8px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:var(--primary);border-radius:4px;"></div></div>
+        </div>`;
+      }).join('');
+    } else {
+      barsEl.innerHTML = '<span class="muted">No categories configured</span>';
+    }
+  }
+
+  if (decisionsEl && data.recentDecisions) {
+    if (data.recentDecisions.length) {
+      decisionsEl.innerHTML = data.recentDecisions.map(d => {
+        const ts = d.timestamp ? new Date(d.timestamp).toLocaleDateString() : '';
+        const decisions = d.decisions_json;
+        const summary = decisions ? (decisions.summary || JSON.stringify(decisions).slice(0, 120)) : 'No details';
+        return `<div style="padding:8px;border-bottom:1px solid var(--border);font-size:0.85rem;">
+          <div style="display:flex;justify-content:space-between;"><strong>${escapeHtml(d.strategy_type || 'Decision')}</strong><span class="muted">${ts}</span></div>
+          <div class="muted" style="margin-top:4px;">${escapeHtml(String(summary))}</div>
+        </div>`;
+      }).join('');
+    } else {
+      decisionsEl.innerHTML = '<span class="muted">No recent decisions</span>';
+    }
+  }
+}
+
+function renderAiCalendar(data) {
+  const el = document.getElementById('aiCalendarList');
+  if (!el) return;
+  const entries = data.data || [];
+  if (!entries.length) {
+    el.innerHTML = '<div class="muted" style="padding:12px;text-align:center;">No upcoming content planned</div>';
+    return;
+  }
+  el.innerHTML = entries.map(e => {
+    const date = e.planned_date || '';
+    const time = e.planned_time || '';
+    const status = e.status || 'planned';
+    const statusColor = status === 'posted' ? '#22c55e' : status === 'failed' ? '#ef4444' : '#94a3b8';
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-weight:600;">${escapeHtml(e.product_category || '')} ${e.caption_style ? '/ ' + escapeHtml(e.caption_style) : ''}</div>
+        <div class="muted">${date} ${time}</div>
+      </div>
+      <span style="color:${statusColor};font-size:0.8rem;text-transform:uppercase;">${escapeHtml(status)}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderAiCategories(data) {
+  const el = document.getElementById('aiCategorySettings');
+  if (!el) return;
+  const cats = data.categories || {};
+  const entries = Object.entries(cats);
+  if (!entries.length) {
+    el.innerHTML = '<span class="muted">No categories configured</span>';
+    return;
+  }
+  el.innerHTML = entries.map(([name, cfg]) => `
+    <div style="padding:8px;border-bottom:1px solid var(--border);font-size:0.85rem;display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <span style="font-weight:600;">${escapeHtml(name)}</span>
+        <span class="muted" style="margin-left:8px;">weight: ${cfg.postingWeight || 0}</span>
+      </div>
+      <span style="color:${cfg.enabled ? '#22c55e' : '#ef4444'};font-size:0.75rem;text-transform:uppercase;">${cfg.enabled ? 'Enabled' : 'Disabled'}</span>
+    </div>
+  `).join('');
+}
+
+function renderAiApprovals(data) {
+  const el = document.getElementById('aiApprovalsList');
+  const badge = document.getElementById('aiApprovalCount');
+  if (!el) return;
+  const items = data.data || [];
+  const pending = items.filter(a => a.status === 'pending');
+
+  if (badge) {
+    badge.textContent = pending.length;
+    badge.style.display = pending.length > 0 ? '' : 'none';
+  }
+
+  if (!items.length) {
+    el.innerHTML = '<div class="muted" style="padding:12px;text-align:center;">No pending approvals</div>';
+    return;
+  }
+  el.innerHTML = items.slice(0, 10).map(a => {
+    const isPending = a.status === 'pending';
+    return `<div style="padding:8px;border-bottom:1px solid var(--border);font-size:0.85rem;">
+      <div style="display:flex;justify-content:space-between;">
+        <span style="font-weight:600;">${escapeHtml(a.description || 'Approval')}</span>
+        <span style="color:${isPending ? '#f59e0b' : a.status === 'approved' ? '#22c55e' : '#94a3b8'};font-size:0.75rem;text-transform:uppercase;">${escapeHtml(a.status)}</span>
+      </div>
+      ${isPending ? `<div style="margin-top:6px;display:flex;gap:6px;">
+        <button class="secondary" style="font-size:0.75rem;padding:2px 10px;" onclick="aiAgentApproval('approve_${a.id}')">Approve</button>
+        <button class="secondary" style="font-size:0.75rem;padding:2px 10px;" onclick="aiAgentApproval('deny_${a.id}')">Deny</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function aiAgentApproval(command) {
+  try {
+    await aiAgentPost('approval-callback', { command: '/' + command });
+    await loadAiAgentDashboard();
+  } catch (e) {
+    console.error('[AI Agent] Approval error:', e);
   }
 }
 

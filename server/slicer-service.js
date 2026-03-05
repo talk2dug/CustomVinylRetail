@@ -723,18 +723,6 @@ const PRINT_PROFILE_PRESETS = {
     },
     visual: { quality: 'standard', strength: 'strong', speed: 'normal', texture: 'smooth', surface: 'standard', supports: 'none' }
   },
-  'multiboard-tile-stack': {
-    label: 'Multiboard — Tile Stack',
-    description: 'Batch tiles with ironing method, 5mm brim',
-    category: 'multiboard',
-    overrides: {
-      layer_height: 0.2, perimeters: 3, top_layers: 4, bottom_layers: 4,
-      infill: 15, fill_pattern: 'gyroid',
-      seam_position: 'random', ironing: true, supports: false,
-      speed_multiplier: 1.0, fuzzy_skin: 'none', brim_width: 5
-    },
-    visual: { quality: 'standard', strength: 'normal', speed: 'normal', texture: 'smooth', surface: 'polished', supports: 'none' }
-  },
   'multiboard-heavy-duty': {
     label: 'Multiboard — Heavy Duty',
     description: 'Max strength: 5 walls, 40% infill, 0.15mm layers',
@@ -749,9 +737,10 @@ const PRINT_PROFILE_PRESETS = {
   },
   'multiboard-stack': {
     label: 'Multiboard — Stack',
-    description: 'Standard spec + ironing for stackable tile separation',
-    hint: 'Stack printing requires ironing so the tiles separate cleanly after printing.',
+    description: 'Vertically stacked tiles with ironing between each for clean separation',
+    hint: 'Copies are stacked on top of each other (not side by side). Ironing between each tile creates a smooth release layer so they snap apart after printing. Set Copies to the number of tiles you want in the stack.',
     category: 'multiboard',
+    stackVertical: true,  // Stack copies in Z instead of XY grid
     overrides: {
       layer_height: 0.2, perimeters: 3, top_layers: 4, bottom_layers: 4,
       infill: 15, fill_pattern: 'gyroid',
@@ -1128,12 +1117,74 @@ async function sliceSTL(stlPath, options, dbInstance) {
   const centerX = bedX / 2;
   const centerY = bedY / 2;
 
-  // For multiple copies, build a merged STL with copies pre-arranged in a grid.
+  // For multiple copies, build a merged STL with copies arranged on the bed.
   // PrusaSlicer's --duplicate is unreliable in CLI mode (places items off-bed),
   // so we handle arrangement ourselves and slice the merged result as one model.
+  //
+  // Stack profiles (e.g. multiboard-stack) arrange copies vertically in Z
+  // instead of in an XY grid, so ironing creates separation layers between tiles.
+  const profilePresetForCopies = PRINT_PROFILE_PRESETS[options.profile];
+  const isVerticalStack = profilePresetForCopies?.stackVertical === true;
   let actualCopies = copies;
   let mergedCopiesPath = null;
-  if (copies > 1) {
+  if (copies > 1 && isVerticalStack) {
+    try {
+      const stlBuf = fs.readFileSync(slicePath);
+      const { triangleCount, normals, vertices } = parseSTLBinary(stlBuf);
+
+      // Compute model Z height
+      let minZ = Infinity, maxZ = -Infinity;
+      for (let i = 2; i < vertices.length; i += 3) {
+        if (vertices[i] < minZ) minZ = vertices[i];
+        if (vertices[i] > maxZ) maxZ = vertices[i];
+      }
+      const modelHeight = maxZ - minZ;
+
+      // Check vertical stack fits within printer Z height
+      const [, , bedZ] = (printerInfo.build || '220x220x250').split('x').map(Number);
+      const maxStack = Math.max(1, Math.floor(bedZ / modelHeight));
+      actualCopies = Math.min(copies, maxStack);
+
+      console.log(`[Slicer] Vertical stack: ${actualCopies} copies, model height ${modelHeight.toFixed(1)}mm, total ${(actualCopies * modelHeight).toFixed(1)}mm (bed Z: ${bedZ}mm)`);
+
+      // Build merged binary STL with copies stacked in Z
+      const totalTriangles = triangleCount * actualCopies;
+      const outputSize = 84 + totalTriangles * 50;
+      const outputBuffer = Buffer.alloc(outputSize);
+      stlBuf.copy(outputBuffer, 0, 0, 80); // copy header
+      outputBuffer.writeUInt32LE(totalTriangles, 80);
+
+      const dv = new DataView(outputBuffer.buffer, outputBuffer.byteOffset);
+      let triIdx = 0;
+      for (let layer = 0; layer < actualCopies; layer++) {
+        const offsetZ = layer * modelHeight - minZ; // stack each copy on top
+        for (let t = 0; t < triangleCount; t++) {
+          const outOff = 84 + triIdx * 50;
+          // Normal (unchanged)
+          dv.setFloat32(outOff, normals[t * 3], true);
+          dv.setFloat32(outOff + 4, normals[t * 3 + 1], true);
+          dv.setFloat32(outOff + 8, normals[t * 3 + 2], true);
+          // Vertices (offset Z only)
+          for (let v = 0; v < 3; v++) {
+            const si = t * 9 + v * 3;
+            dv.setFloat32(outOff + 12 + v * 12,     vertices[si], true);       // X unchanged
+            dv.setFloat32(outOff + 12 + v * 12 + 4, vertices[si + 1], true);   // Y unchanged
+            dv.setFloat32(outOff + 12 + v * 12 + 8, vertices[si + 2] + offsetZ, true); // Z stacked
+          }
+          // Attribute byte count
+          outputBuffer.writeUInt16LE(0, outOff + 48);
+          triIdx++;
+        }
+      }
+
+      mergedCopiesPath = path.join(os.tmpdir(), `stack_${actualCopies}_${path.basename(slicePath)}`);
+      fs.writeFileSync(mergedCopiesPath, outputBuffer);
+    } catch (err) {
+      console.warn(`[Slicer] Vertical stack failed, falling back to grid: ${err.message}`);
+      mergedCopiesPath = null;
+    }
+  }
+  if (copies > 1 && !mergedCopiesPath) {
     try {
       const stlBuf = fs.readFileSync(slicePath);
       const { triangleCount, normals, vertices } = parseSTLBinary(stlBuf);

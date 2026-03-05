@@ -982,6 +982,7 @@ async function slicerSelectItem(id) {
 
     // Switch panels
     document.getElementById('slicerCatalogPanel').style.display = 'none';
+    document.getElementById('slicerPlateSettingsPanel').style.display = 'none';
     document.getElementById('slicerSettingsPanel').style.display = '';
 
     // Populate info

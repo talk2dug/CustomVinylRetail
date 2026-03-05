@@ -8,6 +8,7 @@ node_modules/
 # Database files
 data/*.db
 data/backups/
+*.db
 
 # Large generated/cached data
 data/stl-library/
@@ -22,6 +23,10 @@ data/kiosk-promotions/
 web/images/catalog/
 web/images/custom-art/
 web/images/leonardo/
+web/images/BlueRidgeCustomCoLogo.png
+web/images/sarcasticMood.png
+web/images/._sarcasticMood.png
+web/images/rockband-cartoons*.png
 
 # User content
 Products/
@@ -34,6 +39,7 @@ squashfs-root*/
 # OS files
 .DS_Store
 Thumbs.db
+nul
 
 # Piper voice models
 piper-voices/
@@ -46,12 +52,17 @@ ecosystem.config.js
 
 # Sample media files
 Metallic samples/
+._Metallic samples
 
 # Scraped data
 MultiBoardScraper/
 
 # Claude settings
 .claude/
+
+# IDE / editor
+.vscode/
+.smoke-userdata/
 
 # Binary installers and AppImages
 *.exe
@@ -77,3 +88,106 @@ data/*.jsonl
 
 # Large generated assets
 web/minipaint/images/preview.gif
+
+# ── Root-level docs, screenshots, temp files ──
+AI-DESCRIPTION-PUNCH-LIST.md
+BEFORE.png
+NOW.png
+DESIGNER_IMPLEMENTATION_SUMMARY.md
+FACEBOOK_*.md
+MARKETPLACE_*.md
+METADATA_GENERATION_COMPLETE.md
+METAL_PRINTS_SUMMARY.md
+MODERNIZATION_PLAN.md
+MODERN_DESIGNER_README.md
+MULTIBOARD-PARTS-CATALOG-URLS.md
+NEXT_STEPS.md
+OWNER_ACTION_ITEMS.md
+PLAN-print-station-printing.md
+PREMIUM_METAL_PRINTS_GUIDE.md
+QUICK_START.md
+SALES_STRATEGY.md
+SHOPIFY_*.md
+SITE_MODERNIZATION_GUIDE.md
+Leonardo Prompts Cars.md
+things-to-do-later.md
+PrintStation_Slicing_Module_V2.*
+brcc-multiboard-master-catalog.docx
+multiboard-reference.pdf
+Screenshot *.png
+contour_clean.png
+countours.png
+IMG_0407.JPEG
+sticker-sheet_*.png
+sticker-sheet_*.svg
+
+# Root-level temp/one-off scripts & configs
+fix-mockup-compositor.js
+sync-models.js
+temp-*.js
+temp-*.txt
+temp-*.liquid
+optimize_custom_art.sh
+start-server.sh
+nginx.conf
+nginx-kiosk-snippet.conf
+vinylapp.conf
+files.zip
+
+# TikTok verification files
+tiktok*.txt
+
+# Facebook campaign JSON exports
+facebook-campaign-*.json
+facebook-posts-*.json
+facebook-marketplace-feeds/
+
+# ── Directories that shouldn't be tracked ──
+GF/
+Garment_color_changer/
+PINUP GILRS BUNDLE/
+StickerSheets/
+PartsBuilder/
+exports/
+extracted_stickers/
+test-library/
+kiosk-display-system/
+shopify-metal-prints/
+shopify-sections/
+shopify-template/
+shopify-theme/
+
+# Electron build artifacts
+print-station/dist/
+print-station/extracted_asar/
+print-station/nul
+
+# Server-side docs and data not in source
+server/CATALOG_METADATA_API.md
+server/DESIGNER_AI_INTEGRATION.md
+server/data/ad-templates.json
+server/data/audience-map.json
+server/data/pricing.json
+server/nul
+server/modules/telegram-printer-bot.js
+server/scripts/fix-decal-product-page.js
+server/scripts/fix-metal-print-variants.js
+server/scripts/sync-human-models-from-files.js
+server/scripts/test-pricing.js
+
+# Print-station docs
+print-station/FACEBOOK_AI_INTEGRATION.md
+print-station/METADATA_GENERATION_INTEGRATION.md
+print-station/test-electron.js
+
+# Scripts - one-off/generated
+scripts/facebook-*.js
+scripts/fix-artwork-paths.js
+scripts/reset_live_store.sh
+scripts/restart-remote-server.sh
+scripts/shopify-to-facebook-ads.js
+scripts/validate-facebook-setup.js
+
+# Web library data
+web/library/
+library/data/
