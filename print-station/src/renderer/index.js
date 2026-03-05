@@ -742,10 +742,6 @@ const elements = {
   catalogAddSelectedBtn: document.getElementById('catalogAddSelectedBtn'),
   catalogAddAllToCampaignButton: document.getElementById('catalogAddAllToCampaignButton'),
   catalogToFacebookBtn: document.getElementById('catalogToFacebookBtn'),
-  catalogSyncToGDriveBtn: document.getElementById('catalogSyncToGDriveBtn'),
-  catalogPullFromGDriveBtn: document.getElementById('catalogPullFromGDriveBtn'),
-  catalogSelectAllBtn: document.getElementById('catalogSelectAllBtn'),
-  catalogSendToVinylCutterBtn: document.getElementById('catalogSendToVinylCutterBtn'),
   // Social Marketing elements
   socialSelectedGrid: document.getElementById('socialSelectedGrid'),
   socialSelectedCount: document.getElementById('socialSelectedCount'),
@@ -887,6 +883,15 @@ const elements = {
   watchMockupYOffsetPctInput: document.getElementById('watchMockupYOffsetPctInput'),
   watchMockupKeyColorInput: document.getElementById('watchMockupKeyColorInput'),
   watchMockupFuzzPctInput: document.getElementById('watchMockupFuzzPctInput'),
+  // Migration UI
+  migrationCard: document.getElementById('migrationCard'),
+  migrationLocalCount: document.getElementById('migrationLocalCount'),
+  migrationProgress: document.getElementById('migrationProgress'),
+  migrationProgressBar: document.getElementById('migrationProgressBar'),
+  migrationProgressText: document.getElementById('migrationProgressText'),
+  migrationCurrentItem: document.getElementById('migrationCurrentItem'),
+  migrationStartButton: document.getElementById('migrationStartButton'),
+  migrationStatus: document.getElementById('migrationStatus'),
   inventoryStatus: document.getElementById('inventoryStatus'),
   inventoryList: document.getElementById('inventoryList'),
   inventoryMaterialSelect: document.getElementById('inventoryMaterialSelect'),
@@ -1216,7 +1221,6 @@ const elements = {
   socialArtworkCancel: document.getElementById('socialArtworkCancel'),
   socialArtworkAddSelected: document.getElementById('socialArtworkAddSelected'),
   socialAddFromArtworkButton: document.getElementById('socialAddFromArtworkButton'),
-  socialAddFromCampaignButton: document.getElementById('socialAddFromCampaignButton'),
   socialClearItemsButton: document.getElementById('socialClearItemsButton'),
   // Mockup settings modal
   campaignMockupSettingsModal: document.getElementById('campaignMockupSettingsModal'),
@@ -1295,16 +1299,8 @@ const elements = {
   adminStatus: document.getElementById('adminStatus'),
   adminOrphansBody: document.getElementById('adminOrphansBody'),
   adminDeleteId: document.getElementById('adminDeleteId'),
-  adminDeleteButton: document.getElementById('adminDeleteButton'),
-  // Google Drive Export
-  exportMockupsButton: document.getElementById('exportMockupsButton'),
-  openExportFolderButton: document.getElementById('openExportFolderButton'),
-  exportMockupsStatus: document.getElementById('exportMockupsStatus'),
-  exportMockupsStats: document.getElementById('exportMockupsStats'),
-  exportStatCampaigns: document.getElementById('exportStatCampaigns'),
-  exportStatOrders: document.getElementById('exportStatOrders'),
-  exportStatFiles: document.getElementById('exportStatFiles'),
-  exportPath: document.getElementById('exportPath'),
+  adminDeleteButton: document.getElementById('adminDeleteButton')
+  ,
   // Inbound SMS
   inboundFromFilter: document.getElementById('inboundFromFilter'),
   inboundRefreshButton: document.getElementById('inboundRefreshButton'),
@@ -1560,9 +1556,6 @@ function showToast(message, variant = 'info', timeout = 4000) {
     }, 300);
   }, timeout);
 }
-// Export showToast and showPrompt globally for use in other scripts
-window.showToast = showToast;
-window.showPrompt = showPrompt;
 
 function setConnectionStatus(connected, message) {
   elements.connectionStatus.textContent = message;
@@ -1646,19 +1639,6 @@ function switchView(viewId) {
     // Clear preview cache when leaving catalog-heavy views to free memory
     if (['catalogView', 'customArtView', 'fbScheduleManagerView'].includes(previousView)) {
       clearPreviewCache();
-    }
-    // Reset fixed positioning when leaving designer
-    if (previousView === 'multiboardDesignerView') {
-      const ds = document.getElementById('multiboardDesignerView');
-      if (ds) {
-        ds.style.position = '';
-        ds.style.top = '';
-        ds.style.left = '';
-        ds.style.right = '';
-        ds.style.bottom = '';
-        ds.style.height = '';
-        ds.style.zIndex = '';
-      }
     }
   }
 
@@ -1762,19 +1742,11 @@ function switchView(viewId) {
     // Initialize Printer view - load printers
     initPrinterView();
   }
-  if (viewId === 'aiAgentView') {
-    loadAiAgentData();
-  }
   if (viewId === 'fbScheduleManagerView') {
     // Load campaigns and templates for schedule manager
     loadFbScheduleCampaigns();
     loadFbScheduleTemplates();
     loadScheduledPosts();
-  }
-  if (viewId === 'trendMonitorView') {
-    if (typeof initTrendMonitorView === 'function') {
-      initTrendMonitorView();
-    }
   }
   if (viewId === 'customArtView') {
     console.log('[Custom Art] View opened');
@@ -1820,81 +1792,6 @@ function switchView(viewId) {
     initStickerSheetsView();
   }
 
-  // New Stickers view
-  if (viewId === 'stickersView') {
-    initStickersView();
-  }
-
-  // Vinyl Cutter view
-  if (viewId === 'vinylCutterView') {
-    if (typeof initVinylCutterEditor === 'function') {
-      initVinylCutterEditor();
-    }
-  }
-
-  // SKU Catalog view
-  if (viewId === 'skuCatalogView') {
-    if (typeof initSkuCatalogView === 'function') {
-      initSkuCatalogView();
-    }
-  }
-
-  // QR Scanner view
-  if (viewId === 'qrScannerView') {
-    if (typeof initQrScannerView === 'function') {
-      initQrScannerView();
-    }
-  }
-
-  // Product Catalog view
-  if (viewId === 'productCatalogView') {
-    if (typeof initProductCatalogView === 'function') {
-      initProductCatalogView();
-    }
-  }
-
-  // B2B Management view
-  if (viewId === 'b2bManagementView') {
-    if (typeof initB2BManagementView === 'function') {
-      initB2BManagementView();
-    }
-  }
-
-  // Multiboard Designer view
-  if (viewId === 'multiboardDesignerView') {
-    if (typeof initMultiboardDesignerView === 'function') {
-      initMultiboardDesignerView();
-    }
-  }
-
-  // Multiboard Parts Browser view
-  if (viewId === 'multiboardPartsBrowserView') {
-    if (typeof initMultiboardPartsBrowserView === 'function') {
-      initMultiboardPartsBrowserView();
-    }
-  }
-
-  // 3D Printer Fleet view
-  if (viewId === 'printerFleetView') {
-    if (typeof initPrinterFleetView === 'function') {
-      initPrinterFleetView();
-    }
-  }
-
-  // Slicer view
-  if (viewId === 'slicerView') {
-    if (typeof initSlicerView === 'function') {
-      initSlicerView();
-    }
-  }
-
-  // Print Quotes view
-  if (viewId === 'printQuotesView') {
-    if (typeof initPrintQuotesView === 'function') {
-      initPrintQuotesView();
-    }
-  }
-
   // Dashboard view
   if (viewId === 'dashboardView') {
     loadDashboardData();
@@ -1907,6 +1804,11 @@ function switchView(viewId) {
   if (viewId === 'shopifyManagerView') {
     initShopifyManager();
   }
+
+  // TikTok Shop Manager view
+  if (viewId === 'tiktokShopView') {
+    initTikTokShopManager();
+  }
 }
 
 // =============== Dashboard ===============
@@ -1916,9 +1818,6 @@ const dashboardState = {
   salesPeriod: 'week',
   socialPeriod: '7d'
 };
-
-// AI Sales Agent State
-const aiAgentState = { loading: false, status: null };
 
 // Task Monitor State
 const taskMonitorState = {
@@ -2059,11 +1958,10 @@ async function loadDashboardData() {
 
   try {
     // Load all dashboard data in parallel
-    const [statsResult, serverResult, socialResult, agentStatusResult] = await Promise.all([
+    const [statsResult, serverResult, socialResult] = await Promise.all([
       printStation.dashboard.getStats(dashboardState.salesPeriod).catch(e => ({ error: e.message })),
       printStation.dashboard.getServerStats().catch(e => ({ error: e.message })),
-      printStation.dashboard.getSocialStats(dashboardState.socialPeriod).catch(e => ({ error: e.message })),
-      printStation.agent ? printStation.agent.getStatus().catch(e => ({ error: e.message })) : Promise.resolve({ error: 'not available' })
+      printStation.dashboard.getSocialStats(dashboardState.socialPeriod).catch(e => ({ error: e.message }))
     ]);
 
     // Update server health
@@ -2082,11 +1980,6 @@ async function loadDashboardData() {
     // Update social stats
     if (socialResult && !socialResult.error) {
       updateSocialStats(socialResult);
-    }
-
-    // Update AI Agent card
-    if (agentStatusResult && !agentStatusResult.error) {
-      updateAgentDashboardCard(agentStatusResult);
     }
 
     // Update last updated time
@@ -2349,197 +2242,6 @@ function initDashboardEventListeners() {
     });
   }
 }
-
-// ============================================================================
-// AI SALES AGENT VIEW
-// ============================================================================
-
-function updateAgentDashboardCard(status) {
-  if (!status) return;
-  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  const badge = document.getElementById('agentStatusBadge');
-  if (badge) { badge.className = 'dashboard-status online'; badge.title = status.running ? 'Running' : 'Idle'; }
-  setVal('agentCycleCount', status.cycleCount || 0);
-  setVal('agentQueueDepth', status.queueDepth || 0);
-  setVal('agentPostsTracked', status.postsTracked || 0);
-  if (status.lastCycleAt) {
-    const diffMin = Math.round((Date.now() - new Date(status.lastCycleAt).getTime()) / 60000);
-    if (diffMin < 60) setVal('agentLastCycle', diffMin + 'm ago');
-    else if (diffMin < 1440) setVal('agentLastCycle', Math.round(diffMin / 60) + 'h ago');
-    else setVal('agentLastCycle', new Date(status.lastCycleAt).toLocaleDateString());
-  } else { setVal('agentLastCycle', 'Never'); }
-  const catEl = document.getElementById('agentTopCategories');
-  if (catEl && status.enabledCategories?.length) {
-    const sorted = [...status.enabledCategories].sort((a, b) => b.weight - a.weight);
-    catEl.innerHTML = '<h4>Active Categories</h4><ul>' + sorted.map(c =>
-      '<li><span class="item-name" style="text-transform:capitalize;">' + escapeHtml(c.name.replace(/-/g, ' ')) +
-      '</span><span class="item-value">' + (c.weight * 100).toFixed(0) + '%</span></li>').join('') + '</ul>';
-  } else if (catEl) { catEl.innerHTML = '<h4>Active Categories</h4><div class="placeholder">No categories</div>'; }
-}
-
-async function loadAiAgentData() {
-  if (aiAgentState.loading) return;
-  aiAgentState.loading = true;
-  try {
-    const [status, daily, engagement, strategy, calendar, categories, approvals] = await Promise.all([
-      printStation.agent.getStatus().catch(e => ({ error: e.message })),
-      printStation.agent.getDailyReport().catch(e => ({ error: e.message })),
-      printStation.agent.getEngagementSummary().catch(e => ({ error: e.message })),
-      printStation.agent.getStrategy().catch(e => ({ error: e.message })),
-      printStation.agent.getCalendar().catch(e => ({ error: e.message })),
-      printStation.agent.getCategories().catch(e => ({ error: e.message })),
-      printStation.agent.getApprovals().catch(e => ({ error: e.message }))
-    ]);
-    aiAgentState.status = status;
-    if (status && !status.error) {
-      const ind = document.getElementById('aiAgentStatusIndicator');
-      if (ind) { ind.className = 'dashboard-status online'; }
-      const label = document.getElementById('aiAgentLastCycleLabel');
-      if (label && status.lastCycleAt) label.textContent = 'Last cycle: ' + new Date(status.lastCycleAt).toLocaleString();
-      else if (label) label.textContent = 'No cycles yet';
-    }
-    if (daily && !daily.error) {
-      const sv = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-      sv('aiDailyPostsPublished', daily.postsPublished || 0);
-      sv('aiDailyTotalLikes', formatNumber(daily.totalLikes || 0));
-      sv('aiDailyTotalComments', formatNumber(daily.totalComments || 0));
-      sv('aiDailyTotalShares', formatNumber(daily.totalShares || 0));
-      sv('aiDailyQueueDepth', daily.queueDepth || 0);
-      sv('aiDailyQueueDays', daily.queueDays ? '~' + daily.queueDays + 'd' : '--');
-    }
-    if (engagement && !engagement.error) {
-      const tbody = document.getElementById('aiEngagementCategoryBody');
-      if (tbody && engagement.byCategory?.length) {
-        tbody.innerHTML = engagement.byCategory.map(c =>
-          '<tr><td style="padding:8px;text-transform:capitalize;">' + escapeHtml((c.product_category||'unknown').replace(/-/g,' ')) +
-          '</td><td style="padding:8px;text-align:right;">' + (c.post_count||0) +
-          '</td><td style="padding:8px;text-align:right;">' + (c.avg_engagement||0) +
-          '</td><td style="padding:8px;text-align:right;">' + formatNumber(c.total_likes||0) +
-          '</td><td style="padding:8px;text-align:right;">' + formatNumber(c.total_comments||0) +
-          '</td><td style="padding:8px;text-align:right;">' + formatNumber(c.total_shares||0) + '</td></tr>'
-        ).join('');
-      } else if (tbody) { tbody.innerHTML = '<tr><td colspan="6" class="placeholder" style="text-align:center;padding:20px;">No engagement data yet</td></tr>'; }
-      const windowEl = document.getElementById('aiEngagementWindow');
-      if (windowEl) windowEl.textContent = (engagement.windowDays || 30) + '-day window';
-      const timesEl = document.getElementById('aiBestTimes');
-      if (timesEl && engagement.byHour?.length) {
-        timesEl.innerHTML = engagement.byHour.slice(0,6).map(h =>
-          '<div class="ai-time-badge"><span class="ai-time-hour">' + h.posted_hour + ':00</span><span class="ai-time-eng">' + (h.avg_engagement||0) + ' eng</span></div>'
-        ).join('');
-      } else if (timesEl) { timesEl.innerHTML = '<div class="placeholder">Not enough data</div>'; }
-    }
-    if (strategy && !strategy.error) {
-      const barsEl = document.getElementById('aiWeightBars');
-      if (barsEl && strategy.currentWeights) {
-        const entries = Object.entries(strategy.currentWeights);
-        if (entries.length) {
-          const maxW = Math.max(...entries.map(([_,v]) => v.weight||0), 0.01);
-          barsEl.innerHTML = entries.map(([name,val]) => {
-            const pct = ((val.weight||0)/maxW*100).toFixed(0);
-            return '<div class="ai-weight-bar-row"><span class="ai-weight-label">' + escapeHtml(name.replace(/-/g,' ')) +
-              '</span><div class="ai-weight-track"><div class="ai-weight-fill" style="width:'+pct+'%"></div></div>' +
-              '<span class="ai-weight-value">' + ((val.weight||0)*100).toFixed(0) + '%</span></div>';
-          }).join('');
-        }
-      }
-      const listEl = document.getElementById('aiDecisionsList');
-      if (listEl && strategy.recentDecisions?.length) {
-        listEl.innerHTML = strategy.recentDecisions.slice(0,5).map(d => {
-          const time = new Date(d.timestamp).toLocaleString();
-          const conf = d.confidence_score || 0;
-          const cls = conf >= 0.7 ? 'high' : conf >= 0.4 ? 'medium' : 'low';
-          const recs = d.strategy_json?.recommendations;
-          const summary = Array.isArray(recs) ? recs.slice(0,2).join('; ') : 'Strategy analysis completed';
-          return '<div class="ai-decision-item"><div class="ai-decision-header"><span class="ai-decision-time">' + time +
-            '</span><span class="ai-decision-confidence ' + cls + '">' + (conf*100).toFixed(0) + '% conf</span></div>' +
-            '<div class="ai-decision-body">' + escapeHtml(summary) + '</div></div>';
-        }).join('');
-      } else if (listEl) { listEl.innerHTML = '<div class="placeholder">No strategy decisions yet</div>'; }
-    }
-    if (calendar && !calendar.error) {
-      const calEl = document.getElementById('aiCalendarList');
-      if (calEl) {
-        const items = calendar.data || [];
-        if (!items.length) { calEl.innerHTML = '<div class="placeholder">No upcoming content planned (queue has enough posts)</div>'; }
-        else { calEl.innerHTML = items.map(item => {
-          const d = new Date(item.planned_date);
-          const dayLabel = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-          const st = (item.status||'planned').toLowerCase();
-          return '<div class="ai-calendar-item"><div class="ai-calendar-date"><div class="ai-cal-day">'+dayLabel+'</div>' +
-            '<div class="ai-cal-time">'+(item.planned_time||'--:--')+'</div></div>' +
-            '<div class="ai-calendar-info"><div class="ai-cal-category">'+escapeHtml((item.product_category||'general').replace(/-/g,' '))+'</div>' +
-            '<div class="ai-cal-style">'+escapeHtml(item.caption_style||'')+(item.platform?' | '+escapeHtml(item.platform):'')+'</div></div>' +
-            '<span class="ai-calendar-status '+st+'">'+(item.status||'planned')+'</span></div>';
-        }).join(''); }
-      }
-    }
-    if (categories && !categories.error) {
-      const container = document.getElementById('aiCategorySettings');
-      if (container) {
-        const cats = categories.categories || {};
-        const entries = Object.entries(cats);
-        if (!entries.length) { container.innerHTML = '<div class="placeholder">No categories configured</div>'; }
-        else { container.innerHTML = entries.map(([name,cat]) => {
-          const styles = cat.captionStyles ? Object.keys(cat.captionStyles).join(', ') : '';
-          return '<div class="ai-category-row"><span class="ai-cat-name">'+escapeHtml(cat.displayName||name.replace(/-/g,' '))+
-            '</span><span class="ai-cat-weight">Weight: '+((cat.postingWeight||0)*100).toFixed(0)+'%</span>' +
-            '<span class="ai-cat-styles">'+escapeHtml(styles)+'</span>' +
-            '<label class="ai-cat-toggle"><input type="checkbox" '+(cat.enabled?'checked':'')+
-            ' onchange="toggleAgentCategory(\x27'+escapeHtml(name)+'\x27, this.checked)" />' +
-            '<span style="font-size:0.8rem;color:var(--muted);">'+(cat.enabled?'On':'Off')+'</span></label></div>';
-        }).join(''); }
-      }
-    }
-    if (approvals && !approvals.error) {
-      const listEl = document.getElementById('aiApprovalsList');
-      const countEl = document.getElementById('aiApprovalCount');
-      if (listEl) {
-        const pending = approvals.pending || [];
-        const recent = approvals.recent || [];
-        const all = [...pending, ...recent];
-        if (countEl) { countEl.textContent = pending.length; countEl.style.display = pending.length > 0 ? '' : 'none'; }
-        if (!all.length) { listEl.innerHTML = '<div class="placeholder">No approvals yet</div>'; }
-        else { listEl.innerHTML = all.map(a => {
-          const time = new Date(a.timestamp).toLocaleString();
-          const isPending = a.status === 'pending';
-          const bc = a.status==='approved'?'success':a.status==='denied'?'danger':'warning';
-          return '<div class="ai-approval-item '+(a.status||'pending')+'"><div class="ai-approval-header"><span class="item-badge '+bc+'">'+(a.status||'pending')+
-            '</span><span style="font-size:0.75rem;color:var(--muted);">'+time+'</span></div>' +
-            '<div class="ai-approval-desc">'+escapeHtml(a.description||a.action_type||'Approval request')+'</div>' +
-            (isPending?'<div class="ai-approval-actions"><button class="primary" onclick="handleAgentApproval(\x27'+escapeHtml(a.id)+'\x27, \x27approved\x27)">Approve</button>' +
-            '<button class="secondary" onclick="handleAgentApproval(\x27'+escapeHtml(a.id)+'\x27, \x27denied\x27)">Deny</button></div>':'') + '</div>';
-        }).join(''); }
-      }
-    }
-  } catch (e) { console.error('[AI Agent] Error:', e); }
-  finally { aiAgentState.loading = false; }
-}
-
-async function triggerAgentRun() {
-  try {
-    await printStation.agent.triggerRun();
-    if (typeof showToast === 'function') showToast('Agent cycle triggered', 'success');
-    setTimeout(() => loadAiAgentData(), 2000);
-  } catch (e) { console.error('[AI Agent] Run failed:', e); if (typeof showToast === 'function') showToast('Run failed: ' + e.message, 'error'); }
-}
-async function toggleAgentCategory(name, enabled) {
-  try {
-    await printStation.agent.updateCategory(name, { enabled });
-    if (typeof showToast === 'function') showToast(name + ' ' + (enabled ? 'enabled' : 'disabled'), 'success');
-  } catch (e) { console.error('[AI Agent] Toggle failed:', e); loadAiAgentData(); }
-}
-async function handleAgentApproval(id, action) {
-  try {
-    await printStation.agent.approvalCallback({ approvalId: id, status: action });
-    if (typeof showToast === 'function') showToast('Approval ' + action, 'success');
-    loadAiAgentData();
-  } catch (e) { console.error('[AI Agent] Approval failed:', e); }
-}
-window.toggleAgentCategory = toggleAgentCategory;
-window.handleAgentApproval = handleAgentApproval;
-window.triggerAgentRun = triggerAgentRun;
-window.loadAiAgentData = loadAiAgentData;
-
 
 // =============== Marketing admin ===============
 function renderCreativePreview(creative) {
@@ -3853,22 +3555,11 @@ function applyImageOptions(urlString, { width, quality } = {}) {
   // First, encode the URL path to handle spaces and special characters
   let encoded = encodeUrlPath(urlString);
 
-  // If no resize options, return as-is
+  // Then apply image options if specified
   if (!width && !quality) return encoded;
 
   try {
     const url = new URL(encoded);
-
-    // For blueridgecustomco.com or store.swayzecustomvinyl.com URLs with /library/ path,
-    // route through /api/library/ on blueridgecustomco.com which processes resize params
-    // (nginx ignores query params when serving static files)
-    const isKnownHost = url.hostname === 'blueridgecustomco.com' || url.hostname === 'store.swayzecustomvinyl.com';
-    if (isKnownHost && url.pathname.startsWith('/library/')) {
-      // Convert /library/path to /api/library/path and use blueridgecustomco.com for API
-      url.hostname = 'blueridgecustomco.com';
-      url.pathname = '/api/library/' + url.pathname.slice('/library/'.length);
-    }
-
     if (width) {
       const clampedWidth = Math.min(Math.max(Math.round(width), 1), 2400);
       url.searchParams.set('w', String(clampedWidth));
@@ -4383,8 +4074,7 @@ async function handleCampaignSaveSilently() {
     const result = await printStation.updateCampaign(state.campaign.slug, {
       items: itemsPayload,
       apparel: state.campaign.apparel || null,
-      mockupStrategy: { ...strategy },
-      mockupImage: state.campaign.mockupImage || null
+      mockupStrategy: { ...strategy }
     });
     console.log('[handleCampaignSaveSilently] Save completed, result:', result);
   } catch (err) {
@@ -6620,7 +6310,6 @@ async function handleCampaignSave() {
   payload.mockupStrategy = { ...ensureCampaignMockupStrategy() };
   payload.productType = state.campaign.productType || '';
   payload.decalBackground = state.campaign.decalBackground || null;
-  payload.mockupImage = state.campaign.mockupImage || null;
   payload.socialProof = meta.socialProof;
   payload.endDate = meta.endDate;
   payload.benefits = meta.benefits;
@@ -12403,8 +12092,6 @@ async function refreshQueue({ silent = false } = {}) {
       showToast(error.message || 'Unable to load queue.', 'error', 6000);
     }
     setConnectionStatus(false, 'Connection failed');
-    // Start background recovery monitor if not already running
-    if (typeof startConnectionMonitor === 'function') startConnectionMonitor();
   } finally {
     state.pollInFlight = false;
   }
@@ -12475,23 +12162,8 @@ function renderCatalog() {
     elements.catalogGrid.innerHTML =
       '<p class="hint">No catalog data found. Generate catalog on the server first.</p>';
     return;
-  }
 
-  // If no category selected and no search, show prompt to select category
-  if (!state.catalogFilter.category && !state.catalogFilter.search) {
-    const categoryCount = categories.length;
-    const totalDesigns = categories.reduce((sum, cat) => sum + (cat.designs?.length || 0), 0);
-    elements.catalogGrid.innerHTML = `
-      <div class="catalog-select-prompt" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-        <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">📁</div>
-        <h3 style="margin: 0 0 8px 0; font-size: 18px;">Select a Category</h3>
-        <p class="hint" style="margin: 0;">Choose a category from the dropdown above to view designs.<br/>
-        ${categoryCount} categories • ${totalDesigns.toLocaleString()} total designs</p>
-      </div>
-    `;
-    return;
   }
-
   let designs = categories.flatMap((category) =>
     (category.designs || []).map((design) => ({
       ...design,
@@ -12575,17 +12247,6 @@ function renderCatalog() {
             title="Click to download preview"
           />
           <h3>${safeName}</h3>
-          ${design.isStudio3 ? `
-            <div style="margin:4px 0;display:flex;align-items:center;gap:6px;">
-              <span style="background:${design.type === 'decal' ? '#e74c3c' : '#27ae60'};color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">
-                ${design.type === 'decal' ? 'DECAL' : 'STICKER'}
-              </span>
-              <button type="button" class="secondary studio3-retype" data-design-id="${designIdAttr}" data-current-type="${design.type || 'sticker'}"
-                style="font-size:11px;padding:2px 8px;border-radius:4px;">
-                Switch to ${design.type === 'decal' ? 'Sticker' : 'Decal'}
-              </button>
-            </div>
-          ` : ''}
           <p class="hint">
             ${safeCategory}
             ${safeDescription ? `<br /><span class="catalog-meta">${safeDescription}</span>` : ''}
@@ -12645,37 +12306,6 @@ function renderCatalog() {
     });
   });
 
-  // Handle Studio3 type re-tagging (sticker <-> decal)
-  elements.catalogGrid.querySelectorAll('.studio3-retype').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const designId = button.dataset.designId || '';
-      const currentType = button.dataset.currentType || 'sticker';
-      const newType = currentType === 'decal' ? 'sticker' : 'decal';
-
-      try {
-        const config = await window.printStation?.getConfig() || {};
-        const serverBase = (config.serverBaseUrl?.trim() || window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com').replace(/\/$/, '');
-        const apiKey = config.apiKey || '';
-
-        const response = await fetch(`${serverBase}/api/studio3/catalog/${encodeURIComponent(designId)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-          body: JSON.stringify({ type: newType })
-        });
-
-        const data = await response.json();
-        if (data.success) {
-          showToast(`Changed to ${newType}`, 'success');
-          loadCatalog({ silent: true, catalogType: 'studio3' });
-        } else {
-          showToast('Failed: ' + (data.error || 'Unknown error'), 'error');
-        }
-      } catch (err) {
-        showToast('Failed to update type: ' + err.message, 'error');
-      }
-    });
-  });
-
   // Handle checkbox selection
   elements.catalogGrid.querySelectorAll('.catalog-checkbox').forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
@@ -12702,12 +12332,6 @@ function updateCatalogSelectionUI() {
   if (fbBtn) {
     fbBtn.textContent = count > 0 ? `Use checked (${Math.min(count, 6)}) in Facebook Post` : 'Use checked in Facebook Post';
     fbBtn.disabled = count === 0;
-  }
-  // Also update Vinyl Cutter button
-  const vinylBtn = document.getElementById('catalogSendToVinylCutterBtn');
-  if (vinylBtn) {
-    vinylBtn.textContent = count > 0 ? `Send to Vinyl Cutter (${count})` : 'Send to Vinyl Cutter';
-    vinylBtn.disabled = count === 0;
   }
 }
 
@@ -12973,25 +12597,13 @@ async function loadCatalog({ silent = false, forceRefresh = false, catalogType =
     const type = catalogType || state.catalogType || 'apparel';
     state.catalogType = type;
 
-    // Special handling for Studio3 catalog - fetch from server API
-    if (type === 'studio3') {
-      const studio3Items = await loadStudio3CatalogFromServer();
-      // Convert to catalog format
-      state.catalog = {
-        categories: groupStudio3ByCategory(studio3Items),
-        __catalogCache: { fromServer: true }
-      };
-      state.catalogCacheMeta = { fromServer: true };
-    } else {
-      const fetchOptions = {
-        catalogType: type,
-        ...(forceRefresh ? { forceRefresh: true, maxAgeMs: 0 } : {})
-      };
-      const catalog = await printStation.fetchCatalog(fetchOptions);
-      state.catalog = catalog;
-      state.catalogCacheMeta = catalog?.__catalogCache || null;
-    }
-
+    const fetchOptions = {
+      catalogType: type,
+      ...(forceRefresh ? { forceRefresh: true, maxAgeMs: 0 } : {})
+    };
+    const catalog = await printStation.fetchCatalog(fetchOptions);
+    state.catalog = catalog;
+    state.catalogCacheMeta = catalog?.__catalogCache || null;
     // Reset filters when switching catalog type
     state.catalogFilter.category = '';
     state.catalogFilter.search = '';
@@ -13006,8 +12618,7 @@ async function loadCatalog({ silent = false, forceRefresh = false, catalogType =
     updateCatalogStatus();
     if (!silent) {
       const meta = state.catalogCacheMeta;
-      const typeName = type === 'decal-icons' ? 'Decal Creator Icons' :
-                       type === 'studio3' ? 'Studio3 Designs' : 'Apparel Ready';
+      const typeName = type === 'decal-icons' ? 'Decal Creator Icons' : 'Apparel Ready';
       if (meta?.staleFallback) {
         showToast(`${typeName} catalog loaded from offline cache.`, 'warning', 6000);
       } else if (meta?.fromCache) {
@@ -13032,95 +12643,19 @@ async function loadCatalog({ silent = false, forceRefresh = false, catalogType =
   }
 }
 
-/**
- * Load Studio3 catalog items from server API
- */
-async function loadStudio3CatalogFromServer() {
-  // Get config from preload API
-  const config = await window.printStation?.getConfig() || {};
-  const serverBase = (config.serverBaseUrl?.trim() || window.APP_CONFIG?.serverUrl || 'https://blueridgecustomco.com').replace(/\/$/, '');
-  const apiKey = config.apiKey || '';
-
-  const response = await fetch(`${serverBase}/api/studio3/catalog`, {
-    headers: {
-      'x-api-key': apiKey
-    }
-  });
-
-  const data = await response.json();
-
-  if (!data.success) {
-    throw new Error(data.error || 'Failed to load Studio3 catalog');
-  }
-
-  return data.entries || [];
-}
-
-/**
- * Group Studio3 items into category structure for catalog display
- */
-function groupStudio3ByCategory(items) {
-  // Group by type (Stickers vs Decals)
-  const categoryMap = {};
-
-  for (const item of items) {
-    const categoryName = (item.type === 'decal') ? 'Decals' : 'Stickers';
-    const slug = categoryName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
-    if (!categoryMap[slug]) {
-      categoryMap[slug] = {
-        name: categoryName,
-        slug: slug,
-        designs: []
-      };
-    }
-
-    // Convert to design format expected by catalog renderer
-    categoryMap[slug].designs.push({
-      id: item.id,
-      name: item.filename?.replace(/\.studio3$/i, '') || 'Untitled',
-      title: item.filename?.replace(/\.studio3$/i, '') || 'Untitled',
-      filename: item.filename,
-      preview: item.thumbnail ? `data:image/png;base64,${item.thumbnail}` : null,
-      pathCount: item.pathCount || 0,
-      imageCount: item.imageCount || 0,
-      type: item.type || 'sticker',
-      createdAt: item.createdAt,
-      isStudio3: true // Mark as Studio3 item for special handling
-    });
-  }
-
-  // Return as array (catalog renderer expects an array with slug/name/designs)
-  return Object.values(categoryMap);
-}
-
 function updateCatalogTabsUI() {
   const apparelTab = document.getElementById('catalogTabApparel');
   const decalIconsTab = document.getElementById('catalogTabDecalIcons');
-  const studio3Tab = document.getElementById('catalogTabStudio3');
   if (!apparelTab || !decalIconsTab) return;
 
-  const currentType = state.catalogType;
+  const isApparel = state.catalogType === 'apparel';
+  apparelTab.classList.toggle('active', isApparel);
+  apparelTab.style.color = isApparel ? 'var(--text)' : 'var(--muted)';
+  apparelTab.style.borderBottomColor = isApparel ? 'var(--primary)' : 'transparent';
 
-  // Reset all tabs
-  [apparelTab, decalIconsTab, studio3Tab].forEach(tab => {
-    if (tab) {
-      tab.classList.remove('active');
-      tab.style.color = 'var(--muted)';
-      tab.style.borderBottomColor = 'transparent';
-    }
-  });
-
-  // Activate current tab
-  const activeTab = currentType === 'apparel' ? apparelTab :
-                    currentType === 'decal-icons' ? decalIconsTab :
-                    currentType === 'studio3' ? studio3Tab : apparelTab;
-
-  if (activeTab) {
-    activeTab.classList.add('active');
-    activeTab.style.color = 'var(--text)';
-    activeTab.style.borderBottomColor = 'var(--primary)';
-  }
+  decalIconsTab.classList.toggle('active', !isApparel);
+  decalIconsTab.style.color = !isApparel ? 'var(--text)' : 'var(--muted)';
+  decalIconsTab.style.borderBottomColor = !isApparel ? 'var(--primary)' : 'transparent';
 }
 
 function setUploadApparelType(value) {
@@ -13223,78 +12758,31 @@ async function handleBulkUpload() {
       return;
     }
 
-    // Allow selecting ZIP files (or images directly)
     const selection = await printStation.selectFiles({
-      title: 'Select ZIP file(s) containing images',
-      properties: ['openFile', 'multiSelections'],
-      filters: [
-        { name: 'ZIP Archives', extensions: ['zip'] },
-        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }
-      ]
+      title: 'Select folder of preview images',
+      properties: ['openDirectory']
     });
-
-    let files = [];
-    let hadZipOrImages = false;
-
-    if (selection && selection.length) {
-      // Process selected files - could be ZIPs or images
-      for (const selectedPath of selection) {
-        const ext = selectedPath.toLowerCase().split('.').pop();
-
-        if (ext === 'zip') {
-          hadZipOrImages = true;
-          // Extract ZIP file
-          elements.uploadStatus.textContent = `Extracting ZIP file...`;
-          elements.uploadStatus.className = 'status-bar muted';
-
-          try {
-            const extractResult = await printStation.catalogExtractZip(selectedPath);
-            if (extractResult.success && extractResult.filePaths) {
-              files.push(...extractResult.filePaths);
-              elements.uploadStatus.textContent = `Extracted ${extractResult.filePaths.length} images from ZIP`;
-            } else {
-              showToast(extractResult.error || 'Failed to extract ZIP', 'error', 6000);
-            }
-          } catch (error) {
-            console.error('ZIP extraction failed:', error);
-            showToast(error?.message || 'Failed to extract ZIP', 'error', 6000);
-          }
-        } else if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
-          hadZipOrImages = true;
-          files.push(selectedPath);
-        }
-      }
+    if (!selection || !selection.length) {
+      return;
     }
 
-    // If user cancelled or selected nothing, offer folder selection instead
-    if (!hadZipOrImages) {
-      const folderSelection = await printStation.selectFiles({
-        title: 'Or select a folder of preview images',
-        properties: ['openDirectory']
-      });
-
-      if (!folderSelection || !folderSelection.length) {
-        return; // User cancelled both dialogs
-      }
-
-      const directory = folderSelection[0];
-      try {
-        const dirFiles = await printStation.listImageFiles({ directory });
-        files.push(...(dirFiles || []));
-      } catch (error) {
-        elements.uploadStatus.textContent = error?.message || 'Unable to read folder.';
-        elements.uploadStatus.className = 'status-bar error';
-        showToast(error?.message || 'Unable to read folder.', 'error', 6000);
-        return;
-      }
+    const directory = selection[0];
+    let files = [];
+    try {
+      files = await printStation.listImageFiles({ directory });
+    } catch (error) {
+      elements.uploadStatus.textContent = error?.message || 'Unable to read folder.';
+      elements.uploadStatus.className = 'status-bar error';
+      showToast(error?.message || 'Unable to read folder.', 'error', 6000);
+      return;
     }
 
     files = (files || []).filter((filePath) => BULK_IMAGE_EXTENSIONS.has(getBulkFileExtension(filePath)));
 
     if (!files.length) {
-      elements.uploadStatus.textContent = 'No images found in the selection.';
+      elements.uploadStatus.textContent = 'No images found in that folder.';
       elements.uploadStatus.className = 'status-bar error';
-      showToast('No PNG/JPG/GIF/WEBP images found in the selected folder or ZIP.', 'error', 6000);
+      showToast('No PNG/JPG/GIF/WEBP images found in the selected folder.', 'error', 6000);
       return;
     }
 
@@ -13324,11 +12812,6 @@ async function handleBulkUpload() {
         successCount += 1;
         elements.uploadStatus.textContent = `Uploaded ${displayName} (${successCount}/${files.length})`;
         elements.uploadStatus.className = 'status-bar muted';
-
-        // Small delay between uploads to prevent connection overload
-        if (index < files.length - 1) {
-          await new Promise(r => setTimeout(r, 100));
-        }
       } catch (error) {
         const message = error?.message || `Unable to upload ${displayName}.`;
         elements.uploadStatus.textContent = message;
@@ -13435,8 +12918,6 @@ async function handleSettingsSubmit(event) {
   };
   try {
     state.config = await printStation.saveConfig(updated);
-    // Update global config for sync functions
-    window.printStationConfig = state.config;
     populateSettingsForm();
     schedulePolling();
     await refreshQueue({ silent: true });
@@ -13554,7 +13035,11 @@ async function initUploadForm() {
       elements.uploadStatus.className = 'status-bar error';
       return;
     }
-    // Preview is optional — if an SVG source is provided, a PNG preview is auto-generated
+    if (!state.upload.previewPath) {
+      elements.uploadStatus.textContent = 'Choose a preview image before uploading.';
+      elements.uploadStatus.className = 'status-bar error';
+      return;
+    }
     if (isApparel && !apparelType) {
       elements.uploadStatus.textContent = 'Choose an apparel style before uploading.';
       elements.uploadStatus.className = 'status-bar error';
@@ -13644,7 +13129,7 @@ async function initUploadForm() {
     try {
       elements.uploadStatus.textContent = 'Uploading artwork…';
       elements.uploadStatus.className = 'status-bar muted';
-      const result = await printStation.uploadArtwork({
+      await printStation.uploadArtwork({
         previewPath: state.upload.previewPath,
         sourcePaths: state.upload.sourcePaths,
         categoryMode,
@@ -13656,13 +13141,9 @@ async function initUploadForm() {
           ? { enabled: true, productType: apparelType, categoryName: apparelCategoryName }
           : { enabled: false }
       });
-      const uploadedCount = result?.uploaded || 1;
-      const msg = uploadedCount > 1
-        ? `${uploadedCount} artworks uploaded successfully.`
-        : 'Artwork uploaded successfully.';
-      elements.uploadStatus.textContent = msg;
+      elements.uploadStatus.textContent = 'Artwork uploaded successfully.';
       elements.uploadStatus.className = 'status-bar success';
-      showToast(msg, 'success');
+      showToast('Artwork uploaded and catalog updated.', 'success');
       resetUploadForm();
       await loadCatalog({ silent: true });
       ensureApparelCategoriesLoaded({ force: true });
@@ -13700,12 +13181,6 @@ async function init() {
   // Initialize dashboard event listeners and load initial data
   initDashboardEventListeners();
   loadDashboardData();
-
-  // AI Agent event listeners
-  const aiRefreshBtn = document.getElementById('aiAgentRefreshBtn');
-  if (aiRefreshBtn) aiRefreshBtn.addEventListener('click', loadAiAgentData);
-  const aiRunBtn = document.getElementById('aiAgentRunNowBtn');
-  if (aiRunBtn) aiRunBtn.addEventListener('click', triggerAgentRun);
 
   // Handle standalone tab buttons (not in dropdowns)
   elements.tabButtons.forEach((button) => {
@@ -13907,8 +13382,6 @@ async function init() {
     if (!state.config) return;
     const update = { pollIntervalMs: seconds * 1000 };
     state.config = await printStation.saveConfig(update);
-    // Update global config for sync functions
-    window.printStationConfig = state.config;
     schedulePolling();
     showToast(`Polling every ${seconds} seconds.`, 'success');
   });
@@ -13925,11 +13398,6 @@ async function init() {
 
   elements.reloadCatalogButton.addEventListener('click', () => loadCatalog({ forceRefresh: true }));
 
-  // Catalog Select All button
-  if (elements.catalogSelectAllBtn) {
-    elements.catalogSelectAllBtn.addEventListener('click', handleCatalogSelectAll);
-  }
-
   // Catalog type tabs
   const catalogTabApparel = document.getElementById('catalogTabApparel');
   const catalogTabDecalIcons = document.getElementById('catalogTabDecalIcons');
@@ -13944,14 +13412,6 @@ async function init() {
     catalogTabDecalIcons.addEventListener('click', () => {
       if (state.catalogType !== 'decal-icons') {
         loadCatalog({ catalogType: 'decal-icons' });
-      }
-    });
-  }
-  const catalogTabStudio3 = document.getElementById('catalogTabStudio3');
-  if (catalogTabStudio3) {
-    catalogTabStudio3.addEventListener('click', () => {
-      if (state.catalogType !== 'studio3') {
-        loadCatalog({ catalogType: 'studio3' });
       }
     });
   }
@@ -14610,21 +14070,6 @@ async function init() {
       updateSocialPreview();
       showToast(`Added ${selectedItems.length} item${selectedItems.length === 1 ? '' : 's'} to Facebook post.`, 'success');
     });
-  }
-
-  // Catalog: Sync to Google Drive
-  if (elements.catalogSyncToGDriveBtn) {
-    elements.catalogSyncToGDriveBtn.addEventListener('click', handleSyncCatalogToGDrive);
-  }
-
-  // Catalog: Pull from Google Drive
-  if (elements.catalogPullFromGDriveBtn) {
-    elements.catalogPullFromGDriveBtn.addEventListener('click', handlePullCollectionFromGDrive);
-  }
-
-  // Catalog: Send to Vinyl Cutter
-  if (elements.catalogSendToVinylCutterBtn) {
-    elements.catalogSendToVinylCutterBtn.addEventListener('click', handleSendToVinylCutter);
   }
 
   // Social Marketing event handlers
@@ -16276,74 +15721,6 @@ ${targeting.psychographics.lifestyle}
   elements.adminListOrphansButton?.addEventListener('click', handleAdminListOrphans);
   elements.adminCleanupForm?.addEventListener('submit', handleAdminCleanupSubmit);
   elements.adminDeleteButton?.addEventListener('click', () => handleAdminDelete());
-
-  // Google Drive Export handlers
-  elements.exportMockupsButton?.addEventListener('click', handleExportMockups);
-  elements.openExportFolderButton?.addEventListener('click', handleOpenExportFolder);
-
-  async function handleExportMockups() {
-    if (!elements.exportMockupsStatus) return;
-    elements.exportMockupsButton.disabled = true;
-    elements.exportMockupsStatus.textContent = 'Exporting mockups...';
-    elements.exportMockupsStatus.className = 'status-bar';
-    elements.exportMockupsStats.style.display = 'none';
-
-    try {
-      const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
-      const response = await fetch(`${serverUrl}/api/admin/export-mockups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        elements.exportMockupsStatus.textContent = 'Export completed successfully!';
-        elements.exportMockupsStatus.className = 'status-bar success';
-
-        if (data.stats) {
-          elements.exportStatCampaigns.textContent = data.stats.campaigns || 0;
-          elements.exportStatOrders.textContent = data.stats.customerOrders || 0;
-          elements.exportStatFiles.textContent = data.stats.totalFiles || 0;
-          elements.exportMockupsStats.style.display = 'block';
-        }
-
-        if (data.exportPath) {
-          elements.exportPath.textContent = `Export folder: ${data.exportPath}`;
-        }
-      } else {
-        elements.exportMockupsStatus.textContent = `Export failed: ${data.error || 'Unknown error'}`;
-        elements.exportMockupsStatus.className = 'status-bar error';
-      }
-    } catch (err) {
-      elements.exportMockupsStatus.textContent = `Export error: ${err.message}`;
-      elements.exportMockupsStatus.className = 'status-bar error';
-    } finally {
-      elements.exportMockupsButton.disabled = false;
-    }
-  }
-
-  async function handleOpenExportFolder() {
-    try {
-      // Use Electron's shell to open the folder
-      if (window.printStation?.openFolder) {
-        await window.printStation.openFolder('exports/google-drive-mockups');
-      } else if (window.electron?.shell?.openPath) {
-        await window.electron.shell.openPath('exports/google-drive-mockups');
-      } else {
-        // Fallback: show the path
-        const exportPath = elements.exportPath?.textContent;
-        if (exportPath) {
-          alert(`Export folder location:\n${exportPath.replace('Export folder: ', '')}`);
-        } else {
-          elements.exportMockupsStatus.textContent = 'Run export first to see folder location';
-        }
-      }
-    } catch (err) {
-      elements.exportMockupsStatus.textContent = `Could not open folder: ${err.message}`;
-    }
-  }
-
   // Inbound SMS list
   async function loadInboundMessages() {
     try {
@@ -16685,10 +16062,96 @@ ${targeting.psychographics.lifestyle}
     }
   });
 
-  // --- Connection initialization with retry ---
-  async function initServerConnection() {
+  // Migration UI handlers
+  async function checkLocalMigrationCount() {
+    try {
+      const result = await window.printStation?.migration?.getLocalCount?.();
+      const count = result?.count || 0;
+      if (elements.migrationLocalCount) {
+        if (count === 0) {
+          elements.migrationLocalCount.textContent = 'No local items found. Nothing to migrate.';
+          elements.migrationStartButton.disabled = true;
+        } else {
+          elements.migrationLocalCount.textContent = `${count} local item${count !== 1 ? 's' : ''} found ready to migrate.`;
+          elements.migrationStartButton.disabled = false;
+        }
+      }
+    } catch (err) {
+      if (elements.migrationLocalCount) {
+        elements.migrationLocalCount.textContent = 'Unable to check local items: ' + (err?.message || err);
+      }
+    }
+  }
+
+  // Check local count on load
+  checkLocalMigrationCount();
+
+  // Subscribe to migration progress
+  let migrationProgressUnsubscribe = null;
+  if (window.printStation?.migration?.onProgress) {
+    migrationProgressUnsubscribe = window.printStation.migration.onProgress(({ current, total, title }) => {
+      if (elements.migrationProgress) elements.migrationProgress.hidden = false;
+      if (elements.migrationProgressBar) {
+        const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+        elements.migrationProgressBar.value = pct;
+        if (elements.migrationProgressText) elements.migrationProgressText.textContent = `${pct}%`;
+      }
+      if (elements.migrationCurrentItem) {
+        elements.migrationCurrentItem.textContent = `${current}/${total}: ${title || 'Processing...'}`;
+      }
+    });
+  }
+
+  elements.migrationStartButton?.addEventListener('click', async () => {
+    const btn = elements.migrationStartButton;
+    const statusEl = elements.migrationStatus;
+    try {
+      btn.disabled = true;
+      btn.textContent = 'Migrating...';
+      if (statusEl) { statusEl.textContent = 'Starting migration...'; statusEl.className = 'status-bar muted'; }
+      if (elements.migrationProgress) elements.migrationProgress.hidden = false;
+      if (elements.migrationProgressBar) elements.migrationProgressBar.value = 0;
+      if (elements.migrationProgressText) elements.migrationProgressText.textContent = '0%';
+      if (elements.migrationCurrentItem) elements.migrationCurrentItem.textContent = 'Preparing...';
+
+      const result = await window.printStation?.migration?.migrateToServer?.();
+
+      if (elements.migrationProgress) elements.migrationProgress.hidden = true;
+
+      if (result?.success) {
+        if (statusEl) {
+          statusEl.textContent = `Migration complete: ${result.migrated} item${result.migrated !== 1 ? 's' : ''} migrated.`;
+          statusEl.className = 'status-bar success';
+        }
+        showToast(`Successfully migrated ${result.migrated} items to server.`, 'success');
+        // Refresh the count
+        await checkLocalMigrationCount();
+        // Refresh local catalog list
+        await loadLocalItems();
+      } else {
+        if (statusEl) {
+          statusEl.textContent = `Migration finished with ${result?.failed || 0} errors. ${result?.migrated || 0} migrated.`;
+          statusEl.className = 'status-bar warning';
+        }
+        if (result?.errors?.length) {
+          console.warn('Migration errors:', result.errors);
+        }
+      }
+    } catch (err) {
+      if (elements.migrationProgress) elements.migrationProgress.hidden = true;
+      if (statusEl) {
+        statusEl.textContent = 'Migration failed: ' + (err?.message || err);
+        statusEl.className = 'status-bar error';
+      }
+      showToast('Migration failed: ' + (err?.message || err), 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Migrate to Server';
+    }
+  });
+
+  try {
     state.config = await printStation.getConfig();
-    window.printStationConfig = state.config;
     populateSettingsForm();
     schedulePolling();
     await refreshQueue({ silent: true });
@@ -16699,52 +16162,10 @@ ${targeting.psychographics.lifestyle}
     await loadInventory(state.inventoryMaterial, { silent: true });
     refreshCampaignList();
     setConnectionStatus(true, `Connected to ${state.config.serverBaseUrl}`);
+  } catch (error) {
+    setConnectionStatus(false, 'Connection required');
+    showToast(error.message || 'Configure settings to connect to the server.', 'warning', 6000);
   }
-
-  async function connectWithRetry(maxAttempts = 5) {
-    const delays = [0, 2000, 4000, 8000, 15000]; // escalating backoff
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (attempt > 0) {
-        setConnectionStatus(false, `Reconnecting... (attempt ${attempt + 1}/${maxAttempts})`);
-        await new Promise(r => setTimeout(r, delays[Math.min(attempt, delays.length - 1)]));
-      }
-      try {
-        await initServerConnection();
-        return; // success
-      } catch (error) {
-        console.warn(`[Connection] Attempt ${attempt + 1} failed:`, error.message);
-        if (attempt === maxAttempts - 1) {
-          setConnectionStatus(false, 'Connection failed — retrying in background');
-          showToast('Could not connect to server. Will keep retrying.', 'warning', 6000);
-        }
-      }
-    }
-    // Keep trying in background every 30s
-    startConnectionMonitor();
-  }
-
-  // Heartbeat: periodically verify the server is still reachable
-  let connectionMonitorTimer = null;
-  function startConnectionMonitor() {
-    if (connectionMonitorTimer) return;
-    connectionMonitorTimer = setInterval(async () => {
-      try {
-        await printStation.testInternalApi();
-        // Server is back — reinitialize
-        setConnectionStatus(true, `Connected to ${state.config?.serverBaseUrl || 'server'}`);
-        clearInterval(connectionMonitorTimer);
-        connectionMonitorTimer = null;
-        // Refresh data now that we're connected
-        refreshQueue({ silent: true });
-        refreshQuotes({ silent: true });
-        loadCatalog({ silent: true });
-      } catch (_) {
-        setConnectionStatus(false, 'Server unreachable — retrying...');
-      }
-    }, 30000);
-  }
-
-  await connectWithRetry();
   }
   
   // Marketing wiring
@@ -18163,25 +17584,6 @@ function updateSocialPreview() {
   const collectionUrl = elements.socialCollectionUrl?.value || '';
   const imageFormat = elements.socialImageFormat?.value || 'carousel';
 
-  // Determine which Facebook page this will post to based on item categories
-  const SWAYZE_CATEGORIES = ['apparel', 'stickers', 'sticker', 'bumper', 'clothing', 't-shirt', 'tshirt', 'shirt', 'hoodie', 'decal', 'decals', 'vinyl'];
-  const items = state.socialMarketing?.selectedItems || [];
-  let pageName = 'Blue Ridge Custom Co';
-
-  for (const item of items) {
-    const itemCat = (item.category || '').toLowerCase();
-    if (SWAYZE_CATEGORIES.some(cat => itemCat.includes(cat))) {
-      pageName = "Swayze's Custom Vinyl";
-      break;
-    }
-  }
-
-  // Update the page name in preview
-  const pageNameEl = document.querySelector('.fb-page-name');
-  if (pageNameEl) {
-    pageNameEl.textContent = pageName;
-  }
-
   // Update preview text
   if (elements.fbPreviewText) {
     let fullText = text;
@@ -18328,22 +17730,6 @@ async function handlePostToFacebook() {
     return;
   }
 
-  // Determine category from selected items for page routing
-  // Check if any item has a category that should go to Swayze's Custom Vinyl
-  const SWAYZE_CATEGORIES = ['apparel', 'stickers', 'sticker', 'bumper', 'clothing', 't-shirt', 'tshirt', 'shirt', 'hoodie', 'decal', 'decals', 'vinyl'];
-  let category = '';
-  for (const item of items) {
-    const itemCat = (item.category || '').toLowerCase();
-    if (SWAYZE_CATEGORIES.some(cat => itemCat.includes(cat))) {
-      category = item.category;
-      break;
-    }
-  }
-  // If no Swayze category found, use first item's category (will default to Blue Ridge)
-  if (!category && items[0]?.category) {
-    category = items[0].category;
-  }
-
   // Build full text
   let fullText = text;
   if (hashtags) fullText += `\n\n${hashtags}`;
@@ -18372,16 +17758,14 @@ async function handlePostToFacebook() {
         images: items,
         collectionUrl,
         imageFormat,
-        scheduledTime: scheduledTime.toISOString(),
-        category
+        scheduledTime: scheduledTime.toISOString()
       });
     } else {
       result = await printStation.publishFacebookPost({
         text: fullText,
         images: items,
         collectionUrl,
-        imageFormat,
-        category
+        imageFormat
       });
     }
 
@@ -18426,250 +17810,10 @@ if (originalUpdateCatalogToolbar) {
   const _origUpdateCatalogToolbar = updateCatalogToolbar;
   window.updateCatalogToolbar = function() {
     _origUpdateCatalogToolbar();
-    const hasSelection = state.catalogSelection && state.catalogSelection.size > 0;
     if (elements.catalogToFacebookBtn) {
-      elements.catalogToFacebookBtn.disabled = !hasSelection;
-    }
-    if (elements.catalogSyncToGDriveBtn) {
-      elements.catalogSyncToGDriveBtn.disabled = !hasSelection;
-    }
-    // Update Select All button text
-    if (elements.catalogSelectAllBtn) {
-      const allSelected = state.catalogDesignMap && state.catalogDesignMap.size > 0 &&
-        state.catalogSelection && state.catalogSelection.size === state.catalogDesignMap.size;
-      elements.catalogSelectAllBtn.textContent = allSelected ? 'Deselect All' : 'Select All';
+      elements.catalogToFacebookBtn.disabled = !state.catalogSelection || state.catalogSelection.size === 0;
     }
   };
-}
-
-/**
- * Handle Select All / Deselect All for catalog
- */
-function handleCatalogSelectAll() {
-  if (!state.catalogDesignMap || state.catalogDesignMap.size === 0) {
-    showToast('No catalog items to select', 'warning');
-    return;
-  }
-
-  // Check if all are currently selected
-  const allSelected = state.catalogSelection &&
-    state.catalogSelection.size === state.catalogDesignMap.size;
-
-  if (allSelected) {
-    // Deselect all
-    state.catalogSelection.clear();
-    showToast('Deselected all items', 'info');
-  } else {
-    // Select all
-    if (!(state.catalogSelection instanceof Set)) {
-      state.catalogSelection = new Set();
-    }
-    state.catalogDesignMap.forEach((design, id) => {
-      state.catalogSelection.add(id);
-    });
-    showToast(`Selected ${state.catalogSelection.size} items`, 'success');
-  }
-
-  // Re-render to update checkboxes
-  renderCatalog();
-  // Update toolbar button states
-  if (typeof updateCatalogToolbar === 'function') {
-    updateCatalogToolbar();
-  }
-}
-
-/**
- * Send selected catalog items to Vinyl Cutter
- */
-async function handleSendToVinylCutter() {
-  try {
-    console.log('[VinylCutter] handleSendToVinylCutter called');
-
-    if (!state.catalogSelection || state.catalogSelection.size === 0) {
-      showToast('No designs selected. Check some items first.', 'warning');
-      return;
-    }
-
-    // Collect selected designs
-    const designs = [];
-    state.catalogSelection.forEach((designId) => {
-      const design = state.catalogDesignMap.get(designId);
-      console.log('[VinylCutter] Processing design:', designId, design);
-
-      if (design) {
-        // Extract server path from image URL
-        // URL format: https://server.com/library/Category/uploads/previews/file.png
-        // We need: /home/ubuntu/vinylApp/web/library/Category/uploads/previews/file.png
-        const imageUrl = design.image || design.thumbnail || '';
-        let imagePath = design.imagePath;
-
-        // If no imagePath, try to extract from URL
-        if (!imagePath && imageUrl) {
-          const libraryMatch = imageUrl.match(/\/library\/(.+)$/);
-          if (libraryMatch) {
-            // Decode the path and construct server path
-            imagePath = '/home/ubuntu/vinylApp/web/library/' + decodeURIComponent(libraryMatch[1]);
-          }
-        }
-
-        console.log('[VinylCutter] Design data:', { imageUrl, imagePath });
-
-        designs.push({
-          id: design.id,
-          title: design.name || design.fileName || 'Design',
-          imagePath: imagePath,
-          thumbnailUrl: imageUrl,
-          category: design.categoryName || design.category || ''
-        });
-      }
-    });
-
-    if (designs.length === 0) {
-      showToast('No valid designs found.', 'warning');
-      return;
-    }
-
-    console.log('[VinylCutter] Collected', designs.length, 'designs');
-
-    // Switch to vinyl cutter view
-    switchView('vinylCutterView');
-
-    // Initialize vinyl cutter editor if needed
-    if (typeof initVinylCutterEditor === 'function') {
-      console.log('[VinylCutter] Initializing editor');
-      initVinylCutterEditor();
-    } else {
-      console.error('[VinylCutter] initVinylCutterEditor not found!');
-    }
-
-    // Add each design to vinyl cutter canvas
-    showToast(`Adding ${designs.length} item(s) to Vinyl Cutter...`, 'info');
-
-    for (const design of designs) {
-      if (typeof addItemToVinylCanvas === 'function') {
-        console.log('[VinylCutter] Adding design to canvas:', design.title);
-        try {
-          await addItemToVinylCanvas(design);
-        } catch (err) {
-          console.error('[VinylCutter] Error adding design:', design.title, err);
-          showToast(`Failed to add ${design.title}: ${err.message}`, 'error');
-        }
-      } else {
-        console.error('[VinylCutter] addItemToVinylCanvas not found!');
-      }
-    }
-
-    showToast(`Added ${designs.length} item(s) to Vinyl Cutter`, 'success');
-  } catch (err) {
-    console.error('[VinylCutter] handleSendToVinylCutter error:', err);
-    showToast('Error adding items to Vinyl Cutter: ' + err.message, 'error');
-  }
-}
-
-/**
- * Sync selected catalog items to Google Drive
- */
-async function handleSyncCatalogToGDrive() {
-  if (!state.catalogSelection || state.catalogSelection.size === 0) {
-    showToast('No designs selected. Check some items first.', 'warning');
-    return;
-  }
-
-  // Collect selected items with full relative path from library folder or dbFiles
-  const items = [];
-  state.catalogSelection.forEach((designId) => {
-    const design = state.catalogDesignMap.get(designId);
-    if (design) {
-      const fullPath = design.image || design.thumbnail || '';
-
-      // Try /library/ path first (apparel catalog)
-      // URL format: https://blueridgecustomco.com/library/Category/uploads/previews/filename.png
-      const libraryMatch = fullPath.match(/\/library\/(.+)$/);
-      if (libraryMatch) {
-        const relativePath = decodeURIComponent(libraryMatch[1]);
-        const pathParts = relativePath.split('/');
-        const category = pathParts[0];
-        const subPath = pathParts.slice(1).join('/');
-
-        if (category && subPath) {
-          items.push({ category, subPath, source: 'library' });
-        }
-        return;
-      }
-
-      // Try /dbFiles/DecalCreatorIcons/ path (decal icons catalog)
-      // URL format: https://blueridgecustomco.com/dbFiles/DecalCreatorIcons/CATEGORY/SUBFOLDER/filename.jpg
-      const decalMatch = fullPath.match(/\/dbFiles\/DecalCreatorIcons\/(.+)$/);
-      if (decalMatch) {
-        const relativePath = decodeURIComponent(decalMatch[1]);
-        const pathParts = relativePath.split('/');
-        const category = pathParts[0]; // e.g., "BUTTERFLIES"
-        const subPath = pathParts.slice(1).join('/'); // e.g., "BUTTERFLIES JPGS/btr.jpg"
-
-        if (category && subPath) {
-          items.push({ category, subPath, source: 'decal-icons' });
-        }
-      }
-    }
-  });
-
-  if (items.length === 0) {
-    showToast('No valid catalog items found', 'warning');
-    return;
-  }
-
-  showToast(`Syncing ${items.length} item(s) to Google Drive...`, 'info');
-
-  try {
-    const result = await printStation.gdrive.syncCatalog(items);
-    if (result?.success) {
-      showToast(`Synced ${result.synced} file(s) to Google Drive Canva/Collection folder`, 'success');
-    } else {
-      showToast(`Sync completed: ${result.synced || 0} synced, ${result.failed || 0} failed`, result.failed ? 'warning' : 'success');
-      if (result.errors?.length) {
-        console.error('[GDrive Sync] Errors:', result.errors);
-      }
-    }
-  } catch (err) {
-    console.error('[GDrive Sync] Error:', err);
-    showToast('Failed to sync to Google Drive: ' + (err.message || err), 'error');
-  }
-}
-
-/**
- * Pull Collection items from Google Drive back to server
- * Will sync all categories that exist in GDrive Collection folder
- */
-async function handlePullCollectionFromGDrive() {
-  // Get currently selected category if any, otherwise pull all
-  const selectedCategory = state.catalogCategory || '';
-
-  const categories = selectedCategory ? [selectedCategory] : [];
-  const message = categories.length > 0
-    ? `Pulling "${selectedCategory}" from Google Drive...`
-    : 'Pulling all Collection items from Google Drive...';
-
-  showToast(message, 'info');
-
-  try {
-    const result = await printStation.gdrive.pullCollection(categories);
-    if (result?.success) {
-      const count = result.synced || (categories.length || 'all');
-      showToast(`Pulled ${count} category/categories from Google Drive`, 'success');
-      // Reload the catalog to show updated items
-      if (typeof loadCatalog === 'function') {
-        loadCatalog();
-      }
-    } else {
-      showToast(`Pull completed: ${result.synced || 0} synced, ${result.failed || 0} failed`, result.failed ? 'warning' : 'success');
-      if (result.errors?.length) {
-        console.error('[GDrive Pull] Errors:', result.errors);
-      }
-    }
-  } catch (err) {
-    console.error('[GDrive Pull] Error:', err);
-    showToast('Failed to pull from Google Drive: ' + (err.message || err), 'error');
-  }
 }
 
 // ============================================================================
@@ -20537,7 +19681,7 @@ async function loadCustomArtArtwork() {
   try {
     console.log('[Custom Art] Fetching artwork from API...');
     const [artworkResult, categoriesResult] = await Promise.all([
-      printStation.customArt.listArtwork({ activeOnly: false, limit: 5000 }),
+      printStation.customArt.listArtwork({ activeOnly: false, limit: 1000 }),
       printStation.customArt.getArtworkCategories()
     ]);
     console.log('[Custom Art] API returned:', artworkResult, categoriesResult);
@@ -20763,101 +19907,6 @@ function initArtworkBulkActions() {
       bulkStatusSelect.value = '';
     });
   }
-
-  // Sync to Google Drive button
-  const syncToGDriveBtn = document.getElementById('customArtSyncToGDriveBtn');
-  if (syncToGDriveBtn) {
-    syncToGDriveBtn.addEventListener('click', handleSyncCustomArtToGDrive);
-  }
-}
-
-/**
- * Sync selected custom art items to Google Drive
- */
-async function handleSyncCustomArtToGDrive() {
-  const selectedIds = Array.from(customArtState.selectedArtworkIds);
-  if (selectedIds.length === 0) {
-    showToast('No artwork selected', 'warning');
-    return;
-  }
-
-  // Get the file paths/names for selected artwork
-  const fileIds = [];
-  for (const id of selectedIds) {
-    const artwork = customArtState.artwork.find(a => String(a.id) === String(id));
-    if (artwork?.filePath) {
-      // Extract just the filename from the path
-      const filename = artwork.filePath.split('/').pop();
-      if (filename) fileIds.push(filename);
-    }
-  }
-
-  if (fileIds.length === 0) {
-    showToast('No valid artwork files found', 'warning');
-    return;
-  }
-
-  showToast(`Syncing ${fileIds.length} file(s) to Google Drive...`, 'info');
-
-  try {
-    const result = await printStation.gdrive.syncCustomArt(fileIds);
-    if (result?.success) {
-      showToast(`Synced ${result.synced} file(s) to Google Drive Canva/Custom Art folder`, 'success');
-    } else {
-      showToast(`Sync completed: ${result.synced || 0} synced, ${result.failed || 0} failed`, result.failed ? 'warning' : 'success');
-      if (result.errors?.length) {
-        console.error('[GDrive Sync] Errors:', result.errors);
-      }
-    }
-  } catch (err) {
-    console.error('[GDrive Sync] Error:', err);
-    showToast('Failed to sync to Google Drive: ' + (err.message || err), 'error');
-  }
-}
-
-/**
- * Sync selected room backgrounds to Google Drive
- */
-async function handleSyncRoomsToGDrive() {
-  const selectedIds = Array.from(customArtState.selectedRoomIds);
-  if (selectedIds.length === 0) {
-    showToast('No rooms selected', 'warning');
-    return;
-  }
-
-  // Get the file paths/names for selected rooms
-  const filenames = [];
-  for (const id of selectedIds) {
-    const room = customArtState.rooms.find(r => String(r.id) === String(id));
-    if (room?.image_path || room?.imagePath) {
-      // Extract just the filename from the path (e.g., "library/uploads/custom-art/1766017169757-ejgh5a3y.jpg" -> "1766017169757-ejgh5a3y.jpg")
-      const imagePath = room.image_path || room.imagePath;
-      const filename = imagePath.split('/').pop();
-      if (filename) filenames.push(filename);
-    }
-  }
-
-  if (filenames.length === 0) {
-    showToast('No valid room images found', 'warning');
-    return;
-  }
-
-  showToast(`Syncing ${filenames.length} room(s) to Google Drive...`, 'info');
-
-  try {
-    const result = await printStation.gdrive.syncRooms(filenames);
-    if (result?.success) {
-      showToast(`Synced ${result.synced} room(s) to Google Drive Canva/Rooms folder`, 'success');
-    } else {
-      showToast(`Sync completed: ${result.synced || 0} synced, ${result.failed || 0} failed`, result.failed ? 'warning' : 'success');
-      if (result.errors?.length) {
-        console.error('[GDrive Sync] Errors:', result.errors);
-      }
-    }
-  } catch (err) {
-    console.error('[GDrive Sync] Error:', err);
-    showToast('Failed to sync to Google Drive: ' + (err.message || err), 'error');
-  }
 }
 
 // --- ROOM SELECTION & BULK ACTIONS ---
@@ -20980,12 +20029,6 @@ function initRoomBulkActions() {
       await bulkUpdateRoomStatus(status);
       bulkStatusSelect.value = '';
     });
-  }
-
-  // Sync Rooms to Google Drive button
-  const syncRoomsToGDriveBtn = document.getElementById('customArtRoomSyncToGDriveBtn');
-  if (syncRoomsToGDriveBtn) {
-    syncRoomsToGDriveBtn.addEventListener('click', handleSyncRoomsToGDrive);
   }
 
   // Search and filter handlers
@@ -22125,7 +21168,7 @@ async function loadCustomArtProducts() {
     const [productsResult, materialsResult, artworkResult] = await Promise.all([
       printStation.customArt.listProducts({ activeOnly: false }),
       printStation.customArt.listMaterials({ activeOnly: true }),
-      printStation.customArt.listArtwork({ activeOnly: true, limit: 5000 })
+      printStation.customArt.listArtwork({ activeOnly: true, limit: 1000 })
     ]);
     customArtState.products = productsResult?.products || [];
     customArtState.materials = materialsResult?.materials || [];
@@ -22621,7 +21664,7 @@ async function populateMockupDropdowns() {
   try {
     const [roomsResult, artworkResult, materialsResult] = await Promise.all([
       printStation.customArt.listRooms({ activeOnly: true, limit: 500 }),
-      printStation.customArt.listArtwork({ activeOnly: true, limit: 5000 }),
+      printStation.customArt.listArtwork({ activeOnly: true, limit: 1000 }),
       printStation.customArt.listMaterials({ activeOnly: true })
     ]);
 
@@ -22647,11 +21690,7 @@ async function loadSavedMockups() {
   setCustomArtStatus('Loading saved mockups...');
   try {
     const mockups = await printStation.customArt.listMockups({ activeOnly: true });
-    console.log('[Saved Mockups] Raw response:', mockups);
     customArtState.savedMockups = mockups || [];
-    if (customArtState.savedMockups.length > 0) {
-      console.log('[Saved Mockups] First mockup:', JSON.stringify(customArtState.savedMockups[0], null, 2));
-    }
     renderSavedMockups();
     setCustomArtStatus(`${customArtState.savedMockups.length} mockup(s) loaded`);
   } catch (e) {
@@ -22694,8 +21733,10 @@ function renderSavedMockups() {
     return;
   }
 
+  const serverBase = state.config?.serverBaseUrl || 'https://blueridgecustomco.com';
+
   grid.innerHTML = filtered.map(m => {
-    const imgSrc = getMockupImageUrl(m);
+    const imgSrc = m.url || (m.filePath ? `${serverBase}/${m.filePath}` : '');
     const title = m.title || m.filename || 'Untitled';
     const date = m.createdAt ? new Date(m.createdAt).toLocaleDateString() : '';
     const sourceLabel = m.source === 'filesystem' ? '<span style="background:#666;padding:2px 6px;border-radius:3px;font-size:10px;">File</span>' : '';
@@ -22715,57 +21756,12 @@ function renderSavedMockups() {
   }).join('');
 }
 
-// Helper to convert server file paths to proper URLs
-function getMockupImageUrl(mockup) {
-  const serverBase = state.config?.serverBaseUrl || 'https://blueridgecustomco.com';
-
-  // If url is a full http URL, use it directly
-  if (mockup.url && (mockup.url.startsWith('http://') || mockup.url.startsWith('https://'))) {
-    return mockup.url;
-  }
-
-  // For campaign mockups, extract filename and use the API route
-  // Check filePath first since it has the full server path
-  const filePath = mockup.filePath || mockup.file_path || '';
-  if (filePath && filePath.includes('/campaigns/mockups/') || filePath.includes('\\campaigns\\mockups\\')) {
-    // Extract just the filename from the full path
-    const filename = filePath.split('/').pop().split('\\').pop();
-    return `${serverBase}/api/uploads/campaigns/mockups/${filename}`;
-  }
-
-  // If we have a filename for campaign mockups, use it directly
-  if (mockup.filename && mockup.filename.startsWith('campaign-mockup-')) {
-    return `${serverBase}/api/uploads/campaigns/mockups/${mockup.filename}`;
-  }
-
-  // If url looks like a campaign mockup path, convert it
-  if (mockup.url && mockup.url.includes('/campaigns/mockups/')) {
-    const filename = mockup.url.split('/').pop();
-    return `${serverBase}/api/uploads/campaigns/mockups/${filename}`;
-  }
-
-  // For other mockups with full http URLs in url field
-  if (mockup.url && !mockup.url.startsWith('file:')) {
-    // If it's a relative path starting with /, prepend server base
-    if (mockup.url.startsWith('/')) {
-      return `${serverBase}${mockup.url}`;
-    }
-    return mockup.url;
-  }
-
-  // Fallback: use filename if available
-  if (mockup.filename) {
-    return `${serverBase}/api/uploads/campaigns/mockups/${mockup.filename}`;
-  }
-
-  return '';
-}
-
 function selectSavedMockup(id) {
   const mockup = customArtState.savedMockups.find(m => m.id === id);
   if (!mockup) return;
 
   customArtState.selectedMockup = mockup;
+  const serverBase = state.config?.serverBaseUrl || 'https://blueridgecustomco.com';
 
   // Show detail card
   const detailCard = document.getElementById('savedMockupsDetailCard');
@@ -22773,7 +21769,7 @@ function selectSavedMockup(id) {
 
   // Populate detail fields
   const img = document.getElementById('savedMockupsDetailImage');
-  if (img) img.src = getMockupImageUrl(mockup);
+  if (img) img.src = mockup.url || (mockup.filePath ? `${serverBase}/${mockup.filePath}` : '');
 
   const titleInput = document.getElementById('savedMockupsDetailTitle');
   if (titleInput) titleInput.value = mockup.title || '';
@@ -24238,14 +23234,11 @@ window.addEventListener('message', async (event) => {
           const campaignId = pendingMockupSave.campaignId;
 
           // Save campaign mockup to server
-          console.log('[Campaign Mockup] Saving mockup for campaign:', campaignId);
-          console.log('[Campaign Mockup] Base64 length:', base64Data?.length || 0);
           const result = await printStation.campaign.saveCampaignMockup({
             campaignId,
             mockupBase64: base64Data,
             filename: `campaign-mockup-${campaignId}-${Date.now()}.${ext}`
           });
-          console.log('[Campaign Mockup] Server response:', JSON.stringify(result, null, 2));
 
           if (result?.success) {
             setCustomArtStatus('Campaign mockup saved successfully!');
@@ -24256,16 +23249,6 @@ window.addEventListener('message', async (event) => {
               if (state.campaign && (state.campaign.slug === campaignId || state.campaign.id === campaignId)) {
                 state.campaign.mockupImage = result.mockupPath;
                 console.log('[Campaign Mockup] Updated state.campaign.mockupImage:', result.mockupPath);
-
-                // IMPORTANT: Save the campaign to persist the mockupImage to the server
-                try {
-                  await printStation.updateCampaign(state.campaign.slug, {
-                    mockupImage: result.mockupPath
-                  });
-                  console.log('[Campaign Mockup] Saved mockupImage to server');
-                } catch (saveErr) {
-                  console.error('[Campaign Mockup] Failed to save mockupImage to server:', saveErr);
-                }
               }
             }
 
@@ -24469,12 +23452,17 @@ window.addEventListener('message', async (event) => {
   if (event.data?.type === 'GET_ARTWORK_LIST') {
     console.log('[Custom Art] Received GET_ARTWORK_LIST from mockup iframe');
     try {
-      // If artwork hasnt been loaded yet, fetch it from the server
+      // Get artwork from the database
+      // IMPORTANT: Must use HTTP URLs for iframe (file:// won't work due to cross-origin)
+      const serverBase = (state.config?.serverBaseUrl || 'https://blueridgecustomco.com').replace(/\/$/, '');
+
+      // If artwork hasn't been loaded yet, fetch it from the server
       let artworkList = customArtState.artwork || [];
       if (artworkList.length === 0) {
         console.log('[Custom Art] No artwork in state, fetching from server...');
         try {
-          const artworkResult = await printStation.customArt.listArtwork({ activeOnly: 'false', limit: 5000 });
+          // Use string 'false' to ensure server parses it correctly
+          const artworkResult = await printStation.customArt.listArtwork({ activeOnly: 'false', limit: 1000 });
           console.log('[Custom Art] Server returned:', artworkResult);
           artworkList = artworkResult?.artwork || [];
           customArtState.artwork = artworkList;
@@ -24485,26 +23473,51 @@ window.addEventListener('message', async (event) => {
       }
 
       const artworksForModal = artworkList.map(art => {
-        // Use resolveArtworkUrl with same options as artwork tab for consistent caching
-        const serverUrl = resolveArtworkUrl(art.thumbnailPath || art.optimizedPath || art.filePath, { width: 300, quality: 80 });
-        const fullUrl = resolveArtworkUrl(art.optimizedPath || art.filePath || art.serverPath);
+        // Helper to build HTTP URL from path
+        const toHttpUrl = (path) => {
+          if (!path) return '';
+          // Already an HTTP URL
+          if (path.startsWith('http://') || path.startsWith('https://')) return path;
+          // Data URL - pass through
+          if (path.startsWith('data:')) return path;
+          // Server-relative path starting with /library/ - use as-is
+          if (path.startsWith('/library/')) return serverBase + path;
+          // Server-relative path with /uploads/ - needs /library prefix since files are in LIBRARY_ROOT
+          if (path.startsWith('/uploads/')) return serverBase + '/library' + path;
+          // Other server-relative paths (e.g., /api/...)
+          if (path.startsWith('/')) return serverBase + path;
+          // Extract server path from local file path if present
+          // e.g., /home/ubuntu/vinylApp/library/uploads/... -> /library/uploads/...
+          const libraryMatch = path.match(/\/library\/.*$/);
+          if (libraryMatch) return serverBase + libraryMatch[0];
+          // Check for uploads path without library prefix - need to add /library prefix
+          const uploadsMatch = path.match(/\/uploads\/.*$/);
+          if (uploadsMatch) return serverBase + '/library' + uploadsMatch[0];
+          // Relative path starting with library/
+          if (path.startsWith('library/')) return serverBase + '/' + path;
+          // Relative path starting with uploads/ - needs library prefix since files are in LIBRARY_ROOT
+          if (path.startsWith('uploads/')) return serverBase + '/library/' + path;
+          // Other relative path
+          return serverBase + '/' + path;
+        };
 
-        // Check if we have a cached blob URL for the thumbnail (from artwork tab)
-        const cachedThumb = getCachedPreviewUrl(serverUrl);
-        const cachedFull = getCachedPreviewUrl(fullUrl);
+        const url = toHttpUrl(art.optimizedPath || art.filePath || art.serverPath);
+        const thumbnail = toHttpUrl(art.thumbnailPath || art.optimizedPath || art.filePath || art.serverPath);
 
         console.log('[Custom Art] Art item:', art.id, {
-          serverUrl,
-          fullUrl,
-          hasCachedThumb: cachedThumb !== serverUrl,
-          hasCachedFull: cachedFull !== fullUrl
+          thumbnailPath: art.thumbnailPath,
+          optimizedPath: art.optimizedPath,
+          filePath: art.filePath,
+          serverPath: art.serverPath,
+          resolvedUrl: url,
+          resolvedThumb: thumbnail
         });
 
         return {
           id: art.id,
           name: art.title || art.filename || 'Untitled',
-          url: cachedFull,
-          thumbnail: cachedThumb
+          url,
+          thumbnail
         };
       });
       console.log('[Custom Art] Sending ARTWORK_LIST with', artworksForModal.length, 'items');
@@ -25835,7 +24848,7 @@ async function loadMetalPrintArtwork() {
     state.metalPrintArt.loading = true;
 
     const [artworkResult, categoriesResult] = await Promise.all([
-      printStation.customArt.listArtwork({ activeOnly: true, limit: 5000 }),
+      printStation.customArt.listArtwork({ activeOnly: true, limit: 1000 }),
       printStation.customArt.getArtworkCategories()
     ]);
 
@@ -26016,7 +25029,7 @@ async function loadSocialArtwork() {
     state.socialArtwork.loading = true;
 
     const [artworkResult, categoriesResult] = await Promise.all([
-      printStation.customArt.listArtwork({ activeOnly: true, limit: 5000 }),
+      printStation.customArt.listArtwork({ activeOnly: true, limit: 1000 }),
       printStation.customArt.getArtworkCategories()
     ]);
 
@@ -26200,106 +25213,6 @@ function clearSocialItems() {
 }
 
 /**
- * Add items from the currently selected campaign to the Facebook post
- */
-async function handleAddFromCampaign() {
-  const campaign = state.socialMarketing?.selectedCampaign;
-
-  if (!campaign) {
-    showToast('Please select a campaign first from the Campaign dropdown.', 'warning');
-    return;
-  }
-
-  const items = campaign.items || [];
-  if (items.length === 0) {
-    showToast('Selected campaign has no items.', 'warning');
-    return;
-  }
-
-  // Initialize selectedItems if needed
-  if (!state.socialMarketing) state.socialMarketing = {};
-  if (!state.socialMarketing.selectedItems) state.socialMarketing.selectedItems = [];
-
-  const maxAllowed = 6;
-  let added = 0;
-  let skipped = 0;
-
-  // Determine category from campaign for page routing
-  let category = '';
-  if (campaign.apparel && campaign.apparel.source) {
-    category = 'apparel';
-  } else if (campaign.mockupStrategy) {
-    const desc = (campaign.mockupStrategy.description || '').toLowerCase();
-    if (desc.includes('sticker') || desc.includes('decal') || desc.includes('bumper')) {
-      category = 'stickers';
-    } else if (desc.includes('tumbler') || desc.includes('cup') || desc.includes('mug')) {
-      category = 'tumblers';
-    }
-  }
-  // Check campaign title/subtitle for hints
-  if (!category) {
-    const combined = ((campaign.title || '') + ' ' + (campaign.subtitle || '')).toLowerCase();
-    if (combined.includes('sticker') || combined.includes('decal') || combined.includes('bumper')) {
-      category = 'stickers';
-    } else if (combined.includes('tumbler') || combined.includes('cup') || combined.includes('mug')) {
-      category = 'tumblers';
-    } else if (combined.includes('shirt') || combined.includes('hoodie') || combined.includes('apparel')) {
-      category = 'apparel';
-    } else if (combined.includes('metal') || combined.includes('print') || combined.includes('wall art')) {
-      category = 'metal prints';
-    }
-  }
-
-  for (const item of items) {
-    // Check max limit
-    if (state.socialMarketing.selectedItems.length >= maxAllowed) {
-      skipped++;
-      continue;
-    }
-
-    // Use mockup image if available, otherwise fall back to thumbnail or design
-    const imageSrc = item.mockupImage || item.mockup || item.thumbnail || item.image || '';
-
-    if (!imageSrc) {
-      skipped++;
-      continue;
-    }
-
-    // Check if already added (by image URL)
-    const exists = state.socialMarketing.selectedItems.some(it =>
-      it.image === imageSrc || it.campaignItemId === item.id
-    );
-    if (exists) {
-      skipped++;
-      continue;
-    }
-
-    const newItem = {
-      name: item.name || item.title || campaign.title || 'Campaign Item',
-      campaignItemId: item.id,
-      image: imageSrc,
-      thumbnail: item.thumbnail || imageSrc,
-      category: category || campaign.productType || '',
-      campaignSlug: campaign.slug,
-      description: item.description || ''
-    };
-
-    state.socialMarketing.selectedItems.push(newItem);
-    added++;
-  }
-
-  // Re-render the social selected items grid
-  renderSocialSelectedItems();
-  updateSocialPreview();
-
-  if (added > 0) {
-    showToast(`Added ${added} item(s) from campaign "${campaign.title}".${skipped ? ` Skipped ${skipped} (duplicate or limit reached).` : ''}`, skipped ? 'warning' : 'success');
-  } else {
-    showToast(`No new items added. ${skipped} skipped (duplicate, no image, or limit reached).`, 'warning');
-  }
-}
-
-/**
  * Export metal print campaign to Shopify
  * This uses the specialized metal print export endpoint that:
  * 1. Applies sublimation filter to each artwork
@@ -26314,46 +25227,19 @@ async function exportMetalPrintCampaign() {
 
   console.log('[Metal Print Export] Campaign name:', campaignName);
   console.log('[Metal Print Export] Mockup path from state:', mockupPath);
-  console.log('[Metal Print Export] Full campaign state:', JSON.stringify({
-    slug: state.campaign?.slug,
-    name: state.campaign?.name,
-    mockupImage: state.campaign?.mockupImage,
-    itemCount: state.campaign?.items?.length
-  }, null, 2));
 
   if (!state.campaign?.items?.length) {
     showToast('Add some artwork to the campaign first.', 'warning');
     return;
   }
 
-  // Check if force export is enabled (re-export already exported items)
-  const forceExport = !!elements.campaignForceExportCheckbox?.checked;
-
   // Get metal print items with their source artwork info
-  const allMetalPrintItems = state.campaign.items.filter(it =>
+  const metalPrintItems = state.campaign.items.filter(it =>
     it.productType === 'metal-print' && it.sourceArtwork?.id
   );
 
-  if (!allMetalPrintItems.length) {
-    showToast('No metal print artwork found in campaign.', 'warning');
-    return;
-  }
-
-  // Filter to only new items unless force is checked
-  let metalPrintItems;
-  if (forceExport) {
-    metalPrintItems = allMetalPrintItems;
-    console.log(`[Metal Print Export] Force export enabled - exporting all ${metalPrintItems.length} items`);
-  } else {
-    metalPrintItems = allMetalPrintItems.filter(it => !it.shopifyProductId);
-    const skippedCount = allMetalPrintItems.length - metalPrintItems.length;
-    if (skippedCount > 0) {
-      console.log(`[Metal Print Export] Skipping ${skippedCount} already exported items (uncheck 'Force' to re-export)`);
-    }
-  }
-
   if (!metalPrintItems.length) {
-    showToast('All items have already been exported. Check "Force" to re-export.', 'info');
+    showToast('No metal print artwork found in campaign.', 'warning');
     return;
   }
 
@@ -26663,11 +25549,6 @@ function initSocialArtworkModal() {
   // Open modal button
   if (elements.socialAddFromArtworkButton) {
     elements.socialAddFromArtworkButton.addEventListener('click', openSocialArtworkModal);
-  }
-
-  // Add from campaign button
-  if (elements.socialAddFromCampaignButton) {
-    elements.socialAddFromCampaignButton.addEventListener('click', handleAddFromCampaign);
   }
 
   // Clear all items button
@@ -28539,12 +27420,7 @@ async function openStickerSheetsBrowser() {
       return;
     }
 
-    const serverUrl = window.printStationConfig?.serverBaseUrl || window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
-
-    const toApiUrl = (url) => {
-      if (!url) return '';
-      return serverUrl + url;
-    };
+    const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
 
     content.innerHTML = result.batches.map(batch => {
       const createdDate = new Date(batch.createdAt);
@@ -28553,12 +27429,6 @@ async function openStickerSheetsBrowser() {
         hour: '2-digit', minute: '2-digit'
       });
 
-      // Build JSON-safe sheet data for onclick handlers
-      const batchSheetData = JSON.stringify(batch.sheets.map(s => ({
-        printUrl: s.printUrl,
-        cutUrl: s.cutUrl
-      }))).replace(/'/g, "\\'").replace(/"/g, '&quot;');
-
       return `
         <div class="sticker-sheet-batch" style="border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden;">
           <div style="background:var(--card);padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
@@ -28566,45 +27436,28 @@ async function openStickerSheetsBrowser() {
               <strong style="font-size:14px;">${batch.name}</strong>
               <span style="color:#888;font-size:12px;margin-left:12px;">${batch.sheetCount} sheet${batch.sheetCount !== 1 ? 's' : ''}</span>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <button class="btn primary" style="font-size:12px;padding:6px 14px;" onclick="printBatchSheets('${batchSheetData}')">Print</button>
-              <button class="btn secondary" style="font-size:12px;padding:6px 14px;" onclick="sendBatchToCameo('${batchSheetData}')">Cut</button>
-              <button class="btn" style="font-size:12px;padding:6px 14px;background:#dc2626;color:white;" onclick="deleteStickerSheetBatch('${batch.name.replace(/'/g, "\\'")}')">🗑️ Delete</button>
-              <span style="color:#888;font-size:12px;margin-left:8px;">${dateStr}</span>
-            </div>
+            <span style="color:#888;font-size:12px;">${dateStr}</span>
           </div>
           <div style="padding:12px;display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:12px;">
-            ${batch.sheets.map((sheet, idx) => `
+            ${batch.sheets.map(sheet => `
               <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#1a1a2e;">
-                <div style="background:#0d1117;padding:6px 10px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">
-                  <span style="font-weight:600;color:#38bdf8;">Sheet ${idx + 1}</span>
-                  <span style="font-size:11px;color:#888;">${sheet.stickerCount || '?'} stickers</span>
-                </div>
-                <img src="${toApiUrl(sheet.printUrl)}" alt="Sheet ${sheet.sheetNumber}"
+                <img src="${serverUrl}${sheet.printUrl}" alt="Sheet ${sheet.sheetNumber}"
                      style="width:100%;aspect-ratio:8.5/11;object-fit:contain;background:#111;"
-                     onclick="window.open('${toApiUrl(sheet.printUrl)}', '_blank')"
+                     onclick="window.open('${serverUrl}${sheet.printUrl}', '_blank')"
                      title="Click to open full size" />
                 <div style="padding:8px;display:flex;flex-direction:column;gap:6px;align-items:center;">
-                  <button class="btn primary" style="font-size:11px;padding:4px 12px;width:100%;background:#22c55e;"
-                          onclick="sendSingleSheetToCameo('${toApiUrl(sheet.cutUrl)}', ${idx + 1})">
-                    ✂️ Send to Cameo
-                  </button>
-                  <button class="btn secondary" style="font-size:11px;padding:4px 12px;width:100%;"
-                          onclick="printSingleSheet('${toApiUrl(sheet.printUrl)}')">
-                    🖨️ Print This Sheet
+                  <button class="btn primary" style="font-size:11px;padding:4px 12px;width:100%;"
+                          onclick="downloadCricutFile('${sheet.cricutUrl ? serverUrl + sheet.cricutUrl : ''}', '${sheet.cricutFilename || 'cricut.svg'}')">
+                    🎯 Download Cricut SVG
                   </button>
                   <div style="display:flex;gap:6px;width:100%;">
                     <button class="btn secondary" style="font-size:10px;padding:3px 8px;flex:1;"
-                            onclick="downloadSingleFile('${toApiUrl(sheet.printUrl)}', '${sheet.printFilename || 'print.png'}')">
-                      PNG
+                            onclick="downloadSingleFile('${serverUrl}${sheet.printUrl}', '${sheet.printFilename || 'print.png'}')">
+                      Print PNG
                     </button>
                     <button class="btn secondary" style="font-size:10px;padding:3px 8px;flex:1;"
-                            onclick="downloadSingleFile('${toApiUrl(sheet.cutUrl)}', '${sheet.cutFilename || 'cut.svg'}')">
-                      SVG
-                    </button>
-                    <button class="btn secondary" style="font-size:10px;padding:3px 8px;flex:1;"
-                            onclick="downloadCricutFile('${toApiUrl(sheet.cricutUrl)}', '${sheet.cricutFilename || 'cricut.svg'}')">
-                      Cricut
+                            onclick="downloadSingleFile('${sheet.cutUrl ? serverUrl + sheet.cutUrl : ''}', '${sheet.cutFilename || 'cut.svg'}')">
+                      Cut SVG
                     </button>
                   </div>
                 </div>
@@ -28624,33 +27477,6 @@ async function openStickerSheetsBrowser() {
 function closeStickerSheetsBrowser() {
   const modal = document.getElementById('stickerSheetsBrowserModal');
   if (modal) modal.style.display = 'none';
-}
-
-/**
- * Delete a sticker sheet batch
- */
-async function deleteStickerSheetBatch(batchName) {
-  if (!confirm(`Are you sure you want to delete the batch "${batchName}"?\n\nThis will permanently remove all sheets in this batch.`)) {
-    return;
-  }
-
-  try {
-    console.log('[StickerSheets] Deleting batch:', batchName);
-    const result = await printStation.stickerSheets.deleteBatch(batchName);
-
-    if (result?.success) {
-      console.log('[StickerSheets] Batch deleted successfully');
-      showToast(`Deleted batch: ${batchName}`, 'success');
-      // Refresh the browser view
-      openStickerSheetsBrowser();
-    } else {
-      console.error('[StickerSheets] Delete failed:', result?.error);
-      alert('Failed to delete batch: ' + (result?.error || 'Unknown error'));
-    }
-  } catch (err) {
-    console.error('[StickerSheets] Error deleting batch:', err);
-    alert('Error deleting batch: ' + err.message);
-  }
 }
 
 /**
@@ -28705,174 +27531,6 @@ function downloadStickerSheetFiles(printUrl, cutUrl, printFilename, cutFilename)
   }
 }
 
-/**
- * Print all sheets in a batch using native Electron print dialog
- */
-async function printBatchSheets(sheetDataStr) {
-  try {
-    // Parse the sheet data from the HTML-escaped JSON string
-    const sheets = JSON.parse(sheetDataStr.replace(/&quot;/g, '"'));
-    const serverUrl = 'https://blueridgecustomco.com';
-
-    // Build array of print URLs - use /api/library/ to avoid HTTP/2 issues
-    const imageUrls = sheets.map(s => `${serverUrl}${s.printUrl.replace(/^\/library\//, '/api/library/')}`);
-
-    if (imageUrls.length === 0) {
-      alert('No sheets to print');
-      return;
-    }
-
-    console.log('[StickerSheets] Printing batch sheets:', imageUrls);
-
-    const result = await printStation.printer.printWithDialog({ imageUrls });
-
-    if (result?.success) {
-      console.log('[StickerSheets] Print dialog opened successfully');
-    } else {
-      console.error('[StickerSheets] Print failed:', result?.error);
-      alert('Print failed: ' + (result?.error || 'Unknown error'));
-    }
-  } catch (err) {
-    console.error('[StickerSheets] Error printing batch:', err);
-    alert('Error printing: ' + err.message);
-  }
-}
-
-/**
- * Send all sheets in a batch to Silhouette Cameo for cutting
- */
-async function sendBatchToCameo(sheetDataStr) {
-  try {
-    // Parse the sheet data from the HTML-escaped JSON string
-    const sheetsData = JSON.parse(sheetDataStr.replace(/&quot;/g, '"'));
-
-    // Filter to only sheets with cut URLs
-    const sheetsWithCut = sheetsData.filter(s => s.cutUrl);
-
-    if (sheetsWithCut.length === 0) {
-      alert('No cut files available for this batch');
-      return;
-    }
-
-    console.log('[StickerSheets] Sending to Cameo:', sheetsWithCut.length, 'sheets');
-
-    // Get cut settings from the UI (if available) or use defaults
-    const cutSettings = {
-      depth: parseInt(document.getElementById('stickersCutDepth')?.value) || 6,
-      speed: parseInt(document.getElementById('stickersCutSpeed')?.value) || 4,
-      pressure: parseInt(document.getElementById('stickersCutPressure')?.value) || 15,
-      offset: parseFloat(document.getElementById('stickersCutOffset')?.value) || 8.5
-    };
-
-    // Get server URL for constructing full cut file URLs
-    const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
-
-    // Open each cut file locally in Silhouette Studio
-    let successCount = 0;
-    let errors = [];
-
-    for (let i = 0; i < sheetsWithCut.length; i++) {
-      const sheet = sheetsWithCut[i];
-      // Use /api/library/ to avoid HTTP/2 issues
-      const cutPath = sheet.cutUrl.replace(/^\/library\//, '/api/library/');
-      const cutUrl = cutPath.startsWith('http') ? cutPath : `${serverUrl}${cutPath}`;
-
-      console.log(`[StickerSheets] Opening cut file ${i + 1}/${sheetsWithCut.length}:`, cutUrl);
-
-      try {
-        const result = await printStation.cameo.openCutFile({
-          url: cutUrl,
-          cutSettings
-        });
-
-        if (result?.success) {
-          successCount++;
-        } else {
-          errors.push(`Sheet ${i + 1}: ${result?.error || 'Unknown error'}`);
-        }
-      } catch (err) {
-        errors.push(`Sheet ${i + 1}: ${err.message}`);
-      }
-    }
-
-    // Show result
-    if (successCount === sheetsWithCut.length) {
-      console.log('[StickerSheets] All cut files opened successfully');
-      alert(`Opened ${successCount} cut file(s) in Silhouette Studio!`);
-    } else if (successCount > 0) {
-      console.warn('[StickerSheets] Some cut files failed:', errors);
-      alert(`Opened ${successCount}/${sheetsWithCut.length} cut files.\n\nErrors:\n${errors.join('\n')}`);
-    } else {
-      console.error('[StickerSheets] All cut files failed:', errors);
-      alert(`Failed to open cut files:\n${errors.join('\n')}`);
-    }
-  } catch (err) {
-    console.error('[StickerSheets] Error sending to Cameo:', err);
-    alert('Error sending to Cameo: ' + err.message);
-  }
-}
-
-/**
- * Send a single sheet to Silhouette Cameo
- */
-async function sendSingleSheetToCameo(cutUrl, sheetNumber) {
-  if (!cutUrl) {
-    alert('No cut file available for this sheet.');
-    return;
-  }
-
-  console.log(`[StickerSheets] Sending sheet ${sheetNumber} to Cameo:`, cutUrl);
-
-  try {
-    // Get cut settings from the UI (if available) or use defaults
-    const cutSettings = {
-      depth: parseInt(document.getElementById('stickersCutDepth')?.value) || 6,
-      speed: parseInt(document.getElementById('stickersCutSpeed')?.value) || 4,
-      pressure: parseInt(document.getElementById('stickersCutPressure')?.value) || 15,
-      offset: parseFloat(document.getElementById('stickersCutOffset')?.value) || 8.5
-    };
-
-    const result = await printStation.cameo.openCutFile({
-      url: cutUrl,
-      cutSettings
-    });
-
-    if (result?.success) {
-      alert(`Sheet ${sheetNumber} sent to Silhouette Cameo!\n\nMake sure the correct printed sheet is loaded in the cutter.`);
-    } else {
-      alert(`Failed to send sheet ${sheetNumber} to Cameo: ${result?.error || 'Unknown error'}`);
-    }
-  } catch (err) {
-    console.error('[StickerSheets] Error sending single sheet to Cameo:', err);
-    alert('Error sending to Cameo: ' + err.message);
-  }
-}
-
-/**
- * Print a single sheet
- */
-async function printSingleSheet(printUrl) {
-  if (!printUrl) {
-    alert('No print file available for this sheet.');
-    return;
-  }
-
-  console.log('[StickerSheets] Printing single sheet:', printUrl);
-
-  try {
-    const result = await printStation.printer.printWithDialog({ imageUrls: [printUrl] });
-
-    if (result?.success) {
-      console.log('[StickerSheets] Print sent successfully');
-    } else {
-      console.log('[StickerSheets] Print cancelled or failed:', result?.error);
-    }
-  } catch (err) {
-    console.error('[StickerSheets] Error printing single sheet:', err);
-    alert('Error printing: ' + err.message);
-  }
-}
-
 // Make sticker sheet browser functions available globally for onclick handlers
 window.toggleStickerSelection = toggleStickerSelection;
 window.removeFromSelection = removeFromSelection;
@@ -28882,11 +27540,6 @@ window.closeStickerSheetsBrowser = closeStickerSheetsBrowser;
 window.downloadStickerSheetFiles = downloadStickerSheetFiles;
 window.downloadCricutFile = downloadCricutFile;
 window.downloadSingleFile = downloadSingleFile;
-window.printBatchSheets = printBatchSheets;
-window.sendBatchToCameo = sendBatchToCameo;
-window.sendSingleSheetToCameo = sendSingleSheetToCameo;
-window.printSingleSheet = printSingleSheet;
-window.deleteStickerSheetBatch = deleteStickerSheetBatch;
 
 // =============== Shopify Manager ===============
 const shopifyManagerState = {
@@ -30233,825 +28886,575 @@ async function initAutoUpdateUI() {
 // Initialize auto-update UI after a short delay
 setTimeout(initAutoUpdateUI, 2000);
 
-init();
+// ============================================================================
+// TIKTOK SHOP MANAGER
+// ============================================================================
 
-// =============== NEW Stickers View (Redesigned) ===============
-const stickersState = {
-  mode: 'order', // 'order' or 'manual'
-  categories: [],
-  stickers: [],
-  filteredStickers: [],
-  selection: new Map(), // Map of imagePath -> { ...sticker, quantity }
-  gridInfo: null,
-  currentOrderNumber: null,
-  savedOrders: [],
-  generatedSheets: null, // Last generated sheets info for print/cut
-  cutSettings: {
-    depth: 5,
-    speed: 5,
-    pressure: 10,
-    offset: 3
-  },
-  initialized: false
+const tiktokShopState = {
+  initialized: false,
+  activeTab: 'published', // 'published' or 'candidates'
+  products: [],           // Currently on TikTok
+  candidates: [],         // Available to add
+  selectedProduct: null,  // Currently viewing in detail
+  selectedIds: new Set(), // For bulk operations
+  publicationId: null,
+  loading: false
 };
 
-async function initStickersView() {
-  if (!stickersState.initialized) {
-    stickersState.initialized = true;
-    setupStickersEventListeners();
-    await loadStickersCutSettings();
-  }
-
-  // Load categories for manual mode
-  await loadStickersCategories();
-  await updateStickersGridInfo();
-
-  // Load saved orders for order mode
-  await loadSavedOrders();
+function debounce_tts(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
-function setupStickersEventListeners() {
-  // Mode toggle buttons
-  const modeOrderBtn = document.getElementById('stickersModeOrder');
-  const modeManualBtn = document.getElementById('stickersModeManual');
-  const modeLayoutBtn = document.getElementById('stickersModeLayout');
+async function initTikTokShopManager() {
+  if (tiktokShopState.initialized && tiktokShopState.products.length > 0) return;
 
-  if (modeOrderBtn) {
-    modeOrderBtn.addEventListener('click', () => switchStickersMode('order'));
-  }
-  if (modeManualBtn) {
-    modeManualBtn.addEventListener('click', () => switchStickersMode('manual'));
-  }
-  if (modeLayoutBtn) {
-    modeLayoutBtn.addEventListener('click', () => switchStickersMode('layout'));
-  }
+  if (!tiktokShopState.initialized) {
+    tiktokShopState.initialized = true;
 
-  // Order Mode: Import order
-  const importOrderBtn = document.getElementById('stickersImportOrderBtn');
-  if (importOrderBtn) {
-    importOrderBtn.addEventListener('click', importStickersOrder);
-  }
+    // Source filter
+    const sourceFilter = document.getElementById('tiktokShopSourceFilter');
+    if (sourceFilter) sourceFilter.addEventListener('change', renderTikTokProductList);
 
-  // Order Mode: Refresh saved orders
-  const refreshSavedBtn = document.getElementById('stickersRefreshSavedBtn');
-  if (refreshSavedBtn) {
-    refreshSavedBtn.addEventListener('click', loadSavedOrders);
-  }
+    // Search
+    const search = document.getElementById('tiktokShopSearch');
+    if (search) search.addEventListener('input', debounce_tts(renderTikTokProductList, 300));
 
-  // Order Mode: Search saved orders
-  const savedSearch = document.getElementById('stickersSavedSearch');
-  if (savedSearch) {
-    savedSearch.addEventListener('input', debounce(filterSavedOrders, 300));
-  }
+    // Refresh
+    const refreshBtn = document.getElementById('tiktokShopRefreshBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => loadTikTokShopData(true));
 
-  // Manual Mode: Category filter
-  const categorySelect = document.getElementById('stickersCategorySelect');
-  if (categorySelect) {
-    categorySelect.addEventListener('change', () => loadStickersCatalog(categorySelect.value));
-  }
+    // Clear All
+    const clearBtn = document.getElementById('tiktokShopClearAllBtn');
+    if (clearBtn) clearBtn.addEventListener('click', handleTikTokClearAll);
 
-  // Manual Mode: Search
-  const searchInput = document.getElementById('stickersSearch');
-  if (searchInput) {
-    searchInput.addEventListener('input', debounce(filterStickersCatalog, 300));
-  }
-
-  // Manual Mode: Size change
-  const sizeInput = document.getElementById('stickersManualSize');
-  if (sizeInput) {
-    sizeInput.addEventListener('change', updateStickersGridInfo);
-  }
-
-  // Manual Mode: Select all
-  const selectAllBtn = document.getElementById('stickersSelectAllBtn');
-  if (selectAllBtn) {
-    selectAllBtn.addEventListener('click', selectAllVisibleStickersNew);
-  }
-
-  // Clear selection
-  const clearBtn = document.getElementById('stickersClearBtn');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', clearStickersSelection);
-  }
-
-  // Generate sheets
-  const generateBtn = document.getElementById('stickersGenerateBtn');
-  if (generateBtn) {
-    generateBtn.addEventListener('click', generateStickersSheets);
-  }
-
-  // View sheets
-  const viewSheetsBtn = document.getElementById('stickersViewSheetsBtn');
-  if (viewSheetsBtn) {
-    viewSheetsBtn.addEventListener('click', openStickerSheetsBrowser);
-  }
-
-  // Print button
-  const printBtn = document.getElementById('stickersPrintBtn');
-  if (printBtn) {
-    printBtn.addEventListener('click', printStickersSheet);
-  }
-
-  // Send to Cameo button
-  const sendCameoBtn = document.getElementById('stickersSendCameoBtn');
-  if (sendCameoBtn) {
-    sendCameoBtn.addEventListener('click', sendStickersToCameo);
-  }
-
-  // Cut settings save
-  const saveCutSettingsBtn = document.getElementById('stickersSaveCutSettings');
-  if (saveCutSettingsBtn) {
-    saveCutSettingsBtn.addEventListener('click', saveStickersCutSettings);
-  }
-}
-
-function switchStickersMode(mode) {
-  stickersState.mode = mode;
-
-  // Update toggle buttons
-  const orderBtn = document.getElementById('stickersModeOrder');
-  const manualBtn = document.getElementById('stickersModeManual');
-  const layoutBtn = document.getElementById('stickersModeLayout');
-  const orderPanel = document.getElementById('stickersOrderPanel');
-  const manualPanel = document.getElementById('stickersManualPanel');
-  const layoutPanel = document.getElementById('layoutEditorPanel');
-  const currentOrderCard = document.getElementById('stickersCurrentOrder');
-
-  // Layout mode side panels
-  const layoutAvailablePanel = document.getElementById('layoutAvailableStickerPanel');
-  const layoutGeneratePanel = document.getElementById('layoutGeneratePanel');
-
-  // Reset all buttons
-  [orderBtn, manualBtn, layoutBtn].forEach(btn => {
-    if (btn) {
-      btn.classList.remove('active');
-      btn.style.background = 'var(--card)';
-      btn.style.color = 'var(--text)';
-    }
-  });
-
-  // Hide all panels
-  if (orderPanel) orderPanel.style.display = 'none';
-  if (manualPanel) manualPanel.style.display = 'none';
-  if (layoutPanel) layoutPanel.style.display = 'none';
-  if (currentOrderCard) currentOrderCard.style.display = 'none';
-  if (layoutAvailablePanel) layoutAvailablePanel.style.display = 'none';
-  if (layoutGeneratePanel) layoutGeneratePanel.style.display = 'none';
-
-  // Helper to show/hide standard side panels
-  function showStandardSidePanels(show) {
-    const panels = document.querySelectorAll('.stickers-side-panel > .inventory-card');
-    panels.forEach((panel) => {
-      if (panel.id === 'layoutAvailableStickerPanel' || panel.id === 'layoutGeneratePanel') {
-        return;
-      }
-      if (panel.id !== 'stickersOutputInfo' && panel.id !== 'stickersCurrentOrder') {
-        panel.style.display = show ? '' : 'none';
-      }
+    // Select All
+    const selectAll = document.getElementById('tiktokShopSelectAll');
+    if (selectAll) selectAll.addEventListener('change', (e) => {
+      const items = document.querySelectorAll('.tiktok-product-item');
+      items.forEach(item => {
+        const cb = item.querySelector('.tiktok-select-cb');
+        if (cb) cb.checked = e.target.checked;
+        const id = item.dataset.productId;
+        if (id) {
+          if (e.target.checked) tiktokShopState.selectedIds.add(id);
+          else tiktokShopState.selectedIds.delete(id);
+        }
+      });
+      updateTikTokBulkBar();
     });
+
+    // Tabs
+    document.getElementById('tiktokTabPublished')?.addEventListener('click', () => {
+      tiktokShopState.activeTab = 'published';
+      document.getElementById('tiktokTabPublished').classList.add('active');
+      document.getElementById('tiktokTabCandidates').classList.remove('active');
+      renderTikTokProductList();
+    });
+    document.getElementById('tiktokTabCandidates')?.addEventListener('click', () => {
+      tiktokShopState.activeTab = 'candidates';
+      document.getElementById('tiktokTabCandidates').classList.add('active');
+      document.getElementById('tiktokTabPublished').classList.remove('active');
+      renderTikTokProductList();
+    });
+
+    // Bulk actions
+    document.getElementById('tiktokShopBulkPublishBtn')?.addEventListener('click', handleTikTokBulkPublish);
+    document.getElementById('tiktokShopBulkUnpublishBtn')?.addEventListener('click', handleTikTokBulkUnpublish);
+    document.getElementById('tiktokShopBulkScriptBtn')?.addEventListener('click', handleTikTokBulkScript);
+
+    // Detail panel buttons
+    document.getElementById('tiktokShopDetailPublishBtn')?.addEventListener('click', handleTikTokDetailPublish);
+    document.getElementById('tiktokShopDetailUnpublishBtn')?.addEventListener('click', handleTikTokDetailUnpublish);
+    document.getElementById('tiktokShopGenerateScriptBtn')?.addEventListener('click', handleTikTokGenerateScript);
+    document.getElementById('tiktokShopResearchBtn')?.addEventListener('click', handleTikTokResearch);
   }
 
-  if (mode === 'order') {
-    if (orderBtn) {
-      orderBtn.classList.add('active');
-      orderBtn.style.background = 'var(--primary)';
-      orderBtn.style.color = 'white';
-    }
-    if (orderPanel) orderPanel.style.display = 'flex';
-    if (currentOrderCard && stickersState.currentOrderNumber) {
-      currentOrderCard.style.display = 'block';
-    }
-    showStandardSidePanels(true);
-  } else if (mode === 'manual') {
-    if (manualBtn) {
-      manualBtn.classList.add('active');
-      manualBtn.style.background = 'var(--primary)';
-      manualBtn.style.color = 'white';
-    }
-    if (manualPanel) manualPanel.style.display = 'flex';
-    showStandardSidePanels(true);
-    // Load catalog if not already loaded
-    if (stickersState.stickers.length === 0) {
-      loadStickersCatalog();
-    }
-  } else if (mode === 'layout') {
-    if (layoutBtn) {
-      layoutBtn.classList.add('active');
-      layoutBtn.style.background = 'var(--primary)';
-      layoutBtn.style.color = 'white';
-    }
-    if (layoutPanel) layoutPanel.style.display = 'flex';
-    if (layoutAvailablePanel) layoutAvailablePanel.style.display = 'flex';
-    if (layoutGeneratePanel) layoutGeneratePanel.style.display = 'block';
-    showStandardSidePanels(false);
-
-    // Initialize layout editor and populate available stickers
-    if (typeof initLayoutEditor === 'function') {
-      initLayoutEditor();
-    }
-    if (typeof populateLayoutAvailableStickers === 'function') {
-      const stickersArray = Array.from(stickersState.selection.values());
-      populateLayoutAvailableStickers(stickersArray);
-    }
-    // Don't clear selection when entering layout mode
-    return;
-  }
-
-  // Clear selection when switching modes (except layout)
-  clearStickersSelection();
+  await loadTikTokShopData();
 }
 
-async function loadStickersCategories() {
-  try {
-    const result = await printStation.stickerSheets.getCategories();
-    if (result?.success && result.categories) {
-      stickersState.categories = result.categories;
+function setTikTokStatus(msg, type) {
+  const el = document.getElementById('tiktokShopStatus');
+  if (el) {
+    el.textContent = msg;
+    el.className = 'catalog-status ' + (type === 'error' ? 'danger' : type === 'success' ? 'success' : 'muted');
+  }
+}
 
-      const select = document.getElementById('stickersCategorySelect');
-      if (select) {
-        select.innerHTML = '<option value="">All Categories</option>' +
-          result.categories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+async function loadTikTokShopData(force) {
+  if (tiktokShopState.loading && !force) return;
+  tiktokShopState.loading = true;
+  setTikTokStatus('Loading...', 'info');
+
+  try {
+    // Load products and stats in parallel
+    const [productsRes, statsRes, candidatesRes] = await Promise.all([
+      printStation.tiktokShop.getProducts(),
+      printStation.tiktokShop.getStats(),
+      printStation.tiktokShop.getCandidates('all')
+    ]);
+
+    if (productsRes?.success && productsRes.data) {
+      tiktokShopState.products = productsRes.data.products || [];
+      tiktokShopState.publicationId = productsRes.data.publicationId || null;
+    }
+
+    if (candidatesRes?.success && candidatesRes.data) {
+      tiktokShopState.candidates = candidatesRes.data.candidates || [];
+    }
+
+    // Update capacity badge
+    if (statsRes?.success && statsRes.data) {
+      const cap = statsRes.data.capacity || {};
+      const badge = document.getElementById('tiktokShopCapacity');
+      if (badge) {
+        badge.textContent = `${cap.current || 0}/100`;
+        badge.className = 'badge' + ((cap.current || 0) >= 90 ? ' warning' : ' success');
       }
     }
-  } catch (err) {
-    console.error('Failed to load sticker categories:', err);
+
+    setTikTokStatus(`${tiktokShopState.products.length} on TikTok, ${tiktokShopState.candidates.length} candidates`, 'success');
+    renderTikTokProductList();
+  } catch (e) {
+    setTikTokStatus('Error: ' + (e.message || e), 'error');
+  } finally {
+    tiktokShopState.loading = false;
   }
 }
 
-async function loadStickersCatalog(category = null) {
-  const grid = document.getElementById('stickersCatalogGrid');
-  if (grid) {
-    grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:40px;">Loading stickers...</div>';
+function renderTikTokProductList() {
+  const container = document.getElementById('tiktokShopProductList');
+  if (!container) return;
+
+  const search = (document.getElementById('tiktokShopSearch')?.value || '').toLowerCase();
+  const sourceFilter = document.getElementById('tiktokShopSourceFilter')?.value || 'all';
+  const isPublished = tiktokShopState.activeTab === 'published';
+
+  let items = isPublished ? tiktokShopState.products : tiktokShopState.candidates;
+
+  // Apply search filter
+  if (search) {
+    items = items.filter(p => (p.title || '').toLowerCase().includes(search) || (p.handle || '').toLowerCase().includes(search));
   }
 
-  try {
-    const result = await printStation.stickerSheets.getCatalog(category || undefined);
-    if (result?.success && result.stickers) {
-      stickersState.stickers = result.stickers;
-      stickersState.filteredStickers = result.stickers;
-      renderStickersCatalog();
-    }
-  } catch (err) {
-    console.error('Failed to load sticker catalog:', err);
-    if (grid) {
-      grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:40px;color:#f44;">Error loading stickers</div>';
-    }
-  }
-}
+  // Apply source filter
+  if (sourceFilter === 'multiboard') items = items.filter(p => p.source === 'multiboard');
+  else if (sourceFilter === 'metal') items = items.filter(p => p.source === 'metal');
+  else if (sourceFilter === 'published') items = isPublished ? items : [];
+  else if (sourceFilter === 'unpublished') items = isPublished ? [] : items;
 
-function filterStickersCatalog() {
-  const searchInput = document.getElementById('stickersSearch');
-  const query = (searchInput?.value || '').toLowerCase().trim();
+  // Update count
+  const countEl = document.getElementById('tiktokShopCount');
+  if (countEl) countEl.textContent = items.length;
 
-  if (!query) {
-    stickersState.filteredStickers = stickersState.stickers;
-  } else {
-    stickersState.filteredStickers = stickersState.stickers.filter(s =>
-      s.title.toLowerCase().includes(query) ||
-      s.category.toLowerCase().includes(query) ||
-      s.filename.toLowerCase().includes(query)
-    );
-  }
-
-  renderStickersCatalog();
-}
-
-function renderStickersCatalog() {
-  const grid = document.getElementById('stickersCatalogGrid');
-  if (!grid) return;
-
-  if (stickersState.filteredStickers.length === 0) {
-    grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:40px;">No stickers found</div>';
+  if (!items.length) {
+    container.innerHTML = `<p class="placeholder">${isPublished ? 'No products on TikTok Shop' : 'No candidate products found'}</p>`;
     return;
   }
 
-  grid.innerHTML = stickersState.filteredStickers.map(sticker => {
-    const isSelected = stickersState.selection.has(sticker.imagePath);
-    const selectedClass = isSelected ? 'selected' : '';
-    // Use resolveAssetUrl which handles absolute URLs, relative URLs, and file paths
-    const thumbnailSrc = sticker.thumbnailUrl
-      ? resolveAssetUrl(sticker.thumbnailUrl)
-      : resolveAssetUrl(sticker.imagePath);
+  container.innerHTML = items.map(p => {
+    const isSelected = tiktokShopState.selectedIds.has(p.numericId || p.id);
+    const sourceBadge = p.source === 'multiboard' ? 'multiboard' : p.source === 'metal' ? 'metal' : 'other';
+    const sourceLabel = p.source === 'multiboard' ? 'Multiboard' : p.source === 'metal' ? 'Metal' : 'Other';
+    const price = p.minPrice ? `$${parseFloat(p.minPrice).toFixed(2)}` : (p.price ? `$${p.price}` : '');
+    const thumb = p.image ? `<img class="product-thumb" src="${p.image}" alt="" />` : `<div class="product-thumb" style="display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted);">?</div>`;
 
     return `
-      <div class="sticker-card ${selectedClass}"
-           data-path="${sticker.imagePath}"
-           onclick="toggleStickersSelection('${sticker.imagePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')"
-           title="${sticker.title}\n${sticker.category}">
-        <div class="sticker-thumb" style="background-image:url('${thumbnailSrc}');background-size:contain;background-position:center;background-repeat:no-repeat;aspect-ratio:1;"></div>
-        <div class="sticker-title" style="font-size:10px;padding:4px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-          ${sticker.title}
+      <div class="tiktok-product-item${isSelected ? ' selected' : ''}" data-product-id="${p.numericId || p.id}" data-source="${p.source || 'other'}">
+        <input type="checkbox" class="tiktok-select-cb" ${isSelected ? 'checked' : ''} />
+        ${thumb}
+        <div class="product-info">
+          <div class="product-title">${escapeHtml(p.title || 'Untitled')}</div>
+          <div class="product-meta">${price} ${p.productType ? '&middot; ' + escapeHtml(p.productType) : ''}</div>
         </div>
-        ${isSelected ? `<div class="sticker-selected-badge" style="position:absolute;top:4px;right:4px;background:#4ade80;color:#000;font-size:10px;padding:2px 6px;border-radius:10px;">x${stickersState.selection.get(sticker.imagePath).quantity}</div>` : ''}
+        <span class="source-badge ${sourceBadge}">${sourceLabel}</span>
+        ${isPublished ? '<span class="badge success" style="font-size:10px;">LIVE</span>' : '<span class="badge" style="font-size:10px;">Available</span>'}
       </div>
     `;
   }).join('');
-}
 
-function toggleStickersSelection(imagePath) {
-  if (stickersState.selection.has(imagePath)) {
-    const item = stickersState.selection.get(imagePath);
-    item.quantity++;
-  } else {
-    const sticker = stickersState.stickers.find(s => s.imagePath === imagePath);
-    if (sticker) {
-      stickersState.selection.set(imagePath, { ...sticker, quantity: 1 });
-    }
-  }
-
-  updateStickersSelectionUI();
-  renderStickersCatalog();
-}
-
-function removeStickersItem(imagePath) {
-  stickersState.selection.delete(imagePath);
-  updateStickersSelectionUI();
-  renderStickersCatalog();
-}
-
-function updateStickersQuantity(imagePath, delta) {
-  const item = stickersState.selection.get(imagePath);
-  if (!item) return;
-
-  item.quantity = Math.max(1, item.quantity + delta);
-  updateStickersSelectionUI();
-  renderStickersCatalog();
-}
-
-function selectAllVisibleStickersNew() {
-  for (const sticker of stickersState.filteredStickers) {
-    if (!stickersState.selection.has(sticker.imagePath)) {
-      stickersState.selection.set(sticker.imagePath, { ...sticker, quantity: 1 });
-    }
-  }
-  updateStickersSelectionUI();
-  renderStickersCatalog();
-}
-
-function clearStickersSelection() {
-  stickersState.selection.clear();
-  stickersState.currentOrderNumber = null;
-  stickersState.generatedSheets = null;
-
-  const currentOrderCard = document.getElementById('stickersCurrentOrder');
-  if (currentOrderCard) currentOrderCard.style.display = 'none';
-
-  const outputInfo = document.getElementById('stickersOutputInfo');
-  if (outputInfo) outputInfo.style.display = 'none';
-
-  const printBtn = document.getElementById('stickersPrintBtn');
-  const cameoBtn = document.getElementById('stickersSendCameoBtn');
-  if (printBtn) printBtn.disabled = true;
-  if (cameoBtn) cameoBtn.disabled = true;
-
-  updateStickersSelectionUI();
-  renderStickersCatalog();
-}
-
-function updateStickersSelectionUI() {
-  const countEl = document.getElementById('stickersSelectionCount');
-  const sheetsEl = document.getElementById('stickersSheetsNeeded');
-  const perSheetEl = document.getElementById('stickersPerSheet');
-  const generateBtn = document.getElementById('stickersGenerateBtn');
-  const listEl = document.getElementById('stickersSelectionList');
-
-  // Count total stickers
-  let totalCount = 0;
-  for (const item of stickersState.selection.values()) {
-    totalCount += item.quantity;
-  }
-
-  // Calculate sheets needed
-  const capacity = stickersState.gridInfo?.capacity || 6;
-  const sheetsNeeded = Math.ceil(totalCount / capacity);
-
-  if (countEl) countEl.textContent = totalCount;
-  if (sheetsEl) sheetsEl.textContent = sheetsNeeded;
-  if (perSheetEl) perSheetEl.textContent = `~${capacity}`;
-
-  if (generateBtn) {
-    generateBtn.disabled = totalCount === 0;
-    generateBtn.textContent = `Generate Sheets (${totalCount})`;
-  }
-
-  // Render selection list
-  if (listEl) {
-    if (stickersState.selection.size === 0) {
-      listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:20px;color:#888;">No stickers selected</div>';
-    } else {
-      listEl.innerHTML = Array.from(stickersState.selection.values()).map(item => {
-        // Use resolveAssetUrl which handles absolute URLs, relative URLs, and file paths
-        const thumbSrc = item.thumbnailUrl ? resolveAssetUrl(item.thumbnailUrl) : resolveAssetUrl(item.imagePath);
-        return `
-        <div class="selection-item" style="display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid rgba(255,255,255,0.1);">
-          <div style="width:40px;height:40px;background-image:url('${thumbSrc}');background-size:contain;background-position:center;background-repeat:no-repeat;flex-shrink:0;"></div>
-          <div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">${item.title}</div>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <button onclick="updateStickersQuantity('${item.imagePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', -1)" style="width:24px;height:24px;padding:0;font-size:14px;">-</button>
-            <span style="min-width:20px;text-align:center;">${item.quantity}</span>
-            <button onclick="updateStickersQuantity('${item.imagePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', 1)" style="width:24px;height:24px;padding:0;font-size:14px;">+</button>
-            <button onclick="removeStickersItem('${item.imagePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" style="width:24px;height:24px;padding:0;font-size:12px;color:#f44;">&times;</button>
-          </div>
-        </div>
-      `}).join('');
-    }
-  }
-}
-
-async function updateStickersGridInfo() {
-  // For order mode, always use 3 inches
-  // For manual mode, use the input value
-  let size = 3;
-  if (stickersState.mode === 'manual') {
-    const sizeInput = document.getElementById('stickersManualSize');
-    size = parseFloat(sizeInput?.value || 3);
-  }
-
-  try {
-    const result = await printStation.stickerSheets.getGridInfo(size);
-    if (result?.success && result.grid) {
-      stickersState.gridInfo = result.grid;
-
-      const infoEl = document.getElementById('stickersGridInfo');
-      if (infoEl) {
-        infoEl.textContent = `Grid: ${result.grid.cols}x${result.grid.rows} (${result.grid.capacity} stickers per sheet) | Sheet: ${result.grid.sheetWidthInches}" x ${result.grid.sheetHeightInches}"`;
+  // Attach click handlers
+  container.querySelectorAll('.tiktok-product-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      if (e.target.type === 'checkbox') {
+        const id = item.dataset.productId;
+        if (e.target.checked) tiktokShopState.selectedIds.add(id);
+        else tiktokShopState.selectedIds.delete(id);
+        item.classList.toggle('selected', e.target.checked);
+        updateTikTokBulkBar();
+        return;
       }
+      selectTikTokProduct(item.dataset.productId);
+    });
+  });
+}
 
-      updateStickersSelectionUI();
-    }
-  } catch (err) {
-    console.error('Failed to get grid info:', err);
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function updateTikTokBulkBar() {
+  const bar = document.getElementById('tiktokShopBulkBar');
+  const count = tiktokShopState.selectedIds.size;
+  if (bar) {
+    bar.style.display = count > 0 ? 'flex' : 'none';
+    const countEl = document.getElementById('tiktokShopSelectedCount');
+    if (countEl) countEl.textContent = `${count} selected`;
   }
 }
 
-async function importStickersOrder() {
-  const orderIdInput = document.getElementById('stickersOrderId');
-  const infoEl = document.getElementById('stickersOrderInfo');
-  const importBtn = document.getElementById('stickersImportOrderBtn');
+function selectTikTokProduct(productId) {
+  const isPublished = tiktokShopState.activeTab === 'published';
+  const list = isPublished ? tiktokShopState.products : tiktokShopState.candidates;
+  const product = list.find(p => (p.numericId || p.id) === productId);
+  if (!product) return;
 
-  const orderId = orderIdInput?.value?.trim();
-  if (!orderId) {
-    if (infoEl) infoEl.textContent = 'Please enter an order #';
+  tiktokShopState.selectedProduct = product;
+
+  // Show detail panel
+  document.getElementById('tiktokShopDetailPlaceholder').style.display = 'none';
+  document.getElementById('tiktokShopProductInfo').style.display = 'block';
+
+  // Fill in product info
+  const img = document.getElementById('tiktokShopDetailImage');
+  if (img) { img.src = product.image || ''; img.style.display = product.image ? 'block' : 'none'; }
+
+  const title = document.getElementById('tiktokShopDetailTitle');
+  if (title) title.textContent = product.title || 'Untitled';
+
+  const source = document.getElementById('tiktokShopDetailSource');
+  if (source) {
+    const src = product.source || 'other';
+    source.textContent = src === 'multiboard' ? 'Multiboard' : src === 'metal' ? 'Metal Print' : 'Other';
+    source.className = 'badge source-badge ' + (src === 'multiboard' ? 'multiboard' : src === 'metal' ? 'metal' : 'other');
+  }
+
+  const status = document.getElementById('tiktokShopDetailStatus');
+  if (status) {
+    status.textContent = isPublished ? 'LIVE on TikTok' : 'Not Published';
+    status.className = isPublished ? 'badge success' : 'badge';
+  }
+
+  const price = document.getElementById('tiktokShopDetailPrice');
+  if (price) {
+    const p = product.minPrice || product.price;
+    price.textContent = p ? `$${parseFloat(p).toFixed(2)}` : '';
+  }
+
+  // Toggle publish/unpublish buttons
+  document.getElementById('tiktokShopDetailPublishBtn').style.display = isPublished ? 'none' : 'inline-block';
+  document.getElementById('tiktokShopDetailUnpublishBtn').style.display = isPublished ? 'inline-block' : 'none';
+
+  // Show existing script/research
+  renderTikTokScript(product.videoScript);
+  renderTikTokResearch(product.marketResearch);
+
+  // Highlight in list
+  document.querySelectorAll('.tiktok-product-item').forEach(el => {
+    el.style.outline = el.dataset.productId === productId ? '2px solid var(--accent)' : 'none';
+  });
+}
+
+function renderTikTokScript(scriptData) {
+  const container = document.getElementById('tiktokShopScriptContent');
+  if (!container) return;
+
+  let script = scriptData;
+  if (typeof script === 'string') {
+    try { script = JSON.parse(script); } catch (_) { script = null; }
+  }
+
+  if (!script || script.raw) {
+    container.innerHTML = script?.raw
+      ? `<pre style="font-size:12px;white-space:pre-wrap;color:var(--text);">${escapeHtml(script.raw)}</pre>`
+      : '<p class="placeholder" style="font-size:13px;">No script generated yet. Click "Generate Script" to create one.</p>';
     return;
   }
 
-  if (importBtn) {
-    importBtn.disabled = true;
-    importBtn.textContent = 'Importing...';
+  let html = '';
+
+  if (script.hook) {
+    html += `<div class="script-section"><div class="script-section-label">Hook</div><div class="script-section-content">${escapeHtml(script.hook)}</div></div>`;
   }
-  if (infoEl) infoEl.textContent = 'Fetching order from Shopify...';
 
-  try {
-    const result = await printStation.stickerSheets.fromOrder({
-      orderId,
-      stickerSizeInches: 3, // Always 3 for orders
-      offsetMm: stickersState.cutSettings.offset,
-      saveByOrder: true // Save to order folder
+  if (Array.isArray(script.scenes)) {
+    html += '<div class="script-section"><div class="script-section-label">Scenes</div>';
+    script.scenes.forEach((s, i) => {
+      html += `<div class="script-scene">
+        <div class="script-scene-duration">${escapeHtml(s.duration || `Scene ${i + 1}`)}</div>
+        ${s.visual ? `<div style="margin-top:4px;"><strong>Visual:</strong> ${escapeHtml(s.visual)}</div>` : ''}
+        ${s.text ? `<div><strong>Text:</strong> ${escapeHtml(s.text)}</div>` : ''}
+        ${s.action ? `<div style="color:var(--muted);font-size:12px;"><em>${escapeHtml(s.action)}</em></div>` : ''}
+      </div>`;
     });
+    html += '</div>';
+  }
 
-    if (result?.success) {
-      stickersState.generatedSheets = result;
-      stickersState.currentOrderNumber = result.orderNumber || orderId.replace('#', '');
+  if (script.cta) {
+    html += `<div class="script-section"><div class="script-section-label">Call to Action</div><div class="script-section-content">${escapeHtml(script.cta)}</div></div>`;
+  }
 
-      // Show current order card
-      const currentOrderCard = document.getElementById('stickersCurrentOrder');
-      const orderNumberEl = document.getElementById('stickersOrderNumber');
-      if (currentOrderCard) currentOrderCard.style.display = 'block';
-      if (orderNumberEl) orderNumberEl.textContent = stickersState.currentOrderNumber;
+  if (script.music) {
+    html += `<div class="script-section"><div class="script-section-label">Music</div><div class="script-section-content">${escapeHtml(script.music)}</div></div>`;
+  }
 
-      if (infoEl) {
-        infoEl.innerHTML = `<span style="color:#4ade80;">Order #${stickersState.currentOrderNumber}: Generated ${result.totalSheets} sheet(s) with ${result.totalStickers} stickers</span>`;
-        if (result.notFound?.length) {
-          infoEl.innerHTML += `<br><span style="color:#f90;">Warning: ${result.notFound.length} items not found in catalog</span>`;
-        }
+  if (Array.isArray(script.hashtags) && script.hashtags.length) {
+    html += '<div class="script-section"><div class="script-section-label">Hashtags</div><div>';
+    script.hashtags.forEach(h => { html += `<span class="script-hashtag">#${escapeHtml(h.replace(/^#/, ''))}</span>`; });
+    html += '</div></div>';
+  }
+
+  if (script.estimatedLength) {
+    html += `<div class="script-section"><div class="script-section-label">Duration</div><div class="script-section-content">${escapeHtml(script.estimatedLength)}</div></div>`;
+  }
+
+  if (script.notes) {
+    html += `<div class="script-section"><div class="script-section-label">Notes</div><div class="script-section-content" style="color:var(--muted);">${escapeHtml(script.notes)}</div></div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function renderTikTokResearch(researchData) {
+  const container = document.getElementById('tiktokShopResearchContent');
+  if (!container) return;
+
+  let research = researchData;
+  if (typeof research === 'string') {
+    try { research = JSON.parse(research); } catch (_) { research = null; }
+  }
+
+  if (!research || research.raw) {
+    container.innerHTML = research?.raw
+      ? `<pre style="font-size:12px;white-space:pre-wrap;color:var(--text);">${escapeHtml(research.raw)}</pre>`
+      : '<p class="placeholder" style="font-size:13px;">No research yet. Click "Research" to analyze this product category.</p>';
+    return;
+  }
+
+  let html = '';
+
+  if (Array.isArray(research.trendingStyles) && research.trendingStyles.length) {
+    html += '<div class="research-section"><div class="research-section-title">Trending Styles</div>';
+    research.trendingStyles.forEach(s => { html += `<div class="research-item">${escapeHtml(s)}</div>`; });
+    html += '</div>';
+  }
+
+  if (research.competitorInsights) {
+    html += `<div class="research-section"><div class="research-section-title">Competitor Insights</div><div class="research-item">${escapeHtml(research.competitorInsights)}</div></div>`;
+  }
+
+  if (research.pricingBenchmark) {
+    const pb = research.pricingBenchmark;
+    html += `<div class="research-section"><div class="research-section-title">Pricing</div>
+      <div class="research-item">Low: ${escapeHtml(pb.low || '?')} | Mid: ${escapeHtml(pb.mid || '?')} | High: ${escapeHtml(pb.high || '?')}</div>
+      ${pb.recommendation ? `<div class="research-item" style="color:var(--accent);">${escapeHtml(pb.recommendation)}</div>` : ''}
+    </div>`;
+  }
+
+  if (Array.isArray(research.contentStrategy)) {
+    html += '<div class="research-section"><div class="research-section-title">Content Strategy</div>';
+    research.contentStrategy.forEach(c => {
+      html += `<div class="research-item"><strong>${escapeHtml(c.type || '')}:</strong> ${escapeHtml(c.description || '')} (${escapeHtml(c.frequency || '')})</div>`;
+    });
+    html += '</div>';
+  }
+
+  if (Array.isArray(research.hashtags) && research.hashtags.length) {
+    html += '<div class="research-section"><div class="research-section-title">Hashtags</div><div>';
+    research.hashtags.forEach(h => { html += `<span class="script-hashtag">#${escapeHtml(h.replace(/^#/, ''))}</span>`; });
+    html += '</div></div>';
+  }
+
+  if (research.audienceInsights) {
+    const ai = research.audienceInsights;
+    html += '<div class="research-section"><div class="research-section-title">Audience</div>';
+    if (ai.demographics) html += `<div class="research-item"><strong>Demographics:</strong> ${escapeHtml(ai.demographics)}</div>`;
+    if (ai.peakTimes) html += `<div class="research-item"><strong>Peak Times:</strong> ${escapeHtml(ai.peakTimes)}</div>`;
+    if (ai.interests) html += `<div class="research-item"><strong>Interests:</strong> ${escapeHtml(ai.interests)}</div>`;
+    html += '</div>';
+  }
+
+  if (research.viralPotential) {
+    html += `<div class="research-section"><div class="research-section-title">Viral Potential</div><div class="research-item">${escapeHtml(research.viralPotential)}</div></div>`;
+  }
+
+  if (Array.isArray(research.recommendations)) {
+    html += '<div class="research-section"><div class="research-section-title">Recommendations</div>';
+    research.recommendations.forEach(r => { html += `<div class="research-item">${escapeHtml(r)}</div>`; });
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+// --- TikTok Shop Action Handlers ---
+
+async function handleTikTokClearAll() {
+  const confirmed = await printStation.showConfirm('This will remove ALL products from TikTok Shop. Are you sure?', 'Clear TikTok Shop');
+  if (!confirmed) return;
+
+  setTikTokStatus('Clearing all products...', 'info');
+  try {
+    const res = await printStation.tiktokShop.clearAll();
+    if (res?.success) {
+      setTikTokStatus(`Cleared ${res.data?.removed || 0} products`, 'success');
+      await loadTikTokShopData(true);
+    } else {
+      setTikTokStatus('Error: ' + (res?.error || 'Unknown'), 'error');
+    }
+  } catch (e) {
+    setTikTokStatus('Error: ' + e.message, 'error');
+  }
+}
+
+async function handleTikTokDetailPublish() {
+  const p = tiktokShopState.selectedProduct;
+  if (!p) return;
+  setTikTokStatus('Publishing...', 'info');
+  try {
+    const res = await printStation.tiktokShop.publish(p.numericId || p.id, p.source);
+    if (res?.success) {
+      setTikTokStatus('Published!', 'success');
+      await loadTikTokShopData(true);
+    } else {
+      setTikTokStatus('Error: ' + (res?.error || 'Unknown'), 'error');
+    }
+  } catch (e) {
+    setTikTokStatus('Error: ' + e.message, 'error');
+  }
+}
+
+async function handleTikTokDetailUnpublish() {
+  const p = tiktokShopState.selectedProduct;
+  if (!p) return;
+  setTikTokStatus('Unpublishing...', 'info');
+  try {
+    const res = await printStation.tiktokShop.unpublish(p.numericId || p.id);
+    if (res?.success) {
+      setTikTokStatus('Unpublished!', 'success');
+      await loadTikTokShopData(true);
+    } else {
+      setTikTokStatus('Error: ' + (res?.error || 'Unknown'), 'error');
+    }
+  } catch (e) {
+    setTikTokStatus('Error: ' + e.message, 'error');
+  }
+}
+
+async function handleTikTokBulkPublish() {
+  const ids = Array.from(tiktokShopState.selectedIds);
+  if (!ids.length) return;
+  setTikTokStatus(`Publishing ${ids.length} products...`, 'info');
+  try {
+    const res = await printStation.tiktokShop.bulkPublish(ids);
+    if (res?.success) {
+      setTikTokStatus(`Published ${res.data?.published || 0}/${ids.length}`, 'success');
+      tiktokShopState.selectedIds.clear();
+      updateTikTokBulkBar();
+      await loadTikTokShopData(true);
+    } else {
+      setTikTokStatus('Error: ' + (res?.error || 'Unknown'), 'error');
+    }
+  } catch (e) {
+    setTikTokStatus('Error: ' + e.message, 'error');
+  }
+}
+
+async function handleTikTokBulkUnpublish() {
+  const ids = Array.from(tiktokShopState.selectedIds);
+  if (!ids.length) return;
+  setTikTokStatus(`Unpublishing ${ids.length} products...`, 'info');
+  try {
+    for (const id of ids) {
+      await printStation.tiktokShop.unpublish(id);
+    }
+    setTikTokStatus(`Unpublished ${ids.length} products`, 'success');
+    tiktokShopState.selectedIds.clear();
+    updateTikTokBulkBar();
+    await loadTikTokShopData(true);
+  } catch (e) {
+    setTikTokStatus('Error: ' + e.message, 'error');
+  }
+}
+
+async function handleTikTokBulkScript() {
+  const ids = Array.from(tiktokShopState.selectedIds);
+  if (!ids.length) return;
+  setTikTokStatus(`Generating scripts for ${ids.length} products...`, 'info');
+  try {
+    let done = 0;
+    const allProducts = [...tiktokShopState.products, ...tiktokShopState.candidates];
+    for (const id of ids) {
+      const p = allProducts.find(x => (x.numericId || x.id) === id);
+      if (p) {
+        await printStation.tiktokShop.generateScript({
+          productId: id,
+          title: p.title,
+          productType: p.productType,
+          source: p.source,
+          price: p.minPrice || p.price
+        });
+        done++;
+        setTikTokStatus(`Generated ${done}/${ids.length} scripts...`, 'info');
       }
-
-      // Show output info
-      showStickersOutput(result);
-
-      // Enable print/cut buttons
-      const printBtn = document.getElementById('stickersPrintBtn');
-      const cameoBtn = document.getElementById('stickersSendCameoBtn');
-      if (printBtn) printBtn.disabled = false;
-      if (cameoBtn) cameoBtn.disabled = false;
-
-      // Refresh saved orders list
-      await loadSavedOrders();
-    } else {
-      if (infoEl) infoEl.innerHTML = `<span style="color:#f44;">Error: ${result?.error || 'Unknown error'}</span>`;
     }
-  } catch (err) {
-    console.error('Failed to import order:', err);
-    if (infoEl) infoEl.innerHTML = `<span style="color:#f44;">Error: ${err.message}</span>`;
-  } finally {
-    if (importBtn) {
-      importBtn.disabled = false;
-      importBtn.textContent = 'Import Order';
-    }
+    setTikTokStatus(`Generated ${done} scripts`, 'success');
+    await loadTikTokShopData(true);
+  } catch (e) {
+    setTikTokStatus('Error: ' + e.message, 'error');
   }
 }
 
-async function generateStickersSheets() {
-  const generateBtn = document.getElementById('stickersGenerateBtn');
-  const statusEl = document.getElementById('stickersStatus');
-
-  if (stickersState.selection.size === 0) return;
-
-  // Get size based on mode
-  let size = 3;
-  if (stickersState.mode === 'manual') {
-    const sizeInput = document.getElementById('stickersManualSize');
-    size = parseFloat(sizeInput?.value || 3);
-  }
-
-  // Prepare designs array
-  const designs = Array.from(stickersState.selection.values()).map(item => ({
-    imagePath: item.imagePath,
-    quantity: item.quantity,
-    title: item.title
-  }));
-
-  if (generateBtn) {
-    generateBtn.disabled = true;
-    generateBtn.textContent = 'Generating...';
-  }
-  if (statusEl) statusEl.textContent = 'Generating sheets...';
-
+async function handleTikTokGenerateScript() {
+  const p = tiktokShopState.selectedProduct;
+  if (!p) return;
+  setTikTokStatus('Generating video script...', 'info');
+  document.getElementById('tiktokShopScriptContent').innerHTML = '<p class="placeholder" style="font-size:13px;">Generating script...</p>';
   try {
-    const payload = {
-      designs,
-      stickerSizeInches: size,
-      offsetMm: stickersState.cutSettings.offset,
-      filenamePrefix: stickersState.mode === 'order' && stickersState.currentOrderNumber
-        ? `order-${stickersState.currentOrderNumber}`
-        : 'sticker-sheet',
-      scaleByLargestDimension: stickersState.mode === 'manual', // New flag
-      useRotationPacking: true // Enable rotation-aware packing
-    };
-
-    // If order mode with order number, save to order folder
-    if (stickersState.mode === 'order' && stickersState.currentOrderNumber) {
-      payload.orderNumber = stickersState.currentOrderNumber;
-    }
-
-    const result = await printStation.stickerSheets.generate(payload);
-
-    if (result?.success) {
-      stickersState.generatedSheets = result;
-
-      if (statusEl) statusEl.textContent = `Generated ${result.totalSheets} sheet(s)`;
-
-      showStickersOutput(result);
-
-      // Enable print/cut buttons
-      const printBtn = document.getElementById('stickersPrintBtn');
-      const cameoBtn = document.getElementById('stickersSendCameoBtn');
-      if (printBtn) printBtn.disabled = false;
-      if (cameoBtn) cameoBtn.disabled = false;
-    } else {
-      if (statusEl) statusEl.textContent = `Error: ${result?.error || 'Unknown error'}`;
-    }
-  } catch (err) {
-    console.error('Failed to generate sheets:', err);
-    if (statusEl) statusEl.textContent = `Error: ${err.message}`;
-  } finally {
-    if (generateBtn) {
-      generateBtn.disabled = false;
-      let count = 0;
-      for (const item of stickersState.selection.values()) count += item.quantity;
-      generateBtn.textContent = `Generate Sheets (${count})`;
-    }
-  }
-}
-
-function showStickersOutput(result) {
-  const outputInfo = document.getElementById('stickersOutputInfo');
-  const outputDetails = document.getElementById('stickersOutputDetails');
-
-  if (outputInfo) outputInfo.style.display = 'block';
-  if (outputDetails) {
-    outputDetails.innerHTML = `
-      <div>Total Stickers: <strong>${result.totalStickers}</strong></div>
-      <div>Sheets Generated: <strong>${result.totalSheets}</strong></div>
-      ${result.orderNumber ? `<div>Saved to: Order #${result.orderNumber}</div>` : ''}
-      <div style="margin-top:8px;font-size:10px;color:#888;">${result.outputDir || ''}</div>
-    `;
-  }
-}
-
-async function loadSavedOrders() {
-  const listEl = document.getElementById('stickersSavedOrdersList');
-  if (!listEl) return;
-
-  listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:20px;color:#888;">Loading...</div>';
-
-  try {
-    const result = await printStation.stickerSheets.listSavedOrders();
-
-    if (result?.success && result.orders?.length > 0) {
-      stickersState.savedOrders = result.orders;
-      renderSavedOrders();
-    } else {
-      stickersState.savedOrders = [];
-      listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:30px;color:#888;">No saved order sheets yet</div>';
-    }
-  } catch (err) {
-    console.error('Failed to load saved orders:', err);
-    listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:30px;color:#f44;">Error loading saved orders</div>';
-  }
-}
-
-function filterSavedOrders() {
-  renderSavedOrders();
-}
-
-function renderSavedOrders() {
-  const listEl = document.getElementById('stickersSavedOrdersList');
-  const searchInput = document.getElementById('stickersSavedSearch');
-  if (!listEl) return;
-
-  const query = (searchInput?.value || '').toLowerCase().trim();
-  const filtered = query
-    ? stickersState.savedOrders.filter(o => o.orderNumber.toLowerCase().includes(query))
-    : stickersState.savedOrders;
-
-  if (filtered.length === 0) {
-    listEl.innerHTML = '<div class="placeholder" style="text-align:center;padding:30px;color:#888;">No matching orders found</div>';
-    return;
-  }
-
-  const serverUrl = window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
-
-  listEl.innerHTML = filtered.map(order => `
-    <div class="saved-order-item" style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden;">
-      <div style="padding:10px;background:var(--card);display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <strong style="color:#38bdf8;">Order #${order.orderNumber}</strong>
-          <div style="font-size:11px;color:#888;">${order.sheetCount} sheet(s) - ${order.createdAt}</div>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <button class="secondary" style="font-size:11px;padding:4px 8px;" onclick="loadSavedOrderSheets('${order.orderNumber}')">View</button>
-          <button class="primary" style="font-size:11px;padding:4px 8px;" onclick="reprintSavedOrder('${order.orderNumber}')">Print</button>
-        </div>
-      </div>
-    </div>
-  `).join('');
-}
-
-async function loadSavedOrderSheets(orderNumber) {
-  try {
-    const result = await printStation.stickerSheets.getOrderSheets(orderNumber);
-    if (result?.success && result.sheets) {
-      stickersState.generatedSheets = result;
-      stickersState.currentOrderNumber = orderNumber;
-
-      // Show current order card
-      const currentOrderCard = document.getElementById('stickersCurrentOrder');
-      const orderNumberEl = document.getElementById('stickersOrderNumber');
-      if (currentOrderCard) currentOrderCard.style.display = 'block';
-      if (orderNumberEl) orderNumberEl.textContent = orderNumber;
-
-      showStickersOutput(result);
-
-      // Enable print/cut buttons
-      const printBtn = document.getElementById('stickersPrintBtn');
-      const cameoBtn = document.getElementById('stickersSendCameoBtn');
-      if (printBtn) printBtn.disabled = false;
-      if (cameoBtn) cameoBtn.disabled = false;
-
-      showToast(`Loaded sheets for Order #${orderNumber}`, 'success');
-    }
-  } catch (err) {
-    console.error('Failed to load order sheets:', err);
-    showToast('Failed to load order sheets', 'error');
-  }
-}
-
-async function reprintSavedOrder(orderNumber) {
-  await loadSavedOrderSheets(orderNumber);
-  printStickersSheet();
-}
-
-// Cut Settings
-function toggleCutSettings() {
-  const panel = document.getElementById('stickersCutSettingsPanel');
-  const toggle = document.getElementById('stickersCutSettingsToggle');
-
-  if (panel.style.display === 'none') {
-    panel.style.display = 'block';
-    toggle.textContent = '- Collapse';
-  } else {
-    panel.style.display = 'none';
-    toggle.textContent = '+ Expand';
-  }
-}
-
-async function loadStickersCutSettings() {
-  try {
-    const config = await printStation.getConfig();
-    if (config?.stickersCutSettings) {
-      stickersState.cutSettings = { ...stickersState.cutSettings, ...config.stickersCutSettings };
-
-      // Update UI
-      const depthInput = document.getElementById('stickersCutDepth');
-      const speedInput = document.getElementById('stickersCutSpeed');
-      const pressureInput = document.getElementById('stickersCutPressure');
-      const offsetInput = document.getElementById('stickersCutOffset');
-
-      if (depthInput) depthInput.value = stickersState.cutSettings.depth;
-      if (speedInput) speedInput.value = stickersState.cutSettings.speed;
-      if (pressureInput) pressureInput.value = stickersState.cutSettings.pressure;
-      if (offsetInput) offsetInput.value = stickersState.cutSettings.offset;
-    }
-  } catch (err) {
-    console.error('Failed to load cut settings:', err);
-  }
-}
-
-async function saveStickersCutSettings() {
-  const depthInput = document.getElementById('stickersCutDepth');
-  const speedInput = document.getElementById('stickersCutSpeed');
-  const pressureInput = document.getElementById('stickersCutPressure');
-  const offsetInput = document.getElementById('stickersCutOffset');
-
-  stickersState.cutSettings = {
-    depth: parseInt(depthInput?.value || 5),
-    speed: parseInt(speedInput?.value || 5),
-    pressure: parseInt(pressureInput?.value || 10),
-    offset: parseFloat(offsetInput?.value || 3)
-  };
-
-  try {
-    await printStation.saveConfig({ stickersCutSettings: stickersState.cutSettings });
-    showToast('Cut settings saved', 'success');
-  } catch (err) {
-    console.error('Failed to save cut settings:', err);
-    showToast('Failed to save settings', 'error');
-  }
-}
-
-// Print and Cameo functions
-async function printStickersSheet() {
-  if (!stickersState.generatedSheets?.sheets?.length) {
-    showToast('No sheets to print. Generate sheets first.', 'error');
-    return;
-  }
-
-  const statusEl = document.getElementById('stickersStatus');
-  if (statusEl) statusEl.textContent = 'Sending to printer...';
-
-  try {
-    // Open each print file in the default system viewer/printer
-    // Use blueridgecustomco.com for static library assets (served directly by nginx)
-    const serverUrl = 'https://blueridgecustomco.com';
-
-    for (const sheet of stickersState.generatedSheets.sheets) {
-      const printUrl = `${serverUrl}${sheet.printUrl}`;
-      window.open(printUrl, '_blank');
-    }
-
-    if (statusEl) statusEl.textContent = `Opened ${stickersState.generatedSheets.sheets.length} sheet(s) for printing`;
-    showToast('Sheets opened for printing', 'success');
-  } catch (err) {
-    console.error('Failed to print:', err);
-    if (statusEl) statusEl.textContent = 'Print error';
-    showToast('Failed to print: ' + err.message, 'error');
-  }
-}
-
-async function sendStickersToCameo() {
-  if (!stickersState.generatedSheets?.sheets?.length) {
-    showToast('No sheets to cut. Generate sheets first.', 'error');
-    return;
-  }
-
-  const statusEl = document.getElementById('stickersStatus');
-  if (statusEl) statusEl.textContent = 'Sending to Cameo...';
-
-  try {
-    const result = await printStation.stickerSheets.sendToCameo({
-      sheets: stickersState.generatedSheets.sheets,
-      cutSettings: stickersState.cutSettings
+    const res = await printStation.tiktokShop.generateScript({
+      productId: p.numericId || p.id,
+      title: p.title,
+      productType: p.productType,
+      source: p.source,
+      price: p.minPrice || p.price
     });
-
-    if (result?.success) {
-      if (statusEl) statusEl.textContent = 'Sent to Cameo successfully';
-      showToast('Sent to Cameo!', 'success');
+    if (res?.success && res.data?.script) {
+      renderTikTokScript(res.data.script);
+      p.videoScript = res.data.script;
+      setTikTokStatus('Script generated!', 'success');
     } else {
-      throw new Error(result?.error || 'Failed to send to Cameo');
+      setTikTokStatus('Error: ' + (res?.error || 'Unknown'), 'error');
     }
-  } catch (err) {
-    console.error('Failed to send to Cameo:', err);
-    if (statusEl) statusEl.textContent = 'Cameo error';
-    showToast('Cameo error: ' + err.message, 'error');
+  } catch (e) {
+    setTikTokStatus('Error: ' + e.message, 'error');
   }
 }
 
-// Global exports for onclick handlers
-window.toggleStickersSelection = toggleStickersSelection;
-window.removeStickersItem = removeStickersItem;
-window.updateStickersQuantity = updateStickersQuantity;
-window.toggleCutSettings = toggleCutSettings;
-window.loadSavedOrderSheets = loadSavedOrderSheets;
-window.reprintSavedOrder = reprintSavedOrder;
-window.resolveAssetUrl = resolveAssetUrl;
+async function handleTikTokResearch() {
+  const p = tiktokShopState.selectedProduct;
+  if (!p) return;
+  setTikTokStatus('Researching market...', 'info');
+  document.getElementById('tiktokShopResearchContent').innerHTML = '<p class="placeholder" style="font-size:13px;">Analyzing market...</p>';
+  try {
+    const res = await printStation.tiktokShop.marketResearch({
+      productId: p.numericId || p.id,
+      title: p.title,
+      productType: p.productType,
+      source: p.source,
+      category: p.productType || p.source
+    });
+    if (res?.success && res.data?.research) {
+      renderTikTokResearch(res.data.research);
+      p.marketResearch = res.data.research;
+      setTikTokStatus('Research complete!', 'success');
+    } else {
+      setTikTokStatus('Error: ' + (res?.error || 'Unknown'), 'error');
+    }
+  } catch (e) {
+    setTikTokStatus('Error: ' + e.message, 'error');
+  }
+}
+
+init();
+

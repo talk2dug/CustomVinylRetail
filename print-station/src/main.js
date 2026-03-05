@@ -2,22 +2,32 @@ const { app, BrowserWindow, ipcMain, dialog, shell, protocol } = require('electr
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const https = require('https');
 const FormData = require('form-data');
 const sharp = require('sharp');
 const cp = require('child_process');
 const os = require('os');
 const { LocalCatalogDB } = require('./local-db');
-const { PrinterFleetDB } = require('./printer-fleet-db');
-const { PrinterService } = require('./printer-service');
+const { ServerCatalog } = require('./server-catalog');
 const chokidar = require('chokidar');
-let autoUpdater = null;
+const { autoUpdater } = require('electron-updater');
 let tesseractWorker = null;
+
+// Disable GPU acceleration to prevent GPU process crashes
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+app.commandLine.appendSwitch('no-sandbox');
 
 // Configure sharp to limit memory usage
 // Reduce cache to 50MB and limit concurrency to 2 threads
 sharp.cache({ memory: 50, files: 20, items: 100 });
 sharp.concurrency(2);
+
+// ===========================================
+// Auto-Updater Configuration
+// ===========================================
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
 
 // Store update state
 let updateState = {
@@ -38,16 +48,6 @@ function sendUpdateStatus(win) {
 
 // Initialize auto-updater events
 function initAutoUpdater(win) {
-  // Load the autoUpdater module now that app is ready
-  try {
-    autoUpdater = require('electron-updater').autoUpdater;
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
-  } catch (err) {
-    console.error('[AutoUpdater] Failed to initialize:', err.message);
-    return; // Don't set up events if module failed to load
-  }
-
   autoUpdater.on('checking-for-update', () => {
     console.log('[AutoUpdater] Checking for updates...');
     updateState = { ...updateState, checking: true, error: null };
@@ -116,7 +116,6 @@ function initAutoUpdater(win) {
 
 // IPC handlers for updates
 ipcMain.handle('update:check', async () => {
-  if (!autoUpdater) return { success: false, error: 'Auto-updater not initialized' };
   try {
     const result = await autoUpdater.checkForUpdates();
     return { success: true, updateInfo: result?.updateInfo };
@@ -126,7 +125,6 @@ ipcMain.handle('update:check', async () => {
 });
 
 ipcMain.handle('update:download', async () => {
-  if (!autoUpdater) return { success: false, error: 'Auto-updater not initialized' };
   try {
     await autoUpdater.downloadUpdate();
     return { success: true };
@@ -136,7 +134,6 @@ ipcMain.handle('update:download', async () => {
 });
 
 ipcMain.handle('update:install', () => {
-  if (!autoUpdater) return;
   autoUpdater.quitAndInstall();
 });
 
@@ -158,12 +155,19 @@ const DOC_EXTENSIONS = new Set(['.pdf', '.ai', '.eps']);
 const SCAN_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, ...VECTOR_EXTENSIONS, ...DOC_EXTENSIONS]);
 
 let localDb = null;
-let fleetDb = null;
-let printerService = null;
+let serverCatalog = null;
 let fileWatcher = null;
 let watchConfig = null;
 const cancelledJobs = new Set();
 
+// Use server catalog for shared access across all print stations
+function ensureServerCatalog() {
+  if (serverCatalog) return serverCatalog;
+  serverCatalog = new ServerCatalog(getSettings);
+  return serverCatalog;
+}
+
+// Legacy local DB - kept for fallback/migration but prefer server catalog
 function ensureLocalDb() {
   if (localDb) return localDb;
   try {
@@ -323,12 +327,7 @@ function assertStore() {
 
 function getSettings() {
   assertStore();
-  const settings = { ...defaultSettings, ...store.store };
-  // Auto-populate apiKey from environment if not explicitly configured
-  if (!settings.apiKey) {
-    settings.apiKey = process.env.INTERNAL_API_KEY || process.env.PRINT_STATION_API_KEY || '';
-  }
-  return settings;
+  return { ...defaultSettings, ...store.store };
 }
 
 function updateSettings(updates = {}) {
@@ -920,24 +919,11 @@ async function httpRequest(pathname, options = {}) {
     }
   }
 
-  const timeoutMs = options.timeout || 15000; // 15 second default timeout
-  let response;
-  try {
-    response = await doFetch(url, {
-      method,
-      headers: requestHeaders,
-      body: payload,
-      signal: AbortSignal.timeout(timeoutMs)
-    });
-  } catch (fetchErr) {
-    if (fetchErr.name === 'TimeoutError' || fetchErr.code === 'ABORT_ERR') {
-      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s: ${method} ${pathname}`);
-    }
-    if (fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND' || fetchErr.cause?.code === 'ECONNREFUSED') {
-      throw new Error(`Server unreachable: ${fetchErr.message}`);
-    }
-    throw fetchErr;
-  }
+  const response = await doFetch(url, {
+    method,
+    headers: requestHeaders,
+    body: payload
+  });
 
   // Debug logging for campaign update responses
   if (pathname.includes('/campaigns/')) {
@@ -1428,152 +1414,73 @@ async function uploadArtwork(params) {
     apparelCategory
   } = params || {};
 
-  // Bulk SVG mode: no preview + multiple SVG sources → each SVG becomes its own artwork
-  const svgSources = sourcePaths.filter(p => path.extname(p).toLowerCase() === '.svg');
-  const nonSvgSources = sourcePaths.filter(p => path.extname(p).toLowerCase() !== '.svg');
-
-  if (!previewPath && svgSources.length > 0) {
-    const results = [];
-    for (const svgPath of svgSources) {
-      const svgName = path.basename(svgPath, path.extname(svgPath));
-      const itemName = svgSources.length === 1 && displayName ? displayName : svgName;
-      const result = await uploadSingleArtwork({
-        svgPath,
-        sourcePaths: [svgPath, ...nonSvgSources],
-        categoryMode,
-        existingCategory,
-        newCategoryName,
-        displayName: itemName,
-        apparel,
-        apparelCategory
-      });
-      results.push(result);
-    }
-    return results.length === 1 ? results[0] : { success: true, uploaded: results.length };
-  }
-
   if (!previewPath) {
-    throw new Error('Select a preview image or include SVG source files.');
-  }
-
-  // Standard upload with preview image
-  return uploadSingleArtwork({
-    previewPath,
-    sourcePaths,
-    categoryMode,
-    existingCategory,
-    newCategoryName,
-    displayName,
-    apparel,
-    apparelCategory
-  });
-}
-
-async function uploadSingleArtwork(params) {
-  const {
-    previewPath,
-    svgPath,
-    sourcePaths = [],
-    categoryMode,
-    existingCategory,
-    newCategoryName,
-    displayName,
-    apparel,
-    apparelCategory
-  } = params || {};
-
-  // Convert SVG to PNG for preview if needed
-  let effectivePreviewPath = previewPath;
-  let svgTempPng = null;
-  if (!previewPath && svgPath) {
-    const tempDir = path.join(app.getPath('temp'), 'print-station-assets');
-    try { fs.mkdirSync(tempDir, { recursive: true }); } catch (_) {}
-    svgTempPng = path.join(tempDir, `svg-preview-${Date.now()}.png`);
-    await sharp(svgPath).png().toFile(svgTempPng);
-    effectivePreviewPath = svgTempPng;
+    throw new Error('Select a preview image before uploading.');
   }
 
   const settings = ensureServerConfigured();
   const url = new URL('/api/admin/artwork', settings.serverBaseUrl);
-  const { fetch: doFetch } = await ensureFetch();
-  const maxRetries = 3;
-  let lastError = null;
+  const form = new FormData();
 
-  try {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const form = new FormData();
-        form.append('displayName', displayName || '');
-        form.append('categoryMode', categoryMode || 'existing');
-        if (categoryMode === 'existing' && existingCategory) {
-          form.append('category', existingCategory);
-        }
-        if (categoryMode === 'new' && newCategoryName) {
-          form.append('newCategoryName', newCategoryName);
-        }
-        if (apparel?.enabled) {
-          form.append('apparelEnabled', 'true');
-          if (apparel.productType) form.append('apparelProductType', String(apparel.productType));
-          if (apparel.categoryName) form.append('apparelCategory', String(apparel.categoryName));
-        }
-        if (apparelCategory && !apparel?.categoryName) {
-          form.append('apparelCategory', String(apparelCategory));
-        }
-        form.append('preview', fs.createReadStream(effectivePreviewPath));
-        sourcePaths.filter(Boolean).forEach((filePath) => {
-          form.append('sources', fs.createReadStream(filePath));
-        });
+  form.append('displayName', displayName || '');
+  form.append('categoryMode', categoryMode || 'existing');
+  if (categoryMode === 'existing' && existingCategory) {
+    form.append('category', existingCategory);
+  }
+  if (categoryMode === 'new' && newCategoryName) {
+    form.append('newCategoryName', newCategoryName);
+  }
 
-        const headers = form.getHeaders();
-        if (settings.apiKey) {
-          headers['X-API-Key'] = settings.apiKey;
-        }
-
-        const response = await doFetch(url, {
-          method: 'POST',
-          body: form,
-          headers
-        });
-
-        const contentType = response.headers.get('content-type') || '';
-        if (!response.ok) {
-          let detail;
-          if (contentType.includes('application/json')) {
-            detail = await response.json().catch(() => null);
-          } else {
-            detail = await response.text();
-          }
-          const message =
-            detail && typeof detail === 'object' && detail.error
-              ? detail.error
-              : detail || `Upload failed with status ${response.status}`;
-          const error = new Error(message);
-          error.status = response.status;
-          error.detail = detail;
-          throw error;
-        }
-        return response.json();
-      } catch (err) {
-        lastError = err;
-        const isRetryable = err.code === 'ECONNRESET' || err.code === 'EPIPE' ||
-                            err.code === 'ETIMEDOUT' || err.message?.includes('socket hang up') ||
-                            err.message?.includes('connection reset');
-
-        if (isRetryable && attempt < maxRetries - 1) {
-          const delay = Math.pow(2, attempt) * 1000;
-          console.log(`[Upload] Connection error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
-          await new Promise(r => setTimeout(r, delay));
-          continue;
-        }
-        throw err;
-      }
+  if (apparel?.enabled) {
+    form.append('apparelEnabled', 'true');
+    if (apparel.productType) {
+      form.append('apparelProductType', String(apparel.productType));
     }
-    throw lastError;
-  } finally {
-    if (svgTempPng) {
-      try { fs.unlinkSync(svgTempPng); } catch (_) {}
+    if (apparel.categoryName) {
+      form.append('apparelCategory', String(apparel.categoryName));
     }
   }
+
+  if (apparelCategory && !apparel?.categoryName) {
+    form.append('apparelCategory', String(apparelCategory));
+  }
+
+  form.append('preview', fs.createReadStream(previewPath));
+  sourcePaths.filter(Boolean).forEach((filePath) => {
+    form.append('sources', fs.createReadStream(filePath));
+  });
+
+  const headers = form.getHeaders();
+  if (settings.apiKey) {
+    headers['X-API-Key'] = settings.apiKey;
+  }
+
+  const { fetch: doFetch } = await ensureFetch();
+
+  const response = await doFetch(url, {
+    method: 'POST',
+    body: form,
+    headers
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!response.ok) {
+    let detail;
+    if (contentType.includes('application/json')) {
+      detail = await response.json().catch(() => null);
+    } else {
+      detail = await response.text();
+    }
+    const message =
+      detail && typeof detail === 'object' && detail.error
+        ? detail.error
+        : detail || `Upload failed with status ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.detail = detail;
+    throw error;
+  }
+  return response.json();
 }
 
 function createWindow() {
@@ -1585,8 +1492,7 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false,
-      webviewTag: true
+      nodeIntegration: false
     },
     show: false
   });
@@ -1598,92 +1504,6 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   return mainWindow;
-}
-
-// ==================== 3D Printer Fleet Helpers ====================
-
-function connectToPrinter(printer) {
-  if (!printerService) return;
-
-  const onStatus = (apiUrl, status) => {
-    // Push to renderer
-    const wins = BrowserWindow.getAllWindows();
-    if (wins.length > 0 && !wins[0].isDestroyed()) {
-      wins[0].webContents.send('fleet:printer:status', {
-        printerId: printer.id,
-        apiUrl,
-        ...status
-      });
-    }
-
-    if (!fleetDb) return;
-
-    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printer.id);
-
-    if (status.state === 'printing' && activeJobs.length > 0) {
-      fleetDb.updateJob(activeJobs[0].id, {
-        progress: status.progress || 0,
-        status: 'printing'
-      });
-      printerService.updatePollRate(apiUrl, true);
-    }
-
-    if (status.state === 'complete' && activeJobs.length > 0) {
-      fleetDb.updateJob(activeJobs[0].id, {
-        status: 'completed',
-        progress: 1,
-        completed_at: new Date().toISOString(),
-        print_duration: status.printDuration || 0
-      });
-      printerService.updatePollRate(apiUrl, false);
-    }
-
-    if (status.state === 'error' && activeJobs.length > 0) {
-      const job = activeJobs[0];
-      const jobAgeMs = Date.now() - new Date(job.started_at || job.created_at).getTime();
-      const hasProgress = (job.progress || 0) > 0.005;
-
-      // Grace period: don't mark as error within first 3 minutes of job creation
-      // unless the print has already made progress. This avoids false failures
-      // during the printer's startup calibration phase (homing, bed mesh, etc.)
-      // Also verify the error is for this specific print file when possible.
-      const CALIBRATION_GRACE_MS = 180000; // 3 minutes
-
-      if (jobAgeMs > CALIBRATION_GRACE_MS || hasProgress) {
-        // Past calibration window or print was actively running — real error
-        fleetDb.updateJob(job.id, {
-          status: 'error',
-          error_message: status.message || 'Unknown error',
-          completed_at: new Date().toISOString()
-        });
-        printerService.updatePollRate(apiUrl, false);
-      } else {
-        // Within calibration grace period and no progress yet — likely a transient
-        // error during homing/probing/bed mesh. Log but don't mark job as failed.
-        console.log(`[Fleet] Ignoring transient error during calibration for job ${job.id} (age: ${Math.round(jobAgeMs / 1000)}s): ${status.message || 'Unknown'}`);
-      }
-    }
-
-    // Handle cancelled state from Moonraker
-    if (status.state === 'cancelled' && activeJobs.length > 0) {
-      fleetDb.updateJob(activeJobs[0].id, {
-        status: 'error',
-        error_message: 'Print cancelled',
-        completed_at: new Date().toISOString()
-      });
-      printerService.updatePollRate(apiUrl, false);
-    }
-  };
-
-  // Connect WebSocket for real-time, start polling as fallback
-  printerService.connectWebSocket(printer.api_url, onStatus);
-  printerService.startPolling(printer.api_url, onStatus, 5000);
-}
-
-function disconnectPrinter(printer) {
-  if (!printerService) return;
-  printerService.disconnectWebSocket(printer.api_url);
-  printerService.stopPolling(printer.api_url);
 }
 
 function registerIpcHandlers() {
@@ -1947,60 +1767,6 @@ function registerIpcHandlers() {
     }
   });
 
-  // ---- STL Thumbnail Disk Cache ----
-  const getStlThumbCacheDir = () => path.join(app.getPath('userData'), 'stl-thumb-cache');
-
-  // Batch check which thumbnails are cached on disk
-  ipcMain.handle('slicer:thumb:batchGet', async (_event, stlIds) => {
-    if (!Array.isArray(stlIds) || !stlIds.length) return {};
-    const cacheDir = getStlThumbCacheDir();
-    try { await fsPromises.mkdir(cacheDir, { recursive: true }); } catch {}
-
-    const results = {};
-    for (const id of stlIds) {
-      const thumbPath = path.join(cacheDir, `${id}.png`);
-      try {
-        await fsPromises.access(thumbPath, fs.constants.F_OK);
-        results[id] = `file://${thumbPath.replace(/\\/g, '/')}`;
-      } catch {
-        results[id] = null;
-      }
-    }
-    return results;
-  });
-
-  // Save a rendered thumbnail to disk
-  ipcMain.handle('slicer:thumb:save', async (_event, { stlId, dataUrl }) => {
-    if (!stlId || !dataUrl) return null;
-    const cacheDir = getStlThumbCacheDir();
-    try { await fsPromises.mkdir(cacheDir, { recursive: true }); } catch {}
-
-    const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    const thumbPath = path.join(cacheDir, `${stlId}.png`);
-    await fsPromises.writeFile(thumbPath, buffer);
-    return `file://${thumbPath.replace(/\\/g, '/')}`;
-  });
-
-  // Delete a single cached thumbnail
-  ipcMain.handle('slicer:thumb:delete', async (_event, stlId) => {
-    const thumbPath = path.join(getStlThumbCacheDir(), `${stlId}.png`);
-    try { await fsPromises.unlink(thumbPath); return true; } catch { return false; }
-  });
-
-  // Clear all cached thumbnails
-  ipcMain.handle('slicer:thumb:clear', async () => {
-    try {
-      const cacheDir = getStlThumbCacheDir();
-      const files = await fsPromises.readdir(cacheDir);
-      let cleared = 0;
-      for (const file of files) {
-        try { await fsPromises.unlink(path.join(cacheDir, file)); cleared++; } catch {}
-      }
-      return { cleared };
-    } catch { return { cleared: 0 }; }
-  });
-
   ipcMain.handle('queue:fetch', (_event, args) => fetchQueue(args || {}));
 
   ipcMain.handle('queue:ack', (_event, payload) => markDownloaded(payload || {}));
@@ -2015,66 +1781,6 @@ function registerIpcHandlers() {
   ipcMain.handle('catalog:rename', (_event, payload) => catalogRename(payload || {}));
   ipcMain.handle('catalog:delete', (_event, payload) => catalogDelete(payload || {}));
   ipcMain.handle('catalog:folder:create', (_event, payload) => catalogCreateFolder(payload || {}));
-
-  // Catalog - Extract ZIP file and return image paths (streaming - no size limit)
-  ipcMain.handle('catalog:extract-zip', async (_event, zipPath) => {
-    const unzipper = require('unzipper');
-    const path = require('path');
-    const os = require('os');
-    const fs = require('fs');
-
-    try {
-      // Create temp directory for extraction
-      const tempDir = path.join(os.tmpdir(), `catalog-zip-${Date.now()}`);
-      fs.mkdirSync(tempDir, { recursive: true });
-
-      const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
-      const extractedPaths = [];
-
-      // Use streaming extraction - no file size limit
-      const directory = await unzipper.Open.file(zipPath);
-
-      for (const entry of directory.files) {
-        if (entry.type === 'Directory') continue;
-
-        const ext = path.extname(entry.path).toLowerCase();
-        if (!imageExtensions.includes(ext)) continue;
-
-        // Skip __MACOSX and hidden files
-        if (entry.path.includes('__MACOSX') || entry.path.startsWith('.') || entry.path.includes('/.')) {
-          continue;
-        }
-
-        // Extract to temp directory with flat structure
-        const filename = path.basename(entry.path);
-        const destPath = path.join(tempDir, filename);
-
-        // Handle duplicate filenames
-        let finalPath = destPath;
-        let counter = 1;
-        while (fs.existsSync(finalPath)) {
-          const name = path.basename(filename, ext);
-          finalPath = path.join(tempDir, `${name}_${counter}${ext}`);
-          counter++;
-        }
-
-        // Stream extraction - handles large files
-        await new Promise((resolve, reject) => {
-          entry.stream()
-            .pipe(fs.createWriteStream(finalPath))
-            .on('finish', resolve)
-            .on('error', reject);
-        });
-        extractedPaths.push(finalPath);
-      }
-
-      console.log(`[Catalog ZIP] Extracted ${extractedPaths.length} images from ${path.basename(zipPath)}`);
-      return { success: true, filePaths: extractedPaths, tempDir };
-    } catch (error) {
-      console.error('Catalog ZIP extraction error:', error);
-      return { success: false, error: error.message };
-    }
-  });
 
   ipcMain.handle('artwork:upload', (_event, payload) => uploadArtwork(payload || {}));
 
@@ -2161,14 +1867,13 @@ function registerIpcHandlers() {
   ipcMain.handle('social:fb:publish', async (_event, payload = {}) => {
     try {
       const socialMarketing = require('./social-marketing');
-      const { text, images, collectionUrl, imageFormat, category } = payload;
+      const { text, images, collectionUrl, imageFormat } = payload;
 
       const result = await socialMarketing.publishPost({
         text,
         images,
         collectionUrl,
-        imageFormat,
-        category
+        imageFormat
       });
 
       return { success: true, data: result };
@@ -2182,15 +1887,14 @@ function registerIpcHandlers() {
   ipcMain.handle('social:fb:schedule', async (_event, payload = {}) => {
     try {
       const socialMarketing = require('./social-marketing');
-      const { text, images, collectionUrl, imageFormat, scheduledTime, category } = payload;
+      const { text, images, collectionUrl, imageFormat, scheduledTime } = payload;
 
       const result = await socialMarketing.schedulePost({
         text,
         images,
         collectionUrl,
         imageFormat,
-        scheduledTime,
-        category
+        scheduledTime
       });
 
       return { success: true, data: result };
@@ -2595,142 +2299,67 @@ Return ONLY valid JSON, nothing else:
   // Print with OS dialog (gives full control over settings)
   ipcMain.handle('print:printWithDialog', async (_event, options = {}) => {
     try {
-      const { imagePath, imageUrl, imageUrls } = options;
-      const fs = require('fs');
-      const path = require('path');
-      const https = require('https');
-      const http = require('http');
-      const os = require('os');
-
-      // Support single image (imagePath or imageUrl) or multiple images (imageUrls)
-      let imageSources = [];
-      if (imageUrls && Array.isArray(imageUrls) && imageUrls.length > 0) {
-        imageSources = imageUrls;
-      } else if (imageUrl) {
-        imageSources = [imageUrl];
-      } else if (imagePath) {
-        imageSources = [imagePath];
+      const { imagePath } = options;
+      if (!imagePath) {
+        return { success: false, error: 'No image path provided' };
       }
 
-      if (imageSources.length === 0) {
-        return { success: false, error: 'No image path or URL provided' };
-      }
-
-      console.log('[Print] Starting print with', imageSources.length, 'image(s)');
-
-      // Download remote images to temp files if needed
-      const tempFiles = [];
-      const localPaths = [];
-
-      for (const src of imageSources) {
-        if (src.startsWith('http://') || src.startsWith('https://')) {
-          // Download to temp file
-          const tempPath = path.join(os.tmpdir(), `print_${Date.now()}_${Math.random().toString(36).slice(2)}.png`);
-          console.log('[Print] Downloading', src, 'to', tempPath);
-
-          await new Promise((resolve, reject) => {
-            const client = src.startsWith('https') ? https : http;
-            const file = fs.createWriteStream(tempPath);
-            client.get(src, (response) => {
-              if (response.statusCode === 301 || response.statusCode === 302) {
-                // Follow redirect
-                client.get(response.headers.location, (res2) => {
-                  res2.pipe(file);
-                  file.on('finish', () => { file.close(); resolve(); });
-                }).on('error', reject);
-              } else {
-                response.pipe(file);
-                file.on('finish', () => { file.close(); resolve(); });
-              }
-            }).on('error', reject);
-          });
-
-          tempFiles.push(tempPath);
-          localPaths.push(tempPath);
-        } else {
-          // Already a local path
-          localPaths.push(src.replace(/^file:\/\//, ''));
-        }
-      }
-
-      console.log('[Print] Local paths:', localPaths);
-
-      // Use Electron's print with proper full-page sizing
+      // Create a hidden window to render and print the image
       const { BrowserWindow } = require('electron');
-
-      // Create HTML file that references the local images directly
-      // Use file:// URLs which work better than data URIs for large images
-      const imagesHtml = localPaths.map((filePath, i) => {
-        // Convert Windows path to proper file:// URL
-        const fileUrl = 'file:///' + filePath.replace(/\\/g, '/').replace(/^\//, '');
-        return `
-        <div class="page" ${i < localPaths.length - 1 ? 'style="page-break-after: always;"' : ''}>
-          <img src="${fileUrl}" />
-        </div>
-      `;
-      }).join('');
-
-      const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; margin: 0; padding: 0; background: white; }
-    @page { size: Letter portrait; margin: 0; }
-    @media print {
-      html, body { width: 8.5in; height: 11in; margin: 0 !important; padding: 0 !important; }
-      .page { width: 8.5in !important; height: 11in !important; page-break-inside: avoid; overflow: hidden; }
-      img { width: 8.5in !important; height: 11in !important; object-fit: fill !important; }
-    }
-    .page { width: 8.5in; height: 11in; overflow: hidden; background: white; }
-    img { width: 8.5in; height: 11in; object-fit: fill; display: block; }
-  </style>
-</head>
-<body>${imagesHtml}</body>
-</html>`;
-
-      // Write HTML to a temp file (more reliable than data URI for large content)
-      const tempHtmlPath = path.join(os.tmpdir(), `print_${Date.now()}.html`);
-      fs.writeFileSync(tempHtmlPath, htmlContent);
-      tempFiles.push(tempHtmlPath);
-      console.log('[Print] Created temp HTML:', tempHtmlPath);
-
       const printWindow = new BrowserWindow({
-        width: 816,
-        height: 1056,
-        show: true,  // Show window so print dialog appears properly
+        width: 800,
+        height: 600,
+        show: false,
         webPreferences: {
           nodeIntegration: false,
-          contextIsolation: true,
-          webSecurity: false  // Allow loading local file:// images
+          contextIsolation: true
         }
       });
 
-      // Load the HTML file
-      await printWindow.loadFile(tempHtmlPath);
-      console.log('[Print] HTML loaded');
+      // Create HTML content with the image
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 100vh;
+              background: white;
+            }
+            img {
+              max-width: 100%;
+              max-height: 100vh;
+              object-fit: contain;
+            }
+            @media print {
+              body { margin: 0; }
+              img { max-width: 100%; max-height: 100%; }
+            }
+          </style>
+        </head>
+        <body>
+          <img src="file://${imagePath.replace(/\\/g, '/')}" />
+        </body>
+        </html>
+      `;
 
-      // Wait for images to load
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log('[Print] Opening print dialog...');
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+      // Wait for image to load
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       return new Promise((resolve) => {
-        printWindow.webContents.print({
-          silent: false,
-          printBackground: true,
-          pageSize: 'Letter',
-          margins: { marginType: 'none' },
-          scaleFactor: 100
-        }, (success, failureReason) => {
-          console.log('[Print] Print result:', success, failureReason);
+        printWindow.webContents.print({ silent: false }, (success, failureReason) => {
           printWindow.close();
-          // Cleanup temp files after delay
-          setTimeout(() => {
-            for (const f of tempFiles) {
-              try { fs.unlinkSync(f); } catch (e) { /* ignore */ }
-            }
-          }, 60000);
-          resolve({ success, error: failureReason });
+          if (success) {
+            resolve({ success: true });
+          } else {
+            resolve({ success: false, error: failureReason || 'Print cancelled or failed' });
+          }
         });
       });
     } catch (error) {
@@ -3500,12 +3129,12 @@ Return ONLY valid JSON, nothing else:
     return results;
   });
 
-  // Local catalog: import a batch of scanned items into SQLite (dedupe by hash)
+  // Local catalog: import a batch of scanned items to server (dedupe by hash)
   ipcMain.handle('local:import', async (_event, payload = {}) => {
     const { items = [] } = payload || {};
     if (!Array.isArray(items) || !items.length) return [];
-    ensureLocalDb();
-    if (!localDb) return [];
+    const catalog = ensureServerCatalog();
+    const settings = getSettings();
     const saved = [];
     for (const item of items) {
       try {
@@ -3513,7 +3142,7 @@ Return ONLY valid JSON, nothing else:
         if (!phash) {
           try { phash = await computePhash(item.path); } catch (_) {}
         }
-        const record = localDb.upsert({
+        const record = await catalog.upsert({
           path: item.path,
           category: item.category,
           title: item.title,
@@ -3521,57 +3150,88 @@ Return ONLY valid JSON, nothing else:
           size: item.size,
           hash: item.hash,
           phash,
-          status: 'imported'
+          status: 'imported',
+          importedBy: settings.employeeName || 'print-station'
         });
         saved.push(record);
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[local:import] Failed to upsert item:', err?.message || err);
+      }
     }
     return saved;
   });
 
-  ipcMain.handle('local:list', (_event, options) => {
-    const db = ensureLocalDb();
-    if (!db) return [];
-    return db.list(options || {});
+  ipcMain.handle('local:list', async (_event, options) => {
+    try {
+      const catalog = ensureServerCatalog();
+      return await catalog.list(options || {});
+    } catch (err) {
+      console.warn('[local:list] Server catalog unavailable, falling back to local:', err?.message);
+      const db = ensureLocalDb();
+      if (!db) return [];
+      return db.list(options || {});
+    }
   });
 
-  ipcMain.handle('local:update', (_event, payload = {}) => {
+  ipcMain.handle('local:update', async (_event, payload = {}) => {
     const { id, updates } = payload || {};
     if (!id) throw new Error('id is required');
-    const db = ensureLocalDb();
-    if (!db) throw new Error('Local catalog DB unavailable.');
-    return db.update(id, updates || {});
+    try {
+      const catalog = ensureServerCatalog();
+      return await catalog.update(id, updates || {});
+    } catch (err) {
+      console.warn('[local:update] Server catalog unavailable:', err?.message);
+      throw err;
+    }
   });
 
-  ipcMain.handle('local:delete', (_event, id) => {
+  ipcMain.handle('local:delete', async (_event, id) => {
     if (!id) throw new Error('id is required');
-    const db = ensureLocalDb();
-    if (!db) throw new Error('Local catalog DB unavailable.');
-    db.remove(id);
-    return { success: true };
+    try {
+      const catalog = ensureServerCatalog();
+      await catalog.remove(id);
+      return { success: true };
+    } catch (err) {
+      console.warn('[local:delete] Server catalog unavailable:', err?.message);
+      throw err;
+    }
   });
 
-  ipcMain.handle('local:categories', () => {
-    const db = ensureLocalDb();
-    if (!db) return [];
-    return db.categories();
+  ipcMain.handle('local:categories', async () => {
+    try {
+      const catalog = ensureServerCatalog();
+      return await catalog.categories();
+    } catch (err) {
+      console.warn('[local:categories] Server catalog unavailable, falling back to local:', err?.message);
+      const db = ensureLocalDb();
+      if (!db) return [];
+      return db.categories();
+    }
   });
 
-  ipcMain.handle('local:approve', (_event, payload = {}) => {
+  ipcMain.handle('local:approve', async (_event, payload = {}) => {
     const { ids = [] } = payload || {};
     if (!Array.isArray(ids) || !ids.length) return { updated: 0 };
-    const db = ensureLocalDb();
-    if (!db) return { updated: 0 };
-    const updated = db.updateMany(ids, { status: 'approved' });
-    return { updated };
+    try {
+      const catalog = ensureServerCatalog();
+      const updated = await catalog.updateMany(ids, { status: 'approved' });
+      return { updated };
+    } catch (err) {
+      console.warn('[local:approve] Server catalog unavailable:', err?.message);
+      throw err;
+    }
   });
 
-  ipcMain.handle('local:approveCategory', (_event, category) => {
+  ipcMain.handle('local:approveCategory', async (_event, category) => {
     if (typeof category !== 'string') throw new Error('category is required');
-    const db = ensureLocalDb();
-    if (!db) return { updated: 0 };
-    const updated = db.approveCategory(category);
-    return { updated };
+    try {
+      const catalog = ensureServerCatalog();
+      const updated = await catalog.approveCategory(category);
+      return { updated };
+    } catch (err) {
+      console.warn('[local:approveCategory] Server catalog unavailable:', err?.message);
+      throw err;
+    }
   });
 
   // Export selected items to a directory (optimized preview preferred)
@@ -3584,9 +3244,10 @@ Return ONLY valid JSON, nothing else:
       if (res.canceled || !res.filePaths?.[0]) return { exported: 0, files: [] };
       targetDir = res.filePaths[0];
     }
+    const catalog = ensureServerCatalog();
     const files = [];
     for (const id of ids) {
-      const row = ensureLocalDb()?.getById(id);
+      const row = await catalog.getById(id);
       if (!row) continue;
       let src = row.path;
       if (variant === 'preview') {
@@ -3624,6 +3285,7 @@ Return ONLY valid JSON, nothing else:
       if (res2.canceled || !res2.filePaths?.[0]) return { generated: 0, files: [] };
       outDir = res2.filePaths[0];
     }
+    const catalog = ensureServerCatalog();
     const bgMeta = await sharp(bgPath).metadata();
     const bgW = bgMeta.width || 2000;
     const targetW = Math.round((Math.max(10, Math.min(150, Number(widthPct))) / 100) * bgW);
@@ -3633,7 +3295,7 @@ Return ONLY valid JSON, nothing else:
     for (let i = 0; i < ids.length; i++) {
       if (jobId && cancelledJobs.has(String(jobId))) break;
       const id = ids[i];
-      const row = localDb.getById(id);
+      const row = await catalog.getById(id);
       if (!row) continue;
       const preview = row.optimized_path || (await optimizePreview(row));
     // Allow upscaling here so small decals can be made large enough
@@ -4154,48 +3816,24 @@ Return ONLY valid JSON, nothing else:
     }
   });
 
-  // Remove background from an image and return as base64 PNG
-  ipcMain.handle('image:removeBackground', async (_event, payload = {}) => {
-    const { imageUrl, keyColor = '#ffffff', fuzzPct = 10 } = payload || {};
-    if (!imageUrl) throw new Error('imageUrl is required');
-
-    try {
-      // Resolve image to buffer
-      const buffer = await resolveToBuffer(imageUrl);
-      if (!buffer) throw new Error('Could not load image');
-
-      // Remove background using ImageMagick
-      const stripped = await removeBackgroundWithMagickBuffer(buffer, { keyColor, fuzzPct });
-      if (!stripped) throw new Error('Background removal failed - ImageMagick may not be installed');
-
-      // Return as base64 data URL
-      const base64 = stripped.toString('base64');
-      return {
-        success: true,
-        dataUrl: `data:image/png;base64,${base64}`
-      };
-    } catch (err) {
-      console.error('[image:removeBackground] Error:', err?.message || err);
-      throw new Error(`Background removal failed: ${err?.message || err}`);
-    }
-  });
-
   // Optimize an image for preview/publish and store optimized path in DB
   ipcMain.handle('local:optimize', async (_event, id) => {
     if (!id) throw new Error('id is required');
-    const row = ensureLocalDb()?.getById(id);
+    const catalog = ensureServerCatalog();
+    const row = await catalog.getById(id);
     if (!row) throw new Error('Item not found');
     const optimized = await optimizePreview(row);
-    const updated = ensureLocalDb().update(id, { optimized_path: optimized });
+    const updated = await catalog.update(id, { optimized_path: optimized });
     return updated;
   });
 
   // Publish selected items to hosted server as new artwork
   ipcMain.handle('local:publish', async (_event, payload = {}) => {
     const { ids = [] } = payload || {};
+    const catalog = ensureServerCatalog();
     const published = [];
     for (const id of ids) {
-      const row = ensureLocalDb()?.getById(id);
+      const row = await catalog.getById(id);
       if (!row) continue;
       try {
         const previewPath = row.optimized_path || (await optimizePreview(row));
@@ -4218,7 +3856,7 @@ Return ONLY valid JSON, nothing else:
           newCategoryName: String(row.category || 'Uncategorized'),
           displayName
         });
-        ensureLocalDb().update(id, { status: 'published', optimized_path: previewPath });
+        await catalog.update(id, { status: 'published', optimized_path: previewPath });
         published.push({ id, success: true });
       } catch (err) {
         published.push({ id, success: false, error: err?.message || 'Publish failed' });
@@ -4230,9 +3868,10 @@ Return ONLY valid JSON, nothing else:
   // OCR extraction for a given path or item id
   ipcMain.handle('local:ocr', async (_event, payload = {}) => {
     const { id, path: filePath } = payload || {};
+    const catalog = ensureServerCatalog();
     let targetPath = filePath || null;
     if (!targetPath && id) {
-      const row = localDb.getById(id);
+      const row = await catalog.getById(id);
       if (!row) throw new Error('Item not found');
       // Prefer optimized preview for better OCR
       const previewPath = row.optimized_path || (await optimizePreview(row));
@@ -4244,7 +3883,7 @@ Return ONLY valid JSON, nothing else:
     const tags = suggestTags(text);
     // Persist if id provided
     if (id) {
-      try { localDb.update(id, { tags: JSON.stringify(tags) }); } catch (_) {}
+      try { await catalog.update(id, { tags: JSON.stringify(tags) }); } catch (_) {}
     }
     return { text, tags };
   });
@@ -4821,7 +4460,6 @@ Return ONLY valid JSON, nothing else:
     // Send to server for tile generation
     return httpRequest('/api/custom-art/tiles/generate', {
       method: 'POST',
-      timeout: 60000,
       body: {
         artworkId,
         cols,
@@ -4920,11 +4558,6 @@ Return ONLY valid JSON, nothing else:
     httpRequest('/api/sticker-sheets/generate', { method: 'POST', body: payload || {} })
   );
 
-  // Generate sheets from manual visual layout
-  ipcMain.handle('sticker-sheets:generate-from-layout', (_event, layoutData) =>
-    httpRequest('/api/sticker-sheets/generate-from-layout', { method: 'POST', body: layoutData || {} })
-  );
-
   ipcMain.handle('sticker-sheets:from-order', (_event, payload) =>
     httpRequest('/api/sticker-sheets/from-order', { method: 'POST', body: payload || {} })
   );
@@ -4932,513 +4565,6 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('sticker-sheets:list', () =>
     httpRequest('/api/sticker-sheets/list', { method: 'GET' })
   );
-
-  // New handlers for order-based sticker sheet storage
-  ipcMain.handle('sticker-sheets:list-saved-orders', () =>
-    httpRequest('/api/sticker-sheets/saved-orders', { method: 'GET' })
-  );
-
-  ipcMain.handle('sticker-sheets:get-order-sheets', (_event, { orderNumber }) =>
-    httpRequest(`/api/sticker-sheets/order/${encodeURIComponent(orderNumber)}`, { method: 'GET' })
-  );
-
-  ipcMain.handle('sticker-sheets:send-to-cameo', (_event, payload) =>
-    httpRequest('/api/sticker-sheets/send-to-cameo', { method: 'POST', body: payload || {} })
-  );
-
-  // Delete a sticker sheet batch
-  ipcMain.handle('sticker-sheets:delete-batch', (_event, { batchName }) =>
-    httpRequest(`/api/sticker-sheets/batch/${encodeURIComponent(batchName)}`, { method: 'DELETE' })
-  );
-
-  // Get contour for a sticker (lazy generation with caching)
-  ipcMain.handle('sticker-sheets:get-contour', async (_event, { imagePath }) => {
-    if (!imagePath) {
-      return { success: false, error: 'Image path is required' };
-    }
-    // Encode path as base64 for URL safety
-    const encodedPath = Buffer.from(imagePath).toString('base64');
-    return httpRequest(`/api/stickers/contour/${encodedPath}`, { method: 'GET' });
-  });
-
-  // ============================================================================
-  // Vinyl Cutter handlers
-  // ============================================================================
-
-  // Vectorize an image for vinyl cutting (with color detection)
-  ipcMain.handle('vinyl-cutter:vectorize', async (_event, { imagePath }) => {
-    if (!imagePath) {
-      return { success: false, error: 'Image path is required' };
-    }
-    return httpRequest('/api/vinyl-cutter/vectorize', {
-      method: 'POST',
-      body: { imagePath }
-    });
-  });
-
-  // Generate cut files with color separation
-  ipcMain.handle('vinyl-cutter:generate', (_event, data) =>
-    httpRequest('/api/vinyl-cutter/generate', { method: 'POST', body: data || {} })
-  );
-
-  // List generated vinyl cut batches
-  ipcMain.handle('vinyl-cutter:list', () =>
-    httpRequest('/api/vinyl-cutter/list', { method: 'GET' })
-  );
-
-  // Delete a vinyl cut batch
-  ipcMain.handle('vinyl-cutter:delete', (_event, { batchName }) =>
-    httpRequest(`/api/vinyl-cutter/batch/${encodeURIComponent(batchName)}`, { method: 'DELETE' })
-  );
-
-  // Send vinyl cut file to Silhouette - uses local Python script (same as cameo:open-cut-file)
-  ipcMain.handle('vinyl-cutter:send-to-silhouette', async (_event, payload) => {
-    const { batchName, fileName, cutSettings = {} } = payload || {};
-
-    if (!batchName || !fileName) {
-      return { success: false, error: 'batchName and fileName are required' };
-    }
-
-    const fs = require('fs');
-    const path = require('path');
-    const os = require('os');
-    const https = require('https');
-    const http = require('http');
-    const { exec } = require('child_process');
-
-    // Get server base URL from config
-    const settings = ensureServerConfigured();
-    const serverBaseUrl = settings.serverBaseUrl;
-
-    // Build the URL to download the cut file
-    const fileUrl = `${serverBaseUrl}/library/vinyl-cuts/${batchName}/${fileName}`;
-    console.log('[Vinyl Cameo] Downloading cut file:', fileUrl);
-
-    try {
-      // Download the SVG to a temp file
-      const tempPath = path.join(os.tmpdir(), `vinyl_cut_${Date.now()}.svg`);
-
-      await new Promise((resolve, reject) => {
-        const protocol = fileUrl.startsWith('https') ? https : http;
-        const file = fs.createWriteStream(tempPath);
-
-        protocol.get(fileUrl, {
-          headers: { 'Accept': 'image/svg+xml,*/*' },
-          rejectUnauthorized: false
-        }, (response) => {
-          if (response.statusCode === 301 || response.statusCode === 302) {
-            // Handle redirect
-            protocol.get(response.headers.location, {
-              rejectUnauthorized: false
-            }, (redirectRes) => {
-              redirectRes.pipe(file);
-              file.on('finish', () => { file.close(); resolve(); });
-            }).on('error', reject);
-            return;
-          }
-          response.pipe(file);
-          file.on('finish', () => { file.close(); resolve(); });
-        }).on('error', reject);
-      });
-
-      console.log('[Vinyl Cameo] Downloaded, file size:', fs.statSync(tempPath).size, 'bytes');
-
-      // Path to the sendto_silhouette.py script
-      const scriptPath = 'F:\\Vinyl Stuff\\StickerSheets\\sendto_silhouette.py';
-
-      // Check if script exists
-      if (!fs.existsSync(scriptPath)) {
-        return { success: false, error: `Silhouette script not found at: ${scriptPath}` };
-      }
-
-      // Build command with settings for vinyl cutting
-      // For vinyl cutting, we DON'T use registration marks - just cut from origin
-      // This is different from sticker print-and-cut which needs regmarks
-      const speed = cutSettings.speed || 4;
-      const pressure = cutSettings.pressure || 15;
-      const depth = cutSettings.depth || 6;
-      const xOffset = cutSettings.xOffset || 0;
-      const yOffset = cutSettings.yOffset || 0;
-
-      // Vinyl cutting: NO registration marks, just cut directly
-      const args = [
-        `"${tempPath}"`,
-        '--regmark=false',     // No registration marks for vinyl
-        '--regsearch=false',   // Don't search for marks
-        `--speed=${speed}`,
-        `--pressure=${pressure}`,
-        `--depth=${depth}`,
-        '--tool=autoblade',
-        `--x_off=${xOffset}`,
-        `--y_off=${yOffset}`
-      ];
-
-      const command = `python "${scriptPath}" ${args.join(' ')}`;
-      console.log('[Vinyl Cameo] Executing:', command);
-
-      // Execute the Python script
-      return new Promise((resolve) => {
-        exec(command, {
-          cwd: path.dirname(scriptPath),
-          timeout: 300000,  // 5 minute timeout for cutting
-        }, (error, stdout, stderr) => {
-          // Clean up temp file
-          try { fs.unlinkSync(tempPath); } catch (e) { /* ignore */ }
-
-          if (error) {
-            console.error('[Vinyl Cameo] Error:', error.message);
-            console.error('[Vinyl Cameo] stderr:', stderr);
-            resolve({ success: false, error: stderr || error.message });
-            return;
-          }
-
-          console.log('[Vinyl Cameo] Success:', stdout);
-          resolve({ success: true, message: 'Sent to Silhouette', output: stdout });
-        });
-      });
-
-    } catch (err) {
-      console.error('[Vinyl Cameo] Failed:', err);
-      return { success: false, error: err.message };
-    }
-  });
-
-  // ========================================
-  // Studio3 Parser Handlers
-  // ========================================
-  const Studio3Parser = require('./studio3-parser');
-
-  // Parse a .studio3 file and extract all data
-  ipcMain.handle('studio3:parse', async (_event, filepath) => {
-    try {
-      console.log('[Studio3] Parsing file:', filepath);
-      const parser = new Studio3Parser(filepath);
-      const data = await parser.parse();
-
-      // Convert image buffers to base64 for IPC transfer
-      const images = data.images.map(img => ({
-        index: img.index,
-        size: img.size,
-        base64: img.buffer.toString('base64'),
-        mimeType: 'image/png'
-      }));
-
-      return {
-        success: true,
-        images,
-        paths: data.paths,
-        metadata: data.metadata,
-        svg: data.svg
-      };
-    } catch (err) {
-      console.error('[Studio3] Parse error:', err);
-      return { success: false, error: err.message };
-    }
-  });
-
-  // Extract just the images from a .studio3 file
-  ipcMain.handle('studio3:extractImages', async (_event, filepath) => {
-    try {
-      const parser = new Studio3Parser(filepath);
-      await parser.load();
-      const images = parser.extractImages();
-
-      return {
-        success: true,
-        images: images.map(img => ({
-          index: img.index,
-          size: img.size,
-          base64: img.buffer.toString('base64'),
-          mimeType: 'image/png'
-        }))
-      };
-    } catch (err) {
-      console.error('[Studio3] Extract images error:', err);
-      return { success: false, error: err.message };
-    }
-  });
-
-  // Extract just the cut paths from a .studio3 file
-  ipcMain.handle('studio3:extractPaths', async (_event, filepath) => {
-    try {
-      const parser = new Studio3Parser(filepath);
-      await parser.load();
-      const paths = parser.extractCutPaths();
-
-      return {
-        success: true,
-        paths,
-        pathCount: paths.length,
-        totalPoints: paths.reduce((sum, p) => sum + p.length, 0)
-      };
-    } catch (err) {
-      console.error('[Studio3] Extract paths error:', err);
-      return { success: false, error: err.message };
-    }
-  });
-
-  // Convert cut paths to SVG
-  ipcMain.handle('studio3:toSvg', async (_event, filepath, options = {}) => {
-    try {
-      const parser = new Studio3Parser(filepath);
-      await parser.load();
-      const svg = parser.toSvg(options);
-
-      return { success: true, svg };
-    } catch (err) {
-      console.error('[Studio3] SVG conversion error:', err);
-      return { success: false, error: err.message };
-    }
-  });
-
-  // Save extracted images to a directory
-  ipcMain.handle('studio3:saveImages', async (_event, filepath, outputDir) => {
-    try {
-      const parser = new Studio3Parser(filepath);
-      await parser.load();
-      const saved = await parser.saveImages(outputDir);
-
-      return { success: true, files: saved };
-    } catch (err) {
-      console.error('[Studio3] Save images error:', err);
-      return { success: false, error: err.message };
-    }
-  });
-
-  // Browse for .studio3 files
-  ipcMain.handle('studio3:browse', async () => {
-    const { dialog } = require('electron');
-    const result = await dialog.showOpenDialog({
-      title: 'Select Studio3 Files',
-      filters: [
-        { name: 'Silhouette Studio Files', extensions: ['studio3'] },
-        { name: 'All Files', extensions: ['*'] }
-      ],
-      properties: ['openFile', 'multiSelections']
-    });
-
-    if (result.canceled) {
-      return { success: false, canceled: true };
-    }
-
-    return { success: true, files: result.filePaths };
-  });
-
-  // Batch parse multiple .studio3 files (for catalog building)
-  ipcMain.handle('studio3:batchParse', async (_event, filepaths) => {
-    const results = [];
-
-    for (const filepath of filepaths) {
-      try {
-        const parser = new Studio3Parser(filepath);
-        const data = await parser.parse();
-
-        results.push({
-          filepath,
-          success: true,
-          imageCount: data.images.length,
-          pathCount: data.paths.length,
-          metadata: data.metadata,
-          // Include thumbnail (first image) as base64
-          thumbnail: data.images.length > 0
-            ? data.images[0].buffer.toString('base64')
-            : null
-        });
-      } catch (err) {
-        results.push({
-          filepath,
-          success: false,
-          error: err.message
-        });
-      }
-    }
-
-    return {
-      success: true,
-      total: filepaths.length,
-      parsed: results.filter(r => r.success).length,
-      failed: results.filter(r => !r.success).length,
-      results
-    };
-  });
-
-  // Google Drive Sync handlers
-  ipcMain.handle('gdrive:list', (_event, folder) =>
-    httpRequest(`/api/gdrive/list${folder ? '?folder=' + encodeURIComponent(folder) : ''}`, { method: 'GET' })
-  );
-
-  ipcMain.handle('gdrive:sync-custom-art', (_event, fileIds) =>
-    httpRequest('/api/gdrive/sync-custom-art', { method: 'POST', timeout: 120000, body: { fileIds } })
-  );
-
-  ipcMain.handle('gdrive:sync-catalog', (_event, items) =>
-    httpRequest('/api/gdrive/sync-catalog', { method: 'POST', timeout: 120000, body: { items } })
-  );
-
-  ipcMain.handle('gdrive:sync-mockups', (_event, filenames) =>
-    httpRequest('/api/gdrive/sync-mockups', { method: 'POST', timeout: 120000, body: { filenames } })
-  );
-
-  ipcMain.handle('gdrive:sync-rooms', (_event, filenames) =>
-    httpRequest('/api/gdrive/sync-rooms', { method: 'POST', timeout: 120000, body: { filenames } })
-  );
-
-  ipcMain.handle('gdrive:sync', (_event, files) =>
-    httpRequest('/api/gdrive/sync', { method: 'POST', timeout: 120000, body: { files } })
-  );
-
-  // Google Drive Pull (reverse sync) handlers
-  ipcMain.handle('gdrive:pull-collection', (_event, categories) =>
-    httpRequest('/api/gdrive/pull-collection', { method: 'POST', timeout: 120000, body: { categories: categories || [] } })
-  );
-
-  ipcMain.handle('gdrive:pull-custom-art', () =>
-    httpRequest('/api/gdrive/pull-custom-art', { method: 'POST', timeout: 120000, body: {} })
-  );
-
-  ipcMain.handle('gdrive:pull-mockups', () =>
-    httpRequest('/api/gdrive/pull-mockups', { method: 'POST', timeout: 120000, body: {} })
-  );
-
-  ipcMain.handle('gdrive:pull-rooms', () =>
-    httpRequest('/api/gdrive/pull-rooms', { method: 'POST', timeout: 120000, body: {} })
-  );
-
-  // Silhouette Cameo local handlers - uses sendto_silhouette.py script
-  ipcMain.handle('cameo:open-cut-file', async (_event, options = {}) => {
-    const { url, cutSettings = {} } = options;
-    const fs = require('fs');
-    const path = require('path');
-    const os = require('os');
-    const https = require('https');
-    const http = require('http');
-    const { exec } = require('child_process');
-
-    try {
-      console.log('[Cameo] Sending cut file to Silhouette:', url);
-
-      if (!url) {
-        return { success: false, error: 'No URL provided' };
-      }
-
-      // Download the SVG file to temp directory
-      const tempDir = path.join(os.tmpdir(), 'silhouette-cuts');
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
-
-      const fileName = `cut_${Date.now()}.svg`;
-      const tempPath = path.join(tempDir, fileName);
-
-      console.log('[Cameo] Downloading to:', tempPath);
-
-      // Download the file
-      await new Promise((resolve, reject) => {
-        const client = url.startsWith('https') ? https : http;
-        const file = fs.createWriteStream(tempPath);
-
-        client.get(url, (response) => {
-          if (response.statusCode === 301 || response.statusCode === 302) {
-            // Follow redirect
-            client.get(response.headers.location, (res2) => {
-              res2.pipe(file);
-              file.on('finish', () => { file.close(); resolve(); });
-            }).on('error', reject);
-          } else if (response.statusCode !== 200) {
-            reject(new Error(`HTTP ${response.statusCode}`));
-          } else {
-            response.pipe(file);
-            file.on('finish', () => { file.close(); resolve(); });
-          }
-        }).on('error', reject);
-      });
-
-      console.log('[Cameo] Downloaded, file size:', fs.statSync(tempPath).size, 'bytes');
-
-      // Path to the sendto_silhouette.py script
-      const scriptPath = 'F:\\Vinyl Stuff\\StickerSheets\\sendto_silhouette.py';
-
-      // Check if script exists
-      if (!fs.existsSync(scriptPath)) {
-        return { success: false, error: `Silhouette script not found at: ${scriptPath}` };
-      }
-
-      // Build command with settings
-      // Default registration mark settings for sticker sheets (Letter size: 8.5" x 11" = 215.9mm x 279.4mm)
-      // Registration marks are 10mm from edge, so mark-to-mark distance is:
-      // X: 215.9 - 20 = 195.9mm
-      // Y: 279.4 - 20 = 259.4mm
-      const speed = cutSettings.speed || 4;
-      const pressure = cutSettings.pressure || 15;
-      const depth = cutSettings.depth || 6;
-      const xOffset = cutSettings.offset || 8.5;
-
-      // Build the command arguments exactly as the user specified:
-      // python sendto_silhouette.py my_sheet_cut.svg --regmark=true --regsearch=true
-      // --rego-x=10 --rego-y=10 --reg-x=195.9 --reg-y=259.4 --speed=4 --pressure=15
-      // --depth=6 --tool=autoblade --x_off=8.5
-      const args = [
-        `"${tempPath}"`,
-        '--regmark=true',
-        '--regsearch=true',
-        '--rego-x=10',
-        '--rego-y=10',
-        '--reg-x=195.9',
-        '--reg-y=259.4',
-        `--speed=${speed}`,
-        `--pressure=${pressure}`,
-        `--depth=${depth}`,
-        '--tool=autoblade',
-        `--x_off=${xOffset}`
-      ];
-
-      const command = `python "${scriptPath}" ${args.join(' ')}`;
-      console.log('[Cameo] Executing:', command);
-
-      // Execute the Python script
-      return new Promise((resolve) => {
-        exec(command, {
-          cwd: path.dirname(scriptPath),
-          timeout: 300000,  // 5 minute timeout for cutting
-          env: { ...process.env }
-        }, (error, stdout, stderr) => {
-          if (error) {
-            console.error('[Cameo] Script error:', error.message);
-            console.error('[Cameo] stderr:', stderr);
-            resolve({
-              success: false,
-              error: `Script error: ${error.message}`,
-              stderr: stderr,
-              stdout: stdout
-            });
-          } else {
-            console.log('[Cameo] Script output:', stdout);
-            if (stderr) console.log('[Cameo] Script stderr:', stderr);
-            resolve({
-              success: true,
-              message: 'Cut job sent to Silhouette Cameo',
-              filePath: tempPath,
-              stdout: stdout,
-              stderr: stderr
-            });
-          }
-        });
-      });
-    } catch (err) {
-      console.error('[Cameo] Error:', err);
-      return { success: false, error: err.message };
-    }
-  });
-
-  ipcMain.handle('cameo:get-script-path', async () => {
-    const fs = require('fs');
-    const scriptPath = 'F:\\Vinyl Stuff\\StickerSheets\\sendto_silhouette.py';
-
-    if (fs.existsSync(scriptPath)) {
-      return { success: true, path: scriptPath };
-    }
-    return { success: false, error: 'Silhouette script not found' };
-  });
 
   // Campaign mockup handler
   ipcMain.handle('campaign:save-mockup', (_event, payload) =>
@@ -5603,7 +4729,7 @@ Return ONLY valid JSON, nothing else:
   // Human Models - AI Metadata Analysis
   ipcMain.handle('human-models:analyze-metadata', async (_event, modelId) => {
     try {
-      const result = await httpRequest(`/api/human-models/${encodeURIComponent(modelId)}/analyze`, { method: 'POST', timeout: 60000 });
+      const result = await httpRequest(`/api/human-models/${encodeURIComponent(modelId)}/analyze`, { method: 'POST' });
       return result;
     } catch (e) {
       console.error('[Human Models AI] Analyze error:', e);
@@ -5617,7 +4743,6 @@ Return ONLY valid JSON, nothing else:
       console.log(`[Human Models Recolor] Request: ${modelId} -> ${color} (${garmentType || 't-shirt'})`);
       const result = await httpRequest(`/api/human-models/${encodeURIComponent(modelId)}/recolor`, {
         method: 'POST',
-        timeout: 60000,
         body: { color, garmentType: garmentType || 't-shirt', force: !!force }
       });
       return result;
@@ -5833,36 +4958,6 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('admin:orders:orphans', () =>
     httpRequest('/api/internal/orders/orphans', { method: 'GET' })
   );
-
-  // AI Sales Agent
-  ipcMain.handle('agent:status', () =>
-    httpRequest('/api/agent/status', { method: 'GET' })
-  );
-  ipcMain.handle('agent:engagement-summary', () =>
-    httpRequest('/api/agent/engagement/summary', { method: 'GET' })
-  );
-  ipcMain.handle('agent:strategy', () =>
-    httpRequest('/api/agent/strategy', { method: 'GET' })
-  );
-  ipcMain.handle('agent:categories', () =>
-    httpRequest('/api/agent/categories', { method: 'GET' })
-  );
-  ipcMain.handle('agent:update-category', (_event, { name, data }) =>
-    httpRequest(`/api/agent/categories/${encodeURIComponent(name)}`, { method: 'PUT', body: data })
-  );
-  ipcMain.handle('agent:calendar', () =>
-    httpRequest('/api/agent/calendar', { method: 'GET' })
-  );
-  ipcMain.handle('agent:daily-report', () =>
-    httpRequest('/api/agent/report/daily', { method: 'GET' })
-  );
-  ipcMain.handle('agent:approvals', () =>
-    httpRequest('/api/agent/approvals', { method: 'GET' })
-  );
-  ipcMain.handle('agent:run', () =>
-    httpRequest('/api/agent/run', { method: 'POST' })
-  );
-
   ipcMain.handle('admin:orders:cleanup', (_event, payload) =>
     httpRequest('/api/internal/orders/cleanup', { method: 'POST', body: payload || {} })
   );
@@ -6015,6 +5110,110 @@ Return ONLY valid JSON, nothing else:
     }
   });
 
+  // ============================================================================
+  // TIKTOK SHOP MANAGER
+  // ============================================================================
+
+  ipcMain.handle('tiktok-shop:publications', async () => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/publications', { method: 'GET' });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to get publications:', error);
+      return { success: false, error: error.message || 'Failed to get publications' };
+    }
+  });
+
+  ipcMain.handle('tiktok-shop:products', async () => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/products', { method: 'GET' });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to list products:', error);
+      return { success: false, error: error.message || 'Failed to list products' };
+    }
+  });
+
+  ipcMain.handle('tiktok-shop:candidates', async (_event, query) => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/candidates', { method: 'GET', query: query || {} });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to list candidates:', error);
+      return { success: false, error: error.message || 'Failed to list candidates' };
+    }
+  });
+
+  ipcMain.handle('tiktok-shop:publish', async (_event, payload) => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/publish', { method: 'POST', body: payload || {} });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to publish:', error);
+      return { success: false, error: error.message || 'Failed to publish product' };
+    }
+  });
+
+  ipcMain.handle('tiktok-shop:unpublish', async (_event, payload) => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/unpublish', { method: 'POST', body: payload || {} });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to unpublish:', error);
+      return { success: false, error: error.message || 'Failed to unpublish product' };
+    }
+  });
+
+  ipcMain.handle('tiktok-shop:clear-all', async () => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/clear-all', { method: 'POST', body: {} });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to clear all:', error);
+      return { success: false, error: error.message || 'Failed to clear all products' };
+    }
+  });
+
+  ipcMain.handle('tiktok-shop:bulk-publish', async (_event, payload) => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/bulk-publish', { method: 'POST', body: payload || {} });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to bulk publish:', error);
+      return { success: false, error: error.message || 'Failed to bulk publish' };
+    }
+  });
+
+  ipcMain.handle('tiktok-shop:generate-script', async (_event, payload) => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/generate-script', { method: 'POST', body: payload || {} });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to generate script:', error);
+      return { success: false, error: error.message || 'Failed to generate video script' };
+    }
+  });
+
+  ipcMain.handle('tiktok-shop:market-research', async (_event, payload) => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/market-research', { method: 'POST', body: payload || {} });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to get market research:', error);
+      return { success: false, error: error.message || 'Failed to generate market research' };
+    }
+  });
+
+  ipcMain.handle('tiktok-shop:stats', async () => {
+    try {
+      const data = await httpRequest('/api/internal/tiktok-shop/stats', { method: 'GET' });
+      return { success: true, data };
+    } catch (error) {
+      console.error('[TikTok Shop] Failed to get stats:', error);
+      return { success: false, error: error.message || 'Failed to get stats' };
+    }
+  });
+
   // Pricing sheet
   ipcMain.handle('pricing:get', () => {
     return httpRequest('/api/internal/marketing/pricing', { method: 'GET' });
@@ -6126,11 +5325,18 @@ Return ONLY valid JSON, nothing else:
     try {
       const settings = getSettings();
       if (!settings.watchFolder) throw new Error('Choose a watch folder in Settings first.');
+      const catalog = ensureServerCatalog();
       const scanned = await scanDirectoryForItems(settings.watchFolder);
-      const fresh = scanned.filter((x) => !ensureLocalDb()?.findByHash(x.hash));
+      // Check server for existing hashes
+      const existingHashes = new Set();
+      try {
+        const items = await catalog.list({ limit: 10000 });
+        items.forEach(item => { if (item.hash) existingHashes.add(item.hash); });
+      } catch (_) {}
+      const fresh = scanned.filter((x) => !existingHashes.has(x.hash));
       const saved = [];
       for (const item of fresh) {
-        const rec = ensureLocalDb().upsert({
+        const rec = await catalog.upsert({
           path: item.path,
           category: item.category,
           title: item.title,
@@ -6138,13 +5344,14 @@ Return ONLY valid JSON, nothing else:
           size: item.size,
           hash: item.hash,
           phash: item.phash || null,
-          status: 'imported'
+          status: 'imported',
+          importedBy: settings.employeeName || 'print-station'
         });
         try {
           if (settings.watchOcr) {
             const text = await performOcr(rec.optimized_path || item.path);
             const tags = suggestTags(text);
-            localDb.update(rec.id, {
+            await catalog.update(rec.id, {
               title: (!rec.title || /^img|^image|^scan/i.test(rec.title)) ? text : rec.title,
               tags: JSON.stringify(tags)
             });
@@ -6152,7 +5359,7 @@ Return ONLY valid JSON, nothing else:
         } catch (_) {}
         try { await optimizePreview(rec); } catch (_) {}
         if (settings.watchAutoApprove) {
-          try { ensureLocalDb().update(rec.id, { status: 'approved' }); } catch (_) {}
+          try { await catalog.update(rec.id, { status: 'approved' }); } catch (_) {}
         }
         if (settings.watchAutoMockup && settings.watchMockupBackground && settings.watchMockupOutputDir) {
           try {
@@ -6179,14 +5386,13 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('local:previews:remove-bg', async (_event, payload = {}) => {
     const { ids = [], keyColor = '#ffffff', fuzzPct = 10, jobId } = payload || {};
     if (!Array.isArray(ids) || !ids.length) return { updated: 0 };
-    const db = ensureLocalDb();
-    if (!db) return { updated: 0 };
+    const catalog = ensureServerCatalog();
     let count = 0;
     try { _event?.sender?.send('local:previews:remove-bg:progress', { current: 0, total: ids.length }); } catch (_) {}
     for (let i = 0; i < ids.length; i++) {
       if (jobId && cancelledJobs.has(String(jobId))) break;
       const id = ids[i];
-      const row = db.getById(id);
+      const row = await catalog.getById(id);
       if (!row) continue;
       const previewPath = row.optimized_path || (await optimizePreview(row));
       try {
@@ -6195,7 +5401,7 @@ Return ONLY valid JSON, nothing else:
         if (stripped) {
           const outPath = previewOutputPathFor(row.hash || path.basename(row.path), '.png');
           await fs.promises.writeFile(outPath, stripped);
-          db.update(id, { optimized_path: outPath });
+          await catalog.update(id, { optimized_path: outPath });
           count++;
         }
       } catch (_) {}
@@ -6204,1038 +5410,98 @@ Return ONLY valid JSON, nothing else:
     return { updated: count };
   });
 
-  // ==================== 3D Printer Fleet IPC ====================
-
-  // --- Printer CRUD ---
-  ipcMain.handle('fleet:printers:list', (_event, query = {}) => {
-    if (!fleetDb) return [];
-    return fleetDb.listPrinters(query);
-  });
-
-  ipcMain.handle('fleet:printers:get', (_event, id) => {
-    if (!fleetDb) return null;
-    return fleetDb.getPrinter(id);
-  });
-
-  ipcMain.handle('fleet:printers:upsert', (_event, printer) => {
-    if (!fleetDb) throw new Error('Fleet DB not initialized');
-    const result = fleetDb.upsertPrinter(printer);
-    if (result && result.active) connectToPrinter(result);
-    return result;
-  });
-
-  ipcMain.handle('fleet:printers:update', (_event, { id, updates } = {}) => {
-    if (!fleetDb || !id) return null;
-    const before = fleetDb.getPrinter(id);
-    const result = fleetDb.updatePrinter(id, updates || {});
-    // Reconnect if URL changed or printer was re-enabled
-    if (result && before) {
-      if (before.api_url !== result.api_url || (!before.active && result.active)) {
-        disconnectPrinter(before);
-        if (result.active) connectToPrinter(result);
-      }
+  // Migration: Move local catalog items to server
+  ipcMain.handle('local:migrateToServer', async (_event) => {
+    const localDb = ensureLocalDb();
+    if (!localDb) {
+      return { success: false, error: 'Local database not available', migrated: 0, failed: 0 };
     }
-    return result;
-  });
 
-  ipcMain.handle('fleet:printers:remove', (_event, id) => {
-    if (!fleetDb || !id) return { changes: 0 };
-    const printer = fleetDb.getPrinter(id);
-    if (printer) disconnectPrinter(printer);
-    return fleetDb.removePrinter(id);
-  });
+    const catalog = ensureServerCatalog();
+    const settings = getSettings();
+    const allItems = localDb.list({ limit: 10000 });
 
-  // --- Printer Status ---
-  ipcMain.handle('fleet:printers:status', async (_event, id) => {
-    if (!fleetDb || !printerService) return null;
-    const printer = fleetDb.getPrinter(id);
-    if (!printer) return null;
-    // Return cached status if available, otherwise fetch live
-    const cached = printerService.getCachedStatus(printer.api_url);
-    if (cached && Date.now() - cached.timestamp < 10000) return cached;
-    try {
-      return await printerService.getPrinterStatus(printer.api_url);
-    } catch (err) {
-      return { state: 'offline', error: err.message, timestamp: Date.now() };
+    if (!allItems.length) {
+      return { success: true, migrated: 0, failed: 0, message: 'No local items to migrate' };
     }
-  });
 
-  ipcMain.handle('fleet:printers:statusAll', async () => {
-    if (!fleetDb || !printerService) return [];
-    const printers = fleetDb.listPrinters({ active: true });
-    const results = [];
-    for (const p of printers) {
-      const cached = printerService.getCachedStatus(p.api_url);
-      if (cached && Date.now() - cached.timestamp < 10000) {
-        results.push({ ...p, status: cached });
-      } else {
+    let migrated = 0;
+    let failed = 0;
+    const errors = [];
+
+    console.log(`[Migration] Starting migration of ${allItems.length} local items to server...`);
+
+    for (let i = 0; i < allItems.length; i++) {
+      const item = allItems[i];
+      try {
+        // Send progress update
         try {
-          const status = await printerService.getPrinterStatus(p.api_url);
-          results.push({ ...p, status });
-        } catch (err) {
-          results.push({ ...p, status: { state: 'offline', error: err.message, timestamp: Date.now() } });
+          _event?.sender?.send('local:migrateToServer:progress', {
+            current: i + 1,
+            total: allItems.length,
+            title: item.title || path.basename(item.path)
+          });
+        } catch (_) {}
+
+        // Check if already exists on server by hash
+        const existing = await catalog.findByHash(item.hash);
+        if (existing) {
+          console.log(`[Migration] Item already on server: ${item.title || item.path}`);
+          migrated++;
+          continue;
         }
-      }
-    }
-    return results;
-  });
 
-  ipcMain.handle('fleet:printers:reconnect', async (_event, id) => {
-    if (!fleetDb || !printerService) return { success: false };
-    const printer = fleetDb.getPrinter(id);
-    if (!printer) return { success: false, error: 'Printer not found' };
-    disconnectPrinter(printer);
-    connectToPrinter(printer);
-    return { success: true };
-  });
+        // Upload the item to server
+        const serverItem = await catalog.upsert({
+          path: item.path,
+          category: item.category,
+          title: item.title,
+          file_type: item.file_type,
+          size: item.size,
+          hash: item.hash,
+          phash: item.phash,
+          tags: item.tags,
+          status: item.status,
+          importedBy: settings.employeeName || 'migration'
+        });
 
-  ipcMain.handle('fleet:printers:testConnection', async (_event, apiUrl) => {
-    if (!printerService) return { success: false, error: 'Service not initialized' };
-    try {
-      const status = await printerService.getPrinterStatus(apiUrl);
-      const info = await printerService.getPrinterInfo(apiUrl);
-
-      // Also query build volume and auto-update fleet DB if printer exists
-      let buildVolume = null;
-      try {
-        buildVolume = await printerService.getBuildVolume(apiUrl);
-        if (buildVolume && fleetDb) {
-          const existing = fleetDb.getPrinterByUrl(apiUrl);
-          if (existing) {
-            fleetDb.updatePrinter(existing.id, {
-              build_width: buildVolume.width,
-              build_depth: buildVolume.depth,
-              build_height: buildVolume.height
-            });
-            console.log(`[Fleet] Auto-updated build volume for ${existing.name}: ${buildVolume.width}x${buildVolume.depth}x${buildVolume.height}`);
+        // If there's an optimized preview, upload it
+        if (item.optimized_path && fs.existsSync(item.optimized_path)) {
+          try {
+            const hash = item.hash || path.basename(item.path);
+            await catalog.uploadOptimizedPreview(item.optimized_path, hash, serverItem.id);
+            console.log(`[Migration] Uploaded preview for: ${item.title || item.path}`);
+          } catch (uploadErr) {
+            console.warn(`[Migration] Failed to upload preview: ${uploadErr?.message}`);
           }
         }
-      } catch (bvErr) {
-        console.warn('[Fleet] Could not query build volume:', bvErr.message);
-      }
 
-      return { success: true, status, info, buildVolume };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  });
-
-  // --- Build Volume Query ---
-  ipcMain.handle('fleet:printers:buildVolume', async (_event, id) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(id);
-    if (!printer) throw new Error('Printer not found');
-
-    const buildVolume = await printerService.getBuildVolume(printer.api_url);
-    if (buildVolume) {
-      // Save to fleet DB
-      fleetDb.updatePrinter(id, {
-        build_width: buildVolume.width,
-        build_depth: buildVolume.depth,
-        build_height: buildVolume.height
-      });
-    }
-    return buildVolume;
-  });
-
-  // --- G-code File Management ---
-  ipcMain.handle('fleet:files:select', async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [{ name: 'G-code Files', extensions: ['gcode', 'g', 'gco'] }]
-    });
-    if (result.canceled || !result.filePaths.length) return null;
-    return result.filePaths[0];
-  });
-
-  ipcMain.handle('fleet:files:upload', async (_event, { printerId, filePath }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.uploadGcode(printer.api_url, filePath);
-  });
-
-  ipcMain.handle('fleet:files:list', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.listFiles(printer.api_url);
-  });
-
-  ipcMain.handle('fleet:files:delete', async (_event, { printerId, filename }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.deleteFile(printer.api_url, filename);
-  });
-
-  // --- Print Job Control ---
-  ipcMain.handle('fleet:print:start', async (_event, { printerId, filename, shopifyOrderId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-
-    // Start print — the G-code's START_PRINT macro handles homing, leveling, and heating
-    await printerService.startPrint(printer.api_url, filename);
-    fleetDb.completeStaleJobs(printerId);
-    const job = fleetDb.createJob({
-      printer_id: printerId,
-      filename,
-      status: 'printing',
-      started_at: new Date().toISOString(),
-      shopify_order_id: shopifyOrderId || null
-    });
-    printerService.updatePollRate(printer.api_url, true);
-    return job;
-  });
-
-  ipcMain.handle('fleet:print:pause', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    await printerService.pausePrint(printer.api_url);
-    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId);
-    if (activeJobs.length) fleetDb.updateJob(activeJobs[0].id, { status: 'paused' });
-    return { success: true };
-  });
-
-  ipcMain.handle('fleet:print:resume', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    await printerService.resumePrint(printer.api_url);
-    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId && j.status === 'paused');
-    if (activeJobs.length) fleetDb.updateJob(activeJobs[0].id, { status: 'printing' });
-    printerService.updatePollRate(printer.api_url, true);
-    return { success: true };
-  });
-
-  ipcMain.handle('fleet:print:cancel', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    await printerService.cancelPrint(printer.api_url);
-    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId);
-    if (activeJobs.length) {
-      fleetDb.updateJob(activeJobs[0].id, {
-        status: 'cancelled',
-        completed_at: new Date().toISOString()
-      });
-    }
-    printerService.updatePollRate(printer.api_url, false);
-    return { success: true };
-  });
-
-  ipcMain.handle('fleet:print:emergencyStop', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    await printerService.emergencyStop(printer.api_url);
-    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId);
-    if (activeJobs.length) {
-      fleetDb.updateJob(activeJobs[0].id, {
-        status: 'error',
-        error_message: 'Emergency stop triggered',
-        completed_at: new Date().toISOString()
-      });
-    }
-    return { success: true };
-  });
-
-  ipcMain.handle('fleet:gcode:send', async (_event, { printerId, command }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.sendGcode(printer.api_url, command);
-  });
-
-  // --- Webcam ---
-  ipcMain.handle('fleet:webcam:urls', async (_event, printerId) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.getWebcamUrls(printer.api_url);
-  });
-
-  // --- Job History ---
-  ipcMain.handle('fleet:jobs:list', (_event, query = {}) => {
-    if (!fleetDb) return [];
-    return fleetDb.listJobs(query);
-  });
-
-  ipcMain.handle('fleet:jobs:active', () => {
-    if (!fleetDb) return [];
-    return fleetDb.getActiveJobs();
-  });
-
-  ipcMain.handle('fleet:jobs:stats', () => {
-    if (!fleetDb) return {};
-    return fleetDb.getJobStats();
-  });
-
-  ipcMain.handle('fleet:jobs:clearStale', () => {
-    if (!fleetDb) return { cleared: 0 };
-    const now = new Date().toISOString();
-    const result = fleetDb.db.prepare(`
-      UPDATE print_jobs SET status = 'completed', completed_at = @now
-      WHERE status IN ('printing', 'paused', 'queued')
-    `).run({ now });
-    console.log(`[Fleet] Manually cleared ${result.changes} stale job(s)`);
-    return { cleared: result.changes };
-  });
-
-  // ============================================================================
-  // SLICER IPC HANDLERS (proxy to server API)
-  // ============================================================================
-
-  async function slicerFetch(endpoint, options = {}) {
-    const { fetch: doFetch } = await ensureFetch();
-    const settings = ensureServerConfigured();
-    const url = `${settings.serverBaseUrl}${endpoint}`;
-    const headers = { ...(options.headers || {}) };
-    if (settings.apiKey) {
-      headers['X-API-Key'] = settings.apiKey;
-    }
-    const timeoutMs = options.timeout || 15000;
-    let resp;
-    try {
-      resp = await doFetch(url, { ...options, headers, signal: AbortSignal.timeout(timeoutMs) });
-    } catch (fetchErr) {
-      if (fetchErr.name === 'TimeoutError' || fetchErr.name === 'AbortError' || fetchErr.code === 'ABORT_ERR') {
-        throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s: ${endpoint}`);
-      }
-      if (fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND' || fetchErr.cause?.code === 'ECONNREFUSED') {
-        throw new Error(`Slicer server unreachable: ${fetchErr.message}`);
-      }
-      throw fetchErr;
-    }
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(text || `Server returned ${resp.status}`);
-    }
-    return resp;
-  }
-
-  // Presets
-  ipcMain.handle('slicer:presets', async () => {
-    const resp = await slicerFetch('/api/slicer/presets');
-    return resp.json();
-  });
-
-  // STL Catalog
-  ipcMain.handle('slicer:catalog:list', async (_event, query = {}) => {
-    const params = new URLSearchParams();
-    if (query.category) params.set('category', query.category);
-    if (query.search) params.set('search', query.search);
-    if (query.folder !== undefined) params.set('folder', query.folder || '');
-    const qs = params.toString();
-    const resp = await slicerFetch(`/api/slicer/catalog${qs ? '?' + qs : ''}`);
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:categories', async () => {
-    const resp = await slicerFetch('/api/slicer/catalog/categories');
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:categories:counts', async () => {
-    const resp = await slicerFetch('/api/slicer/catalog/categories/counts');
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:categories:merge', async (_event, { from_categories, to_category }) => {
-    const resp = await slicerFetch('/api/slicer/catalog/categories/merge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from_categories, to_category })
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:categories:rename', async (_event, { old_name, new_name }) => {
-    const resp = await slicerFetch('/api/slicer/catalog/categories/rename', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ old_name, new_name })
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:categories:remove', async (_event, { category }) => {
-    const resp = await slicerFetch('/api/slicer/catalog/categories/remove', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category })
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:bulk-category', async (_event, { stl_ids, category }) => {
-    const resp = await slicerFetch('/api/slicer/catalog/bulk-category', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stl_ids, category })
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:folders', async (_event, category) => {
-    const resp = await slicerFetch(`/api/slicer/catalog/folders?category=${encodeURIComponent(category || '')}`);
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:bulk-folder', async (_event, { stl_ids, folder }) => {
-    const resp = await slicerFetch('/api/slicer/catalog/bulk-folder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stl_ids, folder })
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:folders:rename', async (_event, { category, old_name, new_name }) => {
-    const resp = await slicerFetch('/api/slicer/catalog/folders/rename', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, old_name, new_name })
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:folders:remove', async (_event, { category, folder }) => {
-    const resp = await slicerFetch('/api/slicer/catalog/folders/remove', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, folder })
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:get', async (_event, id) => {
-    const resp = await slicerFetch(`/api/slicer/catalog/${id}`);
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:guide', async (_event, id) => {
-    const resp = await slicerFetch(`/api/slicer/catalog/${id}/guide`);
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:create', async (_event, { filePath, name, category, defaults } = {}) => {
-    if (!filePath) throw new Error('No file path provided');
-    const { fetch: doFetch } = await ensureFetch();
-    const settings = ensureServerConfigured();
-    const form = new FormData();
-    form.append('file', fs.createReadStream(filePath), path.basename(filePath));
-    if (name) form.append('name', name);
-    if (category) form.append('category', category);
-    if (defaults) {
-      if (defaults.quality) form.append('default_quality', defaults.quality);
-      if (defaults.strength) form.append('default_strength', defaults.strength);
-      if (defaults.material) form.append('default_material', defaults.material);
-      if (defaults.texture) form.append('default_texture', defaults.texture);
-      if (defaults.supports) form.append('default_supports', defaults.supports);
-    }
-    const headers = form.getHeaders();
-    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
-    const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
-      method: 'POST',
-      headers,
-      body: form
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(text || `Upload failed (${resp.status})`);
-    }
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:update', async (_event, { id, updates } = {}) => {
-    const resp = await slicerFetch(`/api/slicer/catalog/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:catalog:delete', async (_event, id) => {
-    const resp = await slicerFetch(`/api/slicer/catalog/${id}`, { method: 'DELETE' });
-    // Clean up cached thumbnail on disk
-    const thumbPath = path.join(getStlThumbCacheDir(), `${id}.png`);
-    fsPromises.unlink(thumbPath).catch(() => {});
-    return resp.json();
-  });
-
-  // Parse part name + description through the hardware parser via server API
-  ipcMain.handle('slicer:catalog:parsePartInfo', async (_event, { name, description } = {}) => {
-    const resp = await slicerFetch('/api/slicer/catalog/parse-part', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name || '', description: description || '' })
-    });
-    return resp.json();
-  });
-
-  // Bulk STL import — scan directory recursively for .stl files + extract from ZIPs
-  ipcMain.handle('slicer:stl:bulkScan', async (_event, directory) => {
-    if (!directory) throw new Error('No directory specified');
-    const unzipper = require('unzipper');
-    const os = require('os');
-
-    const rootDir = directory; // top-level selected folder
-    const stlFiles = [];      // { filePath, name, category, source: 'file'|'zip', zipName? }
-
-    // Recursive directory walk
-    async function walk(dir) {
-      let entries;
-      try {
-        entries = await fs.promises.readdir(dir, { withFileTypes: true });
-      } catch (_) { return; }
-      for (const entry of entries) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          if (entry.name.startsWith('.') || entry.name === '__MACOSX') continue;
-          await walk(full);
-        } else if (entry.isFile()) {
-          const ext = path.extname(entry.name).toLowerCase();
-          if (ext === '.stl' || ext === '.step' || ext === '.stp') {
-            // Category = immediate parent folder name (unless it's the root selected folder)
-            const parentDir = path.dirname(full);
-            const category = parentDir === rootDir
-              ? path.basename(rootDir)
-              : path.basename(parentDir);
-            stlFiles.push({
-              filePath: full,
-              name: path.basename(entry.name, ext).replace(/[_-]/g, ' '),
-              category,
-              source: 'file'
-            });
-          } else if (ext === '.zip') {
-            // Category = ZIP filename without extension
-            const zipCategory = path.basename(entry.name, '.zip').replace(/[_-]/g, ' ');
-            try {
-              const zipDir = await unzipper.Open.file(full);
-              const tempDir = path.join(os.tmpdir(), `stl-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-              fs.mkdirSync(tempDir, { recursive: true });
-              for (const zipEntry of zipDir.files) {
-                if (zipEntry.type === 'Directory') continue;
-                const zExt = path.extname(zipEntry.path).toLowerCase();
-                if (zExt !== '.stl' && zExt !== '.step' && zExt !== '.stp') continue;
-                if (zipEntry.path.includes('__MACOSX') || zipEntry.path.includes('/.')) continue;
-                const destName = path.basename(zipEntry.path);
-                let destPath = path.join(tempDir, destName);
-                let counter = 1;
-                while (fs.existsSync(destPath)) {
-                  const destBase = path.basename(destName, zExt);
-                  destPath = path.join(tempDir, `${destBase}_${counter}${zExt}`);
-                  counter++;
-                }
-                await new Promise((resolve, reject) => {
-                  zipEntry.stream()
-                    .pipe(fs.createWriteStream(destPath))
-                    .on('finish', resolve)
-                    .on('error', reject);
-                });
-                stlFiles.push({
-                  filePath: destPath,
-                  name: path.basename(destName, zExt).replace(/[_-]/g, ' '),
-                  category: zipCategory,
-                  source: 'zip',
-                  zipName: entry.name
-                });
-              }
-            } catch (zipErr) {
-              console.warn(`[Slicer] Failed to extract ZIP ${entry.name}:`, zipErr.message);
-            }
-          }
-        }
+        migrated++;
+        console.log(`[Migration] Migrated: ${item.title || item.path}`);
+      } catch (err) {
+        failed++;
+        errors.push({ title: item.title || item.path, error: err?.message || String(err) });
+        console.error(`[Migration] Failed to migrate: ${item.title || item.path}`, err?.message);
       }
     }
 
-    await walk(directory);
-    console.log(`[Slicer] Bulk scan found ${stlFiles.length} STL files in ${directory}`);
-    return stlFiles;
-  });
+    console.log(`[Migration] Complete: ${migrated} migrated, ${failed} failed`);
 
-  // Bulk STL upload — upload a single file to the catalog (called per file from renderer)
-  ipcMain.handle('slicer:stl:bulkUploadOne', async (_event, { filePath, name, category } = {}) => {
-    if (!filePath) throw new Error('No file path provided');
-    const { fetch: doFetch } = await ensureFetch();
-    const settings = ensureServerConfigured();
-    const form = new FormData();
-    form.append('file', fs.createReadStream(filePath), path.basename(filePath));
-    if (name) form.append('name', name);
-    if (category) form.append('category', category);
-    const headers = form.getHeaders();
-    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
-    const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
-      method: 'POST',
-      headers,
-      body: form
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(text || `Upload failed (${resp.status})`);
-    }
-    return resp.json();
-  });
-
-  // STL file download (for 3D preview in renderer)
-  ipcMain.handle('slicer:stl:fetch', async (_event, stlId) => {
-    const resp = await slicerFetch(`/api/slicer/stl/${stlId}/download`, { timeout: 60000 });
-    const buf = await resp.arrayBuffer();
-    return Buffer.from(buf).toString('base64');
-  });
-
-  // Fetch raw G-code text (for renderer-side visualization)
-  ipcMain.handle('slicer:gcode:fetchText', async (_event, gcodeId) => {
-    const resp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 180000 });
-    let buf;
-    try {
-      buf = await resp.arrayBuffer();
-    } catch (err) {
-      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
-        throw new Error('G-code download timed out — file may be too large');
-      }
-      throw err;
-    }
-    return Buffer.from(buf).toString('utf-8');
-  });
-
-  // Slicing
-  ipcMain.handle('slicer:slice', async (_event, options) => {
-    const resp = await slicerFetch('/api/slicer/slice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options),
-      timeout: 600000 // 10 minutes — multi-copy grid slices can take a while
-    });
-    return resp.json();
-  });
-
-  // Slice plate (multiple STLs)
-  ipcMain.handle('slicer:slicePlate', async (_event, options) => {
-    console.log('[Slicer] slicePlate IPC called with', JSON.stringify(options?.stl_ids));
-    const resp = await slicerFetch('/api/slicer/slice-plate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options),
-      timeout: 600000 // 10 minutes for plate slicing
-    });
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error);
-    return data;
-  });
-
-  // Slice plate + Download + Upload to printer + Start print
-  ipcMain.handle('slicer:slicePlateAndPrint', async (_event, { sliceOptions, printerId } = {}) => {
-    if (!printerId) throw new Error('printerId is required');
-    if (!fleetDb) throw new Error('Fleet DB not initialized');
-    if (!printerService) throw new Error('Printer service not initialized');
-
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-
-    // Step 1: Slice plate on server
-    console.log('[Slicer] Plate Step 1: Slicing plate on server...', JSON.stringify(sliceOptions?.stl_ids));
-    const sliceResp = await slicerFetch('/api/slicer/slice-plate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sliceOptions),
-      timeout: 600000 // 10 minutes for plate slicing
-    });
-    const sliceResult = await sliceResp.json();
-    if (sliceResult.error) throw new Error(`Server slicing error: ${sliceResult.error}`);
-    if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
-    console.log(`[Slicer] Plate Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
-
-    // Step 2: Download G-code from server, write to temp
-    console.log('[Slicer] Plate Step 2: Downloading G-code...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
-    const arrayBuf = await gcodeResp.arrayBuffer();
-    const gcodeBuf = Buffer.from(arrayBuf);
-    const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
-    fs.writeFileSync(tmpPath, gcodeBuf);
-    console.log(`[Slicer] Plate Step 2 done: ${tmpPath} (${gcodeBuf.length} bytes)`);
-
-    // Step 3: Upload to printer via Moonraker
-    console.log(`[Slicer] Plate Step 3: Uploading to printer ${printer.name} (${printer.api_url})...`);
-    try {
-      await printerService.uploadGcode(printer.api_url, tmpPath);
-    } catch (uploadErr) {
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`Failed to upload plate G-code to printer "${printer.name}": ${uploadErr.message}`);
-    }
-    console.log('[Slicer] Plate Step 3 done: uploaded');
-
-    // Step 4: Run bed leveling for Kobra printers
-    const isKobra = (printer.model || '').startsWith('kobra');
-    if (isKobra) {
-      console.log(`[Slicer] Plate Step 4: Running pre-print bed leveling on ${printer.name}...`);
-      try {
-        await printerService.runBedLeveling(printer.api_url);
-      } catch (levelErr) {
-        console.warn(`[Slicer] Bed leveling failed (continuing with saved mesh): ${levelErr.message}`);
-      }
-      console.log('[Slicer] Plate Step 4 done: bed leveling complete');
-    }
-
-    // Step 5: Start print
-    console.log('[Slicer] Plate Step 5: Starting print...');
-    try {
-      await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
-    } catch (startErr) {
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`Plate G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
-    }
-    console.log('[Slicer] Plate Step 5 done: print started');
-
-    // Step 6: Create fleet job record (auto-complete any stale jobs first)
-    fleetDb.completeStaleJobs(printerId);
-    const job = fleetDb.createJob({
-      printer_id: printerId,
-      filename: sliceResult.gcode_filename,
-      status: 'printing',
-      started_at: new Date().toISOString()
-    });
-
-    // Clean up temp file
-    try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-
-    return { success: true, job, sliceResult };
-  });
-
-  // Slice + Download + Upload to printer + Start print
-  ipcMain.handle('slicer:sliceAndPrint', async (_event, { sliceOptions, printerId } = {}) => {
-    if (!printerId) throw new Error('printerId is required');
-    if (!fleetDb) throw new Error('Fleet DB not initialized');
-    if (!printerService) throw new Error('Printer service not initialized');
-
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-
-    // Step 1: Slice on server
-    console.log('[Slicer] Step 1: Slicing on server...');
-    const sliceResp = await slicerFetch('/api/slicer/slice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sliceOptions)
-    });
-    const sliceResult = await sliceResp.json();
-    if (sliceResult.error) throw new Error(`Server slicing error: ${sliceResult.error}`);
-    if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
-    console.log(`[Slicer] Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
-
-    // Step 2: Download G-code from server, write to temp
-    console.log('[Slicer] Step 2: Downloading G-code...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
-    const arrayBuf = await gcodeResp.arrayBuffer();
-    const gcodeBuf = Buffer.from(arrayBuf);
-    const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
-    fs.writeFileSync(tmpPath, gcodeBuf);
-    console.log(`[Slicer] Step 2 done: ${tmpPath} (${gcodeBuf.length} bytes)`);
-
-    // Step 3: Upload to printer via Moonraker
-    console.log(`[Slicer] Step 3: Uploading to printer ${printer.name} (${printer.api_url})...`);
-    try {
-      await printerService.uploadGcode(printer.api_url, tmpPath);
-    } catch (uploadErr) {
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
-    }
-    console.log('[Slicer] Step 3 done: uploaded');
-
-    // Step 4: Run bed leveling for Kobra printers (must happen BEFORE print start;
-    // the Anycubic firmware blocks all probing during SD-card prints)
-    const isKobra = (printer.model || '').startsWith('kobra');
-    if (isKobra) {
-      console.log(`[Slicer] Step 4: Running pre-print bed leveling on ${printer.name}...`);
-      try {
-        await printerService.runBedLeveling(printer.api_url);
-      } catch (levelErr) {
-        console.warn(`[Slicer] Bed leveling failed (continuing with saved mesh): ${levelErr.message}`);
-      }
-      console.log('[Slicer] Step 4 done: bed leveling complete');
-    }
-
-    // Step 5: Start print
-    console.log('[Slicer] Step 5: Starting print...');
-    try {
-      await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
-    } catch (startErr) {
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
-    }
-    console.log('[Slicer] Step 5 done: print started');
-
-    // Step 6: Create fleet job record (auto-complete any stale jobs first)
-    fleetDb.completeStaleJobs(printerId);
-    const job = fleetDb.createJob({
-      printer_id: printerId,
-      filename: sliceResult.gcode_filename,
-      status: 'printing',
-      started_at: new Date().toISOString()
-    });
-
-    // Clean up temp file
-    try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-
-    return { success: true, job, sliceResult };
-  });
-
-  // Print existing G-code (download from server + upload to printer)
-  ipcMain.handle('slicer:printGcode', async (event, { gcodeId, printerId } = {}) => {
-    if (!gcodeId || !printerId) throw new Error('gcodeId and printerId required');
-    if (!fleetDb) throw new Error('Fleet DB not initialized');
-    if (!printerService) throw new Error('Printer service not initialized');
-
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-
-    const sendProgress = (step, detail) => {
-      try { event.sender.send('slicer:printProgress', { step, detail }); } catch {}
+    return {
+      success: failed === 0,
+      migrated,
+      failed,
+      total: allItems.length,
+      errors: errors.slice(0, 10) // Only return first 10 errors
     };
-
-    // Step 1: Download G-code from server
-    sendProgress(1, 'Downloading G-code from server...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 180000 });
-    const contentDisp = gcodeResp.headers.get('content-disposition') || '';
-    const filenameMatch = contentDisp.match(/filename="?([^"]+)"?/);
-    const filename = filenameMatch ? filenameMatch[1] : `gcode_${gcodeId}.gcode`;
-    let arrayBuf;
-    try {
-      arrayBuf = await gcodeResp.arrayBuffer();
-    } catch (err) {
-      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
-        throw new Error('G-code download timed out — file may be too large');
-      }
-      throw err;
-    }
-
-    // Step 2: Prepare file, write temp
-    sendProgress(2, 'Preparing G-code file...');
-    const gcodeBuf = Buffer.from(arrayBuf);
-    const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const tmpPath = path.join(tmpDir, filename);
-    fs.writeFileSync(tmpPath, gcodeBuf);
-    const fileSizeMB = (gcodeBuf.length / (1024 * 1024)).toFixed(1);
-
-    // Step 3: Upload to printer
-    sendProgress(3, `Uploading ${fileSizeMB} MB to ${printer.name}...`);
-    try {
-      await printerService.uploadGcode(printer.api_url, tmpPath);
-    } catch (uploadErr) {
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
-    }
-
-    // Step 4: Run bed leveling for Kobra printers
-    const isKobra = (printer.model || '').startsWith('kobra');
-    if (isKobra) {
-      sendProgress(4, `Running bed leveling on ${printer.name}...`);
-      try {
-        await printerService.runBedLeveling(printer.api_url);
-      } catch (levelErr) {
-        console.warn(`[Slicer] Bed leveling failed (continuing with saved mesh): ${levelErr.message}`);
-      }
-    }
-
-    // Step 5: Start print
-    sendProgress(5, `Starting print on ${printer.name}...`);
-    try {
-      await printerService.startPrint(printer.api_url, filename);
-    } catch (startErr) {
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
-    }
-
-    // Create fleet job record (auto-complete any stale jobs first)
-    fleetDb.completeStaleJobs(printerId);
-    const job = fleetDb.createJob({
-      printer_id: printerId,
-      filename: filename,
-      status: 'printing',
-      started_at: new Date().toISOString()
-    });
-
-    // Clean up temp file
-    try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-
-    return { success: true, job };
   });
 
-  // G-code cache
-  ipcMain.handle('slicer:gcodeForStl', async (_event, stlId) => {
-    const resp = await slicerFetch(`/api/slicer/cache/for/${stlId}`);
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:cache:list', async () => {
-    const resp = await slicerFetch('/api/slicer/cache');
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:cache:delete', async (_event, id) => {
-    const resp = await slicerFetch(`/api/slicer/cache/${id}`, { method: 'DELETE' });
-    return resp.json();
-  });
-
-  ipcMain.handle('slicer:cache:clear', async () => {
-    const resp = await slicerFetch('/api/slicer/cache', { method: 'DELETE' });
-    return resp.json();
-  });
-
-  // Select 3D model file dialog (for upload)
-  ipcMain.handle('slicer:selectStlFile', async () => {
-    const result = await dialog.showOpenDialog({
-      title: 'Select 3D Model File',
-      filters: [
-        { name: '3D Models & Archives', extensions: ['stl', 'step', 'stp', 'zip'] },
-        { name: '3D Models', extensions: ['stl', 'step', 'stp'] },
-        { name: 'ZIP Archives', extensions: ['zip'] }
-      ],
-      properties: ['openFile']
-    });
-    if (result.canceled || !result.filePaths.length) return null;
-    return result.filePaths[0];
-  });
-
-  // Extract STL/STEP files from a ZIP archive into a temp directory
-  ipcMain.handle('slicer:extractZip', async (_event, zipPath) => {
-    const unzipper = require('unzipper');
-    const os = require('os');
-    const tempDir = path.join(os.tmpdir(), `stl-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    fs.mkdirSync(tempDir, { recursive: true });
-    const zipDir = await unzipper.Open.file(zipPath);
-    const extracted = [];
-    for (const entry of zipDir.files) {
-      if (entry.type === 'Directory') continue;
-      const ext = path.extname(entry.path).toLowerCase();
-      if (ext !== '.stl' && ext !== '.step' && ext !== '.stp') continue;
-      if (entry.path.includes('__MACOSX') || entry.path.includes('/.')) continue;
-      const destName = path.basename(entry.path);
-      let destPath = path.join(tempDir, destName);
-      let counter = 1;
-      while (fs.existsSync(destPath)) {
-        const base = path.basename(destName, ext);
-        destPath = path.join(tempDir, `${base}_${counter}${ext}`);
-        counter++;
-      }
-      await new Promise((resolve, reject) => {
-        entry.stream()
-          .pipe(fs.createWriteStream(destPath))
-          .on('finish', resolve)
-          .on('error', reject);
-      });
-      extracted.push({
-        filePath: destPath,
-        name: path.basename(destName, ext).replace(/[_-]/g, ' ')
-      });
-    }
-    console.log(`[Slicer] Extracted ${extracted.length} models from ZIP: ${path.basename(zipPath)}`);
-    return { tempDir, files: extracted };
-  });
-
-  // Clean up a temp directory after ZIP extraction uploads complete
-  ipcMain.handle('slicer:cleanupTemp', async (_event, dirPath) => {
-    try {
-      fs.rmSync(dirPath, { recursive: true, force: true });
-    } catch (_) {}
-  });
-
-  // =========================================================================
-  // PRINT QUOTES IPC
-  // =========================================================================
-
-  async function quotesFetch(endpoint, options = {}) {
-    const { fetch: doFetch } = await ensureFetch();
-    const settings = ensureServerConfigured();
-    const url = `${settings.serverBaseUrl}${endpoint}`;
-    const headers = { ...(options.headers || {}) };
-    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
-    const resp = await doFetch(url, { ...options, headers, signal: AbortSignal.timeout(options.timeout || 15000) });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(text || `Server returned ${resp.status}`);
-    }
-    return resp;
-  }
-
-  ipcMain.handle('pq:list', async (_event, query = {}) => {
-    const params = new URLSearchParams();
-    if (query.status) params.set('status', query.status);
-    if (query.source) params.set('source', query.source);
-    if (query.limit) params.set('limit', String(query.limit));
-    const qs = params.toString();
-    const resp = await quotesFetch(`/api/quotes/${qs ? '?' + qs : ''}`);
-    return resp.json();
-  });
-
-  ipcMain.handle('pq:get', async (_event, id) => {
-    const resp = await quotesFetch(`/api/quotes/${id}`);
-    return resp.json();
-  });
-
-  ipcMain.handle('pq:create', async (_event, data) => {
-    const resp = await quotesFetch('/api/quotes/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('pq:update', async (_event, { id, updates }) => {
-    const resp = await quotesFetch(`/api/quotes/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('pq:delete', async (_event, id) => {
-    const resp = await quotesFetch(`/api/quotes/${id}`, { method: 'DELETE' });
-    return resp.json();
-  });
-
-  ipcMain.handle('pq:items:replace', async (_event, { quoteId, items }) => {
-    const resp = await quotesFetch(`/api/quotes/${quoteId}/items`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items })
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('pq:plates:pack', async (_event, { quoteId, printerModel }) => {
-    const resp = await quotesFetch(`/api/quotes/${quoteId}/plates/pack`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ printerModel: printerModel || 'default' }),
-      timeout: 30000
-    });
-    return resp.json();
-  });
-
-  ipcMain.handle('pq:plates:list', async (_event, quoteId) => {
-    const resp = await quotesFetch(`/api/quotes/${quoteId}/plates`);
-    return resp.json();
-  });
-
-  ipcMain.handle('pq:plates:update', async (_event, { quoteId, plateId, updates }) => {
-    const resp = await quotesFetch(`/api/quotes/${quoteId}/plates/${plateId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    });
-    return resp.json();
+  // Get count of local items for migration UI
+  ipcMain.handle('local:getLocalCount', () => {
+    const localDb = ensureLocalDb();
+    if (!localDb) return { count: 0 };
+    const items = localDb.list({ limit: 10000 });
+    return { count: items.length };
   });
 }
 
@@ -7266,310 +5532,12 @@ app.on('ready', async () => {
   } catch (err) {
     console.warn('Local catalog DB unavailable:', err?.message || err);
   }
-  // Initialize 3D Printer Fleet
-  try {
-    fleetDb = new PrinterFleetDB(app);
-    console.log('[Fleet] Printer fleet database initialized');
-  } catch (err) {
-    console.warn('Printer fleet DB unavailable:', err?.message || err);
-  }
-  try {
-    const { fetch: fleetFetch } = await ensureFetch();
-    printerService = new PrinterService({ fetch: fleetFetch });
-    console.log('[Fleet] Printer service initialized');
-    // Auto-connect to all active printers
-    if (fleetDb) {
-      const activePrinters = fleetDb.listPrinters({ active: true });
-      for (const p of activePrinters) {
-        connectToPrinter(p);
-      }
-      if (activePrinters.length) {
-        console.log(`[Fleet] Connecting to ${activePrinters.length} active printer(s)`);
-      }
-    }
-  } catch (err) {
-    console.warn('Printer service unavailable:', err?.message || err);
-  }
   try {
     applyWatchSettings(getSettings());
   } catch (err) {
     console.warn('Watch configuration failed:', err?.message || err);
   }
   const mainWindow = createWindow();
-
-  // ==================== Webview Download Interception ====================
-  // Intercept downloads from <webview> tags AND popup windows they spawn
-  // (Multiboard Parts Browser uses partition 'persist:multiboard-browser')
-
-  /**
-   * Import a single STL/STEP file into the Multiboard catalog.
-   * Returns the catalog result or null on failure.
-   */
-  async function catalogMultiboardFile(filePath, modelName, metadata = {}) {
-    const { fetch: doFetch } = await ensureFetch();
-    const settings = ensureServerConfigured();
-    const form = new FormData();
-    form.append('file', fs.createReadStream(filePath), path.basename(filePath));
-    form.append('name', modelName);
-    form.append('category', 'Multiboard');
-    if (metadata.description) form.append('description', metadata.description);
-    if (metadata.sourceUrl) form.append('source_url', metadata.sourceUrl);
-    const headers = form.getHeaders();
-    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
-    const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
-      method: 'POST', headers, body: form
-    });
-    if (resp.ok) {
-      const result = await resp.json();
-      console.log(`[Multiboard] Cataloged: ${modelName} (id=${result.item?.id || '?'})`);
-      return result;
-    }
-    console.warn(`[Multiboard] Catalog upload failed: ${resp.status}`);
-    return null;
-  }
-
-  /**
-   * Extract STL/STEP files from a ZIP, catalog each, and return count.
-   */
-  async function catalogMultiboardZip(zipPath, zipFilename, metadata = {}) {
-    const unzipper = require('unzipper');
-    const os = require('os');
-    const tempDir = path.join(os.tmpdir(), `mb-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    fs.mkdirSync(tempDir, { recursive: true });
-
-    let imported = 0;
-    try {
-      const zipDir = await unzipper.Open.file(zipPath);
-      for (const entry of zipDir.files) {
-        if (entry.type === 'Directory') continue;
-        const zExt = path.extname(entry.path).toLowerCase();
-        if (zExt !== '.stl' && zExt !== '.step' && zExt !== '.stp') continue;
-        if (entry.path.includes('__MACOSX') || entry.path.includes('/.')) continue;
-
-        const destName = path.basename(entry.path);
-        let destPath = path.join(tempDir, destName);
-        let counter = 1;
-        while (fs.existsSync(destPath)) {
-          const base = path.basename(destName, zExt);
-          destPath = path.join(tempDir, `${base}_${counter}${zExt}`);
-          counter++;
-        }
-        await new Promise((resolve, reject) => {
-          entry.stream().pipe(fs.createWriteStream(destPath)).on('finish', resolve).on('error', reject);
-        });
-
-        const modelName = path.basename(destName, zExt).replace(/[-_]+/g, ' ');
-        try {
-          // ZIP items share the same source URL but not the page description (it describes the pack)
-          await catalogMultiboardFile(destPath, modelName, { sourceUrl: metadata.sourceUrl });
-          imported++;
-        } catch (err) {
-          console.warn(`[Multiboard] Failed to catalog ${destName} from ZIP:`, err.message);
-        }
-      }
-    } finally {
-      try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
-    }
-    console.log(`[Multiboard] ZIP ${zipFilename}: imported ${imported} models`);
-    return imported;
-  }
-
-  function handleMultiboardDownload(item, webContents) {
-    const filename = item.getFilename();
-    const ext = path.extname(filename).toLowerCase();
-    const isModel = ext === '.stl' || ext === '.3mf' || ext === '.step' || ext === '.stp';
-    const isZip = ext === '.zip';
-    if (!isModel && !isZip) return false;
-
-    // Capture the page URL immediately (before navigation might change it)
-    const sourceUrl = (webContents && !webContents.isDestroyed()) ? webContents.getURL() : null;
-    if (sourceUrl) console.log(`[Multiboard] Source page: ${sourceUrl}`);
-
-    // Start async description scrape (non-blocking — download proceeds in parallel)
-    let descriptionPromise = Promise.resolve(null);
-    if (webContents && !webContents.isDestroyed()) {
-      descriptionPromise = webContents.executeJavaScript(`
-        (function() {
-          try {
-            var seen = new Set();
-            var parts = [];
-            var selectors = [
-              '[class*="description" i]',
-              '[data-testid*="description"]',
-              '.model-page-description',
-              'article',
-              '[class*="about" i]',
-              '[class*="detail" i]',
-              '[class*="specs" i]',
-              '[class*="info" i]',
-              '[class*="content" i]',
-              '[class*="body" i]',
-              '[class*="text" i]',
-              '[class*="readme" i]',
-              '[class*="summary" i]'
-            ];
-            for (var i = 0; i < selectors.length; i++) {
-              var els = document.querySelectorAll(selectors[i]);
-              for (var j = 0; j < els.length; j++) {
-                var el = els[j];
-                var tag = el.tagName.toLowerCase();
-                if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'nav' || tag === 'footer' || tag === 'header') continue;
-                var rect = el.getBoundingClientRect();
-                if (rect.width < 50 || rect.height < 10) continue;
-                var text = (el.innerText || '').trim();
-                if (text.length < 15) continue;
-                if (seen.has(text)) continue;
-                var isSubset = false;
-                for (var k = 0; k < parts.length; k++) {
-                  if (parts[k].includes(text)) { isSubset = true; break; }
-                }
-                if (isSubset) continue;
-                parts = parts.filter(function(p) { return !text.includes(p); });
-                seen = new Set(parts);
-                seen.add(text);
-                parts.push(text);
-              }
-            }
-            if (parts.length > 0) return parts.join('\\n\\n---\\n\\n').slice(0, 8000);
-            var meta = document.querySelector('meta[name="description"]')
-              || document.querySelector('meta[property="og:description"]');
-            if (meta && meta.content && meta.content.trim().length > 10) {
-              return meta.content.trim().slice(0, 8000);
-            }
-            return null;
-          } catch(e) { return null; }
-        })()
-      `).catch(() => null);
-    }
-
-    const partsDir = path.join(app.getPath('userData'), 'multiboard-parts');
-    fs.mkdirSync(partsDir, { recursive: true });
-
-    let savePath = path.join(partsDir, filename);
-    let counter = 1;
-    while (fs.existsSync(savePath)) {
-      const base = path.basename(filename, ext);
-      savePath = path.join(partsDir, `${base}_${counter}${ext}`);
-      counter++;
-    }
-
-    item.setSavePath(savePath);
-
-    const win = BrowserWindow.getAllWindows()[0];
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('multiboard:download-start', {
-        filename, savePath, totalBytes: item.getTotalBytes()
-      });
-    }
-
-    item.on('updated', (_updateEvent, state) => {
-      const w = BrowserWindow.getAllWindows()[0];
-      if (w && !w.isDestroyed()) {
-        w.webContents.send('multiboard:download-progress', {
-          filename,
-          receivedBytes: item.getReceivedBytes(),
-          totalBytes: item.getTotalBytes(),
-          state
-        });
-      }
-    });
-
-    item.once('done', async (_doneEvent, state) => {
-      const w = BrowserWindow.getAllWindows()[0];
-      if (state === 'completed') {
-        console.log(`[Multiboard] Downloaded: ${savePath}`);
-
-        // Resolve the scraped description (should be ready by now)
-        const description = await descriptionPromise;
-        if (description) console.log(`[Multiboard] Scraped description (${description.length} chars)`);
-
-        const metadata = { description, sourceUrl };
-
-        if (isZip) {
-          // ZIP: extract and catalog each model inside
-          try {
-            if (w && !w.isDestroyed()) {
-              w.webContents.send('multiboard:download-progress', {
-                filename, receivedBytes: 0, totalBytes: 0, state: 'extracting'
-              });
-            }
-            const importCount = await catalogMultiboardZip(savePath, filename, metadata);
-            // Clean up the ZIP file after extraction
-            try { fs.unlinkSync(savePath); } catch (_) {}
-            if (w && !w.isDestroyed()) {
-              w.webContents.send('multiboard:download-complete', {
-                filename, savePath, success: true, format: 'zip',
-                model: { importCount }
-              });
-            }
-          } catch (zipErr) {
-            console.warn(`[Multiboard] ZIP extraction error:`, zipErr.message);
-            if (w && !w.isDestroyed()) {
-              w.webContents.send('multiboard:download-complete', {
-                filename, success: false, error: 'ZIP extraction failed: ' + zipErr.message
-              });
-            }
-          }
-        } else {
-          // Single model file: catalog directly
-          try {
-            const modelName = path.basename(filename, ext).replace(/[-_]+/g, ' ');
-            const result = await catalogMultiboardFile(savePath, modelName, metadata);
-            if (w && !w.isDestroyed()) {
-              w.webContents.send('multiboard:download-complete', {
-                filename, savePath, success: true, format: ext.replace('.', ''),
-                catalogId: result?.item?.id, model: result?.item || null
-              });
-            }
-          } catch (catalogErr) {
-            console.warn(`[Multiboard] Auto-catalog error:`, catalogErr.message);
-            if (w && !w.isDestroyed()) {
-              w.webContents.send('multiboard:download-complete', {
-                filename, savePath, success: true, format: ext.replace('.', '')
-              });
-            }
-          }
-        }
-      } else {
-        console.warn(`[Multiboard] Download failed: ${filename} (${state})`);
-        if (w && !w.isDestroyed()) {
-          w.webContents.send('multiboard:download-complete', {
-            filename, success: false, error: state
-          });
-        }
-      }
-    });
-
-    return true;
-  }
-
-  // Track sessions we've already attached the will-download listener to
-  const multiboardSessions = new WeakSet();
-
-  app.on('web-contents-created', (_event, contents) => {
-    const session = contents.session;
-
-    // Attach will-download to any session from the multiboard partition (webview or popup)
-    if (!multiboardSessions.has(session)) {
-      const partitionUrl = session.storagePath || '';
-      // Also attach to webview contents directly
-      if (contents.getType() === 'webview' || partitionUrl.includes('multiboard')) {
-        multiboardSessions.add(session);
-        session.on('will-download', (_dlEvent, item, webContents) => {
-          handleMultiboardDownload(item, webContents);
-        });
-      }
-    }
-
-    // Catch popup windows spawned by webview — redirect downloads back through interception
-    if (contents.getType() === 'webview') {
-      contents.setWindowOpenHandler(({ url }) => {
-        // Load popup URLs in the webview itself instead of opening a new window
-        contents.loadURL(url);
-        return { action: 'deny' };
-      });
-    }
-  });
 
   // Initialize auto-updater (only in production builds)
   if (!process.env.ELECTRON_IS_DEV && app.isPackaged) {
@@ -7583,15 +5551,6 @@ app.on('ready', async () => {
       createWindow();
     }
   });
-});
-
-app.on('before-quit', () => {
-  if (printerService) {
-    printerService.disconnectAll();
-  }
-  if (fleetDb) {
-    fleetDb.close();
-  }
 });
 
 app.on('window-all-closed', () => {
@@ -7616,6 +5575,28 @@ async function optimizePreview(row) {
   const fuzzPct = Number(cfg.previewFuzzPct || 8);
   const extOut = removeBg ? '.png' : '.jpg';
   const outPath = previewOutputPathFor(hash, extOut);
+
+  // If already optimized on server, use that path
+  if (row.optimized_path && row.optimized_path.startsWith('/library/')) {
+    // Download from server to local cache if not exists
+    try {
+      const stat = await fs.promises.stat(outPath).catch(() => null);
+      if (stat && stat.size > 0) return outPath;
+      // Try to download from server
+      const settings = getSettings();
+      if (settings.serverBaseUrl) {
+        const { fetch: doFetch } = await ensureFetch();
+        const url = new URL(row.optimized_path, settings.serverBaseUrl);
+        const resp = await doFetch(url, { headers: settings.apiKey ? { 'X-API-Key': settings.apiKey } : {} });
+        if (resp.ok) {
+          const buf = Buffer.from(await resp.arrayBuffer());
+          await fs.promises.writeFile(outPath, buf);
+          return outPath;
+        }
+      }
+    } catch (_) {}
+  }
+
   try {
     const stat = await fs.promises.stat(outPath).catch(() => null);
     if (stat && stat.size > 0) return outPath;
@@ -7690,6 +5671,20 @@ async function optimizePreview(row) {
       throw err;
     }
   }
+
+  // Upload optimized preview to server for shared access
+  if (row.id) {
+    try {
+      const catalog = ensureServerCatalog();
+      const uploadResult = await catalog.uploadOptimizedPreview(outPath, hash, row.id);
+      if (uploadResult && uploadResult.filePath) {
+        console.log(`[optimizePreview] Uploaded to server: ${uploadResult.filePath}`);
+      }
+    } catch (uploadErr) {
+      console.warn('[optimizePreview] Failed to upload to server:', uploadErr?.message || uploadErr);
+    }
+  }
+
   return outPath;
 }
 
@@ -7698,40 +5693,13 @@ function which(cmd) {
   const envPath = process.env.PATH || '';
   const exts = isWin ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';') : [''];
 
-  // Common ImageMagick installation paths - check these FIRST before system PATH
-  // This prevents Windows system32\convert.exe (FAT to NTFS tool) from being found
-  const imageMagickPaths = isWin ? [] : [];
-  if (isWin) {
-    // Dynamically find ImageMagick installations in Program Files
-    const programFiles = ['C:\\Program Files', 'C:\\Program Files (x86)'];
-    for (const pf of programFiles) {
-      try {
-        const dirs = fs.readdirSync(pf).filter(d => d.toLowerCase().startsWith('imagemagick'));
-        for (const dir of dirs) {
-          imageMagickPaths.push(path.join(pf, dir));
-        }
-      } catch (_) {}
-    }
-    // Add common hardcoded paths as fallback
-    imageMagickPaths.push('C:\\Program Files\\ImageMagick-7.1.1-Q16-HDRI');
-    imageMagickPaths.push('C:\\Program Files\\ImageMagick-7.1.0-Q16-HDRI');
-    imageMagickPaths.push('C:\\Program Files\\ImageMagick');
-  }
-
+  // Common paths that might not be in Electron's PATH
   const commonPaths = isWin
-    ? imageMagickPaths
+    ? ['C:\\Program Files\\ImageMagick-7.1.0-Q16-HDRI', 'C:\\Program Files\\ImageMagick']
     : ['/usr/local/bin', '/opt/homebrew/bin', '/opt/local/bin', '/usr/bin'];
 
-  // Check ImageMagick/common paths FIRST, then system PATH
-  // This ensures we find the real ImageMagick before Windows system32\convert.exe
-  const systemPaths = envPath.split(path.delimiter).filter(p => {
-    // On Windows, skip system32 when looking for 'convert' to avoid the FAT/NTFS tool
-    if (isWin && cmd.toLowerCase() === 'convert' && p.toLowerCase().includes('system32')) {
-      return false;
-    }
-    return true;
-  });
-  const allPaths = [...new Set([...commonPaths, ...systemPaths])];
+  // Combine envPath with common paths
+  const allPaths = [...new Set([...envPath.split(path.delimiter), ...commonPaths])];
 
   for (const p of allPaths) {
     if (!p) continue;
@@ -7844,14 +5812,14 @@ async function removeBackgroundWithMagickBuffer(buffer, { keyColor = '#ffffff', 
   const { code, error, stderr } = await execFileSafe(magick, args);
   if (code !== 0 || !fs.existsSync(tmpOut)) {
     console.warn('[RemoveBg] Failed:', { code, error: error?.message, stderr });
-    try { fs.unlinkSync(tmpIn); } catch (_) {}
-    try { fs.unlinkSync(tmpOut); } catch (_) {}
+    try { fs.promises.unlink(tmpIn); } catch (_) {}
+    try { fs.promises.unlink(tmpOut); } catch (_) {}
     return null;
   }
   console.log('[RemoveBg] Success - output at:', tmpOut);
   const outBuf = await fs.promises.readFile(tmpOut);
-  try { fs.unlinkSync(tmpIn); } catch (_) {}
-  try { fs.unlinkSync(tmpOut); } catch (_) {}
+  try { fs.promises.unlink(tmpIn); } catch (_) {}
+  try { fs.promises.unlink(tmpOut); } catch (_) {}
   return outBuf;
 }
 
@@ -7866,13 +5834,13 @@ async function boostWhitesWithMagickBuffer(buffer, { whitesFloor = 92 } = {}) {
   const args = [tmpIn, '-colorspace', 'sRGB', '-channel', 'RGB', '-level', `${floor}%`, '100%', '+channel', 'PNG32:' + tmpOut];
   const { code } = await execFileSafe(magick, args);
   if (code !== 0 || !fs.existsSync(tmpOut)) {
-    try { fs.unlinkSync(tmpIn); } catch (_) {}
-    try { fs.unlinkSync(tmpOut); } catch (_) {}
+    try { fs.promises.unlink(tmpIn); } catch (_) {}
+    try { fs.promises.unlink(tmpOut); } catch (_) {}
     return null;
   }
   const outBuf = await fs.promises.readFile(tmpOut);
-  try { fs.unlinkSync(tmpIn); } catch (_) {}
-  try { fs.unlinkSync(tmpOut); } catch (_) {}
+  try { fs.promises.unlink(tmpIn); } catch (_) {}
+  try { fs.promises.unlink(tmpOut); } catch (_) {}
   return outBuf;
 }
 
@@ -7946,7 +5914,20 @@ async function scanDirectoryForItems(directory) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(file);
   }
-  const existingPhashes = (localDb?.allPhashes?.() || []).filter((r) => r.phash);
+  // Try to get phashes from server for deduplication, fall back to empty
+  let existingPhashes = [];
+  try {
+    const catalog = ensureServerCatalog();
+    existingPhashes = (await catalog.allPhashes()) || [];
+  } catch (_) {}
+  existingPhashes = existingPhashes.filter((r) => r.phash);
+  // Also get existing hashes for duplicate detection
+  let existingHashes = new Set();
+  try {
+    const catalog = ensureServerCatalog();
+    const items = await catalog.list({ limit: 10000 });
+    items.forEach(item => { if (item.hash) existingHashes.add(item.hash); });
+  } catch (_) {}
   const results = [];
   for (const [_key, fileList] of groups.entries()) {
     try {
@@ -7969,7 +5950,7 @@ async function scanDirectoryForItems(directory) {
       });
       const parent = path.basename(path.dirname(previewCandidate));
       const base = path.basename(previewCandidate, path.extname(previewCandidate));
-      const duplicate = Boolean(localDb?.findByHash(hash));
+      const duplicate = existingHashes.has(hash);
       const file_type = path.extname(previewCandidate).replace('.', '').toLowerCase();
       const sourcePaths = fileList.filter((p) => DOC_EXTENSIONS.has(path.extname(p).toLowerCase()) || VECTOR_EXTENSIONS.has(path.extname(p).toLowerCase()));
       let phash = null; let nearDuplicate = false; let nearOf = null;
@@ -7988,8 +5969,6 @@ async function scanDirectoryForItems(directory) {
 
 function applyWatchSettings(settings) {
   const cfg = settings || {};
-  // Ensure local DB is available for watcher event handlers
-  ensureLocalDb();
   watchConfig = cfg;
   if (fileWatcher) {
     try { fileWatcher.close(); } catch (_) {}
@@ -8031,6 +6010,7 @@ function applyWatchSettings(settings) {
       const ext = path.extname(filePath).toLowerCase();
       if (!SCAN_EXTENSIONS.has(ext)) return;
       if (!cfg.watchAutoImport) return; // only auto if enabled
+      const catalog = ensureServerCatalog();
       const dir = path.dirname(filePath);
       const base = path.basename(filePath, path.extname(filePath));
       const siblings = (await fs.promises.readdir(dir))
@@ -8039,8 +6019,10 @@ function applyWatchSettings(settings) {
       const scanned = await scanDirectoryForItems(dir);
       const match = scanned.find((x) => x.path === filePath || (x.title === base && path.dirname(x.path) === dir));
       if (!match) return;
-      if (ensureLocalDb()?.findByHash(match.hash)) return; // skip exact dup
-      const rec = ensureLocalDb().upsert({
+      // Check server for existing hash
+      const existing = await catalog.findByHash(match.hash);
+      if (existing) return; // skip exact dup
+      const rec = await catalog.upsert({
         path: match.path,
         category: match.category,
         title: match.title,
@@ -8048,20 +6030,21 @@ function applyWatchSettings(settings) {
         size: match.size,
         hash: match.hash,
         phash: match.phash || null,
-        status: 'imported'
+        status: 'imported',
+        importedBy: cfg.employeeName || 'print-station'
       });
       try { await optimizePreview(rec); } catch (_) {}
       if (cfg.watchOcr) {
         try {
           const text = await performOcr(rec.optimized_path || rec.path);
           const tags = suggestTags(text);
-          ensureLocalDb().update(rec.id, {
+          await catalog.update(rec.id, {
             title: (!rec.title || /^img|^image|^scan/i.test(rec.title)) ? text : rec.title,
             tags: JSON.stringify(tags)
           });
         } catch (_) {}
       }
-      if (cfg.watchAutoApprove) { try { ensureLocalDb().update(rec.id, { status: 'approved' }); } catch (_) {} }
+      if (cfg.watchAutoApprove) { try { await catalog.update(rec.id, { status: 'approved' }); } catch (_) {} }
       if (cfg.watchAutoMockup && cfg.watchMockupBackground && cfg.watchMockupOutputDir) {
         try {
           await generateMockupForRow(rec, {

@@ -6,7 +6,7 @@ const SHOP = (
   ''
 ).replace(/\/$/, '');
 const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN || process.env.SHOPIFY_ADMIN_TOKEN || '';
-const API_VERSION = process.env.SHOPIFY_API_VERSION || '2025-01';
+const API_VERSION = process.env.SHOPIFY_API_VERSION || '2024-01';
 
 // Rate limiter: Shopify allows 2 calls/sec with a bucket of 40 requests
 // Use 600ms between calls for safety margin
@@ -56,7 +56,7 @@ function adminUrl(pathname) {
   return `${base}/admin/api/${API_VERSION}${p}`;
 }
 
-async function httpJson(method, url, body, _retryCount = 0) {
+async function httpJson(method, url, body) {
   // Wait for rate limit before making the call
   await waitForRateLimit();
 
@@ -83,37 +83,10 @@ async function httpJson(method, url, body, _retryCount = 0) {
             const text = Buffer.concat(chunks).toString('utf8');
             let json = null;
             try { json = JSON.parse(text || '{}'); } catch (_) {}
-
-            // 429 Too Many Requests — back off and retry (max 3 retries)
-            if (res.statusCode === 429 && _retryCount < 3) {
-              const retryAfter = parseFloat(res.headers['retry-after']) || (2 * (_retryCount + 1));
-              console.log(`[Shopify] Rate limited (429), retrying in ${retryAfter}s (attempt ${_retryCount + 1}/3)`);
-              setTimeout(() => {
-                httpJson(method, url, body, _retryCount + 1).then(resolve).catch(reject);
-              }, retryAfter * 1000);
-              return;
-            }
-
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              // Attach Link header for pagination support
-              const result = json || { ok: true };
-              if (res.headers.link) {
-                result.__linkHeader = res.headers.link;
-              }
-              resolve(result);
+              resolve(json || { ok: true });
             } else {
-              // Build error message - handle objects by JSON stringifying
-              let errMsg = `HTTP ${res.statusCode}`;
-              if (json) {
-                if (json.error) {
-                  errMsg = typeof json.error === 'string' ? json.error : JSON.stringify(json.error);
-                } else if (json.errors) {
-                  errMsg = typeof json.errors === 'string' ? json.errors : JSON.stringify(json.errors);
-                }
-              } else if (text) {
-                errMsg = text;
-              }
-              const err = new Error(errMsg);
+              const err = new Error((json && (json.error || json.errors)) || text || `HTTP ${res.statusCode}`);
               err.status = res.statusCode;
               err.detail = json || text;
               reject(err);
@@ -128,15 +101,6 @@ async function httpJson(method, url, body, _retryCount = 0) {
       reject(e);
     }
   });
-}
-
-/**
- * Parse Shopify Link header to extract the next page URL
- */
-function parseLinkNext(linkHeader) {
-  if (!linkHeader) return null;
-  const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-  return match ? match[1] : null;
 }
 
 async function graphql(query, variables = {}) {
@@ -430,14 +394,7 @@ async function listCollections({ title = '', limit = 20 } = {}) {
   const b = Array.isArray(smart?.smart_collections) ? smart.smart_collections : [];
   return a
     .concat(b)
-    .map((c) => ({
-      id: c.id,
-      title: c.title,
-      handle: c.handle,
-      updated_at: c.updated_at,
-      products_count: c.products_count,
-      image: c.image ? { src: c.image.src, alt: c.image.alt, width: c.image.width, height: c.image.height } : null
-    }))
+    .map((c) => ({ id: c.id, title: c.title, handle: c.handle, updated_at: c.updated_at }))
     .sort((x, y) => String(y.updated_at || '').localeCompare(String(x.updated_at || '')));
 }
 
@@ -695,36 +652,6 @@ async function updateProduct(productId, product) {
   const url = adminUrl(`/products/${encodeURIComponent(productId)}.json`);
   const res = await httpJson('PUT', url, payload);
   return res?.product || res;
-}
-
-// Add image to an existing product
-async function addProductImage(productId, imageData) {
-  if (!isConfigured()) throw new Error('Shopify not configured');
-  // imageData can have: attachment (base64), src (url), filename, alt, position
-  const payload = { image: imageData };
-  const url = adminUrl(`/products/${encodeURIComponent(productId)}/images.json`);
-  const res = await httpJson('POST', url, payload);
-  return res?.image || res;
-}
-
-// Delete all images from a product
-async function deleteProductImages(productId) {
-  if (!isConfigured()) throw new Error('Shopify not configured');
-  // First get existing images
-  const productUrl = adminUrl(`/products/${encodeURIComponent(productId)}.json?fields=images`);
-  const productRes = await httpJson('GET', productUrl);
-  const images = productRes?.product?.images || [];
-
-  // Delete each image
-  for (const img of images) {
-    try {
-      const deleteUrl = adminUrl(`/products/${encodeURIComponent(productId)}/images/${img.id}.json`);
-      await httpJson('DELETE', deleteUrl);
-    } catch (e) {
-      console.log(`[Shopify] Could not delete image ${img.id}: ${e.message}`);
-    }
-  }
-  return { deleted: images.length };
 }
 
 async function deleteProduct(productId) {
@@ -1261,58 +1188,24 @@ async function updateProductCategory(productId, categoryId) {
 }
 
 /**
- * List all products with full pagination support
- * Follows Shopify Link header to fetch every page automatically
+ * List all products with pagination support
  */
 async function listAllProducts({ limit = 250, collection_id } = {}) {
   let allProducts = [];
-  let url = adminUrl(`/products.json?limit=${limit}${collection_id ? `&collection_id=${collection_id}` : ''}`);
+  let url = `products.json?limit=${limit}`;
+  if (collection_id) {
+    url += `&collection_id=${collection_id}`;
+  }
 
   while (url) {
-    const resp = await httpJson('GET', url);
+    const resp = await httpJson('GET', adminUrl(url));
     if (resp.products) {
       allProducts = allProducts.concat(resp.products);
     }
-    // Follow pagination via Link header
-    url = parseLinkNext(resp.__linkHeader) || null;
+    // Check for pagination
+    url = null; // For now, just get first page
   }
-  console.log(`[Shopify] listAllProducts fetched ${allProducts.length} total products`);
   return allProducts;
-}
-
-/**
- * Get inventory levels for a location (or all locations)
- * Returns inventory for all items at the given location
- */
-async function getInventoryLevels({ locationId, inventoryItemIds } = {}) {
-  if (!isConfigured()) throw new Error('Shopify not configured');
-  let url;
-  if (inventoryItemIds && inventoryItemIds.length) {
-    url = adminUrl(`/inventory_levels.json?inventory_item_ids=${inventoryItemIds.join(',')}&limit=250`);
-  } else if (locationId) {
-    url = adminUrl(`/inventory_levels.json?location_ids=${locationId}&limit=250`);
-  } else {
-    throw new Error('Either locationId or inventoryItemIds required');
-  }
-  const resp = await httpJson('GET', url);
-  return resp?.inventory_levels || [];
-}
-
-/**
- * Get all orders with pagination (recent first)
- */
-async function getAllOrders({ status = 'any', limit = 250, created_at_min } = {}) {
-  let allOrders = [];
-  let url = adminUrl(`/orders.json?status=${status}&limit=${limit}${created_at_min ? `&created_at_min=${created_at_min}` : ''}`);
-
-  while (url) {
-    const resp = await httpJson('GET', url);
-    if (resp.orders) {
-      allOrders = allOrders.concat(resp.orders);
-    }
-    url = parseLinkNext(resp.__linkHeader) || null;
-  }
-  return allOrders;
 }
 
 /**
@@ -1371,32 +1264,148 @@ async function updateProductVariants(productId, variants) {
   });
 }
 
+// --- TikTok Shop / Publication Management ---
+
+/**
+ * Find the TikTok sales channel publication from Shopify
+ * @returns {Object|null} { id, name } or null
+ */
+async function findTikTokPublication() {
+  const pubs = await listPublications();
+  return pubs.find(p => p.name && p.name.toLowerCase().includes('tiktok')) || null;
+}
+
+/**
+ * Get all products currently published to a specific publication (paginated)
+ * @param {string} pubId - Publication GID
+ * @returns {Array} Array of { id, title, handle, status, images, variants }
+ */
+async function getProductsOnPublication(pubId) {
+  const allProducts = [];
+  let cursor = null;
+  let hasNext = true;
+
+  while (hasNext) {
+    const q = `#graphql
+      query ProductsOnPublication($pubId: ID!, $first: Int!, $after: String) {
+        publication(id: $pubId) {
+          products(first: $first, after: $after) {
+            edges {
+              cursor
+              node {
+                id
+                title
+                handle
+                status
+                featuredImage { url altText }
+                priceRangeV2 { minVariantPrice { amount currencyCode } maxVariantPrice { amount currencyCode } }
+                totalVariants
+                productType
+                tags
+              }
+            }
+            pageInfo { hasNextPage }
+          }
+        }
+      }
+    `;
+    const vars = { pubId, first: 50, after: cursor };
+    const data = await graphql(q, vars);
+    const edges = data?.data?.publication?.products?.edges || [];
+    for (const edge of edges) {
+      const n = edge.node;
+      allProducts.push({
+        id: n.id,
+        numericId: n.id.replace(/.*\//, ''),
+        title: n.title,
+        handle: n.handle,
+        status: n.status,
+        image: n.featuredImage?.url || null,
+        minPrice: n.priceRangeV2?.minVariantPrice?.amount || null,
+        maxPrice: n.priceRangeV2?.maxVariantPrice?.amount || null,
+        totalVariants: n.totalVariants || 0,
+        productType: n.productType || '',
+        tags: n.tags || []
+      });
+      cursor = edge.cursor;
+    }
+    hasNext = data?.data?.publication?.products?.pageInfo?.hasNextPage === true;
+  }
+
+  return allProducts;
+}
+
+/**
+ * Unpublish a product from specific publications
+ * @param {string|number} productId - Product ID (numeric or GID)
+ * @param {string[]} pubIds - Array of publication GIDs to remove from
+ * @returns {Object} { ok: true }
+ */
+async function unpublishFromPublication(productId, pubIds = []) {
+  if (!Array.isArray(pubIds) || !pubIds.length) return { ok: true };
+  const gid = String(productId).startsWith('gid://') ? productId : toProductGid(productId);
+
+  const q = `#graphql
+    mutation UnpublishProduct($id: ID!, $input: [PublicationInput!]!) {
+      publishableUnpublish(id: $id, input: $input) {
+        publishable { __typename }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const input = pubIds.map(pubId => ({ publicationId: pubId }));
+  const resp = await graphql(q, { id: gid, input });
+  const errs = resp?.data?.publishableUnpublish?.userErrors || [];
+  if (errs.length) {
+    const msg = errs.map(e => e.message).join('; ');
+    const error = new Error(msg || 'publishableUnpublish failed');
+    error.detail = errs;
+    throw error;
+  }
+  return { ok: true };
+}
+
+/**
+ * Query which publications/channels a product is currently on
+ * @param {string|number} productId - Product ID
+ * @returns {Array} Array of { id, name }
+ */
+async function getProductPublications(productId) {
+  const gid = String(productId).startsWith('gid://') ? productId : toProductGid(productId);
+
+  const q = `#graphql
+    query ProductPublications($id: ID!) {
+      product(id: $id) {
+        resourcePublicationsV2(first: 50) {
+          edges {
+            node {
+              publication { id name }
+              isPublished
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const data = await graphql(q, { id: gid });
+  const edges = data?.data?.product?.resourcePublicationsV2?.edges || [];
+  return edges
+    .filter(e => e.node.isPublished)
+    .map(e => ({ id: e.node.publication.id, name: e.node.publication.name }));
+}
+
 // Export new functions
 module.exports.listAllProducts = listAllProducts;
-module.exports.getInventoryLevels = getInventoryLevels;
-module.exports.getAllOrders = getAllOrders;
 module.exports.updateVariant = updateVariant;
 module.exports.updateProductTags = updateProductTags;
 module.exports.getProductFull = getProductFull;
 module.exports.updateProductFull = updateProductFull;
 module.exports.updateProductVariants = updateProductVariants;
-module.exports.addProductImage = addProductImage;
-module.exports.deleteProductImages = deleteProductImages;
 
-// --- Pipeline Monitor helpers ---
-
-async function getOrderCount(params = {}) {
-  if (!isConfigured()) throw new Error('Shopify not configured');
-  const query = new URLSearchParams({ status: 'any', ...params });
-  return httpJson('GET', adminUrl('/orders/count.json?' + query));
-}
-
-async function registerWebhook(topic, address) {
-  if (!isConfigured()) throw new Error('Shopify not configured');
-  return httpJson('POST', adminUrl('/webhooks.json'), {
-    webhook: { topic, address, format: 'json' }
-  });
-}
-
-module.exports.getOrderCount = getOrderCount;
-module.exports.registerWebhook = registerWebhook;
+// TikTok Shop / Publication management
+module.exports.findTikTokPublication = findTikTokPublication;
+module.exports.getProductsOnPublication = getProductsOnPublication;
+module.exports.unpublishFromPublication = unpublishFromPublication;
+module.exports.getProductPublications = getProductPublications;

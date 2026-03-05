@@ -55,41 +55,13 @@
           <button class="dropdown-item" data-view="leonardoView">AI Image Generator</button>
           <button class="dropdown-item" data-view="mockupsView">Mockups</button>
           <button class="dropdown-item" data-view="customArtView">Custom Art</button>
-          
+          <button class="dropdown-item" data-view="stickerSheetsView">Sticker Sheets</button>
         </div>
       </div>
 
       <!-- Standalone buttons for frequently used -->
-      <button class="tab-button" data-view="stickersView">Stickers</button>
-      <button class="tab-button" data-view="vinylCutterView">Vinyl Cutter</button>
       <button class="tab-button" data-view="campaignsView">Campaigns</button>
       <button class="tab-button" data-view="salesView">Sales</button>
-
-      <!-- POS Dropdown -->
-      <div class="nav-dropdown">
-        <button class="tab-button dropdown-toggle" data-dropdown="pos">
-          POS <span class="dropdown-arrow">▼</span>
-        </button>
-        <div class="dropdown-menu" id="pos-dropdown">
-          <button class="dropdown-item" data-view="skuCatalogView">SKU Catalog</button>
-          <button class="dropdown-item" data-view="qrScannerView">Scanner</button>
-          <button class="dropdown-item" data-view="productCatalogView">Products</button>
-        </div>
-      </div>
-
-      <!-- 3D Dropdown -->
-      <div class="nav-dropdown">
-        <button class="tab-button dropdown-toggle" data-dropdown="threed">
-          3D <span class="dropdown-arrow">▼</span>
-        </button>
-        <div class="dropdown-menu" id="threed-dropdown">
-          <button class="dropdown-item" data-view="multiboardDesignerView">Multiboard Designer</button>
-          <button class="dropdown-item" data-view="multiboardPartsBrowserView">Parts Browser</button>
-          <button class="dropdown-item" data-view="printerFleetView">Printer Fleet</button>
-          <button class="dropdown-item" data-view="slicerView">Slice &amp; Print</button>
-          <button class="dropdown-item" data-view="printQuotesView">Print Quotes</button>
-        </div>
-      </div>
 
       <!-- Social Dropdown -->
       <div class="nav-dropdown">
@@ -100,8 +72,7 @@
           <button class="dropdown-item" data-view="socialMarketingView">Facebook Post Creator</button>
           <button class="dropdown-item" data-view="tiktokPostView">TikTok Post Creator</button>
           <button class="dropdown-item" data-view="fbScheduleManagerView">Schedule Manager</button>
-          <button class="dropdown-item" data-view="aiAgentView">AI Sales Agent</button>
-          <button class="dropdown-item" data-view="trendMonitorView">Trend Monitor</button>
+          <button class="dropdown-item" data-view="tiktokShopView">TikTok Shop Manager</button>
         </div>
       </div>
 
@@ -116,7 +87,6 @@
         <div class="dropdown-menu" id="configure-dropdown">
           <button class="dropdown-item" data-view="inventoryView">Inventory</button>
           <button class="dropdown-item" data-view="mockupBackgroundsView">Mockup Backgrounds</button>
-          <button class="dropdown-item" data-view="b2bManagementView">B2B Partners</button>
           <button class="dropdown-item" data-view="adminView">Admin</button>
           <button class="dropdown-item" data-view="settingsView">Settings</button>
           <div style="border-top: 1px solid #eee; margin: 4px 0;"></div>
@@ -370,38 +340,6 @@
               </div>
             </div>
           </div>
-
-          <!-- AI Sales Agent Card -->
-          <div class="dashboard-card ai-agent-status">
-            <div class="dashboard-card-header">
-              <h3>AI Sales Agent</h3>
-              <span class="dashboard-status" id="agentStatusBadge" title="Checking...">&#9679;</span>
-            </div>
-            <div class="dashboard-card-body">
-              <div class="dashboard-stats-grid">
-                <div class="dashboard-stat-item">
-                  <span class="stat-value" id="agentCycleCount">--</span>
-                  <span class="stat-label">Cycles Run</span>
-                </div>
-                <div class="dashboard-stat-item">
-                  <span class="stat-value" id="agentQueueDepth">--</span>
-                  <span class="stat-label">Queue Depth</span>
-                </div>
-                <div class="dashboard-stat-item">
-                  <span class="stat-value" id="agentPostsTracked">--</span>
-                  <span class="stat-label">Posts Tracked</span>
-                </div>
-                <div class="dashboard-stat-item">
-                  <span class="stat-value" id="agentLastCycle">--</span>
-                  <span class="stat-label">Last Cycle</span>
-                </div>
-              </div>
-              <div class="dashboard-mini-list" id="agentTopCategories">
-                <h4>Active Categories</h4>
-                <div class="placeholder">Loading...</div>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -538,9 +476,6 @@
           <button id="catalogTabDecalIcons" class="catalog-tab" data-catalog-type="decal-icons" style="padding:10px 20px;border:none;background:transparent;cursor:pointer;font-size:14px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;">
             Decal Creator Icons
           </button>
-          <button id="catalogTabStudio3" class="catalog-tab" data-catalog-type="studio3" style="padding:10px 20px;border:none;background:transparent;cursor:pointer;font-size:14px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;">
-            Studio3 Designs
-          </button>
         </div>
         <div class="view-toolbar">
           <div class="catalog-toolbar-group">
@@ -556,15 +491,11 @@
           </div>
           <div class="catalog-toolbar-actions">
             <span id="catalogStatus" class="catalog-status muted">Loading catalog…</span>
-            <button id="catalogSelectAllBtn" class="secondary">Select All</button>
             <button id="generateMetadataButton" class="primary">Generate AI Metadata</button>
             <button id="reloadCatalogButton" class="secondary">Reload Catalog</button>
             <button id="catalogAddSelectedBtn" class="secondary" disabled>Add Selected to Campaign</button>
             <button id="catalogAddAllToCampaignButton" class="secondary">Add ALL to campaign</button>
             <button id="catalogToFacebookBtn" class="secondary" disabled>Use checked in Facebook Post</button>
-            <button id="catalogSyncToGDriveBtn" class="secondary" title="Sync selected items to Google Drive Canva folder" onclick="if(typeof handleSyncCatalogToGDrive === 'function') handleSyncCatalogToGDrive();">Sync to GDrive</button>
-            <button id="catalogPullFromGDriveBtn" class="secondary" title="Pull edited items from Google Drive back to server">Pull from GDrive</button>
-            <button id="catalogSendToVinylCutterBtn" class="secondary" disabled title="Send selected designs to Vinyl Cutter">Send to Vinyl Cutter</button>
           </div>
         </div>
         <div id="catalogGrid" class="catalog-grid"></div>
@@ -960,451 +891,94 @@
         </div>
       </section>
 
-<!-- ================================================================== -->
-      <!-- STICKERS SECTION (Redesigned)                                       -->
       <!-- ================================================================== -->
-      <section id="stickersView" class="view">
+      <!-- STICKER SHEETS SECTION                                             -->
+      <!-- ================================================================== -->
+      <section id="stickerSheetsView" class="view">
         <div class="view-toolbar">
           <div class="catalog-toolbar-group">
             <h3 style="margin:0;">Sticker Sheet Generator</h3>
-            <span id="stickersStatus" class="catalog-status muted">Ready</span>
+            <span id="stickerSheetStatus" class="catalog-status muted">Ready</span>
           </div>
-          <div class="catalog-toolbar-actions" style="display:flex;gap:12px;align-items:center;">
-            <!-- Mode Toggle -->
-            <div class="stickers-mode-toggle" style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
-              <button id="stickersModeOrder" class="mode-btn active" style="padding:6px 16px;border:none;background:var(--primary);color:white;cursor:pointer;font-size:13px;">Customer Order</button>
-              <button id="stickersModeManual" class="mode-btn" style="padding:6px 16px;border:none;background:var(--card);color:var(--text);cursor:pointer;font-size:13px;">Manual Selection</button>
-              <button id="stickersModeLayout" class="mode-btn" style="padding:6px 16px;border:none;background:var(--card);color:var(--text);cursor:pointer;font-size:13px;">Visual Layout</button>
-            </div>
-            <button id="stickersClearBtn" class="secondary">Clear</button>
-            <button id="stickersGenerateBtn" class="primary" disabled>Generate Sheets (0)</button>
+          <div class="catalog-toolbar-actions">
+            <label style="display:flex;align-items:center;gap:6px;">
+              Size:
+              <select id="stickerSheetSize" style="width:100px;">
+                <option value="2">2 inches</option>
+                <option value="2.5">2.5 inches</option>
+                <option value="3" selected>3 inches</option>
+                <option value="3.5">3.5 inches</option>
+                <option value="4">4 inches</option>
+              </select>
+            </label>
+            <button id="stickerSheetClearBtn" class="secondary">Clear Selection</button>
+            <button id="stickerSheetGenerateBtn" class="primary" disabled>Generate Sheets (0)</button>
           </div>
         </div>
 
-        <div class="stickers-layout" style="display:flex;gap:16px;height:calc(100% - 60px);padding:16px;">
-          <!-- Left Panel: Mode-specific content -->
-          <div class="stickers-main-panel" style="flex:2;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
-
-            <!-- ORDER MODE PANEL -->
-            <div id="stickersOrderPanel" class="stickers-panel" style="display:flex;flex-direction:column;flex:1;">
-              <div class="inventory-card" style="margin-bottom:12px;">
-                <h4 style="margin:0 0 12px 0;">Import from Shopify Order</h4>
-                <div style="display:flex;gap:8px;margin-bottom:8px;">
-                  <input type="text" id="stickersOrderId" placeholder="Order # (e.g., 1234 or #1234)" style="flex:1;" />
-                  <button id="stickersImportOrderBtn" class="primary">Import Order</button>
-                </div>
-                <div id="stickersOrderInfo" class="muted" style="font-size:12px;"></div>
-              </div>
-
-              <!-- Saved Orders Browser -->
-              <div class="inventory-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                  <h4 style="margin:0;">Saved Order Sheets</h4>
-                  <button id="stickersRefreshSavedBtn" class="secondary" style="font-size:11px;padding:4px 10px;">Refresh</button>
-                </div>
-                <input type="search" id="stickersSavedSearch" placeholder="Search by order #..." style="margin-bottom:8px;" />
-                <div id="stickersSavedOrdersList" style="flex:1;overflow-y:auto;">
-                  <div class="placeholder" style="text-align:center;padding:30px;color:#888;">
-                    No saved order sheets yet
-                  </div>
-                </div>
-              </div>
+        <div class="sticker-sheets-layout" style="display:flex;gap:20px;height:calc(100% - 60px);padding:16px;">
+          <!-- Left Panel: Category Browser & Catalog -->
+          <div class="sticker-sheets-catalog" style="flex:2;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
+            <!-- Category Filter -->
+            <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
+              <select id="stickerSheetCategorySelect" style="flex:1;">
+                <option value="">All Categories</option>
+              </select>
+              <input type="search" id="stickerSheetSearch" placeholder="Search stickers..." style="flex:1;" />
+              <button id="stickerSheetSelectAllBtn" class="secondary">Select All Visible</button>
             </div>
 
-            <!-- VISUAL LAYOUT EDITOR PANEL -->
-            <div id="layoutEditorPanel" class="stickers-panel" style="display:none;flex:1;flex-direction:column;gap:12px;">
-              <!-- Layout Toolbar -->
-              <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-                  <div style="display:flex;align-items:center;gap:12px;">
-                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
-                      Size:
-                      <input type="number" id="layoutStickerSize" value="3" min="1" max="6" step="0.25" style="width:60px;" onchange="updateLayoutStickerSize(this.value)" />
-                      <span>in</span>
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
-                      Offset:
-                      <input type="number" id="layoutOffset" value="0.25" min="0" max="5" step="0.25" style="width:60px;" onchange="updateLayoutOffset(this.value)" />
-                      <span>mm</span>
-                    </label>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <button id="layoutContourToggle" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="toggleContourVisibility()">Hide Contours</button>
-                    <button id="layoutClearBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="clearLayoutEditor()">Clear Layout</button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Layout Canvas Area -->
-              <div class="inventory-card" style="flex:1;overflow:auto;display:flex;flex-direction:column;background:#2a2a3a;">
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);">
-                  <div style="display:flex;align-items:center;gap:12px;">
-                    <span style="font-size:13px;font-weight:500;">Sheet Layout</span>
-                    <span style="font-size:11px;color:#888;">8.5" x 11" @ 300 DPI</span>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <span style="font-size:12px;"><span id="layoutStickerCount">0</span> stickers</span>
-                    <span style="font-size:12px;color:#888;">|</span>
-                    <span style="font-size:12px;">Page <span id="layoutCurrentPage">1</span> of <span id="layoutPageCount">1</span></span>
-                  </div>
-                </div>
-
-                <!-- Canvas Container -->
-                <div style="flex:1;display:flex;justify-content:center;align-items:center;padding:20px;overflow:auto;">
-                  <canvas id="layoutEditorCanvas" style="border:1px solid #444;box-shadow:0 4px 20px rgba(0,0,0,0.3);"></canvas>
-                </div>
-              </div>
-
-              <!-- Page Navigation & Actions -->
-              <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                  <!-- Page Navigator -->
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <span style="font-size:12px;color:#888;">Pages:</span>
-                    <div id="layoutPageNavigator" style="display:flex;gap:4px;">
-                      <button class="page-nav-btn active" onclick="goToLayoutPage(0)" title="Page 1">1</button>
-                    </div>
-                    <button id="layoutAddPageBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="addLayoutPage()">+ Add Page</button>
-                  </div>
-
-                  <!-- Sticker Controls -->
-                  <div style="display:flex;align-items:center;gap:6px;">
-                    <button id="layoutEditContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#22c55e;color:white;border-color:#22c55e;" onclick="enterContourEditMode()" disabled title="Edit cut line points">Edit Contour</button>
-                    <button id="layoutDoneEditingBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#22c55e;color:white;border-color:#22c55e;display:none;" onclick="exitContourEditMode(true)">Done Editing</button>
-                    <button id="layoutCircleContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="setContourToCircle(16)" title="Circle/ellipse contour">Circle</button>
-                    <button id="layoutRoundedRectBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="setContourToRoundedRect(20)" title="Rounded rectangle contour">Rounded</button>
-                    <button id="layoutSquareContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="resetContourToDefault()" title="Square/rectangle contour">Square</button>
-                    <button id="layoutSmoothContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="smoothContour()" title="Smooth out blocky contours">Smooth</button>
-                    <button id="layoutAddPointBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="addContourPoint()" title="Add point to contour">+ Point</button>
-                    <button id="layoutRemovePointBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="removeContourPoint()" title="Remove selected point">- Point</button>
-                    <select id="layoutBgColorSelect" style="font-size:11px;padding:3px 6px;border-radius:4px;border:1px solid #8b5cf6;background:#2a2a3a;color:white;" title="Background color to remove"><option value="#ffffff">White BG</option><option value="#000000">Black BG</option></select>
-                    <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#ccc;" title="Tolerance: how much color variation to remove (lower = more precise)"><span>Fuzz:</span><input type="range" id="layoutBgFuzzSlider" min="1" max="30" value="5" style="width:50px;height:14px;" oninput="document.getElementById('layoutBgFuzzValue').textContent=this.value+'%'" /><span id="layoutBgFuzzValue" style="min-width:24px;">5%</span></label>
-                    <button id="layoutRemoveBgBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#8b5cf6;color:white;border-color:#8b5cf6;" onclick="removeSelectedStickerBackground()" disabled title="Remove background">Remove BG</button>
-                    <button id="layoutCropBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#f59e0b;color:white;border-color:#f59e0b;" onclick="enterCropMode()" disabled title="Crop sticker">Crop</button>
-                    <button id="layoutCropApplyBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#22c55e;color:white;border-color:#22c55e;display:none;" onclick="applyCrop()">Apply Crop</button>
-                    <button id="layoutCropCancelBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="cancelCrop()">Cancel</button>
-                    <button id="layoutRotateBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="rotateSelectedSticker(90)" disabled title="Rotate 90 (R)">Rotate</button>
-                    <button id="layoutScaleUpBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="scaleSelectedSticker(1.1)" disabled title="Scale Up (])">+</button>
-                    <button id="layoutScaleDownBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="scaleSelectedSticker(0.9)" disabled title="Scale Down ([)">-</button>
-                    <button id="layoutDeleteBtn" class="secondary" style="font-size:11px;padding:4px 10px;color:#ef4444;" onclick="removeStickerFromLayout(layoutEditorState.canvas.getActiveObject())" disabled title="Delete (Del)">Delete</button>
-                  </div>
-                </div>
-              </div>
+            <!-- Grid Info -->
+            <div id="stickerSheetGridInfo" style="font-size:12px;color:#888;flex-shrink:0;">
+              Grid: 3x2 (6 stickers per sheet)
             </div>
 
-            <!-- MANUAL MODE PANEL -->
-            <div id="stickersManualPanel" class="stickers-panel" style="display:none;flex:1;flex-direction:column;gap:12px;">
-              <!-- Category & Search -->
-              <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
-                <select id="stickersCategorySelect" style="flex:1;">
-                  <option value="">All Categories</option>
-                </select>
-                <input type="search" id="stickersSearch" placeholder="Search stickers..." style="flex:1;" />
-                <button id="stickersSelectAllBtn" class="secondary">Select All Visible</button>
-              </div>
-
-              <!-- Size Selection for Manual Mode -->
-              <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
-                <div style="display:flex;align-items:center;gap:16px;">
-                  <label style="display:flex;align-items:center;gap:8px;margin:0;">
-                    <span style="font-size:13px;">Sticker Size:</span>
-                    <input type="number" id="stickersManualSize" value="3" min="1" max="6" step="0.25" style="width:70px;" />
-                    <span style="font-size:13px;">inches</span>
-                  </label>
-                  <span class="muted" style="font-size:11px;">(Scales largest dimension)</span>
-                </div>
-              </div>
-
-              <!-- Grid Info -->
-              <div id="stickersGridInfo" style="font-size:12px;color:#888;flex-shrink:0;">
-                Grid: calculating...
-              </div>
-
-              <!-- Sticker Grid -->
-              <div id="stickersCatalogGrid" class="sticker-catalog-grid" style="flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill, minmax(120px, 1fr));gap:10px;padding:4px;">
-                <div class="placeholder" style="grid-column: 1/-1;text-align:center;padding:40px;">
-                  Select a category to browse stickers
-                </div>
+            <!-- Sticker Grid -->
+            <div id="stickerSheetCatalogGrid" class="sticker-catalog-grid" style="flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill, minmax(120px, 1fr));gap:10px;padding:4px;">
+              <div class="placeholder" style="grid-column: 1/-1;text-align:center;padding:40px;">
+                Loading stickers...
               </div>
             </div>
           </div>
 
-          <!-- Right Panel: Selection, Settings, Actions -->
-          <div class="stickers-side-panel" style="width:340px;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
-
-            <!-- Layout Mode: Available Stickers Panel -->
-            <div id="layoutAvailableStickerPanel" class="inventory-card" style="display:none;flex-direction:column;overflow:hidden;max-height:825px;min-height:400px;">
-              <h4 style="margin:0 0 10px 0;flex-shrink:0;">Available Stickers</h4>
-              <p style="font-size:11px;color:#888;margin:0 0 10px 0;flex-shrink:0;">Click to add to layout. Select stickers in Manual Selection mode first.</p>
-              <div id="layoutAvailableStickers" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
-                <div class="placeholder" style="text-align:center;padding:20px;color:#888;">
-                  No stickers selected. Go to Manual Selection to choose stickers.
-                </div>
-              </div>
-            </div>
-
-            <!-- Layout Mode: Generate Button -->
-            <div id="layoutGeneratePanel" class="inventory-card" style="display:none;flex-shrink:0;">
-              <button id="layoutGenerateBtn" class="primary" style="width:100%;padding:12px;" onclick="generateSheetsFromLayout()">
-                Generate Sheets from Layout
-              </button>
-              <p id="layoutStatus" style="font-size:11px;color:#888;margin:8px 0 0 0;text-align:center;">Arrange stickers on the canvas, then generate</p>
-            </div>
-
-            <!-- Current Order Info (Order Mode) -->
-            <div id="stickersCurrentOrder" class="inventory-card" style="display:none;flex-shrink:0;background:linear-gradient(135deg, #1e3a5f 0%, #1a1a2e 100%);border:1px solid #38bdf8;">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <h4 style="margin:0;color:#38bdf8;">Order #<span id="stickersOrderNumber">---</span></h4>
-                <span class="muted" style="font-size:11px;">Customer Order</span>
-              </div>
-              <div style="font-size:12px;color:#888;margin-top:4px;">Size: 3 inches (fixed for orders)</div>
-            </div>
-
-            <!-- Selection Stats -->
+          <!-- Right Panel: Selection & Preview -->
+          <div class="sticker-sheets-selection" style="flex:1;display:flex;flex-direction:column;gap:12px;min-width:300px;overflow:hidden;">
+            <!-- Order Import -->
             <div class="inventory-card" style="flex-shrink:0;">
-              <h4 style="margin:0 0 10px 0;">Selection Summary</h4>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
-                <div>Total Stickers:</div>
-                <div style="text-align:right;"><strong id="stickersSelectionCount">0</strong></div>
-                <div>Sheets Needed:</div>
-                <div style="text-align:right;"><strong id="stickersSheetsNeeded">0</strong></div>
-                <div>Est. per Sheet:</div>
-                <div style="text-align:right;"><strong id="stickersPerSheet">~6</strong></div>
+              <h4 style="margin:0 0 8px 0;">Import from Shopify Order</h4>
+              <div style="display:flex;gap:8px;">
+                <input type="text" id="stickerSheetOrderId" placeholder="Order ID or #number" style="flex:1;" />
+                <button id="stickerSheetImportOrderBtn" class="secondary">Import</button>
               </div>
+              <div id="stickerSheetOrderStatus" class="muted" style="font-size:12px;margin-top:6px;"></div>
             </div>
 
-            <!-- Cut Settings (Collapsible) -->
+            <!-- View Generated Sheets Button -->
+            <button id="stickerSheetViewSheetsBtn" class="secondary" style="flex-shrink:0;width:100%;" onclick="openStickerSheetsBrowser()">View Generated Sheets</button>
+
+            <!-- Selection Header -->
             <div class="inventory-card" style="flex-shrink:0;">
-              <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleCutSettings()">
-                <h4 style="margin:0;">Cut Settings</h4>
-                <span id="stickersCutSettingsToggle" style="font-size:12px;">+ Expand</span>
+              <h4 style="margin:0 0 12px 0;">Selected Stickers</h4>
+              <div id="stickerSheetSelectionStats" style="font-size:13px;color:#666;">
+                <div>Total: <strong id="stickerSheetSelectionCount">0</strong> stickers</div>
+                <div>Sheets needed: <strong id="stickerSheetSheetsNeeded">0</strong></div>
               </div>
-              <div id="stickersCutSettingsPanel" style="display:none;margin-top:12px;">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
-                  <label style="display:flex;flex-direction:column;gap:4px;">
-                    <span>Depth (0-10)</span>
-                    <input type="number" id="stickersCutDepth" value="5" min="0" max="10" style="width:100%;" />
-                  </label>
-                  <label style="display:flex;flex-direction:column;gap:4px;">
-                    <span>Speed (1-10)</span>
-                    <input type="number" id="stickersCutSpeed" value="5" min="1" max="10" style="width:100%;" />
-                  </label>
-                  <label style="display:flex;flex-direction:column;gap:4px;">
-                    <span>Pressure (1-33)</span>
-                    <input type="number" id="stickersCutPressure" value="10" min="1" max="33" style="width:100%;" />
-                  </label>
-                  <label style="display:flex;flex-direction:column;gap:4px;">
-                    <span>Offset (mm)</span>
-                    <input type="number" id="stickersCutOffset" value="3" min="1" max="10" step="0.5" style="width:100%;" />
-                  </label>
-                </div>
-                <div style="margin-top:8px;">
-                  <button id="stickersSaveCutSettings" class="secondary" style="width:100%;font-size:11px;">Save Settings</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="inventory-card" style="flex-shrink:0;">
-              <div style="display:flex;flex-direction:column;gap:8px;">
-                <button id="stickersViewSheetsBtn" class="secondary" style="width:100%;">View Generated Sheets</button>
-                <div style="display:flex;gap:8px;">
-                  <button id="stickersPrintBtn" class="primary" style="flex:1;" disabled>Print</button>
-                  <button id="stickersSendCameoBtn" class="secondary" style="flex:1;" disabled>Send to Cameo</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Output Info (after generation) -->
-            <div id="stickersOutputInfo" class="inventory-card" style="display:none;flex-shrink:0;background:#0f2918;border:1px solid #34d399;">
-              <h4 style="margin:0 0 8px 0;color:#34d399;">Generated Successfully</h4>
-              <div id="stickersOutputDetails" style="font-size:12px;"></div>
             </div>
 
             <!-- Selected Items List -->
             <div class="inventory-card" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
-              <h4 style="margin:0 0 8px 0;flex-shrink:0;">Selected Items</h4>
-              <div id="stickersSelectionList" style="flex:1;overflow-y:auto;">
+              <h4 style="margin:0 0 8px 0;flex-shrink:0;">Selection</h4>
+              <div id="stickerSheetSelectionList" style="flex:1;overflow-y:auto;">
                 <div class="placeholder" style="text-align:center;padding:20px;color:#888;">
-                  No stickers selected
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ================================================================== -->
-      <!-- VINYL CUTTER SECTION                                               -->
-      <!-- ================================================================== -->
-      <section id="vinylCutterView" class="view">
-        <div class="view-toolbar">
-          <div class="catalog-toolbar-group">
-            <h3 style="margin:0;">Vinyl Cutter</h3>
-            <span id="vinylCutterStatus" class="catalog-status muted">Ready</span>
-          </div>
-          <div class="catalog-toolbar-actions" style="display:flex;gap:12px;align-items:center;">
-            <!-- Canvas Size Inputs -->
-            <div style="display:flex;align-items:center;gap:8px;">
-              <label style="display:flex;align-items:center;gap:4px;font-size:13px;">
-                <span>W:</span>
-                <input type="number" id="vinylCanvasWidth" value="12" min="1" max="24" step="1" style="width:50px;" />
-              </label>
-              <span style="color:#888;">x</span>
-              <label style="display:flex;align-items:center;gap:4px;font-size:13px;">
-                <span>H:</span>
-                <input type="number" id="vinylCanvasHeight" value="12" min="1" max="24" step="1" style="width:50px;" />
-              </label>
-              <span style="font-size:12px;color:#888;">inches</span>
-              <button id="vinylApplyCanvasSizeBtn" class="secondary" style="font-size:11px;padding:4px 10px;">Apply</button>
-            </div>
-            <span style="color:#555;">|</span>
-            <button id="vinylImportStudio3Btn" class="secondary" style="background:#8b5cf6;color:white;border-color:#8b5cf6;" onclick="importStudio3Files()">Import .studio3</button>
-            <button id="vinylTrainContoursBtn" class="secondary" style="background:#f59e0b;color:white;border-color:#f59e0b;" onclick="trainContourModel()" title="Train contour AI from uploaded Studio3 files">Train AI</button>
-            <button id="vinylClearCanvasBtn" class="secondary">Clear Canvas</button>
-            <button id="vinylGenerateCutFilesBtn" class="primary" disabled>Generate Cut Files</button>
-          </div>
-        </div>
-
-        <div class="vinyl-cutter-layout" style="display:flex;gap:16px;height:calc(100% - 60px);padding:16px;">
-          <!-- Left Panel: Canvas Area -->
-          <div class="vinyl-main-panel" style="flex:2;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
-
-            <!-- Canvas Toolbar -->
-            <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-                <div style="display:flex;align-items:center;gap:12px;">
-                  <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
-                    <input type="checkbox" id="vinylShowGrid" checked />
-                    <span>Show Grid</span>
-                  </label>
-                  <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
-                    <input type="checkbox" id="vinylSnapToGrid" />
-                    <span>Snap to Grid</span>
-                  </label>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <button id="vinylContourToggle" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="toggleVinylContourVisibility()">Hide Contours</button>
+                  Click stickers to add them to your selection
                 </div>
               </div>
             </div>
 
-            <!-- Canvas Container -->
-            <div class="inventory-card" style="flex:1;overflow:auto;display:flex;flex-direction:column;background:#2a2a3a;">
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);">
-                <div style="display:flex;align-items:center;gap:12px;">
-                  <span style="font-size:13px;font-weight:500;">Vinyl Sheet</span>
-                  <span id="vinylCanvasSizeLabel" style="font-size:11px;color:#888;">12" x 12" @ 96 DPI</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <!-- Zoom Controls -->
-                  <button id="vinylZoomOutBtn" class="secondary" style="font-size:11px;padding:2px 8px;min-width:28px;" onclick="zoomVinylCanvas(-1)" title="Zoom Out">-</button>
-                  <span id="vinylZoomLevel" style="font-size:11px;min-width:40px;text-align:center;color:#ccc;">100%</span>
-                  <button id="vinylZoomInBtn" class="secondary" style="font-size:11px;padding:2px 8px;min-width:28px;" onclick="zoomVinylCanvas(1)" title="Zoom In">+</button>
-                  <button id="vinylZoomResetBtn" class="secondary" style="font-size:11px;padding:2px 8px;" onclick="resetVinylZoom()" title="Fit to View">Fit</button>
-                  <span style="font-size:12px;color:#888;">|</span>
-                  <span style="font-size:12px;"><span id="vinylItemCount">0</span> items</span>
-                </div>
-              </div>
-
-              <!-- Canvas with Rulers -->
-              <div id="vinylCanvasContainer" style="flex:1;display:flex;overflow:auto;position:relative;">
-                <!-- Top Ruler -->
-                <div id="vinylTopRuler" style="position:absolute;top:0;left:30px;height:25px;background:#1a1a2e;border-bottom:1px solid #444;z-index:10;"></div>
-                <!-- Left Ruler -->
-                <div id="vinylLeftRuler" style="position:absolute;top:25px;left:0;width:30px;background:#1a1a2e;border-right:1px solid #444;z-index:10;"></div>
-                <!-- Corner -->
-                <div style="position:absolute;top:0;left:0;width:30px;height:25px;background:#1a1a2e;z-index:11;border-right:1px solid #444;border-bottom:1px solid #444;"></div>
-                <!-- Canvas Area -->
-                <div style="flex:1;display:flex;justify-content:center;align-items:center;padding:45px 20px 20px 50px;overflow:auto;">
-                  <canvas id="vinylEditorCanvas" style="border:1px solid #444;box-shadow:0 4px 20px rgba(0,0,0,0.3);"></canvas>
-                </div>
-              </div>
-            </div>
-
-            <!-- Contour Editing Controls -->
-            <div class="inventory-card" style="flex-shrink:0;padding:10px 14px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                <!-- Item Controls -->
-                <div style="display:flex;align-items:center;gap:6px;">
-                  <button id="vinylRefreshContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#3b82f6;color:white;border-color:#3b82f6;" onclick="refreshVinylContour()" disabled title="Re-fetch contour from server">Refresh</button>
-                  <button id="vinylEditContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#22c55e;color:white;border-color:#22c55e;" onclick="enterVinylContourEditMode()" disabled title="Edit cut line points">Edit Contour</button>
-                  <button id="vinylDoneEditingBtn" class="secondary" style="font-size:11px;padding:4px 10px;background:#22c55e;color:white;border-color:#22c55e;display:none;" onclick="exitVinylContourEditMode(true)">Done Editing</button>
-                  <button id="vinylCircleContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="setVinylContourToCircle(16)" title="Circle/ellipse contour">Circle</button>
-                  <button id="vinylRoundedRectBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="setVinylContourToRoundedRect(20)" title="Rounded rectangle contour">Rounded</button>
-                  <button id="vinylSquareContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="resetVinylContourToDefault()" title="Square/rectangle contour">Square</button>
-                  <button id="vinylSmoothContourBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="smoothVinylContour()" title="Smooth out blocky contours">Smooth</button>
-                  <button id="vinylAddPointBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="addVinylContourPoint()" title="Add point to contour">+ Point</button>
-                  <button id="vinylRemovePointBtn" class="secondary" style="font-size:11px;padding:4px 10px;display:none;" onclick="removeVinylContourPoint()" title="Remove selected point">- Point</button>
-                </div>
-                <!-- Transform Controls -->
-                <div style="display:flex;align-items:center;gap:6px;">
-                  <button id="vinylRotateBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="rotateVinylItem(90)" disabled title="Rotate 90">Rotate</button>
-                  <button id="vinylScaleUpBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="scaleVinylItem(1.1)" disabled title="Scale Up">+</button>
-                  <button id="vinylScaleDownBtn" class="secondary" style="font-size:11px;padding:4px 10px;" onclick="scaleVinylItem(0.9)" disabled title="Scale Down">-</button>
-                  <button id="vinylDeleteBtn" class="secondary" style="font-size:11px;padding:4px 10px;color:#ef4444;" onclick="removeVinylItem()" disabled title="Delete">Delete</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right Panel: Items & Colors -->
-          <div class="vinyl-side-panel" style="width:340px;display:flex;flex-direction:column;gap:12px;overflow:hidden;">
-
-            <!-- Available Items Panel -->
-            <div class="inventory-card" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
-              <h4 style="margin:0 0 10px 0;">Items on Canvas</h4>
-              <p style="font-size:11px;color:#888;margin:0 0 10px 0;">Select items from catalog and click "Send to Vinyl Cutter"</p>
-              <div id="vinylItemsList" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
-                <div class="placeholder" style="text-align:center;padding:20px;color:#888;">
-                  No items added yet
-                </div>
-              </div>
-            </div>
-
-            <!-- Color Layers Panel -->
-            <div class="inventory-card" style="flex-shrink:0;max-height:200px;overflow:hidden;display:flex;flex-direction:column;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                <h4 style="margin:0;">Detected Colors</h4>
-                <span id="vinylColorCount" style="font-size:11px;color:#888;">0 colors</span>
-              </div>
-              <div id="vinylColorLayers" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
-                <div class="placeholder" style="text-align:center;padding:15px;color:#888;font-size:12px;">
-                  Colors will appear after adding items
-                </div>
-              </div>
-            </div>
-
-            <!-- Weeding Options -->
-            <div class="inventory-card" style="flex-shrink:0;">
-              <h4 style="margin:0 0 10px 0;">Cut Options</h4>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-                <input type="checkbox" id="vinylAddWeeding" />
-                <span>Add weeding lines/boxes</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:8px;">
-                <input type="checkbox" id="vinylAddRegistration" checked />
-                <span>Add registration marks</span>
-              </label>
-            </div>
-
-            <!-- Generate Button -->
-            <div class="inventory-card" style="flex-shrink:0;">
-              <button id="vinylGenerateBtn" class="primary" style="width:100%;padding:12px;" onclick="generateVinylCutFiles()" disabled>
-                Generate Cut Files
-              </button>
-              <p id="vinylGenerateStatus" style="font-size:11px;color:#888;margin:8px 0 0 0;text-align:center;">Add items to canvas first</p>
-            </div>
-
-            <!-- Output Panel -->
-            <div id="vinylOutputPanel" class="inventory-card" style="display:none;flex-shrink:0;background:#0f2918;border:1px solid #34d399;">
-              <h4 style="margin:0 0 8px 0;color:#34d399;">Generated Cut Files</h4>
-              <div id="vinylOutputFiles" style="display:flex;flex-direction:column;gap:6px;"></div>
-            </div>
-
-            <!-- View Generated Files -->
-            <div class="inventory-card" style="flex-shrink:0;">
-              <button id="vinylViewFilesBtn" class="secondary" style="width:100%;" onclick="openVinylCutsBrowser()">View Generated Cut Files</button>
+            <!-- Output Info -->
+            <div id="stickerSheetOutputInfo" class="inventory-card" style="display:none;flex-shrink:0;">
+              <h4 style="margin:0 0 8px 0;">Generated Sheets</h4>
+              <div id="stickerSheetOutputDetails"></div>
             </div>
           </div>
         </div>
@@ -3647,6 +3221,27 @@
           </div>
         </form>
 
+        <div class="card" id="migrationCard">
+          <h2>Migrate Local Catalog to Server</h2>
+          <p class="hint" style="margin-bottom:12px;">
+            Move items from your local catalog database to the server so all print stations can access them.
+          </p>
+          <div id="migrationInfo" style="margin-bottom:12px;">
+            <span id="migrationLocalCount">Checking local items...</span>
+          </div>
+          <div id="migrationProgress" hidden style="margin-bottom:12px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <progress id="migrationProgressBar" value="0" max="100" style="flex:1;"></progress>
+              <span id="migrationProgressText">0%</span>
+            </div>
+            <div id="migrationCurrentItem" class="muted" style="font-size:0.85rem;">Preparing...</div>
+          </div>
+          <div class="form-row actions">
+            <button id="migrationStartButton" type="button" class="primary">Migrate to Server</button>
+          </div>
+          <div id="migrationStatus" class="status-bar muted">Ready to migrate.</div>
+        </div>
+
         <form id="smsTestForm" class="card">
           <h2>SMS Test</h2>
           <div class="form-row">
@@ -3704,159 +3299,6 @@
         </div>
       </section>
 
-      <!-- ================================================================== -->
-      <!-- B2B PARTNER MANAGEMENT                                             -->
-      <!-- ================================================================== -->
-      <section id="b2bManagementView" class="view">
-        <div class="view-toolbar">
-          <h2 style="margin:0;">B2B Partner Management</h2>
-          <div style="display:flex;gap:8px;">
-            <button id="b2bRefreshBtn" class="secondary">Refresh</button>
-            <button id="b2bAddCompanyBtn" class="primary">+ Add Company</button>
-          </div>
-        </div>
-
-        <div class="b2b-management-layout" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px;">
-          <!-- Companies List -->
-          <div class="card" style="max-height:calc(100vh - 200px);overflow-y:auto;">
-            <h3 style="margin:0 0 12px;">Companies</h3>
-            <div id="b2bCompaniesList" class="b2b-list">
-              <div class="b2b-empty-state">Loading companies...</div>
-            </div>
-          </div>
-
-          <!-- Users List -->
-          <div class="card" style="max-height:calc(100vh - 200px);overflow-y:auto;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-              <h3 style="margin:0;">Users <span id="b2bSelectedCompanyName" style="color:#888;font-weight:normal;"></span></h3>
-              <button id="b2bAddUserBtn" class="secondary" style="display:none;">+ Add User</button>
-            </div>
-            <div id="b2bUsersList" class="b2b-list">
-              <div class="b2b-empty-state">Select a company to view users</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Company Stats -->
-        <div id="b2bCompanyStats" class="card" style="margin:0 16px;display:none;">
-          <h4 style="margin:0 0 12px;">Company Orders</h4>
-          <div id="b2bOrdersList" style="max-height:300px;overflow-y:auto;"></div>
-        </div>
-      </section>
-
-      <!-- Add/Edit Company Modal -->
-      <div id="b2bCompanyModal" class="modal-overlay">
-        <div class="modal-dialog" style="max-width:500px;">
-          <div class="modal-header">
-            <h3 id="b2bCompanyModalTitle">Add Company</h3>
-            <button class="modal-close" onclick="closeB2BCompanyModal()">&times;</button>
-          </div>
-          <form id="b2bCompanyForm">
-            <div class="modal-body">
-              <input type="hidden" id="b2bCompanyId">
-              <div class="form-row">
-                <label>Company Name *</label>
-                <input type="text" id="b2bCompanyName" required placeholder="Partner Company Inc.">
-              </div>
-              <div class="form-row">
-                <label>Contact Email *</label>
-                <input type="email" id="b2bCompanyEmail" required placeholder="contact@company.com">
-              </div>
-              <div class="form-row">
-                <label>Contact Phone</label>
-                <input type="tel" id="b2bCompanyPhone" placeholder="555-123-4567">
-              </div>
-              <div class="form-row">
-                <label>Billing Address</label>
-                <textarea id="b2bCompanyBillingAddress" rows="2" placeholder="123 Main St, City, State 12345"></textarea>
-              </div>
-              <div class="form-row">
-                <label>Shipping Address</label>
-                <textarea id="b2bCompanyShippingAddress" rows="2" placeholder="123 Main St, City, State 12345"></textarea>
-              </div>
-              <div class="form-row">
-                <label>Status</label>
-                <select id="b2bCompanyStatus">
-                  <option value="active">Active</option>
-                  <option value="suspended">Suspended</option>
-                  <option value="pending">Pending</option>
-                </select>
-              </div>
-              <div class="form-row">
-                <label>Notes</label>
-                <textarea id="b2bCompanyNotes" rows="2" placeholder="Internal notes..."></textarea>
-              </div>
-              <hr style="margin:16px 0;">
-              <h4 style="margin:0 0 12px;">Admin User (for new companies)</h4>
-              <div id="b2bAdminUserFields">
-                <div class="form-row">
-                  <label>Admin Name *</label>
-                  <input type="text" id="b2bAdminName" placeholder="John Smith">
-                </div>
-                <div class="form-row">
-                  <label>Admin Password *</label>
-                  <input type="password" id="b2bAdminPassword" placeholder="Secure password">
-                </div>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="secondary" onclick="closeB2BCompanyModal()">Cancel</button>
-              <button type="submit" class="primary" id="b2bCompanySaveBtn">Save Company</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- Add/Edit User Modal -->
-      <div id="b2bUserModal" class="modal-overlay">
-        <div class="modal-dialog" style="max-width:450px;">
-          <div class="modal-header">
-            <h3 id="b2bUserModalTitle">Add User</h3>
-            <button class="modal-close" onclick="closeB2BUserModal()">&times;</button>
-          </div>
-          <form id="b2bUserForm">
-            <div class="modal-body">
-              <input type="hidden" id="b2bUserId">
-              <input type="hidden" id="b2bUserCompanyId">
-              <div class="form-row">
-                <label>Full Name *</label>
-                <input type="text" id="b2bUserName" required placeholder="John Smith">
-              </div>
-              <div class="form-row">
-                <label>Email *</label>
-                <input type="email" id="b2bUserEmail" required placeholder="user@company.com">
-              </div>
-              <div class="form-row">
-                <label>Phone</label>
-                <input type="tel" id="b2bUserPhone" placeholder="555-123-4567">
-              </div>
-              <div class="form-row">
-                <label>Password <span id="b2bPasswordHint">(required for new users)</span></label>
-                <input type="password" id="b2bUserPassword" placeholder="Password">
-              </div>
-              <div class="form-row">
-                <label>Role</label>
-                <select id="b2bUserRole">
-                  <option value="user">User - Can create orders</option>
-                  <option value="admin">Admin - Can also manage users</option>
-                </select>
-              </div>
-              <div class="form-row">
-                <label>Status</label>
-                <select id="b2bUserStatus">
-                  <option value="active">Active</option>
-                  <option value="suspended">Suspended</option>
-                </select>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="secondary" onclick="closeB2BUserModal()">Cancel</button>
-              <button type="submit" class="primary" id="b2bUserSaveBtn">Save User</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
       <!-- Social Marketing Tab -->
       <section id="socialMarketingView" class="view">
         <div class="view-toolbar">
@@ -3876,8 +3318,7 @@
                 <h4>Selected Items</h4>
                 <span id="socialSelectedCount" class="badge">0 items</span>
               </div>
-              <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-                <button id="socialAddFromCampaignButton" type="button" class="secondary">Add from Campaign</button>
+              <div style="display:flex;gap:8px;margin-bottom:12px;">
                 <button id="socialAddFromArtworkButton" type="button" class="secondary">Add from Artwork</button>
                 <button id="socialClearItemsButton" type="button" class="secondary">Clear All</button>
               </div>
@@ -4216,162 +3657,6 @@
       </section>
 
       <!-- ================================================================== -->
-      <!-- TREND MONITOR                                                      -->
-      <!-- ================================================================== -->
-      <section id="trendMonitorView" class="view">
-        <div class="view-toolbar">
-          <h2 style="margin:0;">Trend Monitor</h2>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <button class="tab-pill active" data-trendtab="trends">Trends</button>
-            <button class="tab-pill" data-trendtab="designs">Design Queue</button>
-            <button class="tab-pill" data-trendtab="history">History</button>
-            <button class="tab-pill" data-trendtab="settings">Settings</button>
-            <button id="trendScanNowBtn" class="primary small">Scan Now</button>
-            <button id="trendRefreshBtn" class="secondary small">Refresh</button>
-          </div>
-        </div>
-
-        <!-- Stats Bar -->
-        <div id="trendStatsBar" class="trend-stats-bar"></div>
-
-        <!-- Main Content Area -->
-        <div id="trendMonitorContent" class="view-content" style="padding:16px;overflow-y:auto;flex:1;"></div>
-
-        <style>
-          .trend-stats-bar {
-            display: flex; gap: 24px; padding: 12px 16px;
-            background: #1e293b; border-bottom: 1px solid #334155;
-            flex-wrap: wrap;
-          }
-          .trend-stat {
-            display: flex; flex-direction: column; align-items: center; gap: 2px;
-          }
-          .trend-stat strong {
-            font-size: 1.4rem; color: #e2e8f0;
-          }
-          .trend-stat span {
-            font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;
-          }
-          .tab-pill {
-            padding: 4px 12px; border-radius: 20px; border: 1px solid #475569;
-            background: transparent; color: #94a3b8; cursor: pointer; font-size: 0.85rem;
-            transition: all 0.15s;
-          }
-          .tab-pill:hover { border-color: #3b82f6; color: #e2e8f0; }
-          .tab-pill.active { background: #3b82f6; border-color: #3b82f6; color: white; }
-
-          .trend-cards {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-            gap: 16px;
-          }
-          .trend-card {
-            background: #1e293b; border: 1px solid #334155; border-radius: 12px;
-            padding: 16px; transition: border-color 0.15s;
-          }
-          .trend-card:hover { border-color: #475569; }
-          .trend-card-header {
-            display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px;
-          }
-          .trend-score {
-            min-width: 48px; height: 48px; border: 3px solid; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 1.1rem; flex-shrink: 0;
-          }
-          .trend-card-title h4 { color: #e2e8f0; line-height: 1.3; }
-          .trend-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
-          .trend-badge {
-            display: inline-block; padding: 2px 8px; border-radius: 10px;
-            font-size: 0.7rem; color: white; font-weight: 500;
-          }
-          .trend-badge.small { font-size: 0.65rem; padding: 1px 6px; }
-          .trend-metrics { color: #94a3b8; font-size: 0.85rem; margin-bottom: 6px; }
-          .trend-reasoning { color: #cbd5e1; font-size: 0.9rem; margin: 6px 0; font-style: italic; }
-          .trend-phrases { margin: 8px 0; }
-          .trend-phrase {
-            background: #0f172a; padding: 6px 10px; border-radius: 6px;
-            color: #fbbf24; font-size: 0.9rem; margin: 4px 0;
-            border-left: 3px solid #f59e0b;
-          }
-          .trend-card-actions {
-            display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
-          }
-
-          .design-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-            gap: 16px;
-          }
-          .design-card {
-            background: #1e293b; border: 1px solid #334155; border-radius: 12px;
-            overflow: hidden; transition: border-color 0.15s;
-          }
-          .design-card:hover { border-color: #475569; }
-          .design-image {
-            aspect-ratio: 1; overflow: hidden; background: #0f172a;
-          }
-          .design-image img {
-            width: 100%; height: 100%; object-fit: cover;
-          }
-          .design-status-dot {
-            position: absolute; top: 8px; right: 8px; width: 12px; height: 12px;
-            border-radius: 50%; border: 2px solid #1e293b;
-          }
-          .design-info { padding: 12px; }
-          .design-phrase {
-            color: #e2e8f0; font-size: 0.9rem; margin: 0 0 6px;
-            line-height: 1.3;
-          }
-          .design-actions {
-            padding: 8px 12px 12px; display: flex; gap: 6px; flex-wrap: wrap;
-          }
-
-          .trend-settings-form { max-width: 700px; }
-          .settings-section {
-            background: #1e293b; border: 1px solid #334155; border-radius: 12px;
-            padding: 20px; margin-bottom: 16px;
-          }
-          .settings-section h3 { margin: 0 0 12px; color: #e2e8f0; font-size: 1rem; }
-          .form-row {
-            display: flex; align-items: center; gap: 12px;
-            margin-bottom: 10px;
-          }
-          .form-row label {
-            min-width: 200px; color: #94a3b8; font-size: 0.9rem;
-          }
-          .form-row input[type="number"],
-          .form-row input[type="text"] {
-            flex: 1; padding: 6px 10px; border-radius: 6px;
-            border: 1px solid #475569; background: #0f172a; color: #e2e8f0;
-            font-size: 0.9rem;
-          }
-          .form-row textarea {
-            border: 1px solid #475569; background: #0f172a; color: #e2e8f0;
-            border-radius: 6px; padding: 8px;
-          }
-          .form-row input[type="checkbox"] {
-            width: 18px; height: 18px; accent-color: #3b82f6;
-          }
-
-          .trend-history-table {
-            width: 100%; border-collapse: collapse;
-          }
-          .trend-history-table th {
-            text-align: left; padding: 8px 12px; color: #94a3b8;
-            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;
-            border-bottom: 1px solid #334155;
-          }
-          .trend-history-table td {
-            padding: 8px 12px; color: #e2e8f0; font-size: 0.9rem;
-            border-bottom: 1px solid #1e293b;
-          }
-          .trend-history-table tr:hover td { background: #1e293b; }
-
-          button.small {
-            padding: 4px 12px; font-size: 0.8rem;
-          }
-        </style>
-      </section>
-
-      <!-- ================================================================== -->
       <!-- FACEBOOK SCHEDULE MANAGER                                          -->
       <!-- ================================================================== -->
       <section id="fbScheduleManagerView" class="view">
@@ -4547,103 +3832,6 @@
                   <button class="secondary" disabled style="padding:4px 12px; font-size:12px;">Next →</button>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-
-      <!-- ================================================================== -->
-      <!-- AI SALES AGENT VIEW                                                -->
-      <!-- ================================================================== -->
-      <section id="aiAgentView" class="view">
-        <div class="view-toolbar">
-          <div class="catalog-toolbar-group">
-            <h3 style="margin:0;">AI Sales Agent</h3>
-            <span id="aiAgentStatusIndicator" class="dashboard-status" style="margin-left:12px;" title="Agent status">&#9679;</span>
-            <span id="aiAgentLastCycleLabel" class="muted" style="font-size:0.85rem;margin-left:8px;"></span>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button id="aiAgentRefreshBtn" class="secondary">Refresh</button>
-            <button id="aiAgentRunNowBtn" class="primary">Run Cycle Now</button>
-          </div>
-        </div>
-
-        <div class="ai-agent-layout">
-          <div class="ai-agent-panel">
-            <div class="inventory-card">
-              <h3>Daily Report</h3>
-              <div class="dashboard-stats-grid">
-                <div class="dashboard-stat-item highlight">
-                  <span class="stat-value" id="aiDailyPostsPublished">--</span>
-                  <span class="stat-label">Posts Today</span>
-                </div>
-                <div class="dashboard-stat-item">
-                  <span class="stat-value" id="aiDailyTotalLikes">--</span>
-                  <span class="stat-label">Likes</span>
-                </div>
-                <div class="dashboard-stat-item">
-                  <span class="stat-value" id="aiDailyTotalComments">--</span>
-                  <span class="stat-label">Comments</span>
-                </div>
-                <div class="dashboard-stat-item">
-                  <span class="stat-value" id="aiDailyTotalShares">--</span>
-                  <span class="stat-label">Shares</span>
-                </div>
-                <div class="dashboard-stat-item">
-                  <span class="stat-value" id="aiDailyQueueDepth">--</span>
-                  <span class="stat-label">Queue Depth</span>
-                </div>
-                <div class="dashboard-stat-item">
-                  <span class="stat-value" id="aiDailyQueueDays">--</span>
-                  <span class="stat-label">Queue Days</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="ai-agent-panel">
-            <div class="inventory-card">
-              <h3 style="display:flex;justify-content:space-between;align-items:center;">Engagement by Category <span id="aiEngagementWindow" class="muted" style="font-size:0.8rem;font-weight:normal;"></span></h3>
-              <div class="ai-agent-table-container">
-                <table class="insights-table" style="width:100%;font-size:13px;border-collapse:collapse;">
-                  <thead><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:8px;">Category</th><th style="text-align:right;padding:8px;">Posts</th><th style="text-align:right;padding:8px;">Avg Eng.</th><th style="text-align:right;padding:8px;">Likes</th><th style="text-align:right;padding:8px;">Comments</th><th style="text-align:right;padding:8px;">Shares</th></tr></thead>
-                  <tbody id="aiEngagementCategoryBody"><tr><td colspan="6" class="placeholder" style="text-align:center;padding:20px;">Loading...</td></tr></tbody>
-                </table>
-              </div>
-              <div style="margin-top:12px;">
-                <h4 style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px 0;">Best Time to Post</h4>
-                <div id="aiBestTimes" class="ai-best-times"><div class="placeholder">Loading...</div></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="ai-agent-panel">
-            <div class="inventory-card">
-              <h3>Strategy</h3>
-              <div style="margin-bottom:16px;"><h4 style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px 0;">Category Weights</h4><div id="aiWeightBars" class="placeholder">Loading...</div></div>
-              <div><h4 style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin:0 0 8px 0;">Recent Decisions</h4><div id="aiDecisionsList" class="ai-decisions-list"><div class="placeholder">Loading...</div></div></div>
-            </div>
-          </div>
-
-          <div class="ai-agent-panel">
-            <div class="inventory-card" style="max-height:500px;overflow-y:auto;">
-              <h3>Content Calendar</h3>
-              <div id="aiCalendarList" class="ai-calendar-list"><div class="placeholder">Loading...</div></div>
-            </div>
-          </div>
-
-          <div class="ai-agent-panel">
-            <div class="inventory-card">
-              <h3>Category Settings</h3>
-              <div id="aiCategorySettings" class="ai-category-settings"><div class="placeholder">Loading...</div></div>
-            </div>
-          </div>
-
-          <div class="ai-agent-panel">
-            <div class="inventory-card">
-              <h3 style="display:flex;justify-content:space-between;align-items:center;">Approvals <span id="aiApprovalCount" class="item-badge" style="display:none;">0</span></h3>
-              <div id="aiApprovalsList" class="ai-approvals-list"><div class="placeholder">No pending approvals</div></div>
             </div>
           </div>
         </div>
@@ -5229,7 +4417,6 @@
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
-                <button id="customArtRoomSyncToGDriveBtn" class="secondary" style="font-size:12px;" title="Sync selected rooms to Google Drive Canva folder">Sync to GDrive</button>
                 <button id="customArtRoomBulkClear" class="secondary" style="font-size:12px;">Clear Selection</button>
               </div>
               <!-- Rooms Grid -->
@@ -5334,7 +4521,6 @@
                   <option value="draft">Draft</option>
                   <option value="archived">Archived</option>
                 </select>
-                <button id="customArtSyncToGDriveBtn" class="secondary" style="font-size:12px;" title="Sync selected artwork to Google Drive Canva folder">Sync to GDrive</button>
                 <button id="customArtBulkClear" class="secondary" style="font-size:12px;">Clear Selection</button>
               </div>
               <div id="customArtArtworkGrid" class="custom-art-grid">
@@ -6095,835 +5281,119 @@
                 </table>
               </div>
             </div>
-
-            <div class="inventory-card">
-              <h3>Google Drive Export</h3>
-              <p class="muted" style="margin:0 0 12px 0;font-size:0.9rem;">Export campaign mockups, customer orders, and apparel templates to a folder structure ready for Google Drive sync.</p>
-              <div class="inventory-form-actions" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                <button id="exportMockupsButton" class="primary" type="button">Export Mockups</button>
-                <button id="openExportFolderButton" class="secondary" type="button">Open Export Folder</button>
-              </div>
-              <div id="exportMockupsStatus" class="status-bar muted" style="margin-top:8px;">Ready to export.</div>
-              <div id="exportMockupsStats" style="display:none;margin-top:12px;padding:12px;background:rgba(34,197,94,0.1);border-radius:8px;border:1px solid rgba(34,197,94,0.3);">
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;">
-                  <div>
-                    <div style="font-size:1.5rem;font-weight:600;" id="exportStatCampaigns">0</div>
-                    <div class="muted" style="font-size:0.8rem;">Campaigns</div>
-                  </div>
-                  <div>
-                    <div style="font-size:1.5rem;font-weight:600;" id="exportStatOrders">0</div>
-                    <div class="muted" style="font-size:0.8rem;">Orders</div>
-                  </div>
-                  <div>
-                    <div style="font-size:1.5rem;font-weight:600;" id="exportStatFiles">0</div>
-                    <div class="muted" style="font-size:0.8rem;">Files</div>
-                  </div>
-                </div>
-                <div id="exportPath" class="muted" style="margin-top:8px;font-size:0.8rem;word-break:break-all;"></div>
-              </div>
-            </div>
           </div>
         </div>
       </section>
 
       <!-- ================================================================== -->
-      <!-- SKU CATALOG VIEW - POS System                                      -->
+      <!-- TIKTOK SHOP MANAGER                                                -->
       <!-- ================================================================== -->
-      <section id="skuCatalogView" class="view">
+      <section id="tiktokShopView" class="view">
         <div class="view-toolbar">
-          <h2 style="margin:0;">SKU Catalog</h2>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button id="skuImportStudio3Btn" class="secondary">Import from Studio3</button>
-            <button id="skuCreateDesignBtn" class="secondary">Create Design</button>
-            <button id="skuRefreshBtn" class="secondary">Refresh</button>
+          <div class="catalog-toolbar-group">
+            <h3 style="margin:0;">TikTok Shop Manager</h3>
+            <select id="tiktokShopSourceFilter" style="margin-left:16px;">
+              <option value="all">All Sources</option>
+              <option value="multiboard">Multiboard</option>
+              <option value="metal">Metal Prints</option>
+              <option value="published">Published</option>
+              <option value="unpublished">Unpublished</option>
+            </select>
+            <span id="tiktokShopCapacity" class="badge" style="margin-left:12px;">0/100</span>
+          </div>
+          <div class="catalog-toolbar-actions">
+            <button id="tiktokShopRefreshBtn" class="secondary">Refresh</button>
+            <button id="tiktokShopClearAllBtn" class="danger" style="font-size:12px;">Clear All</button>
+            <span id="tiktokShopStatus" class="catalog-status muted">Ready</span>
           </div>
         </div>
 
-        <div class="sku-catalog-layout" style="display:grid;grid-template-columns:350px 1fr;gap:16px;padding:16px;">
-          <!-- Designs List Panel -->
-          <div class="inventory-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-              <h3 style="margin:0;">Designs</h3>
-              <span id="skuDesignCount" class="muted">0 designs</span>
-            </div>
-            <div id="skuDesignsList" style="max-height:500px;overflow-y:auto;">
-              <p class="placeholder">Loading designs...</p>
-            </div>
-          </div>
-
-          <!-- Variants Panel -->
-          <div class="inventory-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-              <h3 style="margin:0;">Variants</h3>
-              <div style="display:flex;gap:8px;">
-                <button id="skuAddVariantBtn" class="secondary" disabled>Add Variant</button>
-                <button id="skuGenerateAllBtn" class="secondary" disabled>Generate All Sizes</button>
-              </div>
-            </div>
-            <div id="skuSelectedDesignInfo" style="padding:8px;background:var(--bg-secondary);border-radius:4px;margin-bottom:12px;display:none;">
-              <div style="display:flex;gap:12px;align-items:center;">
-                <img id="skuSelectedDesignThumb" src="" alt="" style="width:60px;height:60px;object-fit:contain;background:#fff;border-radius:4px;">
-                <div>
-                  <div id="skuSelectedDesignName" style="font-weight:600;"></div>
-                  <div id="skuSelectedDesignSlug" class="muted" style="font-size:0.85rem;"></div>
-                  <div id="skuSelectedDesignSize" class="muted" style="font-size:0.85rem;"></div>
-                </div>
-              </div>
-            </div>
-            <table class="inventory-table" id="skuVariantsTable">
-              <thead>
-                <tr>
-                  <th>SKU</th>
-                  <th>Size</th>
-                  <th>Color</th>
-                  <th>Price</th>
-                  <th>QR</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="skuVariantsBody">
-                <tr><td colspan="6" class="placeholder">Select a design to view variants</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Variant Editor Panel -->
-        <div class="inventory-card" style="margin:0 16px 16px;">
-          <h3>Create Variant</h3>
-          <form id="skuVariantForm" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
-            <label style="flex:1;min-width:150px;">
-              <span>Size (inches)</span>
-              <select id="skuVariantSize">
-                <option value="2">2"</option>
-                <option value="3">3"</option>
-                <option value="4" selected>4"</option>
-                <option value="6">6"</option>
-                <option value="8">8"</option>
-                <option value="10">10"</option>
-                <option value="12">12"</option>
-              </select>
-            </label>
-            <label style="flex:1;min-width:150px;">
-              <span>Color Name</span>
-              <input id="skuVariantColor" type="text" placeholder="e.g., Red" required>
-            </label>
-            <label style="flex:1;min-width:100px;">
-              <span>Color Hex</span>
-              <input id="skuVariantHex" type="color" value="#FF0000">
-            </label>
-            <label style="flex:1;min-width:100px;">
-              <span>Price (auto)</span>
-              <input id="skuVariantPrice" type="text" placeholder="Auto" readonly>
-            </label>
-            <div style="display:flex;gap:8px;">
-              <button type="submit" class="primary" id="skuVariantSubmitBtn" disabled>Create Variant</button>
-            </div>
-          </form>
-          <div id="skuVariantStatus" class="muted" style="margin-top:8px;"></div>
-        </div>
-
-        <!-- QR Label Preview/Print -->
-        <div class="inventory-card" style="margin:0 16px 16px;">
-          <h3>QR Label Generator</h3>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
-            <label>
-              <span>Label Size</span>
-              <select id="skuLabelSize">
-                <option value="2x1" selected>2" x 1"</option>
-                <option value="3x2">3" x 2"</option>
-              </select>
-            </label>
-            <label>
-              <input type="checkbox" id="skuPrintAllVariants"> Print all variants
-            </label>
-            <button id="skuPreviewLabelsBtn" class="secondary" disabled>Preview Labels</button>
-            <button id="skuPrintLabelsBtn" class="primary" disabled>Print Labels</button>
-          </div>
-          <div id="skuLabelPreview" style="margin-top:12px;display:none;"></div>
-        </div>
-      </section>
-
-      <!-- ================================================================== -->
-      <!-- QR SCANNER VIEW - POS System                                       -->
-      <!-- ================================================================== -->
-      <section id="qrScannerView" class="view">
-        <div class="view-toolbar">
-          <h2 style="margin:0;">Point of Sale Scanner</h2>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button id="scannerNewCartBtn" class="secondary">New Cart</button>
-            <span id="scannerCartId" class="muted"></span>
-          </div>
-        </div>
-
-        <div class="scanner-layout" style="display:grid;grid-template-columns:1fr 400px;gap:16px;padding:16px;">
-          <!-- Scanner Panel -->
-          <div class="inventory-card">
-            <h3>Scanner</h3>
-            <div id="scannerVideoContainer" style="width:100%;max-width:500px;margin:0 auto;background:#000;border-radius:8px;overflow:hidden;">
-              <video id="scannerVideo" style="width:100%;display:block;"></video>
-            </div>
-            <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;">
-              <button id="scannerStartBtn" class="primary">Start Scanner</button>
-              <button id="scannerStopBtn" class="secondary" disabled>Stop</button>
-              <select id="scannerCameraSelect" style="max-width:200px;">
-                <option value="">Select camera...</option>
-              </select>
-            </div>
-            <div id="scannerLastScan" style="text-align:center;margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:4px;display:none;">
-              <div style="font-size:0.9rem;color:#888;">Last scanned:</div>
-              <div id="scannerLastSku" style="font-size:1.2rem;font-weight:600;"></div>
-              <div id="scannerLastName" class="muted"></div>
-            </div>
-            <!-- Manual Entry -->
-            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
-              <h4 style="margin:0 0 8px;">Manual Entry</h4>
-              <form id="scannerManualForm" style="display:flex;gap:8px;">
-                <input id="scannerManualSku" type="text" placeholder="Enter SKU code" style="flex:1;">
-                <button type="submit" class="secondary">Add</button>
-              </form>
-            </div>
-          </div>
-
-          <!-- Cart Panel -->
-          <div class="inventory-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-              <h3 style="margin:0;">Cart</h3>
-              <span id="scannerItemCount" class="muted">0 items</span>
-            </div>
-            <div id="scannerCartItems" style="max-height:350px;overflow-y:auto;">
-              <p class="placeholder">Cart is empty. Scan items to add.</p>
-            </div>
-            <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px;">
-              <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-                <span>Subtotal:</span>
-                <span id="scannerSubtotal">$0.00</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-                <span>Tax (7%):</span>
-                <span id="scannerTax">$0.00</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-size:1.2rem;font-weight:600;">
-                <span>Total:</span>
-                <span id="scannerTotal">$0.00</span>
-              </div>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:16px;">
-              <button id="scannerClearCartBtn" class="secondary" style="flex:1;">Clear Cart</button>
-              <button id="scannerCheckoutBtn" class="primary" style="flex:2;" disabled>Checkout with Square</button>
-            </div>
-            <div id="scannerCheckoutStatus" class="muted" style="margin-top:8px;text-align:center;"></div>
-          </div>
-        </div>
-
-        <!-- Recent Scans Log -->
-        <div class="inventory-card" style="margin:0 16px 16px;">
-          <h3>Recent Scans</h3>
-          <div id="scannerRecentScans" style="max-height:150px;overflow-y:auto;font-family:monospace;font-size:0.85rem;">
-            <p class="placeholder">No scans yet</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- ================================================================ -->
-      <!-- PRODUCT CATALOG VIEW                                             -->
-      <!-- ================================================================ -->
-      <section id="productCatalogView" class="view">
-        <div class="view-toolbar">
-          <h2 style="margin:0;">Product Catalog</h2>
-          <div id="productStatusText" class="muted" style="margin-left:12px;"></div>
-          <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-            <button id="productPrintLabelsBtn" class="action-btn" style="display:none;background:#7c3aed;" title="Generate label sticker sheets for selected products">Print Labels (0)</button>
-            <button id="productAddBtn" class="action-btn">+ Add Product</button>
-            <button id="productRefreshBtn" class="action-btn secondary">Refresh</button>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:350px 1fr;gap:0;height:calc(100vh - 120px);">
+        <div class="tiktok-shop-layout">
           <!-- Left: Product List -->
-          <div class="inventory-card" style="margin:8px;overflow:hidden;display:flex;flex-direction:column;">
-            <div style="padding:8px;border-bottom:1px solid var(--border);">
-              <input type="search" id="productSearchInput" placeholder="Search products..." style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.9rem;">
-              <div style="display:flex;gap:6px;margin-top:6px;">
-                <select id="productCategoryFilter" style="flex:1;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.85rem;">
-                  <option value="">All Categories</option>
-                </select>
+          <div class="tiktok-shop-products">
+            <div class="inventory-card" style="height:100%;">
+              <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                <h4>Products <span id="tiktokShopCount" class="badge">0</span></h4>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <input type="text" id="tiktokShopSearch" placeholder="Search products..." style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;width:180px;" />
+                  <label style="font-size:12px;display:flex;align-items:center;gap:4px;">
+                    <input type="checkbox" id="tiktokShopSelectAll" /> All
+                  </label>
+                </div>
+              </div>
+
+              <!-- Bulk Actions Bar -->
+              <div id="tiktokShopBulkBar" class="bulk-actions-bar" style="display:none;">
+                <span id="tiktokShopSelectedCount" class="selected-count">0 selected</span>
+                <button id="tiktokShopBulkPublishBtn" class="primary" style="font-size:12px;padding:4px 10px;">Publish Selected</button>
+                <button id="tiktokShopBulkUnpublishBtn" class="secondary" style="font-size:12px;padding:4px 10px;">Unpublish Selected</button>
+                <button id="tiktokShopBulkScriptBtn" class="secondary" style="font-size:12px;padding:4px 10px;">Generate Scripts</button>
+              </div>
+
+              <!-- Tabs: Published / Candidates -->
+              <div style="display:flex;gap:4px;margin-bottom:8px;">
+                <button class="tiktok-tab active" data-tab="published" id="tiktokTabPublished">On TikTok</button>
+                <button class="tiktok-tab" data-tab="candidates" id="tiktokTabCandidates">Candidates</button>
+              </div>
+
+              <div id="tiktokShopProductList" class="shopify-product-list" style="flex:1;overflow-y:auto;">
+                <p class="placeholder">Click "Refresh" to load products</p>
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px solid var(--border);font-size:0.8rem;color:#888;">
-              <input type="checkbox" id="productSelectAllCheckbox" title="Select All / None" style="cursor:pointer;">
-              <label for="productSelectAllCheckbox" style="cursor:pointer;user-select:none;">Select All</label>
-              <span id="productSelectedCount" style="margin-left:auto;"></span>
-            </div>
-            <div id="productListContainer" style="flex:1;overflow-y:auto;"></div>
           </div>
 
-          <!-- Right: Product Detail / Edit -->
-          <div class="inventory-card" style="margin:8px 8px 8px 0;overflow-y:auto;">
-            <div id="productDetailPanel">
-              <div id="productDetailPlaceholder" style="text-align:center;padding:60px 20px;color:#666;">
-                <p style="font-size:1.1rem;">Select a product to view details</p>
-                <p style="margin-top:8px;font-size:0.9rem;">Or click <strong>+ Add Product</strong> to create one</p>
-              </div>
-              <div id="productDetailContent" style="display:none;padding:16px;">
-                <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                  <!-- Photo -->
-                  <div style="flex:0 0 250px;">
-                    <div id="productDetailPhoto" style="width:250px;height:250px;background:#1a1a1a;border-radius:8px;overflow:hidden;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;" title="Click to change photo">
-                      <span style="color:#555;font-size:3rem;">&#128247;</span>
+          <!-- Right: Detail + Scripts Panel -->
+          <div class="tiktok-shop-detail">
+            <div id="tiktokShopDetailPanel" class="inventory-card" style="height:100%;overflow-y:auto;">
+              <p class="placeholder" id="tiktokShopDetailPlaceholder">Select a product to view details</p>
+
+              <!-- Product Info Card (hidden by default) -->
+              <div id="tiktokShopProductInfo" style="display:none;">
+                <div style="display:flex;gap:16px;margin-bottom:16px;">
+                  <img id="tiktokShopDetailImage" src="" alt="" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" />
+                  <div style="flex:1;">
+                    <h4 id="tiktokShopDetailTitle" style="margin:0 0 6px 0;"></h4>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                      <span id="tiktokShopDetailSource" class="badge"></span>
+                      <span id="tiktokShopDetailStatus" class="badge"></span>
+                      <span id="tiktokShopDetailPrice" style="font-size:14px;font-weight:600;color:var(--success);"></span>
                     </div>
-                    <input type="file" id="productPhotoInput" accept="image/*" style="display:none;">
-                    <button id="productChangePhotoBtn" class="action-btn secondary" style="width:100%;margin-top:8px;">Change Photo</button>
-                  </div>
-                  <!-- Info -->
-                  <div style="flex:1;min-width:250px;">
-                    <div style="margin-bottom:12px;">
-                      <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Title</label>
-                      <input type="text" id="productEditTitle" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
-                    </div>
-                    <div style="margin-bottom:12px;">
-                      <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Description</label>
-                      <textarea id="productEditDescription" rows="3" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.95rem;resize:vertical;"></textarea>
-                    </div>
-                    <div style="display:flex;gap:12px;">
-                      <div style="flex:1;">
-                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Price ($)</label>
-                        <input type="number" id="productEditPrice" step="0.01" min="0" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
-                      </div>
-                      <div style="flex:1;">
-                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Category</label>
-                        <input type="text" id="productEditCategory" list="productCategorySuggestions" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
-                        <datalist id="productCategorySuggestions"></datalist>
-                      </div>
-                    </div>
-                    <!-- Decal fields -->
-                    <div style="display:flex;gap:8px;margin-top:10px;">
-                      <div style="flex:1;">
-                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Size</label>
-                        <input type="text" id="productEditSize" placeholder="e.g. 3x5, 6 inch" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
-                      </div>
-                      <div style="flex:1;">
-                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Color</label>
-                        <input type="text" id="productEditColor" placeholder="e.g. White, Black" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
-                      </div>
-                      <div style="width:80px;">
-                        <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Qty</label>
-                        <input type="number" id="productEditQuantity" min="1" value="1" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;">
-                      </div>
-                    </div>
-                    <div style="margin-top:10px;">
-                      <label style="font-size:0.85rem;color:#888;display:block;margin-bottom:2px;">Text on Decal</label>
-                      <textarea id="productEditDecalText" rows="2" placeholder="Custom text (leave empty for image-only)" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:1rem;resize:vertical;"></textarea>
-                    </div>
-                    <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
-                      <input type="checkbox" id="productEditHeatTransfer" style="width:18px;height:18px;">
-                      <label for="productEditHeatTransfer" style="font-size:0.9rem;color:#ccc;cursor:pointer;">Heat Transfer</label>
-                    </div>
-                    <div style="display:flex;gap:8px;margin-top:14px;">
-                      <button id="productSaveBtn" class="action-btn">Save Changes</button>
-                      <button id="productDeleteBtn" class="action-btn danger">Delete</button>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                      <button id="tiktokShopDetailPublishBtn" class="primary" style="font-size:12px;padding:6px 14px;">Publish to TikTok</button>
+                      <button id="tiktokShopDetailUnpublishBtn" class="danger" style="font-size:12px;padding:6px 14px;display:none;">Remove from TikTok</button>
                     </div>
                   </div>
                 </div>
-                <!-- QR Code section -->
-                <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
-                  <h3 style="font-size:1rem;margin-bottom:12px;">QR Code</h3>
-                  <div style="display:flex;gap:16px;align-items:flex-start;">
-                    <div id="productQrCode" style="background:#fff;padding:8px;border-radius:8px;"></div>
-                    <div>
-                      <div id="productQrUrl" style="font-family:monospace;font-size:0.8rem;color:#888;word-break:break-all;margin-bottom:8px;"></div>
-                      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                        <button id="productCopyUrlBtn" class="action-btn secondary" style="font-size:0.85rem;">Copy URL</button>
-                        <button id="productDownloadQrBtn" class="action-btn secondary" style="font-size:0.85rem;">Download QR</button>
-                        <button id="productPrintQrBtn" class="action-btn secondary" style="font-size:0.85rem;">Print Label</button>
-                      </div>
-                    </div>
+
+                <!-- Video Script Section -->
+                <div class="tiktok-script-card" style="margin-bottom:16px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <h4 style="margin:0;">Video Script</h4>
+                    <button id="tiktokShopGenerateScriptBtn" class="secondary" style="font-size:12px;padding:4px 10px;">Generate Script</button>
+                  </div>
+                  <div id="tiktokShopScriptContent">
+                    <p class="placeholder" style="font-size:13px;">No script generated yet. Click "Generate Script" to create one.</p>
                   </div>
                 </div>
-                <!-- Shopify Sync section -->
-                <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
-                  <h3 style="font-size:1rem;margin-bottom:12px;">Shopify</h3>
-                  <div id="productShopifyStatus" style="font-size:0.85rem;color:#888;margin-bottom:8px;">Not yet synced</div>
-                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                    <button id="productPushShopifyBtn" class="action-btn" style="font-size:0.85rem;background:#96bf48;color:#fff;">Push to Shopify</button>
-                    <a id="productShopifyLink" href="#" target="_blank" style="display:none;font-size:0.85rem;padding:6px 12px;background:#333;border-radius:4px;color:#96bf48;text-decoration:none;">View in Shopify</a>
+
+                <!-- Market Research Section -->
+                <div class="tiktok-script-card">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <h4 style="margin:0;">Market Research</h4>
+                    <button id="tiktokShopResearchBtn" class="secondary" style="font-size:12px;padding:4px 10px;">Research</button>
+                  </div>
+                  <div id="tiktokShopResearchContent">
+                    <p class="placeholder" style="font-size:13px;">No research yet. Click "Research" to analyze this product category.</p>
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- Label Format Selection Modal -->
-      <div id="labelFormatModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
-        <div style="background:var(--card-bg,#1e1e1e);border:1px solid var(--border,#333);border-radius:12px;padding:24px;width:420px;max-width:90vw;">
-          <h3 style="margin:0 0 16px;">Label Format</h3>
-          <div style="display:flex;flex-direction:column;gap:12px;">
-            <label style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid var(--border,#333);border-radius:8px;cursor:pointer;">
-              <input type="radio" name="labelFormat" value="sticker-sheet" checked style="margin-top:3px;">
-              <div>
-                <div style="font-weight:600;">Sticker Sheet (3" x 1.5")</div>
-                <div style="font-size:0.85rem;color:#888;">Full labels with photo, QR code, and details. Packed via nesting engine.</div>
-              </div>
-            </label>
-            <label style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid var(--border,#333);border-radius:8px;cursor:pointer;">
-              <input type="radio" name="labelFormat" value="avery-5160" style="margin-top:3px;">
-              <div>
-                <div style="font-weight:600;">Avery 5160 (1" x 2.625")</div>
-                <div style="font-size:0.85rem;color:#888;">30 per sheet. QR code + product name + price.</div>
-              </div>
-            </label>
-            <label style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid var(--border,#333);border-radius:8px;cursor:pointer;">
-              <input type="radio" name="labelFormat" value="silhouette-grid" style="margin-top:3px;">
-              <div>
-                <div style="font-weight:600;">Silhouette Grid (3" x 1.5")</div>
-                <div style="font-size:0.85rem;color:#888;">Clean PNG grid for Silhouette Studio print &amp; cut. 14 per sheet.</div>
-              </div>
-            </label>
-          </div>
-          <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end;">
-            <button id="labelFormatCancelBtn" class="action-btn secondary" style="padding:8px 20px;">Cancel</button>
-            <button id="labelFormatGenerateBtn" class="action-btn" style="padding:8px 20px;background:#7c3aed;">Generate</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ================================================================== -->
-      <!-- 3D PRINTER FLEET                                                   -->
-      <!-- ================================================================== -->
-      <section id="printerFleetView" class="view">
-        <div class="view-toolbar">
-          <h2 style="margin:0;">3D Printer Fleet</h2>
-          <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
-            <span id="fleetLastUpdated" class="muted" style="font-size:0.85rem;"></span>
-            <button id="fleetRefreshBtn" class="secondary" style="padding:6px 14px;">Refresh</button>
-            <button id="fleetAddPrinterBtn" class="primary" style="padding:6px 14px;">Add Printer</button>
-          </div>
-        </div>
-
-        <!-- Fleet Summary Bar -->
-        <div class="inventory-card" style="margin:0 16px;padding:12px 16px;">
-          <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
-            <div><strong id="fleetTotalPrinters">0</strong> <span class="muted">Printers</span></div>
-            <div><span id="fleetOnlineCount" style="color:var(--success);">0</span> <span class="muted">Online</span></div>
-            <div><span id="fleetPrintingCount" style="color:var(--accent);">0</span> <span class="muted">Printing</span></div>
-            <div><span id="fleetIdleCount" style="color:var(--muted);">0</span> <span class="muted">Idle</span></div>
-            <div><span id="fleetOfflineCount" style="color:var(--danger);">0</span> <span class="muted">Offline</span></div>
-            <div style="margin-left:auto;"><strong id="fleetJobsToday">0</strong> <span class="muted">Jobs Today</span></div>
-          </div>
-        </div>
-
-        <!-- Printer Cards Grid -->
-        <div id="fleetPrinterGrid" class="dashboard-grid" style="margin:0 16px 16px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));">
-          <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
-            Click <strong>Add Printer</strong> to register your first 3D printer.
-          </div>
-        </div>
-
-        <!-- Print Queue Section -->
-        <div style="margin:0 16px 16px;">
-          <div class="inventory-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-              <h3 style="margin:0;">Print Queue &amp; History</h3>
-              <div style="display:flex;gap:8px;">
-                <select id="fleetJobFilter" style="padding:6px 12px;">
-                  <option value="">All Jobs</option>
-                  <option value="printing">Printing</option>
-                  <option value="queued">Queued</option>
-                  <option value="paused">Paused</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="error">Error</option>
-                </select>
-              </div>
-            </div>
-            <div id="fleetJobsList" style="max-height:400px;overflow-y:auto;">
-              <div class="muted" style="text-align:center;padding:20px;">No print jobs yet</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ================================================================== -->
-      <!-- SLICE & PRINT (3D Slicer)                                          -->
-      <!-- ================================================================== -->
-      <section id="slicerView" class="view">
-        <div class="view-toolbar">
-          <h2 style="margin:0;">Slice &amp; Print</h2>
-          <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
-            <input id="slicerSearch" type="text" placeholder="Search models..." style="padding:6px 12px;width:200px;">
-            <select id="slicerCategoryFilter" style="padding:6px 12px;">
-              <option value="">-- Choose a Category --</option>
-            </select>
-            <select id="slicerSortOrder" style="padding:6px 12px;font-size:0.85rem;">
-              <option value="name-asc">Name A-Z</option>
-              <option value="name-desc">Name Z-A</option>
-              <option value="newest">Newest</option>
-              <option value="size">Size</option>
-            </select>
-            <button id="slicerUploadBtn" class="primary" style="padding:6px 14px;">+ Upload STL</button>
-            <button id="slicerBulkImportBtn" class="secondary" style="padding:6px 14px;">Bulk Import</button>
-            <button id="slicerPlateToggle" class="secondary" style="padding:6px 14px;">🔲 Build Plate</button>
-            <button id="slicerManageCategoriesBtn" class="secondary" style="padding:6px 14px;">📁 Categories</button>
-          </div>
-        </div>
-
-        <div id="slicerFolderBar" style="display:none;margin:0 16px 8px 16px;flex-shrink:0;"></div>
-
-        <div id="slicerContent" style="padding:0 16px 16px;">
-          <!-- Panel 1: STL Catalog Grid (shown by default) -->
-          <div id="slicerCatalogPanel">
-            <div id="slicerCatalogGrid" class="dashboard-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));max-height:calc(100vh - 310px);overflow-y:auto;">
-              <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
-                No STL models in the catalog yet. Click <strong>+ Upload STL</strong> to add your first model.
-              </div>
-            </div>
-          </div>
-
-          <!-- Panel 2: Slice Settings (hidden until model selected) -->
-          <div id="slicerSettingsPanel" style="display:none;">
-            <!-- Back button -->
-            <div style="margin-bottom:12px;">
-              <button id="slicerBackBtn" class="secondary" style="padding:6px 14px;">&larr; Back to Catalog</button>
-            </div>
-
-            <!-- Selected STL info -->
-            <div class="inventory-card" style="margin-bottom:16px;padding:16px;">
-              <div style="display:flex;gap:16px;align-items:flex-start;">
-                <div id="slicerSelectedThumb" style="width:140px;height:140px;border-radius:8px;background:#0a0a1a;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;cursor:pointer;" title="Click to view 3D model">
-                  <canvas id="slicerSelectedCanvas" width="280" height="280" style="width:100%;height:100%;"></canvas>
-                </div>
-                <div style="flex:1;">
-                  <h3 id="slicerSelectedName" style="margin:0 0 4px;"></h3>
-                  <div id="slicerSelectedCategory" class="muted" style="font-size:0.85rem;margin-bottom:4px;"></div>
-                  <div id="slicerSelectedDims" class="muted" style="font-size:0.85rem;margin-bottom:4px;"></div>
-                  <div id="slicerSelectedNotes" class="muted" style="font-size:0.85rem;"></div>
-                  <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
-                    <button id="slicerView3dBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">View 3D Model</button>
-                    <button id="slicerViewOnBedBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">View on Build Plate</button>
-                    <button id="slicerUpdateInfoBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Update Info</button>
-                  </div>
-                  <!-- Print orientation controls — affects how PrusaSlicer receives the model -->
-                  <div style="margin-top:10px;padding:8px 10px;background:rgba(255,255,255,0.04);border-radius:6px;border:1px solid var(--border);">
-                    <div style="font-size:0.75rem;color:#888;margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Print Orientation</div>
-                    <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
-                      <button class="sl-rot-btn secondary" data-axis="x" data-dir="1"  style="padding:4px 9px;font-size:0.78rem;">Flip X+</button>
-                      <button class="sl-rot-btn secondary" data-axis="x" data-dir="-1" style="padding:4px 9px;font-size:0.78rem;">Flip X−</button>
-                      <button class="sl-rot-btn secondary" data-axis="y" data-dir="1"  style="padding:4px 9px;font-size:0.78rem;">Rot Y+</button>
-                      <button class="sl-rot-btn secondary" data-axis="y" data-dir="-1" style="padding:4px 9px;font-size:0.78rem;">Rot Y−</button>
-                      <button class="sl-rot-btn secondary" data-axis="z" data-dir="1"  style="padding:4px 9px;font-size:0.78rem;">Rot Z+</button>
-                      <button class="sl-rot-btn secondary" data-axis="z" data-dir="-1" style="padding:4px 9px;font-size:0.78rem;">Rot Z−</button>
-                      <button id="slicerResetRotBtn" class="secondary" style="padding:4px 9px;font-size:0.78rem;border-color:rgba(255,100,100,0.4);color:#f87171;">Reset</button>
-                      <button id="slicerSaveDefaultOrientBtn" class="secondary" style="padding:4px 9px;font-size:0.78rem;border-color:rgba(34,197,94,0.4);color:#4ade80;" title="Save this orientation as the permanent default for this part">Save Default</button>
-                      <span id="slicerRotHint" style="font-size:0.75rem;color:#f59e0b;margin-left:4px;font-weight:600;"></span>
-                      <span id="slicerSavedOrientBadge" style="font-size:0.72rem;color:#4ade80;margin-left:2px;display:none;" title="This part has a saved default orientation">★ saved</span>
-                    </div>
-                    <div style="font-size:0.7rem;color:#666;margin-top:5px;">Each button rotates 90°. Preview updates instantly. <b style="color:#4ade80;">Save Default</b> = persists across sessions.</div>
-                  </div>
-                  <div id="slicerSelectedMountInfo" class="muted" style="font-size:0.8rem;margin-top:6px;"></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Existing G-code for this STL -->
-            <div id="slicerGcodeSection" class="inventory-card" style="margin-bottom:16px;padding:16px;">
-              <h3 style="margin:0 0 12px;">Existing G-code</h3>
-              <div id="slicerGcodeList">
-                <div class="muted" style="text-align:center;padding:16px;">No cached G-code for this model.</div>
-              </div>
-            </div>
-
-            <!-- New Slice Settings -->
-            <div class="inventory-card" style="padding:16px;">
-              <h3 style="margin:0 0 16px;">Slice Settings</h3>
-
-              <div class="slicer-settings-grid">
-                <div class="slicer-option-group">
-                  <label>Print Profile</label>
-                  <select id="slicerProfile" class="slicer-profile-select">
-                    <option value="custom">Custom</option>
-                  </select>
-                  <div id="slicerProfileHint" style="display:none;margin-top:6px;padding:8px 10px;font-size:0.78rem;color:var(--warning,#f59e0b);background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;line-height:1.4;"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Quality</label>
-                  <div id="slicerQuality" class="slicer-btn-row" data-setting="quality"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Strength</label>
-                  <div id="slicerStrength" class="slicer-btn-row" data-setting="strength"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Speed</label>
-                  <div id="slicerSpeed" class="slicer-btn-row" data-setting="speed"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Texture</label>
-                  <div id="slicerTexture" class="slicer-btn-row" data-setting="texture"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Surface Finish</label>
-                  <div id="slicerSurface" class="slicer-btn-row" data-setting="surface"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Supports</label>
-                  <div id="slicerSupports" class="slicer-btn-row" data-setting="supports"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Copies</label>
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    <button id="slicerCopiesMinus" type="button" style="width:36px;height:36px;font-size:1.2rem;font-weight:700;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text);cursor:pointer;">−</button>
-                    <input type="number" id="slicerCopies" value="1" min="1" max="100" style="width:52px;text-align:center;padding:6px;font-size:1rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text);">
-                    <button id="slicerCopiesPlus" type="button" style="width:36px;height:36px;font-size:1.2rem;font-weight:700;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text);cursor:pointer;">+</button>
-                  </div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Auto Orient</label>
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;font-size:0.9rem;text-transform:none;letter-spacing:0;color:var(--text);">
-                      <input type="checkbox" id="slicerAutoOrient" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;">
-                      Rotate model flat on build plate (reduces supports)
-                    </label>
-                  </div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Material</label>
-                  <div id="slicerMaterial" class="slicer-btn-row" data-setting="material"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Printer</label>
-                  <select id="slicerPrinter" style="padding:8px 12px;width:100%;font-size:0.95rem;">
-                    <option value="">Select a printer...</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style="display:flex;gap:12px;margin-top:20px;">
-                <button id="slicerSliceBtn" class="primary" style="flex:1;padding:14px 24px;font-size:1.1rem;font-weight:600;">
-                  SLICE
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Panel 3: Plate Settings (hidden until plate mode + "Slice Plate" clicked) -->
-          <div id="slicerPlateSettingsPanel" style="display:none;">
-            <!-- Back button -->
-            <div style="margin-bottom:12px;">
-              <button id="slicerPlateBackBtn" class="secondary" style="padding:6px 14px;">&larr; Back to Catalog</button>
-            </div>
-
-            <!-- Plate items list -->
-            <div class="inventory-card" style="margin-bottom:16px;padding:16px;">
-              <h3 style="margin:0 0 12px;">Build Plate Items</h3>
-              <div id="slicerPlateItemsList" style="display:flex;flex-direction:column;gap:8px;"></div>
-            </div>
-
-            <!-- Shared settings -->
-            <div class="inventory-card" style="padding:16px;">
-              <h3 style="margin:0 0 16px;">Plate Slice Settings</h3>
-
-              <div class="slicer-settings-grid">
-                <div class="slicer-option-group">
-                  <label>Print Profile</label>
-                  <select id="slicerPlateProfile" class="slicer-profile-select">
-                    <option value="custom">Custom</option>
-                  </select>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Quality</label>
-                  <div id="slicerPlateQuality" class="slicer-btn-row slicer-plate-btn-row" data-setting="quality"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Strength</label>
-                  <div id="slicerPlateStrength" class="slicer-btn-row slicer-plate-btn-row" data-setting="strength"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Speed</label>
-                  <div id="slicerPlateSpeed" class="slicer-btn-row slicer-plate-btn-row" data-setting="speed"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Texture</label>
-                  <div id="slicerPlateTexture" class="slicer-btn-row slicer-plate-btn-row" data-setting="texture"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Surface Finish</label>
-                  <div id="slicerPlateSurface" class="slicer-btn-row slicer-plate-btn-row" data-setting="surface"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Supports</label>
-                  <div id="slicerPlateSupports" class="slicer-btn-row slicer-plate-btn-row" data-setting="supports"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Auto Orient</label>
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;font-size:0.9rem;text-transform:none;letter-spacing:0;color:var(--text);">
-                      <input type="checkbox" id="slicerPlateAutoOrient" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;">
-                      Rotate models flat on build plate (reduces supports)
-                    </label>
-                  </div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Material</label>
-                  <div id="slicerPlateMaterial" class="slicer-btn-row slicer-plate-btn-row" data-setting="material"></div>
-                </div>
-                <div class="slicer-option-group">
-                  <label>Printer</label>
-                  <select id="slicerPlatePrinter" style="padding:8px 12px;width:100%;font-size:0.95rem;">
-                    <option value="">Select a printer...</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style="display:flex;gap:12px;margin-top:20px;">
-                <button id="slicerPlateSliceBtn" class="primary" style="flex:1;padding:14px 24px;font-size:1.1rem;font-weight:600;">
-                  SLICE PLATE
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Floating Plate Bar (sticky bottom, hidden until plate mode active) -->
-        <div id="slicerPlateBar" style="display:none;position:sticky;bottom:0;left:0;right:0;z-index:50;background:var(--card,#1e293b);border-top:2px solid var(--accent);padding:10px 16px;display:none;">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div style="flex:1;min-width:0;">
-              <span id="slicerPlateCount" style="font-weight:700;font-size:1rem;color:var(--accent);">0 models</span>
-              <span id="slicerPlateNames" class="muted" style="font-size:0.85rem;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-            </div>
-            <button id="slicerPlateClearBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Clear</button>
-            <button id="slicerBulkCategoryBtn" class="secondary" style="padding:8px 14px;font-size:0.9rem;font-weight:600;">📁 Set Category</button>
-            <button id="slicerPlateGoBtn" class="primary" style="padding:8px 18px;font-size:0.95rem;font-weight:600;">Slice Plate &rarr;</button>
-          </div>
-        </div>
-
-        <!-- Slicing Progress Overlay -->
-        <div id="slicerProgressOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;">
-          <div style="background:var(--card,#1e293b);border-radius:12px;padding:32px 48px;max-width:440px;width:100%;">
-            <h3 id="slicerProgressTitle" style="margin:0 0 20px;font-size:1.1rem;text-align:center;">Processing...</h3>
-            <div id="slicerProgressSteps" style="margin:0 0 16px;font-size:0.85rem;line-height:2;"></div>
-            <p id="slicerProgressMsg" class="muted" style="margin:0 0 12px;font-size:0.8rem;text-align:center;min-height:1.2em;"></p>
-            <div style="height:4px;border-radius:2px;background:var(--bg-secondary);overflow:hidden;">
-              <div id="slicerProgressBar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s;"></div>
-            </div>
-          </div>
-        </div>
-
-      </section>
-
-      <!-- ================================================================== -->
-      <!-- MULTIBOARD PARTS BROWSER                                           -->
-      <!-- ================================================================== -->
-      <section id="multiboardPartsBrowserView" class="view" style="flex:1;min-height:0;overflow:hidden;gap:0;">
-        <!-- Top Toolbar: Navigation -->
-        <div class="view-toolbar" style="gap:8px;padding:8px 16px;flex-wrap:nowrap;">
-          <h2 style="margin:0;font-size:1rem;white-space:nowrap;">Parts Browser</h2>
-          <div style="display:flex;gap:4px;align-items:center;">
-            <button id="mpbBackBtn" class="secondary" style="padding:4px 10px;" title="Back" disabled>&larr;</button>
-            <button id="mpbForwardBtn" class="secondary" style="padding:4px 10px;" title="Forward" disabled>&rarr;</button>
-            <button id="mpbReloadBtn" class="secondary" style="padding:4px 10px;" title="Reload">&#8635;</button>
-            <button id="mpbHomeBtn" class="secondary" style="padding:4px 10px;" title="Parts Library Home">&#8962; Home</button>
-          </div>
-          <input id="mpbUrlBar" type="text" readonly style="flex:1;padding:6px 12px;font-size:0.85rem;background:rgba(15,23,42,0.5);color:#94a3b8;border:1px solid var(--border);border-radius:6px;cursor:default;" value="https://www.multiboard.io/parts-library">
-          <div style="display:flex;gap:4px;align-items:center;">
-            <span id="mpbImportCount" class="muted" style="font-size:0.85rem;white-space:nowrap;">0 imported</span>
-            <button id="mpbOpenExternalBtn" class="secondary" style="padding:4px 10px;" title="Open in system browser">&#x2197;</button>
-          </div>
-        </div>
-
-        <!-- Main Content: Sidebar + Webview -->
-        <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
-          <!-- Left Sidebar: Category Tree -->
-          <div id="mpbSidebar" style="width:240px;border-right:1px solid var(--border);overflow-y:auto;padding:8px;background:var(--bg-secondary);font-size:0.85rem;">
-            <div id="mpbCategoryTree"></div>
-          </div>
-
-          <!-- Webview Container -->
-          <div id="mpbWebviewContainer" style="flex:1;position:relative;overflow:hidden;background:#fff;">
-            <div id="mpbLoadingOverlay" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);z-index:10;">
-              <div style="background:var(--card,#1e1e2e);padding:20px 30px;border-radius:8px;text-align:center;">
-                <div style="font-size:1.1rem;margin-bottom:8px;">Loading...</div>
-                <div id="mpbLoadingUrl" class="muted" style="font-size:0.8rem;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Bottom Status Bar -->
-        <div id="mpbStatusBar" style="display:flex;align-items:center;gap:12px;padding:6px 16px;border-top:1px solid var(--border);background:var(--bg-secondary);font-size:0.8rem;min-height:32px;">
-          <span id="mpbStatusText" class="muted">Ready</span>
-          <div id="mpbDownloadProgress" style="display:none;flex:1;max-width:300px;">
-            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
-              <span id="mpbDownloadFilename" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;"></span>
-              <span id="mpbDownloadPercent">0%</span>
-            </div>
-            <div style="background:var(--bg);border-radius:3px;overflow:hidden;height:4px;">
-              <div id="mpbDownloadBar" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s;"></div>
-            </div>
-          </div>
-          <div id="mpbImportHistory" style="margin-left:auto;display:flex;gap:8px;overflow-x:auto;"></div>
         </div>
       </section>
 
     </main>
-
-    <!-- STL 3D Preview Modal -->
-    <div id="stlPreviewModal" class="stl-preview-modal">
-      <div style="display:flex;flex-direction:column;width:100%;height:100%;padding:16px;gap:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <h2 id="stlPreviewTitle" style="margin:0;color:#fff;"></h2>
-          <button id="stlPreviewCloseBtn" style="background:none;border:none;color:#fff;font-size:28px;cursor:pointer;padding:0 8px;">&times;</button>
-        </div>
-        <div style="display:flex;gap:16px;flex:1;min-height:0;">
-          <!-- 3D Canvas -->
-          <div id="stlPreviewCanvasContainer" class="stl-preview-canvas-container">
-            <div class="stl-render-mode-btns">
-              <button class="active" data-mode="solid">Solid</button>
-              <button data-mode="wireframe">Wireframe</button>
-              <button data-mode="xray">X-Ray</button>
-            </div>
-          </div>
-          <!-- Info Panel -->
-          <div class="stl-preview-info-panel">
-            <div class="inventory-card" style="padding:16px;">
-              <h3 style="margin:0 0 12px;">Model Info</h3>
-              <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:0.9rem;">
-                <span class="muted">Dimensions:</span><span id="stlInfoDims"></span>
-                <span class="muted">Triangles:</span><span id="stlInfoTriangles"></span>
-                <span class="muted">File Size:</span><span id="stlInfoFileSize"></span>
-                <span class="muted">Format:</span><span id="stlInfoFormat"></span>
-                <span class="muted">File:</span><span id="stlInfoPath" style="word-break:break-all;font-size:0.8rem;"></span>
-              </div>
-            </div>
-            <div class="inventory-card" style="padding:16px;">
-              <h3 style="margin:0 0 12px;">Organize</h3>
-              <label style="display:block;margin-bottom:8px;">
-                <span class="muted" style="font-size:0.85rem;">Category</span>
-                <input id="stlPreviewCategory" type="text" style="width:100%;padding:6px 10px;margin-top:4px;" placeholder="e.g. Figurines">
-              </label>
-              <label style="display:block;margin-bottom:8px;">
-                <span class="muted" style="font-size:0.85rem;">Tags</span>
-                <input id="stlPreviewTags" type="text" style="width:100%;padding:6px 10px;margin-top:4px;" placeholder="e.g. dragon, fantasy">
-              </label>
-              <label style="display:block;">
-                <span class="muted" style="font-size:0.85rem;">Notes</span>
-                <textarea id="stlPreviewNotes" rows="3" style="width:100%;padding:6px 10px;margin-top:4px;resize:vertical;" placeholder="Any notes..."></textarea>
-              </label>
-            </div>
-            <div class="inventory-card" style="padding:16px;">
-              <h3 style="margin:0 0 12px;">Actions</h3>
-              <div style="display:flex;flex-direction:column;gap:8px;">
-                <button id="stlActionSlicer" class="primary" style="width:100%;">Open in Default App</button>
-                <button id="stlActionCopy" class="secondary" style="width:100%;">Copy to Folder</button>
-                <button id="stlActionReveal" class="secondary" style="width:100%;">Reveal in Explorer</button>
-                <button id="stlActionDelete" class="secondary" style="width:100%;color:var(--danger);">Delete from Library</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- Sticker Sheets Browser Modal -->
     <div id="stickerSheetsBrowserModal" class="modal" style="display:none;">
@@ -7017,250 +5487,6 @@
       </div>
     </div>
 
-      <!-- ================================================================== -->
-      <!-- PRINT QUOTES                                                      -->
-      <!-- ================================================================== -->
-      <section id="printQuotesView" class="view">
-        <div class="view-toolbar">
-          <h2 style="margin:0;">Print Quotes</h2>
-          <button id="pqNewQuoteBtn" class="primary" style="margin-left:auto;">+ New Quote</button>
-        </div>
-        <div id="printQuotesViewBody" style="flex:1;min-height:0;overflow:hidden;display:flex;gap:0;">
-          <!-- List panel -->
-          <div id="pqListPanel" style="width:320px;min-width:220px;border-right:1px solid #222;overflow-y:auto;display:flex;flex-direction:column;">
-            <div style="padding:10px 12px;border-bottom:1px solid #1a1a2e;">
-              <input id="pqSearchBox" type="text" placeholder="Search quotes…" style="width:100%;box-sizing:border-box;">
-            </div>
-            <div id="pqQuoteList" style="flex:1;overflow-y:auto;padding:8px 0;"></div>
-          </div>
-          <!-- Detail panel -->
-          <div id="pqDetailPanel" style="flex:1;overflow-y:auto;padding:20px;">
-            <div id="pqEmptyState" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#555;">
-              <div style="font-size:3rem;">📋</div>
-              <p>Select a quote or create a new one.</p>
-            </div>
-            <div id="pqDetail" style="display:none;max-width:900px;"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ================================================================== -->
-      <!-- MULTIBOARD DESIGNER                                               -->
-      <!-- ================================================================== -->
-      <section id="multiboardDesignerView" class="view" style="flex:1;min-height:0;overflow:hidden;gap:0;">
-        <!-- Toolbar -->
-        <div class="view-toolbar" style="gap:12px;flex-wrap:wrap;">
-          <h2 style="margin:0;">Multiboard Designer</h2>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <label style="font-size:13px;color:#888;">Project:</label>
-            <input id="mbProjectName" type="text" placeholder="Untitled Design" style="width:180px;padding:6px 10px;">
-          </div>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <label style="font-size:13px;color:#888;">Wall:</label>
-            <input id="mbWallWidth" type="number" value="48" min="12" max="120" style="width:60px;padding:6px 8px;" title="Width (inches)">
-            <span style="color:#888;">x</span>
-            <input id="mbWallHeight" type="number" value="36" min="12" max="96" style="width:60px;padding:6px 8px;" title="Height (inches)">
-            <span style="font-size:12px;color:#888;">in</span>
-            <button id="mbApplyWallBtn" class="secondary" style="padding:4px 12px;">Apply</button>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center;margin-left:auto;">
-            <span id="mbStatusBadge" style="display:none;font-size:11px;padding:3px 10px;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;"></span>
-            <button id="mbResetCameraBtn" class="secondary" title="Reset Camera">Reset View</button>
-            <button id="mbToggleGridBtn" class="secondary" title="Toggle Grid">Grid</button>
-            <button id="mbSaveBtn" class="primary">Save</button>
-            <button id="mbLoadBtn" class="secondary">Load</button>
-            <button id="mbOrderBtn" class="primary" style="background:#e65100;" title="Create production order">Create Order</button>
-            <button id="mbOrdersListBtn" class="secondary" title="View production orders">Orders</button>
-          </div>
-        </div>
-
-        <!-- Main Content Area -->
-        <div id="mbMainArea" style="display:flex;flex:1 1 0;min-height:0;overflow:hidden;">
-          <!-- Left Panel: Parts Catalog -->
-          <div id="mbLeftPanel" style="width:280px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--bg-secondary);">
-            <!-- Search -->
-            <div style="padding:8px 10px;border-bottom:1px solid var(--border);flex-shrink:0;">
-              <input id="mbPartsSearch" type="text" placeholder="Search parts…" style="width:100%;box-sizing:border-box;padding:6px 10px;font-size:12px;">
-            </div>
-            <!-- Category filter buttons -->
-            <div id="mbCategoryBtns" style="padding:6px 8px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0;">
-              <style>
-                .mb-cat-btn{padding:3px 9px;font-size:11px;border-radius:12px;border:1px solid #333;background:transparent;color:#aaa;cursor:pointer;white-space:nowrap;}
-                .mb-cat-btn:hover{border-color:#555;color:#fff;}
-                .mb-cat-btn.active{background:#2196f3;border-color:#2196f3;color:#fff;}
-                .mb-part-card-grid:hover{border-color:#555!important;}
-              </style>
-            </div>
-            <!-- Parts grid -->
-            <div id="mbPartsList" style="flex:1;overflow-y:auto;padding:8px;"></div>
-          </div>
-
-          <!-- Center: 3D Canvas -->
-          <div id="mbCanvasContainer" style="flex:1;min-width:0;min-height:0;position:relative;overflow:hidden;background:#1a1a2e;">
-            <canvas id="mbCanvas" style="display:block;width:100%;height:100%;"></canvas>
-            <div id="mbPlacementHint" style="display:none;position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:6px 16px;border-radius:6px;font-size:13px;pointer-events:none;">
-              Click on the wall to place tile. Press Escape to cancel.
-            </div>
-          </div>
-
-          <!-- Right Panel: Selection Info -->
-          <div id="mbRightPanel" style="width:240px;flex-shrink:0;min-height:0;border-left:1px solid var(--border);overflow-y:auto;padding:12px;box-sizing:border-box;background:var(--bg-secondary);">
-            <h3 style="margin:0 0 12px;font-size:14px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Selected</h3>
-            <div id="mbSelectionInfo">
-              <p class="muted" style="font-size:13px;">Click a placed tile to select it.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Bottom Panel: Parts List / BOM + Pricing -->
-        <div id="mbBottomPanel" style="height:200px;border-top:1px solid var(--border);overflow:hidden;padding:0;background:var(--bg-secondary);display:flex;">
-          <!-- BOM Table (left) -->
-          <div style="flex:1;overflow-y:auto;padding:12px 16px;border-right:1px solid var(--border);">
-            <h3 style="margin:0 0 8px;font-size:13px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Bill of Materials</h3>
-            <table id="mbBomTable" style="width:100%;font-size:12px;border-collapse:collapse;">
-              <thead>
-                <tr style="text-align:left;color:#888;border-bottom:1px solid var(--border);">
-                  <th style="padding:3px 6px;">Part</th>
-                  <th style="padding:3px 6px;text-align:center;">Qty</th>
-                  <th style="padding:3px 6px;text-align:right;">Unit</th>
-                  <th style="padding:3px 6px;text-align:right;">Total</th>
-                </tr>
-              </thead>
-              <tbody id="mbBomBody"></tbody>
-            </table>
-          </div>
-          <!-- Pricing Summary (right) -->
-          <div style="width:280px;padding:12px 16px;overflow-y:auto;">
-            <h3 style="margin:0 0 8px;font-size:13px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Pricing</h3>
-            <div style="font-size:12px;margin-bottom:8px;">
-              <div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Parts:</span><span id="mbPartsTotal">$0.00</span></div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:3px;color:#888;"><span>Hardware:</span><span id="mbHardwareTotal">$0.00</span></div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:#888;"><span>Weight:</span><span id="mbWeightTotal">0g</span></div>
-            </div>
-            <div style="margin-bottom:8px;">
-              <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Service Level:</label>
-              <select id="mbServiceLevel" style="width:100%;padding:4px 6px;font-size:12px;border-radius:4px;">
-                <option value="none">Parts Only (no service)</option>
-                <option value="designOnly">Design Only — $35 flat</option>
-                <option value="designBuild" selected>Design + Build — $10/sq ft</option>
-                <option value="turnkey">Turnkey Install — $17.50/sq ft</option>
-              </select>
-            </div>
-            <div style="font-size:12px;margin-bottom:8px;">
-              <div id="mbServiceFeeRow" style="display:flex;justify-content:space-between;margin-bottom:3px;"><span>Service:</span><span id="mbServiceFee">$0.00</span></div>
-              <div id="mbWallAreaRow" style="display:none;font-size:11px;color:#666;margin-bottom:6px;text-align:right;"></div>
-            </div>
-            <div style="border-top:1px solid var(--border);padding-top:6px;display:flex;justify-content:space-between;font-size:15px;font-weight:700;">
-              <span>Total:</span><span id="mbGrandTotal">$0.00</span>
-            </div>
-            <button id="mbQuoteBtn" class="primary" style="width:100%;margin-top:8px;padding:6px;font-size:12px;">Generate Quote</button>
-            <button id="mbBuildInstructionsBtn" style="width:100%;margin-top:4px;padding:6px;font-size:12px;background:#2e7d32;color:#fff;border:none;border-radius:4px;cursor:pointer;">Build Instructions</button>
-          </div>
-        </div>
-      </section>
-
-    <!-- Update Info Modal — global overlay, used by slicer-view and multiboard-designer -->
-    <div id="slicerUpdateInfoModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);padding:24px;">
-      <div style="display:flex;flex-direction:column;height:100%;max-width:1200px;margin:0 auto;background:var(--bg-primary);border-radius:12px;overflow:hidden;border:1px solid var(--border);">
-        <!-- Header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg-secondary);flex-shrink:0;">
-          <h3 id="slicerUpdateInfoTitle" style="margin:0;font-size:1rem;">Update Part Info</h3>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button id="slicerUpdateScrapeBtn" class="primary" style="padding:6px 16px;font-size:0.85rem;">Scrape This Page</button>
-            <button id="slicerUpdateCloseBtn" style="background:none;border:none;color:var(--text-primary);cursor:pointer;font-size:1.3rem;padding:4px 8px;">&times;</button>
-          </div>
-        </div>
-
-        <!-- Main content: webview left, results right -->
-        <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
-          <!-- Webview panel -->
-          <div style="flex:2;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--border);">
-            <div style="display:flex;gap:6px;padding:8px;background:var(--bg-secondary);border-bottom:1px solid var(--border);flex-shrink:0;">
-              <input id="slicerUpdateUrlBar" type="text" readonly style="flex:1;padding:6px 10px;font-size:0.8rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);">
-            </div>
-            <div id="slicerUpdateWebviewContainer" style="flex:1;min-height:0;position:relative;">
-              <!-- webview inserted dynamically -->
-            </div>
-          </div>
-
-          <!-- Scraped results panel -->
-          <div style="flex:1;min-width:280px;max-width:360px;display:flex;flex-direction:column;overflow-y:auto;padding:16px;gap:12px;">
-            <h4 style="margin:0 0 4px;font-size:0.9rem;">Scraped Data</h4>
-            <div id="slicerUpdateScrapedEmpty" class="muted" style="font-size:0.85rem;text-align:center;padding:24px 0;">
-              Navigate to the part page on Thangs, then click "Scrape This Page".
-            </div>
-            <div id="slicerUpdateScrapedResults" style="display:none;font-size:0.85rem;">
-              <div style="margin-bottom:10px;">
-                <label style="font-weight:600;font-size:0.8rem;display:block;margin-bottom:2px;">Source URL</label>
-                <div id="slicerUpdateSourceUrl" class="muted" style="word-break:break-all;font-size:0.78rem;"></div>
-              </div>
-              <div style="margin-bottom:10px;">
-                <label style="font-weight:600;font-size:0.8rem;display:block;margin-bottom:2px;">Description</label>
-                <div id="slicerUpdateDescription" style="max-height:120px;overflow-y:auto;padding:6px 8px;background:var(--bg-secondary);border-radius:4px;font-size:0.8rem;line-height:1.4;white-space:pre-wrap;"></div>
-              </div>
-              <div style="margin-bottom:10px;">
-                <label style="font-weight:600;font-size:0.8rem;display:block;margin-bottom:2px;">Mount Type</label>
-                <select id="slicerUpdateMountType" style="width:100%;padding:6px 8px;font-size:0.85rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-primary);color:var(--text-primary);">
-                  <option value="snap">Snap</option>
-                  <option value="magnet">Magnet</option>
-                  <option value="screw">Screw</option>
-                  <option value="rail">Rail</option>
-                  <option value="pegboard">Pegboard</option>
-                  <option value="unknown">Unknown</option>
-                </select>
-              </div>
-              <div style="margin-bottom:10px;">
-                <label style="font-weight:600;font-size:0.8rem;display:block;margin-bottom:2px;">Hardware Required</label>
-                <div id="slicerUpdateHardware" style="padding:6px 8px;background:var(--bg-secondary);border-radius:4px;font-size:0.8rem;min-height:24px;"></div>
-              </div>
-              <div style="margin-bottom:10px;">
-                <label style="font-weight:600;font-size:0.8rem;display:block;margin-bottom:2px;">Requires Tray</label>
-                <div id="slicerUpdateTray" style="padding:6px 8px;background:var(--bg-secondary);border-radius:4px;font-size:0.8rem;"></div>
-              </div>
-              <div style="display:flex;gap:8px;margin-top:16px;">
-                <button id="slicerUpdateApproveBtn" class="primary" style="flex:1;padding:8px 14px;font-size:0.9rem;">Approve &amp; Save</button>
-                <button id="slicerUpdateDiscardBtn" class="secondary" style="padding:8px 14px;font-size:0.9rem;">Discard</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Fabric.js for Visual Layout Editor -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <!-- QR Code library -->
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <!-- HTML5 QR Code Scanner -->
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-    <!-- Sticker Layout Editor (must load before index.js) -->
-    <script src="./sticker-layout-editor.js"></script>
-    <!-- Vinyl Cutter Editor -->
-    <script src="./vinyl-cutter-editor.js"></script>
-    <!-- SKU Catalog View -->
-    <script src="./sku-catalog-view.js"></script>
-    <!-- QR Scanner View -->
-    <script src="./qr-scanner-view.js"></script>
-    <script src="./product-catalog-view.js"></script>
-    <!-- Three.js for 3D STL rendering (local copies for Electron compatibility) -->
-    <script src="./lib/three.min.js"></script>
-    <script src="./lib/STLLoader.js"></script>
-    <script src="./lib/OrbitControls.js"></script>
-    <!-- Multiboard Designer View -->
-    <script src="./multiboard-designer-view.js"></script>
-    <!-- Multiboard Parts Browser View -->
-    <script src="./multiboard-parts-browser-view.js"></script>
-    <!-- 3D Printer Fleet View -->
-    <script src="./printer-fleet-view.js"></script>
-    <!-- Slicer View -->
-    <script src="./slicer-view.js"></script>
-    <!-- B2B Management View -->
-    <script src="./b2b-management-view.js"></script>
-    <!-- Trend Monitor View -->
-    <script src="./trend-monitor-view.js"></script>
-    <!-- Print Quotes View -->
-    <script src="./parts-finder-drawer.js"></script>
-    <script src="./quotes-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>
