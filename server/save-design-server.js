@@ -17471,6 +17471,26 @@ Return JSON with:
     return;
   }
 
+  // Delegate to Sales Pipeline Monitor routes (/api/pipeline/*)
+  if (segments[0] === 'api' && segments[1] === 'pipeline') {
+    try {
+      const { handlePipelineRoute } = require('./modules/sales-pipeline-monitor');
+      if (handlePipelineRoute(req, res, parsedUrl, sendJson)) return;
+    } catch (e) {
+      console.error('[Server] Pipeline route error:', e.message);
+    }
+  }
+
+  // Delegate to AI Sales Agent routes (/api/agent/*)
+  if (segments[0] === 'api' && segments[1] === 'agent') {
+    try {
+      const { handleAgentRoute } = require('./modules/ai-sales-agent');
+      if (handleAgentRoute(req, res, parsedUrl, sendJson)) return;
+    } catch (e) {
+      console.error('[Server] Agent route error:', e.message);
+    }
+  }
+
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('Not found');
 };
@@ -17665,6 +17685,24 @@ if (require.main === module) {
       console.log('[Server] Facebook post scheduler started');
     } catch (error) {
       console.error('[Server] Failed to start Facebook scheduler:', error.message);
+    }
+
+    // Start Sales Pipeline Monitor daemon (every 15 min)
+    try {
+      const { startMonitorDaemon } = require('./modules/sales-pipeline-monitor');
+      startMonitorDaemon(db, { intervalMinutes: 15 });
+      console.log('[Server] Sales pipeline monitor started');
+    } catch (error) {
+      console.error('[Server] Failed to start pipeline monitor:', error.message);
+    }
+
+    // Start AI Sales Agent daemon (every 30 min)
+    try {
+      const { startAgent } = require('./modules/ai-sales-agent');
+      startAgent(db, { intervalMinutes: 30 });
+      console.log('[Server] AI sales agent started');
+    } catch (error) {
+      console.error('[Server] Failed to start AI agent:', error.message);
     }
   });
 }

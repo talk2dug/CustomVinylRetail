@@ -511,6 +511,45 @@ async function generateDesignForTrend(trend, settings) {
 }
 
 // =============================================================================
+// TIKTOK SHOP CAPACITY HELPER
+// =============================================================================
+
+/**
+ * Determine if a product should be published to TikTok Shop based on capacity and type.
+ * @param {string} productType - e.g. 'T-Shirt', 'Metal Print', 'Multiboard'
+ * @param {object} capacity - { current, max, available }
+ * @returns {{ publish: boolean, reason: string }}
+ */
+function shouldPublishToTikTok(productType, capacity) {
+  if (!capacity || capacity.available <= 0) {
+    return { publish: false, reason: `TikTok Shop full (${capacity?.current || '?'}/${capacity?.max || 100})` };
+  }
+
+  const type = (productType || '').toLowerCase();
+  const preferred = ['metal print', 'metal art', 'multiboard', 'wall organizer'];
+  const acceptable = ['t-shirt', 'tshirt'];
+
+  const isPreferred = preferred.some(p => type.includes(p));
+  const isAcceptable = acceptable.some(a => type.includes(a));
+
+  // Always publish preferred categories
+  if (isPreferred) {
+    return { publish: true, reason: `Preferred category for TikTok (${capacity.current}/${capacity.max})` };
+  }
+
+  // Publish acceptable categories if there's decent room (>10 slots)
+  if (isAcceptable && capacity.available > 10) {
+    return { publish: true, reason: `Acceptable category, room available (${capacity.current}/${capacity.max})` };
+  }
+
+  // Trending t-shirts get in if there's room (>20 slots)
+  if (isAcceptable && capacity.available > 20) {
+    return { publish: true, reason: `Trending tee, good capacity (${capacity.current}/${capacity.max})` };
+  }
+
+  return { publish: false, reason: `Category not prioritized for TikTok or low capacity (${capacity.current}/${capacity.max})` };
+}
+
 // SHOPIFY AUTO-LISTING (uses existing Shopify + listing optimizer)
 // =============================================================================
 
@@ -592,9 +631,25 @@ async function listDesignToShopify(design, trend, settings) {
     await shopify.addProductToCollection(created.id, collection.id);
   }
 
-  // Publish to all sales channels
+  // Publish to sales channels — with TikTok capacity awareness
   try {
+    // First, publish to all channels
     await shopify.publishEverywhere(created.id);
+
+    // Then check TikTok capacity and unpublish if needed
+    const tiktokPub = await shopify.findTikTokPublication();
+    if (tiktokPub) {
+      const tiktokProducts = await shopify.getProductsOnPublication(tiktokPub.id);
+      const capacity = { current: tiktokProducts.length, max: 100, available: Math.max(0, 100 - tiktokProducts.length) };
+      const tiktokDecision = shouldPublishToTikTok(product.product_type, capacity);
+
+      if (!tiktokDecision.publish) {
+        await shopify.unpublishFromPublication(created.id, [tiktokPub.id]);
+        console.log(`[TrendMonitor] TikTok Shop at ${capacity.current}/100 — skipped: ${tiktokDecision.reason}`);
+      } else {
+        console.log(`[TrendMonitor] TikTok Shop at ${capacity.current}/100 — published: ${tiktokDecision.reason}`);
+      }
+    }
   } catch (err) {
     console.error('[TrendMonitor] Publish error (non-fatal):', err.message);
   }

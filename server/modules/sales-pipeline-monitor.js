@@ -364,6 +364,40 @@ async function runHealthChecks() {
     // non-critical
   }
 
+  // 1g. TikTok Shop capacity
+  try {
+    const shopify = require('../integrations/shopify');
+    if (shopify.isConfigured()) {
+      const tiktokPub = await shopify.findTikTokPublication();
+      if (tiktokPub) {
+        const tiktokProducts = await shopify.getProductsOnPublication(tiktokPub.id);
+        const count = tiktokProducts.length;
+        const max = 100;
+        recordMetric('tiktok_shop_products', count);
+        recordMetric('tiktok_shop_available', max - count);
+
+        const ok = count < 90;
+        results.checks.push({ name: 'tiktok_shop_capacity', ok, current: count, max, available: max - count });
+
+        if (count >= max) {
+          results.allHealthy = false;
+          logEntry('health', 'tiktok_shop', 'critical', `TikTok Shop FULL: ${count}/${max} products`, { count, max });
+        } else if (count >= 90) {
+          results.allHealthy = false;
+          logEntry('health', 'tiktok_shop', 'warning', `TikTok Shop near capacity: ${count}/${max} products`, { count, max });
+        } else {
+          logEntry('health', 'tiktok_shop', 'info', `TikTok Shop: ${count}/${max} products`);
+        }
+      } else {
+        results.checks.push({ name: 'tiktok_shop_capacity', ok: true, note: 'TikTok publication not found' });
+        logEntry('health', 'tiktok_shop', 'info', 'TikTok Shop publication not found on Shopify');
+      }
+    }
+  } catch (e) {
+    results.checks.push({ name: 'tiktok_shop_capacity', ok: false, error: e.message });
+    logEntry('health', 'tiktok_shop', 'warning', `TikTok Shop check failed: ${e.message}`);
+  }
+
   return results;
 }
 

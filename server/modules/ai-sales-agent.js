@@ -160,8 +160,15 @@ const DEFAULT_CONFIG = {
   platforms: {
     facebook: { enabled: true, postsPerDay: 2, bestHours: [10, 14, 19], maxPostsPerWeek: 14 },
     pinterest: { enabled: false, postsPerDay: 0, note: 'Token expired - needs PINTEREST_ACCESS_TOKEN' },
-    tiktok: { enabled: false, postsPerDay: 0, note: 'Needs TIKTOK_ACCESS_TOKEN and audit' },
+    tiktok: { enabled: true, postsPerDay: 0, note: 'TikTok Shop active via Shopify channel' },
     instagram: { enabled: false, postsPerDay: 0, note: 'Needs IG Business account linked to FB page' }
+  },
+  tiktokShop: {
+    enabled: true,
+    maxProducts: 100,
+    warnThreshold: 90,
+    preferredCategories: ['metal-print', 'multiboard'],
+    boostWeight: 1.3
   },
   categories: {
     'metal-print': {
@@ -527,6 +534,68 @@ async function collectEngagementData() {
   return { collected, total: publishedPosts.length };
 }
 
+// ============================================================================
+// TIKTOK SHOP DATA COLLECTION
+// ============================================================================
+
+let _tiktokShopData = null;
+
+async function collectTikTokShopData() {
+  const config = loadConfig();
+  if (!config.tiktokShop?.enabled) {
+    return null;
+  }
+
+  try {
+    const shopify = require('../integrations/shopify');
+    if (!shopify.isConfigured()) {
+      console.log('[AI Agent] TikTok Shop: Shopify not configured, skipping');
+      return null;
+    }
+
+    const pub = await shopify.findTikTokPublication();
+    if (!pub) {
+      console.log('[AI Agent] TikTok Shop: Publication not found');
+      _tiktokShopData = { capacity: { current: 0, max: 100, available: 100 }, breakdown: {}, publicationId: null };
+      return _tiktokShopData;
+    }
+
+    const products = await shopify.getProductsOnPublication(pub.id);
+    const productCount = products.length;
+
+    // Build breakdown from local DB
+    const breakdown = { multiboard: 0, metal: 0, tshirt: 0, other: 0 };
+    try {
+      const Database = require('better-sqlite3');
+      const tiktokDb = new Database(DB_PATH);
+      for (const p of products) {
+        const local = tiktokDb.prepare('SELECT source FROM tiktok_shop_products WHERE shopify_product_id = ?').get(p.numericId);
+        const src = local?.source || 'other';
+        if (src === 'multiboard') breakdown.multiboard++;
+        else if (src === 'metal') breakdown.metal++;
+        else if (src === 'tshirt') breakdown.tshirt++;
+        else breakdown.other++;
+      }
+      tiktokDb.close();
+    } catch (e) {
+      // Fallback: just count total without breakdown
+      breakdown.other = productCount;
+    }
+
+    _tiktokShopData = {
+      capacity: { current: productCount, max: 100, available: Math.max(0, 100 - productCount) },
+      breakdown,
+      publicationId: pub.id
+    };
+
+    console.log(`[AI Agent] TikTok Shop: ${productCount}/100 products (multiboard: ${breakdown.multiboard}, metal: ${breakdown.metal}, tshirt: ${breakdown.tshirt}, other: ${breakdown.other})`);
+    return _tiktokShopData;
+  } catch (e) {
+    console.error('[AI Agent] TikTok Shop data collection failed:', e.message);
+    return null;
+  }
+}
+
 function categorizeProduct(campaignType, campaignSlug) {
   if (!campaignType && !campaignSlug) return 'other';
   const slug = (campaignSlug || '').toLowerCase();
@@ -686,14 +755,19 @@ async function callOllamaForStrategy(analysis) {
   const catKeys = Object.keys(currentWeights);
   const defaultWeights = Object.fromEntries(catKeys.map(k => [k, currentWeights[k].weight]));
 
+  // Include TikTok Shop data if available
+  const tiktokInfo = _tiktokShopData
+    ? `TikTok Shop: ${_tiktokShopData.capacity.current}/${_tiktokShopData.capacity.max} products (${_tiktokShopData.capacity.available} slots free). Breakdown: ${JSON.stringify(_tiktokShopData.breakdown)}.`
+    : '';
+
   const prompt = `You are a JSON API. Respond with ONLY raw JSON, no explanation, no markdown, no code fences.
 
 Marketing strategy for online store (metal prints, t-shirts, stickers, racing decals, custom vinyl, multiboard, laser engraving).
-Data: ${catSummary}. Styles: ${styleSummary}. Best hours: ${hourSummary}.
+Data: ${catSummary}. Styles: ${styleSummary}. Best hours: ${hourSummary}.${tiktokInfo ? ' ' + tiktokInfo : ''}
 Current weights: ${JSON.stringify(currentWeights)}.
 
 Respond with ONLY this JSON format (no other text):
-{"categoryWeightAdjustments":${JSON.stringify(defaultWeights)},"bestPostingHours":[10,14,19],"recommendations":["one tip"],"confidence":0.7}`;
+{"categoryWeightAdjustments":${JSON.stringify(defaultWeights)},"bestPostingHours":[10,14,19],"recommendations":["one tip"],"tiktokShopRecommendations":["prioritize category X for TikTok"],"confidence":0.7}`;
 
   try {
     const result = await callOllama(prompt, { temperature: 0.5, maxTokens: 300, timeout: 240000 });
@@ -857,9 +931,12 @@ async function planNextContent() {
   const bestHours = config.platforms.facebook.bestHours || [10, 14, 19];
 
   for (let i = 0; i < toGenerate; i++) {
-    // Pick category by weight
+    // Pick category by weight (boost TikTok Shop categories for cross-channel amplification)
+    const tiktokBoost = config.tiktokShop?.boostWeight || 1.3;
+    const tiktokPreferred = config.tiktokShop?.preferredCategories || [];
     let category = pickWeighted(enabledCategories.map(([name, cfg]) => ({
-      value: name, weight: cfg.postingWeight
+      value: name,
+      weight: cfg.postingWeight * (_tiktokShopData && _tiktokShopData.capacity.current > 0 && tiktokPreferred.includes(name) ? tiktokBoost : 1)
     })));
     const catConfig = config.categories[category];
 
@@ -970,6 +1047,10 @@ async function planNextContent() {
       }
     }
 
+    // Check if this category has products on TikTok Shop (cross-channel boost)
+    const tiktokShopListed = _tiktokShopData && _tiktokShopData.capacity.current > 0 &&
+      (config.tiktokShop?.preferredCategories || []).includes(isRecycled ? recycledPost.product_category : category);
+
     const calendarId = crypto.randomUUID();
     planned.push({
       id: calendarId,
@@ -980,10 +1061,11 @@ async function planNextContent() {
       product_uid: isRecycled ? recycledPost.product_uid : null,
       caption_style: style,
       hook_formula: hookFormula,
+      tiktok_shop_listed: tiktokShopListed ? 1 : 0,
       status: 'planned',
       reason: isRecycled
         ? `Recycled top performer (score: ${recycledPost.weighted_score})`
-        : `Weighted selection: ${category} (${Math.round(catConfig.postingWeight * 100)}%), style: ${style}, hook: ${hookFormula}`
+        : `Weighted selection: ${category} (${Math.round(catConfig.postingWeight * 100)}%), style: ${style}, hook: ${hookFormula}${tiktokShopListed ? ', TikTok Shop cross-channel' : ''}`
     });
   }
 
@@ -1746,7 +1828,12 @@ function generateDailyReportData() {
       thisWeek: thisWeekScore,
       lastWeek: lastWeekScore,
       change: lastWeekScore > 0 ? Math.round((thisWeekScore - lastWeekScore) / lastWeekScore * 100) : 0
-    }
+    },
+    tiktokShop: _tiktokShopData ? {
+      capacity: _tiktokShopData.capacity,
+      breakdown: _tiktokShopData.breakdown,
+      availableSlots: _tiktokShopData.capacity.available
+    } : null
   };
 }
 
@@ -1818,6 +1905,17 @@ function generateWeeklyReportData() {
   // Active A/B tests summary
   const activeTests = _db.prepare(`SELECT test_name, variant_a, variant_b, created_at FROM ab_tests WHERE status = 'active'`).all();
 
+  // TikTok Shop summary
+  const tiktokShopSummary = _tiktokShopData ? {
+    capacity: _tiktokShopData.capacity,
+    breakdown: _tiktokShopData.breakdown,
+    recommendations: _tiktokShopData.capacity.available < 10
+      ? ['TikTok Shop nearly full — consider rotating low-performing products']
+      : _tiktokShopData.capacity.available > 50
+        ? ['TikTok Shop has room — consider adding more metal prints and multiboards']
+        : ['TikTok Shop capacity healthy']
+  } : null;
+
   return {
     dateRange: `${dateStart} to ${dateEnd}`,
     worked: worked.length > 0 ? worked : ['Not enough data yet'],
@@ -1828,7 +1926,8 @@ function generateWeeklyReportData() {
     categoryStyleMatrix,
     recyclingCandidates,
     weekOverWeek: { thisWeek: thisWeekPosts, lastWeek: lastWeekPosts },
-    activeABTests: activeTests
+    activeABTests: activeTests,
+    tiktokShop: tiktokShopSummary
   };
 }
 
@@ -1847,9 +1946,12 @@ async function runAgentCycle() {
   const cycleStart = Date.now();
   console.log(`[AI Agent] === Cycle #${_cycleCount} starting ===`);
 
-  const results = { cycle: _cycleCount, engagement: null, analysis: null, strategy: null, content: null, abTests: null };
+  const results = { cycle: _cycleCount, engagement: null, analysis: null, strategy: null, content: null, abTests: null, tiktokShop: null };
 
   try {
+    // Phase 0: Collect TikTok Shop data (used by strategy + content planning)
+    results.tiktokShop = await collectTikTokShopData();
+
     // Phase 1: Collect engagement data
     results.engagement = await collectEngagementData();
 
@@ -2051,7 +2153,8 @@ function handleAgentRoute(req, res, parsedUrl, sendJson) {
           name: n, weight: c.postingWeight
         })),
         queueDepth: _db?.prepare(`SELECT COUNT(*) as c FROM scheduled_facebook_posts WHERE status = 'pending'`).get()?.c || 0,
-        postsTracked: _db?.prepare(`SELECT COUNT(DISTINCT post_id) as c FROM engagement_tracking`).get()?.c || 0
+        postsTracked: _db?.prepare(`SELECT COUNT(DISTINCT post_id) as c FROM engagement_tracking`).get()?.c || 0,
+        tiktokShop: _tiktokShopData || null
       });
       return true;
     }
@@ -2302,6 +2405,7 @@ module.exports = {
   isRunning,
   runAgentCycle,
   collectEngagementData,
+  collectTikTokShopData,
   analyzePerformance,
   planNextContent,
   executeContentPlan,
