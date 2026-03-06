@@ -5,6 +5,7 @@
  */
 
 const http = require('http');
+const ollamaClient = require('./lib/ollama-client');
 
 // Prompt templates for different use cases
 const PROMPT_TEMPLATES = {
@@ -160,15 +161,6 @@ class ImagePromptGenerator {
       options = apiKeyOrOptions || {};
     }
 
-    // Ollama config from options or env
-    this.ollamaHost = options.ollamaHost || process.env.OLLAMA_HOST || '100.64.0.13';
-    this.ollamaPort = parseInt(options.ollamaPort || process.env.OLLAMA_PORT || '11434', 10);
-    this.ollamaModel = options.ollamaModel || process.env.OLLAMA_MODEL || 'llama3.1:8b';
-
-    // Fallback Ollama (server-local)
-    this.ollamaFallbackHost = options.ollamaFallbackHost || process.env.OLLAMA_FALLBACK_HOST || '127.0.0.1';
-    this.ollamaFallbackPort = parseInt(options.ollamaFallbackPort || process.env.OLLAMA_FALLBACK_PORT || '11434', 10);
-
     this.promptHistory = [];
   }
 
@@ -177,96 +169,29 @@ class ImagePromptGenerator {
    */
   _callOllama(prompt, options = {}) {
     const {
-      host = this.ollamaHost,
-      port = this.ollamaPort,
-      model = this.ollamaModel,
       temperature = 0.7,
       maxTokens = 1024,
       timeout = 60000,
       systemPrompt = null
     } = options;
 
-    return new Promise((resolve, reject) => {
-      const payload = JSON.stringify({
-        model,
-        prompt: systemPrompt ? `${systemPrompt}\n\nUser: ${prompt}` : prompt,
-        stream: false,
-        options: {
-          temperature,
-          num_predict: maxTokens
-        }
-      });
-
-      const req = http.request({
-        hostname: host,
-        port,
-        path: '/api/generate',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload)
-        },
-        timeout
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            resolve(parsed.response || '');
-          } catch (e) {
-            reject(new Error(`Ollama parse error: ${e.message}`));
-          }
-        });
-      });
-
-      req.on('error', (e) => reject(new Error(`Ollama connection error (${host}:${port}): ${e.message}`)));
-      req.on('timeout', () => { req.destroy(); reject(new Error(`Ollama timeout (${host}:${port})`)); });
-      req.write(payload);
-      req.end();
-    });
+    const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser: ${prompt}` : prompt;
+    return ollamaClient.generate(fullPrompt, { temperature, maxTokens, timeout });
   }
 
   /**
    * Call Ollama with fallback chain: primary → fallback server → null
    */
   async _callOllamaWithFallback(prompt, options = {}) {
-    // Try primary (bridge/GPU laptop)
+    // Failover handled automatically by ollama-client (GPU bridge → local CPU)
     try {
-      console.log(`[PromptGenerator] Trying Ollama at ${this.ollamaHost}:${this.ollamaPort}...`);
-      const result = await this._callOllama(prompt, {
-        ...options,
-        host: this.ollamaHost,
-        port: this.ollamaPort,
-        timeout: options.timeout || 60000
-      });
+      const result = await this._callOllama(prompt, options);
       if (result && result.trim()) {
-        console.log(`[PromptGenerator] Primary Ollama responded`);
         return result.trim();
       }
     } catch (e) {
-      console.warn(`[PromptGenerator] Primary Ollama failed: ${e.message}`);
+      console.warn(`[PromptGenerator] Ollama failed: ${e.message}`);
     }
-
-    // Try fallback (server-local)
-    if (this.ollamaFallbackHost !== this.ollamaHost || this.ollamaFallbackPort !== this.ollamaPort) {
-      try {
-        console.log(`[PromptGenerator] Trying fallback Ollama at ${this.ollamaFallbackHost}:${this.ollamaFallbackPort}...`);
-        const result = await this._callOllama(prompt, {
-          ...options,
-          host: this.ollamaFallbackHost,
-          port: this.ollamaFallbackPort,
-          timeout: options.timeout || 120000 // longer timeout for CPU inference
-        });
-        if (result && result.trim()) {
-          console.log(`[PromptGenerator] Fallback Ollama responded`);
-          return result.trim();
-        }
-      } catch (e) {
-        console.warn(`[PromptGenerator] Fallback Ollama failed: ${e.message}`);
-      }
-    }
-
     return null;
   }
 
