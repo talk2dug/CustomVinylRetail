@@ -10,6 +10,29 @@ Your VPS runs Ollama on CPU (slow). This routes those requests to your gaming la
 
 ---
 
+## QUICK FIX: Open Port for Tailscale
+
+If Tailscale is connected (ping works) but the VPS can't reach Ollama, run **both** of these in **PowerShell as Administrator**:
+
+```powershell
+# 1. Make Ollama listen on all interfaces (not just localhost)
+[System.Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0:11434", "Machine")
+
+# 2. Allow Tailscale traffic through Windows Firewall
+New-NetFirewallRule -DisplayName "Ollama Tailscale" -Direction Inbound -Protocol TCP -LocalPort 11434 -RemoteAddress 100.64.0.0/10 -Action Allow
+```
+
+Then **restart Ollama** (right-click tray icon → Quit → relaunch from Start menu).
+
+Verify it worked:
+```powershell
+netstat -an | findstr 11434
+# Should show:  0.0.0.0:11434    LISTENING
+# NOT:          127.0.0.1:11434  LISTENING
+```
+
+---
+
 ## Step 1: Install Ollama
 
 1. **Download** the Windows installer:
