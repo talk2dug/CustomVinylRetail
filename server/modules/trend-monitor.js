@@ -3,7 +3,7 @@
  *
  * Continuously monitors Reddit and Google Trends for viral content,
  * uses Claude AI to evaluate apparel design potential, generates
- * designs via Leonardo.ai, and auto-lists approved designs to Shopify.
+ * designs via Gemini AI, and auto-lists approved designs to Shopify.
  *
  * Targets: GenX, Millennials, GenZ
  * Style: Sarcastic, witty, comical, playful
@@ -442,7 +442,7 @@ function passesContentFilter(text, settings) {
 }
 
 // =============================================================================
-// DESIGN GENERATION (uses existing Leonardo.ai workflow)
+// DESIGN GENERATION (uses Gemini AI workflow)
 // =============================================================================
 
 const PRINT_METHOD_INSTRUCTIONS = {
@@ -457,8 +457,8 @@ function buildApparelPrompt(phrase, visualConcept, printMethod) {
 }
 
 async function generateDesignForTrend(trend, settings) {
-  const { LeonardoWorkflow, MODELS } = require('../leonardo-workflow');
-  const workflow = new LeonardoWorkflow();
+  const { NanoBananaWorkflow, MODELS } = require('../nano-banana-workflow');
+  const workflow = new NanoBananaWorkflow();
   const designs = [];
 
   const phrases = (trend.aiAnalysis.suggestedPhrases || []).slice(0, 2);
@@ -474,7 +474,7 @@ async function generateDesignForTrend(trend, settings) {
       const result = await workflow.runWithPrompt(promptKeywords, {
         aspectRatio: '1:1',
         numImages: 2,
-        model: MODELS.PHOENIX_1_0,
+        model: MODELS.GEMINI_2_FLASH,
         category: 'products/apparel',
         addToArtwork: true
       });
@@ -486,9 +486,9 @@ async function generateDesignForTrend(trend, settings) {
             trendId: trend.id,
             phrase,
             visualDescription: visual,
-            leonardoPrompt: promptKeywords,
-            leonardoGenerationId: image.generationId || null,
-            imagePath: `/images/leonardo/${image.filename}`,
+            aiPrompt: promptKeywords,
+            aiGenerationId: image.generationId || null,
+            imagePath: `/images/ai-generated/text-to-image/${image.filename}`,
             imageFilename: image.filename,
             imageUrl: image.url || null,
             status: 'pending',

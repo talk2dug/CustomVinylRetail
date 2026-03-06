@@ -343,9 +343,15 @@ window.printStation = {
   },
 
   leonardo: {
-    generate: (data) => apiRequest('/api/leonardo/generate', { method: 'POST', body: data }),
-    getStatus: (id) => apiRequest(`/api/leonardo/status/${encodeURIComponent(id)}`),
-    getGenerations: () => apiRequest('/api/leonardo/generations')
+    generate: (data) => apiRequest('/api/ai-images/generate', { method: 'POST', body: data }),
+    getStatus: () => apiRequest('/api/ai-images/status'),
+    getGenerations: () => apiRequest('/api/ai-images/generations'),
+    edit: (data) => apiRequest('/api/ai-images/edit', { method: 'POST', body: data }),
+    vectorize: (data) => apiRequest('/api/ai-images/vectorize', { method: 'POST', body: data }),
+    scene: (data) => apiRequest('/api/ai-images/scene', { method: 'POST', body: data }),
+    modify: (data) => apiRequest('/api/ai-images/modify', { method: 'POST', body: data }),
+    getOptions: () => apiRequest('/api/ai-images/options'),
+    getImages: (params) => apiRequest(`/api/ai-images/images?${new URLSearchParams(params || {})}`)
   },
 
   // ============================================================================

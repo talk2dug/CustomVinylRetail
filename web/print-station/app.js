@@ -24177,7 +24177,7 @@ window.switchCustomArtSubtab = switchCustomArtSubtab;
 // NOTE: Mockup modal close button listener is set in initCustomArtEventListeners() - do not duplicate here
 
 // ==================================================================================
-// LEONARDO AI IMAGE GENERATOR
+// AI IMAGE GENERATOR (Nano Banana / Gemini)
 // ==================================================================================
 
 function getLeonardoApiBase() {
@@ -24284,21 +24284,21 @@ function initLeonardoView() {
   loadLeonardoPrompts();
 
   leonardoState.initialized = true;
-  console.log('[Leonardo] View initialized');
+  console.log('[AI Image] View initialized');
 }
 
 async function loadLeonardoStatus() {
   try {
     const serverBase = getLeonardoApiBase();
     if (!serverBase) return;
-    const resp = await fetch(`${serverBase}/api/leonardo/status`);
+    const resp = await fetch(`${serverBase}/api/ai-images/status`);
     const data = await resp.json();
     if (data.success && leonardoElements.tokens) {
       const tokens = data.api?.apiSubscriptionTokens || data.api?.subscriptionTokens || '--';
       leonardoElements.tokens.textContent = `Tokens: ${tokens}`;
     }
   } catch (e) {
-    console.error('[Leonardo] Status error:', e);
+    console.error('[AI Image] Status error:', e);
     if (leonardoElements.tokens) {
       leonardoElements.tokens.textContent = 'Tokens: Error';
     }
@@ -24309,7 +24309,7 @@ async function loadLeonardoHistory() {
   try {
     const serverBase = getLeonardoApiBase();
     if (!serverBase) return;
-    const resp = await fetch(`${serverBase}/api/leonardo/images?limit=20`);
+    const resp = await fetch(`${serverBase}/api/ai-images/images?limit=20`);
     const data = await resp.json();
 
     if (!leonardoElements.historyList) return;
@@ -24317,7 +24317,7 @@ async function loadLeonardoHistory() {
     if (data.success && data.images?.length > 0) {
       leonardoElements.historyList.innerHTML = data.images.map(img => `
         <div style="display:flex;gap:12px;padding:8px;border-bottom:1px solid #3a3a4e;align-items:center;">
-          <img src="${serverBase}/images/leonardo/${img.filename}"
+          <img src="${serverBase}${img.file_path || '/images/ai-generated/text-to-image/' + img.filename}"
                style="width:60px;height:60px;object-fit:cover;border-radius:4px;"
                onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'60\\' height=\\'60\\'><rect fill=\\'%23333\\' width=\\'60\\' height=\\'60\\'/></svg>'" />
           <div style="flex:1;min-width:0;">
@@ -24337,7 +24337,7 @@ async function loadLeonardoHistory() {
       leonardoElements.historyList.innerHTML = '<div class="placeholder" style="text-align:center;padding:20px;color:#888;">No recent generations</div>';
     }
   } catch (e) {
-    console.error('[Leonardo] History error:', e);
+    console.error('[AI Image] History error:', e);
   }
 }
 
@@ -24346,7 +24346,7 @@ async function loadLeonardoPrompts() {
     const serverBase = getLeonardoApiBase();
     if (!serverBase) return;
     const category = leonardoElements.promptCategoryFilter?.value || '';
-    const resp = await fetch(`${serverBase}/api/leonardo/prompts?limit=20${category ? `&category=${category}` : ''}`);
+    const resp = await fetch(`${serverBase}/api/ai-images/prompts?limit=20${category ? `&category=${category}` : ''}`);
     const data = await resp.json();
 
     if (!leonardoElements.promptsGrid) return;
@@ -24365,7 +24365,7 @@ async function loadLeonardoPrompts() {
       leonardoElements.promptsGrid.innerHTML = '<div class="placeholder" style="text-align:center;padding:20px;color:#888;">No saved prompts</div>';
     }
   } catch (e) {
-    console.error('[Leonardo] Prompts error:', e);
+    console.error('[AI Image] Prompts error:', e);
   }
 }
 
@@ -24397,7 +24397,7 @@ async function handleLeonardoPreviewPrompt() {
   showLeonardoProgress('Generating prompt with Claude...');
 
   try {
-    const resp = await fetch(`${serverBase}/api/leonardo/prompt`, {
+    const resp = await fetch(`${serverBase}/api/ai-images/prompt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -24444,11 +24444,11 @@ async function handleLeonardoGenerate() {
     // Step 1: Generate prompt
     setTimeout(() => {
       if (leonardoElements.progress.style.display !== 'none') {
-        leonardoElements.progressText.textContent = 'Sending to Leonardo.ai...';
+        leonardoElements.progressText.textContent = 'Generating with Gemini...';
       }
     }, 2000);
 
-    const resp = await fetch(`${serverBase}/api/leonardo/generate`, {
+    const resp = await fetch(`${serverBase}/api/ai-images/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -24535,7 +24535,7 @@ function renderLeonardoResults() {
   const serverBase = getLeonardoApiBase();
   leonardoElements.resultsGrid.innerHTML = leonardoState.generatedImages.map(img => `
     <div style="position:relative;border-radius:8px;overflow:hidden;background:#1e1e2e;">
-      <img src="${serverBase}/images/leonardo/${img.filename}"
+      <img src="${serverBase}${img.file_path || '/images/ai-generated/text-to-image/' + img.filename}"
            style="width:100%;aspect-ratio:1;object-fit:cover;"
            onerror="this.src='data:image/svg+xml,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'200\\'><rect fill=\\'%23333\\' width=\\'200\\' height=\\'200\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%23666\\' text-anchor=\\'middle\\' dy=\\'.3em\\'>Loading...</text></svg>'" />
       <div style="position:absolute;bottom:0;left:0;right:0;padding:8px;background:linear-gradient(transparent, rgba(0,0,0,0.8));">
@@ -24543,7 +24543,7 @@ function renderLeonardoResults() {
           ${img.category || 'Generated'}
         </div>
         <div style="display:flex;gap:4px;margin-top:4px;">
-          <a href="${serverBase}/images/leonardo/${img.filename}" target="_blank"
+          <a href="${serverBase}${img.file_path || '/images/ai-generated/text-to-image/' + img.filename}" target="_blank"
              style="font-size:10px;color:#60a5fa;text-decoration:none;">View</a>
           ${img.artworkId ? `<span style="font-size:10px;color:#22c55e;">✓ In DB</span>` : ''}
         </div>

@@ -33,7 +33,7 @@ const shopify = require('./integrations/shopify');
 const ads = require('./integrations/ads');
 const { classifyMarketingProfile } = require('./utils/classifier');
 const metalPrints = require('./metal-prints-server');
-const { handleLeonardoRoute } = require('./leonardo-server');
+const { handleAiImageRoute } = require('./nano-banana-server');
 const { handleMultiboardRoute } = require('./multiboard-server');
 const { handleHowtoRoute } = require('./multiboard-howto-server');
 const { handleSlicerRoute } = require('./slicer-server');
@@ -9257,10 +9257,10 @@ Keep it concise and actionable.`;
     return;
   }
 
-  // Leonardo AI Image Generator API
-  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/leonardo')) {
-    handleLeonardoRoute(parsedUrl.pathname, req, res).catch(err => {
-      console.error('[Leonardo API Error]', err);
+  // AI Image Generator API (Nano Banana / Gemini) - handles /api/ai-images/* and /api/leonardo/*
+  if (parsedUrl.pathname && (parsedUrl.pathname.startsWith('/api/ai-images') || parsedUrl.pathname.startsWith('/api/leonardo'))) {
+    handleAiImageRoute(parsedUrl.pathname, req, res).catch(err => {
+      console.error('[AI Image API Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
     });
     return;

@@ -763,15 +763,15 @@
       </section>
 
       <!-- ================================================================== -->
-      <!-- LEONARDO AI IMAGE GENERATOR                                        -->
+      <!-- AI IMAGE GENERATOR (Gemini)                                        -->
       <!-- ================================================================== -->
       <section id="leonardoView" class="view">
         <div class="view-toolbar">
           <div class="catalog-toolbar-group">
-            <h2 style="margin:0;font-size:18px;">Leonardo AI Image Generator</h2>
+            <h2 style="margin:0;font-size:18px;">AI Image Generator</h2>
           </div>
           <div class="catalog-toolbar-actions">
-            <span id="leonardoTokens" class="muted" style="margin-right:12px;">Tokens: --</span>
+            <span id="leonardoTokens" class="muted" style="margin-right:12px;">Status: --</span>
             <button id="leonardoRefreshStatus" class="secondary">Refresh Status</button>
           </div>
         </div>
@@ -790,6 +790,9 @@
                 <button class="leonardo-category-btn" data-category="model">Model/Fashion</button>
                 <button class="leonardo-category-btn" data-category="artwork">Artwork</button>
                 <button class="leonardo-category-btn" data-category="marketing">Marketing</button>
+                <button class="leonardo-category-btn" data-category="metal_print_scene">Metal Prints</button>
+                <button class="leonardo-category-btn" data-category="multiboard">Multiboard</button>
+                <button class="leonardo-category-btn" data-category="apparel_scene">Apparel</button>
               </div>
             </div>
 
@@ -799,7 +802,7 @@
                 Keywords / Description
               </label>
               <textarea id="leonardoKeywords" rows="3" placeholder="e.g. 1998 Toyota Supra MK4 orange, World Rally Blue Subaru WRX STI, modern minimalist living room..." style="width:100%;padding:10px;border-radius:6px;border:1px solid #3a3a4e;background:#1e1e2e;color:#fff;font-size:14px;"></textarea>
-              <span class="hint" style="font-size:11px;color:#888;">Enter keywords and Claude will generate an optimized prompt for Leonardo.ai</span>
+              <span class="hint" style="font-size:11px;color:#888;">Enter keywords and Claude will generate an optimized prompt for Gemini</span>
             </div>
 
             <!-- Aspect Ratio -->
@@ -834,10 +837,9 @@
                 <label style="display:block;margin-bottom:12px;">
                   <span style="display:block;margin-bottom:4px;">Model</span>
                   <select id="leonardoModel" style="width:100%;padding:8px;border-radius:4px;border:1px solid #3a3a4e;background:#1e1e2e;color:#fff;">
-                    <option value="PHOENIX_1_0">Leonardo Phoenix 1.0 (Recommended)</option>
-                    <option value="LUCID_ORIGIN">Lucid Origin</option>
-                    <option value="LUCID_REALISM">Lucid Realism</option>
-                    <option value="FLUX_DEV">Flux Dev</option>
+                    <option value="GEMINI_2_FLASH">Gemini 2.0 Flash (Recommended)</option>
+                    <option value="IMAGEN_3">Imagen 3</option>
+                    <option value="GEMINI_2_FLASH_THINKING">Gemini 2.0 Flash Thinking</option>
                   </select>
                 </label>
                 <label style="display:flex;align-items:center;gap:8px;">
@@ -914,6 +916,9 @@
                 <option value="model">Models</option>
                 <option value="artwork">Artwork</option>
                 <option value="marketing">Marketing</option>
+                <option value="metal_print_scene">Metal Prints</option>
+                <option value="multiboard">Multiboard</option>
+                <option value="apparel_scene">Apparel</option>
               </select>
               <button id="leonardoRefreshPrompts" class="secondary" style="font-size:12px;">Refresh</button>
             </div>
