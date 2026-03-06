@@ -992,12 +992,9 @@ function generatePlateHash(stlPaths, options) {
     profileMtimes
   ].join('|');
 
-  // Include transforms in hash so different arrangements bust cache
-  if (options.transforms && Object.keys(options.transforms).length > 0) {
-    const sortedKeys = Object.keys(options.transforms).sort();
-    const tObj = {};
-    for (const k of sortedKeys) tObj[k] = options.transforms[k];
-    settingsStr += '|T:' + JSON.stringify(tObj);
+  // Include per-instance transforms in hash so different arrangements bust cache
+  if (options.instance_transforms && options.instance_transforms.length > 0) {
+    settingsStr += '|IT:' + JSON.stringify(options.instance_transforms);
   }
 
   return crypto.createHash('sha256').update(settingsStr).digest('hex').substring(0, 16);
@@ -1393,7 +1390,14 @@ async function sliceSTL(stlPath, options, dbInstance) {
  */
 async function slicePlate(stlPaths, options, dbInstance) {
   if (!stlPaths || stlPaths.length === 0) throw new Error('No STL files provided');
-  if (stlPaths.length === 1) return sliceSTL(stlPaths[0], options, dbInstance);
+  if (stlPaths.length === 1) {
+    // Single item — pass first instance transform as options.transform for sliceSTL
+    const it = options.instance_transforms;
+    if (it && it[0] && !options.transform) {
+      options.transform = it[0];
+    }
+    return sliceSTL(stlPaths[0], options, dbInstance);
+  }
 
   const printerModel = options.printer_model || 'kobra3';
   const hash = generatePlateHash(stlPaths, options);
@@ -1436,7 +1440,10 @@ async function slicePlate(stlPaths, options, dbInstance) {
   const orientedTempFiles = [];
   const bakedTempFiles = [];
   let slicePaths = [...stlPaths];
-  const hasTransforms = options.transforms && Object.keys(options.transforms).length > 0;
+
+  // Per-instance transforms: ordered array matching stl_ids, each instance gets its own position
+  const instanceTransforms = options.instance_transforms || [];
+  const hasTransforms = instanceTransforms.some(t => t && hasNonIdentityTransform(t));
 
   if (options.auto_orient && !hasTransforms) {
     // Only auto-orient if no user transforms are provided (user positioned manually)
@@ -1454,15 +1461,13 @@ async function slicePlate(stlPaths, options, dbInstance) {
     });
   }
 
-  // Bake user transforms (rotation, scale, position) into temp STL files
+  // Bake per-instance transforms (rotation, scale, position) into temp STL files
   if (hasTransforms) {
-    const stlIds = options.stl_ids || [];
     slicePaths = slicePaths.map((p, idx) => {
-      const stlId = stlIds[idx];
-      const t = stlId ? options.transforms[String(stlId)] : null;
+      const t = instanceTransforms[idx];
       if (t && hasNonIdentityTransform(t)) {
         try {
-          const baked = bakeTransformToSTL(p, t, stlId);
+          const baked = bakeTransformToSTL(p, t, `inst${idx}`);
           if (baked) {
             bakedTempFiles.push(baked);
             return baked;

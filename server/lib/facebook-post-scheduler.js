@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
+const ollamaClient = require('./ollama-client');
 const { compositeArtwork, generateMockupToFile } = require('./mockup-compositor');
 const sharp = require('sharp');
 const { Anthropic } = require('@anthropic-ai/sdk');
@@ -451,7 +452,6 @@ Output as JSON:
  */
 async function generateAiPostViaOllama(item, campaign, style = 'showcase') {
   try {
-    const httpMod = require('http');
     const productName = item.name || 'Custom Design';
     const campaignSlug = (campaign?.slug || '').toLowerCase();
 
@@ -468,36 +468,7 @@ Requirements:
 
 Output as JSON: {"text": "your post", "hashtags": ["#tag1", "#tag2"]}`;
 
-    const result = await new Promise((resolve, reject) => {
-      const postData = JSON.stringify({
-        model: 'llama3.1:8b',
-        prompt: prompt,
-        stream: false,
-        options: { temperature: 0.8, num_predict: 400 }
-      });
-
-      const req = httpMod.request({
-        hostname: '127.0.0.1',
-        port: 11434,
-        path: '/api/generate',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 120000
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            resolve(parsed.response || '');
-          } catch (e) { reject(e); }
-        });
-      });
-      req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('Ollama timeout')); });
-      req.write(postData);
-      req.end();
-    });
+    const result = await ollamaClient.generate(prompt, { temperature: 0.8, maxTokens: 400, timeout: 120000 });
 
     const jsonMatch = result.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {

@@ -1,0 +1,23 @@
+{
+  "name": "gpu-bridge",
+  "version": "1.0.0",
+  "description": "GPU Bridge — System tray app for routing Ollama requests to a GPU-equipped machine via Tailscale",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "build": "pkg . --targets node18-win-x64 --output dist/gpu-bridge.exe"
+  },
+  "pkg": {
+    "targets": ["node18-win-x64"],
+    "assets": [
+      "web/**/*",
+      "assets/**/*"
+    ]
+  },
+  "dependencies": {
+    "systray2": "^2.2.0"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}

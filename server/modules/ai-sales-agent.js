@@ -17,14 +17,12 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const http = require('http');
+const ollamaClient = require('../lib/ollama-client');
 const Database = require('better-sqlite3');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const DB_PATH = path.join(APP_ROOT, 'data', 'store.db');
 const CONFIG_PATH = path.join(APP_ROOT, 'data', 'ai-sales-agent.json');
-const OLLAMA_HOST = '127.0.0.1';
-const OLLAMA_PORT = 11434;
-const OLLAMA_MODEL = 'llama3.1:8b';
 
 let _db = null;
 let _interval = null;
@@ -354,39 +352,7 @@ function deepMerge(target, source) {
 // ============================================================================
 
 async function callOllama(prompt, options = {}) {
-  const timeout = options.timeout || 180000;
-  const temperature = options.temperature || 0.7;
-
-  return new Promise((resolve, reject) => {
-    const postData = JSON.stringify({
-      model: OLLAMA_MODEL,
-      prompt,
-      stream: false,
-      options: { temperature, num_predict: options.maxTokens || 800 }
-    });
-
-    const req = http.request({
-      hostname: OLLAMA_HOST,
-      port: OLLAMA_PORT,
-      path: '/api/generate',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      timeout
-    }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          resolve(parsed.response || '');
-        } catch (e) { reject(e); }
-      });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Ollama timeout')); });
-    req.write(postData);
-    req.end();
-  });
+  return ollamaClient.generate(prompt, options);
 }
 
 /**

@@ -2,7 +2,7 @@
   "version": 2,
   "agentState": {
     "enabled": true,
-    "lastCycleAt": "2026-03-05T00:37:24.492Z",
+    "lastCycleAt": "2026-03-06T00:04:08.528Z",
     "cycleCount": 1,
     "currentStrategy": null
   },
@@ -32,6 +32,16 @@
       "postsPerDay": 0,
       "note": "Needs IG Business account linked to FB page"
     }
+  },
+  "tiktokShop": {
+    "enabled": true,
+    "maxProducts": 100,
+    "warnThreshold": 90,
+    "preferredCategories": [
+      "metal-print",
+      "multiboard"
+    ],
+    "boostWeight": 1.3
   },
   "categories": {
     "metal-print": {

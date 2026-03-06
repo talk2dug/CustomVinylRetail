@@ -21,6 +21,7 @@ if (fs.existsSync(ENV_PATH)) {
 }
 
 const db = require('./db');
+const ollamaClient = require('./lib/ollama-client');
 const { sendAccountEmail } = require('./mailer');
 const sms = require('./sms');
 const { SquareClient, SquareEnvironment } = require('square');
@@ -6121,36 +6122,7 @@ CTA (last 5 seconds): [call to action with urgency]
 
 Keep it casual, energetic, and under 60 seconds total. Include suggested text overlays and trending sounds.`;
 
-          const http = require('http');
-          const script = await new Promise((resolve, reject) => {
-            const postData = JSON.stringify({
-              model: 'llama3.1:8b',
-              prompt,
-              stream: false,
-              options: { temperature: 0.7, num_predict: 800 }
-            });
-            const req2 = http.request({
-              hostname: '127.0.0.1',
-              port: 11434,
-              path: '/api/generate',
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              timeout: 120000
-            }, (r) => {
-              let data = '';
-              r.on('data', chunk => data += chunk);
-              r.on('end', () => {
-                try {
-                  const parsed = JSON.parse(data);
-                  resolve(parsed.response || '');
-                } catch (e) { reject(e); }
-              });
-            });
-            req2.on('error', reject);
-            req2.on('timeout', () => { req2.destroy(); reject(new Error('Ollama timeout')); });
-            req2.write(postData);
-            req2.end();
-          });
+          const script = await ollamaClient.generate(prompt, { temperature: 0.7, maxTokens: 800, timeout: 120000 });
 
           // Save to DB
           const numericId = String(productId).replace(/.*\//, '');
@@ -6201,36 +6173,7 @@ Provide:
 
 Keep it concise and actionable.`;
 
-          const http = require('http');
-          const research = await new Promise((resolve, reject) => {
-            const postData = JSON.stringify({
-              model: 'llama3.1:8b',
-              prompt,
-              stream: false,
-              options: { temperature: 0.7, num_predict: 800 }
-            });
-            const req2 = http.request({
-              hostname: '127.0.0.1',
-              port: 11434,
-              path: '/api/generate',
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              timeout: 120000
-            }, (r) => {
-              let data = '';
-              r.on('data', chunk => data += chunk);
-              r.on('end', () => {
-                try {
-                  const parsed = JSON.parse(data);
-                  resolve(parsed.response || '');
-                } catch (e) { reject(e); }
-              });
-            });
-            req2.on('error', reject);
-            req2.on('timeout', () => { req2.destroy(); reject(new Error('Ollama timeout')); });
-            req2.write(postData);
-            req2.end();
-          });
+          const research = await ollamaClient.generate(prompt, { temperature: 0.7, maxTokens: 800, timeout: 120000 });
 
           // Extract TikTok score if present
           let aiScore = 0;
@@ -9400,6 +9343,18 @@ Keep it concise and actionable.`;
     return;
   }
 
+    // Internal: GPU Bridge status
+  if (
+    req.method === 'GET' &&
+    segments[0] === 'api' &&
+    segments[1] === 'internal' &&
+    segments[2] === 'gpu-bridge' &&
+    segments[3] === 'status'
+  ) {
+    sendJson(res, 200, { success: true, ...ollamaClient.getStatus() });
+    return;
+  }
+
   // Internal: LLM classify (requires INTERNAL_API_KEY)
   if (
     req.method === 'POST' &&
@@ -9436,28 +9391,10 @@ Keep it concise and actionable.`;
         }
 
         async function callOllama() {
-          const data = JSON.stringify({ model, options: { temperature: 0.2 }, messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: JSON.stringify(userPayload) } ] });
-          const u = new URL('/api/chat', baseUrl);
-          const isHttps = u.protocol === 'https:';
-          const lib = isHttps ? https : http;
-          const reqPromise = new Promise((resolve, reject) => {
-            const req2 = lib.request({ method: 'POST', hostname: u.hostname, port: u.port || (isHttps ? 443 : 80), path: u.pathname + (u.search || ''), headers: { 'Content-Type': 'application/json' } }, (r) => {
-              const chunks = [];
-              r.on('data', (c) => chunks.push(c));
-              r.on('end', () => {
-                try {
-                  const text = Buffer.concat(chunks).toString('utf8');
-                  const json = JSON.parse(text || '{}');
-                  const content = json?.message?.content || '{}';
-                  resolve(content);
-                } catch (e) { reject(e); }
-              });
-            });
-            req2.on('error', reject);
-            req2.write(data);
-            req2.end();
-          });
-          return withTimeout(reqPromise, LLM_TIMEOUT_MS);
+          return ollamaClient.chat(
+            [{ role: 'system', content: systemPrompt }, { role: 'user', content: JSON.stringify(userPayload) }],
+            { model: model, temperature: 0.2, timeout: LLM_TIMEOUT_MS }
+          );
         }
 
         async function callOpenAICompat() {

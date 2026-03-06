@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GPU Bridge — Status</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e1e4e8;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .header h1 { font-size: 24px; font-weight: 600; }
+    .status-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .status-dot.green { background: #3fb950; box-shadow: 0 0 8px #3fb95080; }
+    .status-dot.yellow { background: #d29922; box-shadow: 0 0 8px #d2992280; }
+    .status-dot.red { background: #f85149; box-shadow: 0 0 8px #f8514980; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .card h2 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #8b949e;
+      margin-bottom: 16px;
+    }
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #21262d;
+    }
+    .metric:last-child { border-bottom: none; }
+    .metric .label { color: #8b949e; }
+    .metric .value { font-weight: 500; }
+    .metric .value.ok { color: #3fb950; }
+    .metric .value.warn { color: #d29922; }
+    .metric .value.err { color: #f85149; }
+    .models-list {
+      margin-top: 8px;
+    }
+    .model-tag {
+      display: inline-block;
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 4px;
+      padding: 4px 8px;
+      margin: 2px 4px 2px 0;
+      font-size: 13px;
+      font-family: monospace;
+    }
+    .bar-outer {
+      background: #21262d;
+      border-radius: 4px;
+      height: 8px;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .bar-inner {
+      background: #3fb950;
+      border-radius: 4px;
+      height: 8px;
+      transition: width 0.3s;
+    }
+    .bar-inner.high { background: #f85149; }
+    .bar-inner.mid { background: #d29922; }
+    .footer {
+      text-align: center;
+      color: #484f58;
+      font-size: 12px;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="status-dot" id="statusDot"></span>
+    <h1>GPU Bridge</h1>
+    <span id="stateText" style="color: #8b949e; font-size: 14px;"></span>
+  </div>
+
+  <div class="grid">
+    <!-- Tailscale Card -->
+    <div class="card">
+      <h2>Tailscale</h2>
+      <div class="metric">
+        <span class="label">Status</span>
+        <span class="value" id="tsStatus">--</span>
+      </div>
+      <div class="metric">
+        <span class="label">IP Address</span>
+        <span class="value" id="tsIP">--</span>
+      </div>
+      <div class="metric">
+        <span class="label">Hostname</span>
+        <span class="value" id="tsHostname">--</span>
+      </div>
+      <div class="metric">
+        <span class="label">Peers</span>
+        <span class="value" id="tsPeers">--</span>
+      </div>
+    </div>
+
+    <!-- Ollama Card -->
+    <div class="card">
+      <h2>Ollama</h2>
+      <div class="metric">
+        <span class="label">Status</span>
+        <span class="value" id="ollamaStatus">--</span>
+      </div>
+      <div class="metric">
+        <span class="label">Models Loaded</span>
+        <span class="value" id="ollamaModels">--</span>
+      </div>
+      <div id="modelsList" class="models-list"></div>
+    </div>
+
+    <!-- GPU Card -->
+    <div class="card">
+      <h2>GPU</h2>
+      <div class="metric">
+        <span class="label">Name</span>
+        <span class="value" id="gpuName">--</span>
+      </div>
+      <div class="metric">
+        <span class="label">Temperature</span>
+        <span class="value" id="gpuTemp">--</span>
+      </div>
+      <div class="metric">
+        <span class="label">Utilization</span>
+        <span class="value" id="gpuUtil">--</span>
+      </div>
+      <div class="metric">
+        <span class="label">VRAM</span>
+        <span class="value" id="gpuVRAM">--</span>
+      </div>
+      <div class="bar-outer"><div class="bar-inner" id="gpuVRAMBar" style="width: 0%"></div></div>
+      <div class="metric" style="margin-top: 8px">
+        <span class="label">Driver</span>
+        <span class="value" id="gpuDriver">--</span>
+      </div>
+    </div>
+
+    <!-- Stats Card -->
+    <div class="card">
+      <h2>Stats</h2>
+      <div class="metric">
+        <span class="label">Uptime</span>
+        <span class="value" id="uptime">--</span>
+      </div>
+      <div class="metric">
+        <span class="label">Last Check</span>
+        <span class="value" id="lastCheck">--</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">GPU Bridge v1.0.0 — Auto-refreshes every 10s</div>
+
+  <script>
+    const stateLabels = {
+      green: 'Connected & Healthy',
+      yellow: 'Tailscale OK, Ollama Issue',
+      red: 'Disconnected'
+    };
+
+    async function refresh() {
+      try {
+        const [statusRes, gpuRes] = await Promise.all([
+          fetch('/api/status'),
+          fetch('/api/gpu-info')
+        ]);
+        const status = await statusRes.json();
+        const gpu = await gpuRes.json();
+
+        // State
+        const dot = document.getElementById('statusDot');
+        dot.className = 'status-dot ' + (status.state || 'red');
+        document.getElementById('stateText').textContent = stateLabels[status.state] || 'Unknown';
+
+        // Tailscale
+        const ts = status.tailscale || {};
+        const tsStatus = document.getElementById('tsStatus');
+        tsStatus.textContent = ts.connected ? 'Connected' : 'Disconnected';
+        tsStatus.className = 'value ' + (ts.connected ? 'ok' : 'err');
+        document.getElementById('tsIP').textContent = ts.ip || '--';
+        document.getElementById('tsHostname').textContent = ts.hostname || '--';
+        document.getElementById('tsPeers').textContent = ts.peers ?? '--';
+
+        // Ollama
+        const ol = status.ollama || {};
+        const olStatus = document.getElementById('ollamaStatus');
+        olStatus.textContent = ol.healthy ? 'Healthy' : (ol.lastError || 'Not responding');
+        olStatus.className = 'value ' + (ol.healthy ? 'ok' : 'err');
+        const models = ol.models || [];
+        document.getElementById('ollamaModels').textContent = models.length;
+        const modelsList = document.getElementById('modelsList');
+        modelsList.innerHTML = models.map(m =>
+          `<span class="model-tag">${m.name}</span>`
+        ).join('');
+
+        // GPU
+        if (gpu.available) {
+          document.getElementById('gpuName').textContent = gpu.name;
+          const temp = document.getElementById('gpuTemp');
+          temp.textContent = gpu.temperature + '\u00B0C';
+          temp.className = 'value ' + (gpu.temperature > 80 ? 'err' : gpu.temperature > 70 ? 'warn' : 'ok');
+          document.getElementById('gpuUtil').textContent = gpu.utilization + '%';
+          const usedGB = (gpu.memoryUsed / 1024).toFixed(1);
+          const totalGB = (gpu.memoryTotal / 1024).toFixed(1);
+          document.getElementById('gpuVRAM').textContent = `${usedGB} / ${totalGB} GB`;
+          const pct = gpu.memoryTotal > 0 ? (gpu.memoryUsed / gpu.memoryTotal * 100) : 0;
+          const bar = document.getElementById('gpuVRAMBar');
+          bar.style.width = pct + '%';
+          bar.className = 'bar-inner' + (pct > 90 ? ' high' : pct > 70 ? ' mid' : '');
+          document.getElementById('gpuDriver').textContent = gpu.driverVersion;
+        } else {
+          document.getElementById('gpuName').textContent = 'Not detected';
+          document.getElementById('gpuTemp').textContent = '--';
+          document.getElementById('gpuUtil').textContent = '--';
+          document.getElementById('gpuVRAM').textContent = '--';
+          document.getElementById('gpuDriver').textContent = '--';
+        }
+
+        // Stats
+        document.getElementById('uptime').textContent = status.uptime || '--';
+        document.getElementById('lastCheck').textContent = new Date().toLocaleTimeString();
+
+      } catch (e) {
+        console.error('Refresh failed:', e);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 10000);
+  </script>
+</body>
+</html>

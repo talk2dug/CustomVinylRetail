@@ -651,7 +651,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
   if (req.method === 'POST' && route === '/slice-plate') {
     try {
       const body = await parseBody(req);
-      const { stl_ids, transforms, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient } = body;
+      const { stl_ids, instance_transforms, transforms, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient } = body;
 
       if (!stl_ids || !Array.isArray(stl_ids) || stl_ids.length === 0) {
         sendError(res, 400, 'stl_ids (array) is required');
@@ -679,17 +679,41 @@ async function handleSlicerRoute(pathname, req, res, db) {
       const rawDb = db.db || db.getDb();
       const firstItem = items[0];
 
-      // Merge default_transform for any item that the client didn't send a transform for
-      const mergedTransforms = Object.assign({}, transforms || {});
-      for (const item of items) {
-        if (!mergedTransforms[item.id] && item.default_transform) {
-          try { mergedTransforms[item.id] = JSON.parse(item.default_transform); } catch {}
+      // Build per-instance transforms array
+      // New format: instance_transforms is an ordered array matching stl_ids
+      // Legacy format: transforms is an object keyed by stl_id
+      let finalInstanceTransforms = instance_transforms;
+      if (!finalInstanceTransforms && transforms) {
+        // Legacy: convert per-stlId transforms to per-instance
+        finalInstanceTransforms = stl_ids.map(id => {
+          const t = transforms[String(id)];
+          if (t) return { stlId: id, ...t };
+          return null;
+        });
+      }
+      // Fill in default_transform for any instance that doesn't have one
+      if (finalInstanceTransforms) {
+        for (let i = 0; i < finalInstanceTransforms.length; i++) {
+          if (!finalInstanceTransforms[i]) {
+            const item = items[i];
+            if (item && item.default_transform) {
+              try { finalInstanceTransforms[i] = { stlId: item.id, ...JSON.parse(item.default_transform) }; } catch {}
+            }
+          }
         }
+      } else {
+        // No transforms at all — try default_transforms
+        finalInstanceTransforms = items.map(item => {
+          if (item.default_transform) {
+            try { return { stlId: item.id, ...JSON.parse(item.default_transform) }; } catch {}
+          }
+          return null;
+        });
       }
 
       const result = await slicer.slicePlate(stlPaths, {
         stl_ids,
-        transforms: mergedTransforms,
+        instance_transforms: finalInstanceTransforms,
         printer_model: printer_model || 'kobra3',
         material: material || firstItem.default_material || 'pla',
         quality: quality || firstItem.default_quality || 'standard',
