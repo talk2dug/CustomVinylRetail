@@ -11,7 +11,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // Gemini Models for image generation
 const MODELS = {
-  GEMINI_2_FLASH: 'gemini-2.0-flash-exp',
+  GEMINI_2_FLASH: 'gemini-2.5-flash-image',
   IMAGEN_3: 'imagen-3.0-generate-002',
   GEMINI_2_FLASH_THINKING: 'gemini-2.0-flash-thinking-exp',
 };
@@ -192,6 +192,69 @@ class NanoBananaAI {
       generationId,
       images,
       sourceImage: imagePath
+    };
+  }
+
+  /**
+   * Composite multiple images together with a text prompt
+   * Sends all images + prompt to Gemini in a single call
+   */
+  async compositeImages(imagePaths, prompt, options = {}) {
+    const {
+      model = this.defaultModel
+    } = options;
+
+    // Build parts array: text prompt + all images
+    const parts = [{ text: prompt }];
+
+    for (const imgPath of imagePaths) {
+      if (!fs.existsSync(imgPath)) {
+        throw new Error(`Image not found: ${imgPath}`);
+      }
+      const buffer = fs.readFileSync(imgPath);
+      const ext = path.extname(imgPath).toLowerCase().slice(1);
+      parts.push({
+        inlineData: {
+          mimeType: ext === 'jpg' ? 'image/jpeg' : `image/${ext}`,
+          data: buffer.toString('base64')
+        }
+      });
+    }
+
+    console.log(`[NanoBanana] Compositing ${imagePaths.length} images`);
+    console.log(`[NanoBanana] Prompt: ${prompt.substring(0, 80)}...`);
+
+    const genModel = this.genAI.getGenerativeModel({
+      model,
+      generationConfig: {
+        responseModalities: ['TEXT', 'IMAGE'],
+      },
+    });
+
+    const result = await genModel.generateContent(parts);
+    const response = result.response;
+    const generationId = crypto.randomUUID();
+    const images = [];
+
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        images.push({
+          data: part.inlineData.data,
+          mimeType: part.inlineData.mimeType
+        });
+      }
+    }
+
+    if (images.length === 0) {
+      const textParts = response.candidates[0].content.parts.filter(p => p.text);
+      const textResponse = textParts.map(p => p.text).join(' ');
+      throw new Error(`No image generated. Model response: ${textResponse.substring(0, 200)}`);
+    }
+
+    return {
+      generationId,
+      images,
+      sourceImages: imagePaths
     };
   }
 

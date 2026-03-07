@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('printStation', {
   catalogDelete: (payload) => ipcRenderer.invoke('catalog:delete', payload || {}),
   catalogCreateFolder: (payload) => ipcRenderer.invoke('catalog:folder:create', payload || {}),
   catalogExtractZip: (zipPath) => ipcRenderer.invoke('catalog:extract-zip', zipPath),
+  cleanupTempDir: (dirPath) => ipcRenderer.invoke('util:cleanupTempDir', dirPath),
   uploadArtwork: (payload) => ipcRenderer.invoke('artwork:upload', payload),
   // Local catalogging
   selectFolder: (options) => ipcRenderer.invoke('dialog:selectFolder', options || {}),
@@ -624,7 +625,21 @@ contextBridge.exposeInMainWorld('printStation', {
     getPlate: (id) => ipcRenderer.invoke('slicer:plates:get', id),
     createPlate: (data) => ipcRenderer.invoke('slicer:plates:create', data),
     updatePlate: (id, updates) => ipcRenderer.invoke('slicer:plates:update', { id, updates }),
-    deletePlate: (id) => ipcRenderer.invoke('slicer:plates:delete', id)
+    deletePlate: (id) => ipcRenderer.invoke('slicer:plates:delete', id),
+
+    // Product Build Plates (pre-configured from product kits)
+    listProductPlates: (productId) => ipcRenderer.invoke('slicer:product-plates:list', productId),
+    createProductPlate: (data) => ipcRenderer.invoke('slicer:product-plates:create', data),
+    updateProductPlate: (id, updates) => ipcRenderer.invoke('slicer:product-plates:update', { id, updates }),
+    deleteProductPlate: (id) => ipcRenderer.invoke('slicer:product-plates:delete', id),
+
+    // Thangs Parts Sync
+    thangsStatus: () => ipcRenderer.invoke('slicer:thangs-sync:status'),
+    thangsMissing: (opts) => ipcRenderer.invoke('slicer:thangs-sync:missing', opts),
+    thangsRunSync: () => ipcRenderer.invoke('slicer:thangs-sync:run'),
+    thangsImport: (models) => ipcRenderer.invoke('slicer:thangs-sync:import', models),
+    thangsSkip: (modelId) => ipcRenderer.invoke('slicer:thangs-sync:skip', modelId),
+    thangsMatch: (modelId, catalogId) => ipcRenderer.invoke('slicer:thangs-sync:match', { modelId, catalogId })
   },
 
   printQuotes: {

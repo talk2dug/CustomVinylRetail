@@ -1222,23 +1222,27 @@ const elements = {
   socialArtworkAddSelected: document.getElementById('socialArtworkAddSelected'),
   socialAddFromArtworkButton: document.getElementById('socialAddFromArtworkButton'),
   socialClearItemsButton: document.getElementById('socialClearItemsButton'),
-  // Mockup settings modal
+  // AI Mockup settings modal
   campaignMockupSettingsModal: document.getElementById('campaignMockupSettingsModal'),
   campaignMockupSettingsClose: document.getElementById('campaignMockupSettingsClose'),
   campaignMockupApplySelect: document.getElementById('campaignMockupApplySelect'),
-  campaignMockupWidthInput: document.getElementById('campaignMockupWidthInput'),
-  campaignMockupYOffsetInput: document.getElementById('campaignMockupYOffsetInput'),
-  campaignMockupBgSelect: document.getElementById('campaignMockupBgSelect'),
-  campaignMockupBgCustomRow: document.getElementById('campaignMockupBgCustomRow'),
-  campaignMockupBgCustomInput: document.getElementById('campaignMockupBgCustomInput'),
-  campaignMockupHumanModelRow: document.getElementById('campaignMockupHumanModelRow'),
-  campaignMockupHumanModelSelect: document.getElementById('campaignMockupHumanModelSelect'),
-  campaignMockupClothingColor: document.getElementById('campaignMockupClothingColor'),
-  campaignMockupClothingColorLabel: document.getElementById('campaignMockupClothingColorLabel'),
-  campaignMockupColorPresets: document.getElementById('campaignMockupColorPresets'),
-  campaignMockupHumanModelPreview: document.getElementById('campaignMockupHumanModelPreview'),
   campaignMockupSettingsSave: document.getElementById('campaignMockupSettingsSave'),
   campaignMockupSettingsStatus: document.getElementById('campaignMockupSettingsStatus'),
+  // AI Mockup elements
+  aiMockupGarmentType: document.getElementById('aiMockupGarmentType'),
+  aiMockupFrontModel: document.getElementById('aiMockupFrontModel'),
+  aiMockupBackModel: document.getElementById('aiMockupBackModel'),
+  aiMockupFrontPreview: document.getElementById('aiMockupFrontPreview'),
+  aiMockupBackPreview: document.getElementById('aiMockupBackPreview'),
+  aiMockupClothingColor: document.getElementById('aiMockupClothingColor'),
+  aiMockupClothingColorLabel: document.getElementById('aiMockupClothingColorLabel'),
+  aiMockupColorPresets: document.getElementById('aiMockupColorPresets'),
+  aiMockupAddPlacement: document.getElementById('aiMockupAddPlacement'),
+  aiMockupPlacementsList: document.getElementById('aiMockupPlacementsList'),
+  aiMockupGenerateBtn: document.getElementById('aiMockupGenerateBtn'),
+  aiMockupProgress: document.getElementById('aiMockupProgress'),
+  aiMockupProgressText: document.getElementById('aiMockupProgressText'),
+  aiMockupResultsArea: document.getElementById('aiMockupResultsArea'),
   jobDetailsModal: document.getElementById('jobDetailsModal'),
   jobDetailsBody: document.getElementById('jobDetailsBody'),
   jobDetailsClose: document.getElementById('jobDetailsClose'),
@@ -1696,6 +1700,11 @@ function switchView(viewId) {
   }
   if (viewId === 'mockupsView') {
     ensureMockupsLoaded();
+  }
+  if (viewId === 'apparelMockupView') {
+    if (typeof window.initApparelMockupView === 'function') {
+      window.initApparelMockupView();
+    }
   }
   if (viewId === 'campaignsView') {
     renderCampaignItems();
@@ -3681,8 +3690,10 @@ function resolveAssetUrl(pathValue, options = {}) {
 
   if (pathValue.startsWith('/')) {
     const serverBase = state.config?.serverBaseUrl?.trim() || 'https://blueridgecustomco.com';
+    // Convert /library/ paths to /api/library/ for proper serving
+    const adjustedPath = pathValue.startsWith('/library/') ? '/api' + pathValue : pathValue;
     try {
-      const resolved = new URL(pathValue, ensureTrailingSlash(serverBase));
+      const resolved = new URL(adjustedPath, ensureTrailingSlash(serverBase));
       return applyImageOptions(resolved.toString(), options);
     } catch {
       // ignore and fall through
@@ -3693,8 +3704,10 @@ function resolveAssetUrl(pathValue, options = {}) {
   // e.g., "uploads/campaigns/..." without leading slash
   if (pathValue.startsWith('uploads/') || pathValue.startsWith('library/')) {
     const serverBase = state.config?.serverBaseUrl?.trim() || 'https://blueridgecustomco.com';
+    // Convert library/ paths to /api/library/ for proper serving
+    const adjustedPath = pathValue.startsWith('library/') ? '/api/' + pathValue : '/' + pathValue;
     try {
-      const resolved = new URL('/' + pathValue, ensureTrailingSlash(serverBase));
+      const resolved = new URL(adjustedPath, ensureTrailingSlash(serverBase));
       return applyImageOptions(resolved.toString(), options);
     } catch {
       // ignore and fall through
@@ -5123,62 +5136,339 @@ function renderCampaignApparelSummary() {
 
 let campaignMockupEditIndex = -1;
 
-// Human Model Mockup State
-const campaignHumanModelState = {
+/* ===== ARCHIVED: Old AI Mockup Code (replaced by apparel-mockup-view.js) =====
+// AI Mockup State
+const aiMockupState_ARCHIVED = {
   models: [],
   loaded: false,
-  selectedModelId: null,
-  clothingColor: '#ffffff'
+  clothingColor: '#ffffff',
+  placements: [],      // [{ graphicSource, graphicPath, zone, size, view }]
+  placementCounter: 0,
+  results: null
 };
 
-async function loadCampaignHumanModels() {
-  if (campaignHumanModelState.loaded && campaignHumanModelState.models.length > 0) return;
+async function loadAiMockupModels() {
+  if (aiMockupState.loaded && aiMockupState.models.length > 0) return;
   try {
-    console.log('[Campaign Mockup] Loading human models...');
+    console.log('[AI Mockup] Loading human models...');
     const result = await printStation.humanModels.list({ activeOnly: true, limit: 500 });
-    console.log('[Campaign Mockup] API result:', result);
-    campaignHumanModelState.models = result?.models || [];
-    campaignHumanModelState.loaded = true;
-    console.log('[Campaign Mockup] Loaded', campaignHumanModelState.models.length, 'models');
-    populateCampaignHumanModelSelect();
+    aiMockupState.models = result?.models || [];
+    aiMockupState.loaded = true;
+    console.log('[AI Mockup] Loaded', aiMockupState.models.length, 'models');
+    populateAiMockupModelSelects();
   } catch (err) {
-    console.error('[Campaign Mockup] Failed to load human models:', err);
-    campaignHumanModelState.models = [];
-    campaignHumanModelState.loaded = false;
+    console.error('[AI Mockup] Failed to load human models:', err);
+    aiMockupState.models = [];
+    aiMockupState.loaded = false;
   }
 }
 
-function populateCampaignHumanModelSelect() {
-  const select = elements.campaignMockupHumanModelSelect;
-  if (!select) return;
-  select.innerHTML = '<option value="">Choose a model...</option>' +
-    campaignHumanModelState.models.map(m =>
-      `<option value="${m.id}">${escapeHtml(m.title || 'Untitled')}${m.category ? ' (' + escapeHtml(m.category) + ')' : ''}</option>`
-    ).join('');
+function populateAiMockupModelSelects() {
+  const frontSelect = elements.aiMockupFrontModel;
+  const backSelect = elements.aiMockupBackModel;
+  if (!frontSelect && !backSelect) return;
+
+  const frontModels = aiMockupState.models.filter(m =>
+    !m.facing || m.facing === 'front' || m.facing === 'three-quarter-left' || m.facing === 'three-quarter-right'
+  );
+  const backModels = aiMockupState.models.filter(m =>
+    m.facing === 'back'
+  );
+
+  if (frontSelect) {
+    frontSelect.innerHTML = '<option value="">None (skip front)</option>' +
+      frontModels.map(m =>
+        `<option value="${m.id}">${escapeHtml(m.title || 'Untitled')}${m.category ? ' (' + escapeHtml(m.category) + ')' : ''}</option>`
+      ).join('');
+  }
+  if (backSelect) {
+    backSelect.innerHTML = '<option value="">None (skip back)</option>' +
+      backModels.map(m =>
+        `<option value="${m.id}">${escapeHtml(m.title || 'Untitled')}${m.category ? ' (' + escapeHtml(m.category) + ')' : ''}</option>`
+      ).join('');
+    // If no back models, show note
+    if (backModels.length === 0) {
+      backSelect.innerHTML = '<option value="">No back-facing models available</option>';
+    }
+  }
 }
 
-function updateCampaignHumanModelPreview() {
-  const preview = elements.campaignMockupHumanModelPreview;
-  if (!preview) return;
-  const model = campaignHumanModelState.models.find(m => String(m.id) === String(campaignHumanModelState.selectedModelId));
+function updateAiMockupModelPreview(type) {
+  const previewEl = type === 'front' ? elements.aiMockupFrontPreview : elements.aiMockupBackPreview;
+  const selectEl = type === 'front' ? elements.aiMockupFrontModel : elements.aiMockupBackModel;
+  if (!previewEl || !selectEl) return;
+
+  const modelId = selectEl.value;
+  const model = aiMockupState.models.find(m => String(m.id) === String(modelId));
   if (model) {
-    const thumbUrl = model.thumbnail_path || model.optimized_path || model.file_path || '';
+    const thumbUrl = model.thumbnailPath || model.thumbnail_path || model.optimizedPath || model.optimized_path || model.filePath || model.file_path || '';
     const fullUrl = thumbUrl.startsWith('http') ? thumbUrl : resolveAssetUrl(thumbUrl, { width: 200, quality: 80 });
-    preview.innerHTML = `<img src="${escapeHtml(fullUrl)}" alt="${escapeHtml(model.title || 'Model')}" style="width:100%;height:100%;object-fit:cover;" />`;
+    previewEl.innerHTML = `<img src="${escapeHtml(fullUrl)}" alt="${escapeHtml(model.title || '')}" style="width:100%;height:100%;object-fit:cover;" />`;
   } else {
-    preview.innerHTML = '<span style="font-size:11px;color:var(--muted);">No model</span>';
+    previewEl.innerHTML = '<span style="font-size:10px;color:var(--muted);">—</span>';
   }
 }
 
-function setCampaignClothingColor(color) {
-  campaignHumanModelState.clothingColor = color;
-  if (elements.campaignMockupClothingColor) elements.campaignMockupClothingColor.value = color;
-  if (elements.campaignMockupClothingColorLabel) elements.campaignMockupClothingColorLabel.textContent = color;
-  // Update preset selection
-  elements.campaignMockupColorPresets?.querySelectorAll('.mockup-color-preset').forEach(btn => {
+function setAiMockupClothingColor(color) {
+  aiMockupState.clothingColor = color;
+  if (elements.aiMockupClothingColor) elements.aiMockupClothingColor.value = color;
+  if (elements.aiMockupClothingColorLabel) elements.aiMockupClothingColorLabel.textContent = color;
+  elements.aiMockupColorPresets?.querySelectorAll('.ai-mockup-color-preset').forEach(btn => {
     btn.style.border = btn.dataset.color === color ? '2px solid #3b82f6' : '1px solid var(--border)';
   });
 }
+
+function addAiMockupPlacement(options = {}) {
+  const id = ++aiMockupState.placementCounter;
+  const placement = {
+    id,
+    graphicSource: options.graphicSource || 'campaign-artwork',
+    graphicPath: options.graphicPath || '',
+    zone: options.zone || 'front-chest',
+    size: options.size || 'auto'
+  };
+  aiMockupState.placements.push(placement);
+  renderAiMockupPlacements();
+}
+
+function removeAiMockupPlacement(id) {
+  aiMockupState.placements = aiMockupState.placements.filter(p => p.id !== id);
+  renderAiMockupPlacements();
+}
+
+function renderAiMockupPlacements() {
+  const container = elements.aiMockupPlacementsList;
+  if (!container) return;
+
+  if (aiMockupState.placements.length === 0) {
+    container.innerHTML = '<div class="placeholder" style="text-align:center;padding:16px;color:var(--muted);font-size:12px;">Click "+ Add" to add a graphic placement</div>';
+    return;
+  }
+
+  container.innerHTML = aiMockupState.placements.map(p => `
+    <div data-placement-id="${p.id}" style="padding:8px;background:var(--bg-secondary);border-radius:6px;border:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:12px;font-weight:600;">Placement #${p.id}</span>
+        <button type="button" class="ai-mockup-remove-placement" data-id="${p.id}" style="font-size:10px;padding:2px 6px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;">Remove</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:4px;">
+        <select class="ai-mockup-zone" data-id="${p.id}" style="flex:1;font-size:11px;padding:4px;">
+          <option value="front-chest" ${p.zone === 'front-chest' ? 'selected' : ''}>Front (Chest)</option>
+          <option value="back" ${p.zone === 'back' ? 'selected' : ''}>Back</option>
+          <option value="left-sleeve" ${p.zone === 'left-sleeve' ? 'selected' : ''}>Left Sleeve</option>
+          <option value="right-sleeve" ${p.zone === 'right-sleeve' ? 'selected' : ''}>Right Sleeve</option>
+        </select>
+        <select class="ai-mockup-size" data-id="${p.id}" style="flex:1;font-size:11px;padding:4px;">
+          <option value="auto" ${p.size === 'auto' ? 'selected' : ''}>Auto (AI)</option>
+          <option value="small" ${p.size === 'small' ? 'selected' : ''}>Small</option>
+          <option value="medium" ${p.size === 'medium' ? 'selected' : ''}>Medium</option>
+          <option value="large" ${p.size === 'large' ? 'selected' : ''}>Large</option>
+          <option value="full" ${p.size === 'full' ? 'selected' : ''}>Full</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select class="ai-mockup-source" data-id="${p.id}" style="flex:1;font-size:11px;padding:4px;">
+          <option value="campaign-artwork" ${p.graphicSource === 'campaign-artwork' ? 'selected' : ''}>Campaign Artwork</option>
+          <option value="custom" ${p.graphicSource === 'custom' ? 'selected' : ''}>Upload File...</option>
+        </select>
+        ${p.graphicSource === 'custom' && p.graphicPath ? `<span style="font-size:10px;color:var(--muted);" title="${escapeHtml(p.graphicPath)}">${escapeHtml(p.graphicPath.split(/[/\\]/).pop())}</span>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  // Attach event listeners
+  container.querySelectorAll('.ai-mockup-remove-placement').forEach(btn => {
+    btn.addEventListener('click', () => removeAiMockupPlacement(Number(btn.dataset.id)));
+  });
+  container.querySelectorAll('.ai-mockup-zone').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const p = aiMockupState.placements.find(x => x.id === Number(sel.dataset.id));
+      if (p) p.zone = sel.value;
+    });
+  });
+  container.querySelectorAll('.ai-mockup-size').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const p = aiMockupState.placements.find(x => x.id === Number(sel.dataset.id));
+      if (p) p.size = sel.value;
+    });
+  });
+  container.querySelectorAll('.ai-mockup-source').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const p = aiMockupState.placements.find(x => x.id === Number(sel.dataset.id));
+      if (!p) return;
+      if (sel.value === 'custom') {
+        // Open file picker
+        try {
+          const filePath = await printStation.selectFile({ filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
+          if (filePath) {
+            p.graphicSource = 'custom';
+            p.graphicPath = filePath;
+          } else {
+            sel.value = 'campaign-artwork';
+            p.graphicSource = 'campaign-artwork';
+          }
+        } catch (e) {
+          sel.value = 'campaign-artwork';
+          p.graphicSource = 'campaign-artwork';
+        }
+        renderAiMockupPlacements();
+      } else {
+        p.graphicSource = 'campaign-artwork';
+        p.graphicPath = '';
+      }
+    });
+  });
+}
+
+async function generateAiMockup() {
+  const serverBase = state.config?.serverBaseUrl?.trim();
+  if (!serverBase) {
+    alert('Server not configured. Set server URL in Settings.');
+    return;
+  }
+
+  const frontModelId = elements.aiMockupFrontModel?.value || '';
+  const backModelId = elements.aiMockupBackModel?.value || '';
+
+  if (!frontModelId && !backModelId) {
+    alert('Please select at least one model (front or back).');
+    return;
+  }
+
+  if (aiMockupState.placements.length === 0) {
+    alert('Please add at least one graphic placement.');
+    return;
+  }
+
+  // Resolve graphic paths — campaign artwork uses the current item's design
+  const it = state.campaign.items[campaignMockupEditIndex] || {};
+  const campaignArtworkPath = it.image || it.artworkPath || it.designPath || it.imagePath || '';
+
+  const frontPlacements = [];
+  const backPlacements = [];
+
+  for (const p of aiMockupState.placements) {
+    const graphicPath = p.graphicSource === 'campaign-artwork' ? campaignArtworkPath : p.graphicPath;
+    if (!graphicPath) {
+      alert(`Placement #${p.id}: No graphic selected.`);
+      return;
+    }
+    const entry = { graphicPath, zone: p.zone, size: p.size };
+    if (p.zone === 'back') {
+      backPlacements.push(entry);
+    } else {
+      frontPlacements.push(entry);
+    }
+  }
+
+  // Show progress
+  if (elements.aiMockupProgress) elements.aiMockupProgress.style.display = 'flex';
+  if (elements.aiMockupProgressText) elements.aiMockupProgressText.textContent = 'Generating mockup with Gemini...';
+  if (elements.aiMockupGenerateBtn) elements.aiMockupGenerateBtn.disabled = true;
+
+  try {
+    const resp = await fetch(`${serverBase}/api/ai-images/apparel-mockup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modelFrontId: frontModelId || undefined,
+        modelBackId: backModelId || undefined,
+        clothingColor: aiMockupState.clothingColor,
+        placements: frontPlacements,
+        backPlacements,
+        garmentType: elements.aiMockupGarmentType?.value || 't-shirt',
+        generateSideBySide: !!(frontModelId && backModelId && frontPlacements.length > 0 && backPlacements.length > 0)
+      })
+    });
+
+    const data = await resp.json();
+
+    if (data.success) {
+      aiMockupState.results = data;
+      renderAiMockupResults(data, serverBase);
+
+      if (elements.campaignMockupSettingsStatus) {
+        elements.campaignMockupSettingsStatus.textContent = 'Mockup generated successfully!';
+        elements.campaignMockupSettingsStatus.className = 'status-bar';
+      }
+    } else {
+      alert('Error: ' + (data.error || 'Failed to generate mockup'));
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    if (elements.aiMockupProgress) elements.aiMockupProgress.style.display = 'none';
+    if (elements.aiMockupGenerateBtn) elements.aiMockupGenerateBtn.disabled = false;
+  }
+}
+
+function renderAiMockupResults(data, serverBase) {
+  const container = elements.aiMockupResultsArea;
+  if (!container) return;
+
+  const images = [];
+  if (data.front) images.push({ label: 'Front', path: data.front.imagePath });
+  if (data.back) images.push({ label: 'Back', path: data.back.imagePath });
+  if (data.combined) images.push({ label: 'Combined', path: data.combined.imagePath });
+
+  if (images.length === 0) {
+    container.innerHTML = '<div class="placeholder" style="text-align:center;padding:20px;color:var(--muted);">No images generated</div>';
+    return;
+  }
+
+  container.innerHTML = images.map(img => `
+    <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+      <div style="padding:4px 8px;background:var(--bg-secondary);font-size:11px;font-weight:600;">${img.label}</div>
+      <img src="${serverBase}${img.path}" style="width:100%;display:block;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22><rect fill=%22%23333%22 width=%22200%22 height=%22200%22/><text x=%2250%%22 y=%2250%%22 fill=%22%23888%22 text-anchor=%22middle%22 dy=%22.3em%22>Error</text></svg>'" />
+      <div style="padding:6px 8px;display:flex;gap:6px;">
+        <button type="button" class="secondary ai-mockup-use-result" data-path="${img.path}" data-label="${img.label}" style="font-size:11px;padding:3px 8px;flex:1;">Use as Mockup</button>
+        <a href="${serverBase}${img.path}" target="_blank" style="font-size:11px;padding:3px 8px;text-decoration:none;color:var(--primary);border:1px solid var(--border);border-radius:4px;text-align:center;">View</a>
+      </div>
+    </div>
+  `).join('');
+
+  // "Use as Mockup" buttons
+  container.querySelectorAll('.ai-mockup-use-result').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const imgPath = btn.dataset.path;
+      const it = state.campaign.items[campaignMockupEditIndex];
+      if (it) {
+        it.mockupImage = `${serverBase}${imgPath}`;
+        it.mockupParams = {
+          aiMockup: true,
+          humanModelFrontId: elements.aiMockupFrontModel?.value || null,
+          humanModelBackId: elements.aiMockupBackModel?.value || null,
+          clothingColor: aiMockupState.clothingColor,
+          garmentType: elements.aiMockupGarmentType?.value || 't-shirt',
+          placements: aiMockupState.placements.map(p => ({
+            graphicSource: p.graphicSource,
+            graphicPath: p.graphicPath,
+            zone: p.zone,
+            size: p.size
+          }))
+        };
+        if (elements.campaignMockupSettingsStatus) {
+          elements.campaignMockupSettingsStatus.textContent = `${btn.dataset.label} mockup applied to item.`;
+        }
+        printStation.updateCampaign(state.campaign);
+      }
+    });
+  });
+}
+
+===== END ARCHIVED Old AI Mockup Code ===== */
+
+// Stub functions to prevent errors from any remaining references
+const aiMockupState = { models: [], loaded: false, clothingColor: '#ffffff', placements: [], placementCounter: 0, results: null };
+function loadAiMockupModels() { /* archived */ }
+function populateAiMockupModelSelects() { /* archived */ }
+function generateAiMockup() { /* archived - use apparel-mockup-view.js */ }
+function renderAiMockupResults() { /* archived */ }
+function addAiMockupPlacement() { /* archived */ }
+function removeAiMockupPlacement() { /* archived */ }
+function renderAiMockupPlacements() { /* archived */ }
+function updateAiMockupModelPreview() { /* archived */ }
+function setAiMockupClothingColor() { /* archived */ }
 
 // Guided Export Human Model State
 const guidedHumanModelState = {
@@ -5852,44 +6142,34 @@ async function updateGuidedHumanModelTint() {
 }
 
 function openCampaignMockupSettings(index) {
+  // Redirect to new apparel mockup view in campaign mode
   campaignMockupEditIndex = Number(index);
-  const modal = elements.campaignMockupSettingsModal;
-  if (!modal) return;
-  const it = state.campaign.items[campaignMockupEditIndex] || {};
-  const params = it.mockupParams || {};
-  try {
-    if (elements.campaignMockupApplySelect) elements.campaignMockupApplySelect.value = 'item';
-    if (elements.campaignMockupWidthInput) elements.campaignMockupWidthInput.value = String(Number.isFinite(params.widthPct) ? params.widthPct : 40);
-    if (elements.campaignMockupYOffsetInput) elements.campaignMockupYOffsetInput.value = String(Number.isFinite(params.yOffsetPct) ? params.yOffsetPct : 0);
-    // Background selection
-    let bgMode = 'auto';
-    let custom = '';
-    if (params.humanModelId) {
-      bgMode = 'humanModel';
-      campaignHumanModelState.selectedModelId = params.humanModelId;
-      setCampaignClothingColor(params.clothingColor || '#ffffff');
-    } else if (params.bgColor && /^#?[0-9a-f]{3,6}$/i.test(String(params.bgColor))) {
-      const hex = String(params.bgColor).toUpperCase().startsWith('#') ? params.bgColor : '#' + params.bgColor;
-      if (hex === '#E5E7EB') bgMode = '#e5e7eb';
-      else if (hex === '#111827') bgMode = '#111827';
-      else { bgMode = 'custom'; custom = hex; }
-    }
-    if (elements.campaignMockupBgSelect) elements.campaignMockupBgSelect.value = bgMode;
-    if (elements.campaignMockupBgCustomRow) elements.campaignMockupBgCustomRow.style.display = (bgMode === 'custom') ? '' : 'none';
-    if (elements.campaignMockupBgCustomInput) elements.campaignMockupBgCustomInput.value = custom;
-    // Human model UI
-    if (elements.campaignMockupHumanModelRow) elements.campaignMockupHumanModelRow.style.display = (bgMode === 'humanModel') ? '' : 'none';
-    if (bgMode === 'humanModel') {
-      loadCampaignHumanModels().then(() => {
-        if (elements.campaignMockupHumanModelSelect) {
-          elements.campaignMockupHumanModelSelect.value = params.humanModelId || '';
+  const items = state.campaign.items || [];
+  if (!items.length) return;
+
+  switchView('apparelMockupView');
+
+  // Give the view a tick to render, then init in campaign mode
+  setTimeout(() => {
+    if (typeof window.initApparelMockupView === 'function') {
+      window.initApparelMockupView({
+        campaignMode: true,
+        campaignItems: items,
+        startIndex: campaignMockupEditIndex,
+        onComplete: (itemIndex, data) => {
+          // Update campaign item with mockup result
+          const item = state.campaign.items[itemIndex];
+          if (item && data) {
+            const serverBase = (state.config?.serverBaseUrl || '').replace(/\/$/, '');
+            item.mockupImage = data.front ? `${serverBase}${data.front.imagePath}` : (data.back ? `${serverBase}${data.back.imagePath}` : '');
+            item.mockupParams = data.mockupParams || item.mockupParams;
+            printStation.updateCampaign(state.campaign);
+            renderCampaignItems();
+          }
         }
-        updateCampaignHumanModelPreview();
       });
     }
-  } catch (_) {}
-  modal.removeAttribute('hidden');
-  if (elements.campaignMockupSettingsStatus) { elements.campaignMockupSettingsStatus.textContent = 'Ready.'; elements.campaignMockupSettingsStatus.className = 'status-bar muted'; }
+  }, 100);
 }
 
 function closeCampaignMockupSettings() {
@@ -12160,7 +12440,7 @@ function populateCatalogCategories() {
     select.innerHTML = '';
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = categories.length ? 'All categories' : 'No categories';
+    placeholder.textContent = categories.length ? 'Select a category...' : 'No categories';
     if (select === elements.existingCategorySelect) {
       placeholder.textContent = categories.length ? 'Select a category…' : 'No categories';
       placeholder.disabled = true;
@@ -12201,8 +12481,16 @@ function renderCatalog() {
     elements.catalogGrid.innerHTML =
       '<p class="hint">No catalog data found. Generate catalog on the server first.</p>';
     return;
-
   }
+
+  // Default to "select a category" instead of loading all items
+  if (!state.catalogFilter.category && !state.catalogFilter.search) {
+    const totalDesigns = categories.reduce((sum, c) => sum + (c.designs?.length || 0), 0);
+    elements.catalogGrid.innerHTML =
+      `<p class="hint">Select a category to view items. ${categories.length} categories, ${totalDesigns} designs available.</p>`;
+    return;
+  }
+
   let designs = categories.flatMap((category) =>
     (category.designs || []).map((design) => ({
       ...design,
@@ -12957,6 +13245,7 @@ async function handleSettingsSubmit(event) {
   };
   try {
     state.config = await printStation.saveConfig(updated);
+    window.printStationConfig = state.config;
     populateSettingsForm();
     schedulePolling();
     await refreshQueue({ silent: true });
@@ -13421,6 +13710,7 @@ async function init() {
     if (!state.config) return;
     const update = { pollIntervalMs: seconds * 1000 };
     state.config = await printStation.saveConfig(update);
+    window.printStationConfig = state.config;
     schedulePolling();
     showToast(`Polling every ${seconds} seconds.`, 'success');
   });
@@ -15246,14 +15536,12 @@ ${targeting.psychographics.lifestyle}
           await exportCampaignToShopify();
           return;
         }
+
+        // Determine start index
         const includeExported = !!elements.campaignForceExportCheckbox?.checked;
-        if (includeExported) {
-          // When forcing re-export, walk all items from the beginning
-          openGuidedExport(0);
-        } else {
-          // Start at first item without a Shopify product id and not already exported in this session
+        let startIndex = 0;
+        if (!includeExported) {
           const exportedSet = state.guided?.exportedIndices instanceof Set ? state.guided.exportedIndices : new Set();
-          let startIndex = 0;
           for (let i = 0; i < items.length; i++) {
             const it = items[i];
             const hasProduct = it && (it.shopifyProductId || it.shopify_product_id || exportedSet.has(i));
@@ -15266,8 +15554,10 @@ ${targeting.psychographics.lifestyle}
             showToast('All items appear to be exported already.', 'info');
             return;
           }
-          openGuidedExport(startIndex);
         }
+
+        // Open new apparel mockup view in campaign mode
+        openCampaignMockupSettings(startIndex);
       } catch (e) {
         showToast(e?.message || 'Unable to start guided export.', 'error');
       }
@@ -15848,58 +16138,53 @@ ${targeting.psychographics.lifestyle}
     const backdrop = document.querySelector('[data-campaign-mockup-close="true"]');
     backdrop?.addEventListener('click', closeCampaignMockupSettings);
   } catch (_) {}
-  elements.campaignMockupBgSelect?.addEventListener('change', () => {
-    const mode = elements.campaignMockupBgSelect.value;
-    if (elements.campaignMockupBgCustomRow) elements.campaignMockupBgCustomRow.style.display = (mode === 'custom') ? '' : 'none';
-    if (elements.campaignMockupHumanModelRow) elements.campaignMockupHumanModelRow.style.display = (mode === 'humanModel') ? '' : 'none';
-    if (mode === 'humanModel') {
-      loadCampaignHumanModels();
-    }
-  });
-  // Human model select change
-  elements.campaignMockupHumanModelSelect?.addEventListener('change', () => {
-    campaignHumanModelState.selectedModelId = elements.campaignMockupHumanModelSelect.value || null;
-    updateCampaignHumanModelPreview();
-  });
+  // AI Mockup model select changes
+  elements.aiMockupFrontModel?.addEventListener('change', () => updateAiMockupModelPreview('front'));
+  elements.aiMockupBackModel?.addEventListener('change', () => updateAiMockupModelPreview('back'));
   // Clothing color picker
-  elements.campaignMockupClothingColor?.addEventListener('input', (e) => {
-    setCampaignClothingColor(e.target.value);
+  elements.aiMockupClothingColor?.addEventListener('input', (e) => {
+    setAiMockupClothingColor(e.target.value);
   });
   // Color presets
-  elements.campaignMockupColorPresets?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.mockup-color-preset');
-    if (btn?.dataset.color) setCampaignClothingColor(btn.dataset.color);
+  elements.aiMockupColorPresets?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ai-mockup-color-preset');
+    if (btn?.dataset.color) setAiMockupClothingColor(btn.dataset.color);
   });
+  // Add placement button
+  elements.aiMockupAddPlacement?.addEventListener('click', () => {
+    addAiMockupPlacement();
+    renderAiMockupPlacements();
+  });
+  // Generate button
+  elements.aiMockupGenerateBtn?.addEventListener('click', () => generateAiMockup());
+  // Save & Close
   elements.campaignMockupSettingsSave?.addEventListener('click', async () => {
     try {
       const applyTo = elements.campaignMockupApplySelect?.value || 'item';
-  const widthPct = Math.max(10, Math.min(150, Math.round(Number(elements.campaignMockupWidthInput?.value || '40'))));
-      const yOffsetPct = Math.max(-50, Math.min(50, Math.round(Number(elements.campaignMockupYOffsetInput?.value || '0'))));
-      const bgMode = elements.campaignMockupBgSelect?.value || 'auto';
-      let bgColor = null;
-      if (bgMode === '#e5e7eb' || bgMode === '#111827') bgColor = bgMode;
-      if (bgMode === 'custom') {
-        const raw = (elements.campaignMockupBgCustomInput?.value || '').trim();
-        if (raw) {
-          const hex = raw.startsWith('#') ? raw : '#' + raw;
-          if (/^#[0-9a-fA-F]{6}$/.test(hex) || /^#[0-9a-fA-F]{3}$/.test(hex)) bgColor = hex;
-          else throw new Error('Enter a valid hex color like #000000.');
+
+      // Separate placements into front and back based on zone
+      const frontPlacements = aiMockupState.placements.filter(p => p.zone !== 'back');
+      const backPlacements = aiMockupState.placements.filter(p => p.zone === 'back');
+
+      const params = {
+        aiMockup: true,
+        humanModelFrontId: elements.aiMockupFrontModel?.value || null,
+        humanModelBackId: elements.aiMockupBackModel?.value || null,
+        clothingColor: aiMockupState.clothingColor,
+        garmentType: elements.aiMockupGarmentType?.value || 't-shirt',
+        placements: frontPlacements.map(p => ({ zone: p.zone, size: p.size, graphicSource: p.graphicSource })),
+        backPlacements: backPlacements.map(p => ({ zone: p.zone, size: p.size, graphicSource: p.graphicSource }))
+      };
+
+      // Apply generated mockup image if available
+      if (aiMockupState.results) {
+        if (aiMockupState.results.combined?.imagePath) {
+          params.mockupImage = aiMockupState.results.combined.imagePath;
+        } else if (aiMockupState.results.front?.imagePath) {
+          params.mockupImage = aiMockupState.results.front.imagePath;
         }
       }
-      const params = { widthPct, yOffsetPct };
-      if (bgMode === 'auto') {
-        params.bgColor = null;
-        params.humanModelId = null;
-        params.clothingColor = null;
-      } else if (bgMode === 'humanModel') {
-        params.bgColor = null;
-        params.humanModelId = campaignHumanModelState.selectedModelId;
-        params.clothingColor = campaignHumanModelState.clothingColor;
-      } else {
-        params.bgColor = bgColor;
-        params.humanModelId = null;
-        params.clothingColor = null;
-      }
+
       if (applyTo === 'campaign') {
         (state.campaign.items || []).forEach((it) => { it.mockupParams = { ...(it.mockupParams||{}), ...params }; });
       } else {
@@ -16191,6 +16476,8 @@ ${targeting.psychographics.lifestyle}
 
   try {
     state.config = await printStation.getConfig();
+    // Expose config globally so view scripts can access server URL and API key
+    window.printStationConfig = state.config;
     populateSettingsForm();
     schedulePolling();
     await refreshQueue({ silent: true });
@@ -19635,6 +19922,7 @@ async function bulkUploadRooms() {
   // Collect all image paths (extracting from ZIPs if necessary)
   let allImagePaths = [];
   let zipCount = 0;
+  const tempDirs = [];
 
   setCustomArtStatus('Processing selected files...');
 
@@ -19647,6 +19935,7 @@ async function bulkUploadRooms() {
       const extractResult = await printStation.customArt.extractZip(filePath);
       if (extractResult.success && extractResult.filePaths?.length) {
         allImagePaths.push(...extractResult.filePaths);
+        if (extractResult.tempDir) tempDirs.push(extractResult.tempDir);
         zipCount++;
         console.log(`[Custom Art] Extracted ${extractResult.filePaths.length} room images from ZIP`);
       } else {
@@ -19701,6 +19990,11 @@ async function bulkUploadRooms() {
       console.error(`[Custom Art] Failed to upload room ${fileName}:`, e);
       errorCount++;
     }
+  }
+
+  // Clean up temp directories from ZIP extraction
+  for (const dir of tempDirs) {
+    try { await printStation.cleanupTempDir(dir); } catch (_) {}
   }
 
   // Reload rooms list
@@ -22636,6 +22930,7 @@ async function bulkUploadArtwork() {
   // Collect all image paths (extracting from ZIPs if necessary)
   let allImagePaths = [];
   let zipCount = 0;
+  const tempDirs = [];
 
   setCustomArtStatus('Processing selected files...');
 
@@ -22648,6 +22943,7 @@ async function bulkUploadArtwork() {
       const extractResult = await printStation.customArt.extractZip(filePath);
       if (extractResult.success && extractResult.filePaths?.length) {
         allImagePaths.push(...extractResult.filePaths);
+        if (extractResult.tempDir) tempDirs.push(extractResult.tempDir);
         zipCount++;
         console.log(`Extracted ${extractResult.filePaths.length} images from ZIP`);
       } else {
@@ -22693,6 +22989,11 @@ async function bulkUploadArtwork() {
       console.error('Bulk upload error:', e);
       errorCount++;
     }
+  }
+
+  // Clean up temp directories from ZIP extraction
+  for (const dir of tempDirs) {
+    try { await printStation.cleanupTempDir(dir); } catch (_) {}
   }
 
   await loadCustomArtArtwork();
@@ -24719,6 +25020,7 @@ async function bulkUploadHumanModels() {
     }
 
     // Extract images from ZIP files
+    const tempDirs = [];
     if (zipFiles.length > 0) {
       setHumanModelsStatus(`Extracting ${zipFiles.length} ZIP file(s)...`);
       for (const zipPath of zipFiles) {
@@ -24726,6 +25028,7 @@ async function bulkUploadHumanModels() {
           const extractResult = await printStation.humanModels.extractZip(zipPath);
           if (extractResult.success && extractResult.extractedPaths) {
             imageFiles.push(...extractResult.extractedPaths);
+            if (extractResult.tempDir) tempDirs.push(extractResult.tempDir);
           }
         } catch (e) {
           console.error('ZIP extraction failed:', e);
@@ -24766,6 +25069,11 @@ async function bulkUploadHumanModels() {
         console.error('Error creating model:', e);
         failCount++;
       }
+    }
+
+    // Clean up temp directories from ZIP extraction
+    for (const dir of tempDirs) {
+      try { await printStation.cleanupTempDir(dir); } catch (_) {}
     }
 
     await loadHumanModels();
@@ -27012,6 +27320,24 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
     observer.observe(copyGenView, { attributes: true });
+  }
+});
+
+// =============== Apparel Mockup Campaign Event ===============
+window.addEventListener('apparel-mockup:send-all-to-shopify', async (e) => {
+  try {
+    const { results, items } = e.detail || {};
+    if (!state.campaign?.slug) {
+      showToast('Save campaign first before exporting.', 'warning');
+      return;
+    }
+    // Save campaign with updated mockup data
+    await handleCampaignSaveSilently();
+    // Export all items to Shopify
+    showToast('Exporting campaign to Shopify...', 'info');
+    await exportCampaignToShopify();
+  } catch (err) {
+    showToast('Shopify export failed: ' + (err?.message || 'Unknown error'), 'error');
   }
 });
 

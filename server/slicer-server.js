@@ -835,6 +835,224 @@ async function handleSlicerRoute(pathname, req, res, db) {
   }
 
   // ========================================================================
+  // PRODUCT BUILD PLATES (auto-generated from product kits)
+  // ========================================================================
+
+  // GET /api/slicer/product-plates — list all product build plates
+  if (req.method === 'GET' && route === '/product-plates') {
+    try {
+      const productId = query.product_id;
+      const plates = db.listProductBuildPlates(productId || undefined);
+      sendJson(res, 200, plates);
+    } catch (err) {
+      console.error('[Slicer] List product plates error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/product-plates — create a product build plate
+  if (req.method === 'POST' && route === '/product-plates') {
+    try {
+      const body = await parseBody(req);
+      const plate = db.createProductBuildPlate(body);
+      sendJson(res, 201, plate);
+    } catch (err) {
+      console.error('[Slicer] Create product plate error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // PUT /api/slicer/product-plates/:id — update a product build plate
+  const prodPlateUpdateMatch = route.match(/^\/product-plates\/(\d+)$/);
+  if (req.method === 'PUT' && prodPlateUpdateMatch) {
+    try {
+      const id = parseInt(prodPlateUpdateMatch[1], 10);
+      const body = await parseBody(req);
+      const existing = db.getDb().prepare('SELECT * FROM product_build_plates WHERE id = ?').get(id);
+      if (!existing) { sendError(res, 404, 'Product plate not found'); return true; }
+      const updates = {};
+      if (body.name !== undefined) updates.name = body.name;
+      if (body.items !== undefined) updates.items = typeof body.items === 'string' ? body.items : JSON.stringify(body.items);
+      if (body.material !== undefined) updates.material = body.material;
+      if (body.printer_model !== undefined) updates.printer_model = body.printer_model;
+      if (body.settings !== undefined) updates.settings = typeof body.settings === 'string' ? body.settings : JSON.stringify(body.settings);
+      const setClauses = Object.keys(updates).map(k => `${k} = @${k}`).join(', ');
+      if (setClauses) {
+        db.getDb().prepare(`UPDATE product_build_plates SET ${setClauses} WHERE id = @id`).run({ ...updates, id });
+      }
+      const updated = db.getDb().prepare('SELECT * FROM product_build_plates WHERE id = ?').get(id);
+      sendJson(res, 200, updated);
+    } catch (err) {
+      console.error('[Slicer] Update product plate error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // DELETE /api/slicer/product-plates/:id — delete a single product build plate
+  const prodPlateDeleteMatch = route.match(/^\/product-plates\/(\d+)$/);
+  if (req.method === 'DELETE' && prodPlateDeleteMatch) {
+    try {
+      const id = parseInt(prodPlateDeleteMatch[1], 10);
+      db.getDb().prepare('DELETE FROM product_build_plates WHERE id = ?').run(id);
+      sendJson(res, 200, { success: true });
+    } catch (err) {
+      console.error('[Slicer] Delete product plate error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // ========================================================================
+  // THANGS PARTS SYNC
+  // ========================================================================
+
+  // GET /api/slicer/thangs-sync/status — sync status counts
+  if (req.method === 'GET' && route === '/thangs-sync/status') {
+    try {
+      sendJson(res, 200, db.getThangsSyncStatus());
+    } catch (err) {
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // GET /api/slicer/thangs-sync/missing — list unmatched parts
+  if (req.method === 'GET' && route === '/thangs-sync/missing') {
+    try {
+      const search = query.search || null;
+      const limit = parseInt(query.limit) || 100;
+      const offset = parseInt(query.offset) || 0;
+      const parts = db.listThangsMissingParts({ search, limit, offset });
+      sendJson(res, 200, parts);
+    } catch (err) {
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/thangs-sync/run — re-match existing data against catalog
+  if (req.method === 'POST' && route === '/thangs-sync/run') {
+    try {
+      const { exec } = require('child_process');
+      const scriptPath = path.join(__dirname, 'scripts', 'sync-thangs-catalog.js');
+      exec(`node "${scriptPath}"`, { timeout: 60000 }, (err, stdout, stderr) => {
+        if (err) console.error('[ThangsSync] Re-match error:', err.message);
+        else console.log('[ThangsSync] Re-match done:\n', stdout.slice(-300));
+      });
+      sendJson(res, 200, { started: true, message: 'Re-match started' });
+    } catch (err) {
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/thangs-sync/import — import crawled Thangs data (JSON array)
+  if (req.method === 'POST' && route === '/thangs-sync/import') {
+    try {
+      const body = await parseBody(req);
+      const models = body.models || body;
+      if (!Array.isArray(models)) {
+        sendError(res, 400, 'Expected JSON array of models');
+        return true;
+      }
+      // Import and match in-process
+      const { importAndMatch } = require('./scripts/sync-thangs-catalog');
+      const status = importAndMatch(models);
+      sendJson(res, 200, status);
+    } catch (err) {
+      console.error('[ThangsSync] Import error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // PUT /api/slicer/thangs-sync/:modelId/skip — mark as skipped
+  const thangsSkipMatch = route.match(/^\/thangs-sync\/([^/]+)\/skip$/);
+  if (req.method === 'PUT' && thangsSkipMatch) {
+    try {
+      const modelId = thangsSkipMatch[1];
+      db.updateThangsPartStatus(modelId, 'skipped', null);
+      sendJson(res, 200, { success: true });
+    } catch (err) {
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // PUT /api/slicer/thangs-sync/:modelId/match — manually match to catalog ID
+  const thangsMatchMatch = route.match(/^\/thangs-sync\/([^/]+)\/match$/);
+  if (req.method === 'PUT' && thangsMatchMatch) {
+    try {
+      const modelId = thangsMatchMatch[1];
+      const body = await parseBody(req);
+      const catalogId = body.catalog_id;
+      if (!catalogId) { sendError(res, 400, 'catalog_id required'); return true; }
+      db.updateThangsPartStatus(modelId, 'matched', catalogId);
+      sendJson(res, 200, { success: true });
+    } catch (err) {
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/thangs-sync/auto-match — auto-match a newly cataloged item against Thangs index
+  if (req.method === 'POST' && route === '/thangs-sync/auto-match') {
+    try {
+      const body = await parseBody(req);
+      const { catalogId, name, sourceUrl } = body;
+      if (!catalogId) { sendError(res, 400, 'catalogId required'); return true; }
+      const d = db.getDb();
+      let matched = false;
+
+      // Try matching by source URL (most accurate — Thangs download_url)
+      if (sourceUrl) {
+        // Extract model ID from thangs.com URL
+        const thangsIdMatch = sourceUrl.match(/thangs\.com\/m\/(\d+)/);
+        if (thangsIdMatch) {
+          const tp = db.getThangsPartByModelId(thangsIdMatch[1]);
+          if (tp && tp.status !== 'matched') {
+            db.updateThangsPartStatus(tp.thangs_model_id, 'matched', catalogId);
+            matched = true;
+          }
+        }
+        // Also try matching by download_url
+        if (!matched) {
+          const byUrl = d.prepare("SELECT thangs_model_id FROM thangs_parts_index WHERE download_url = ? AND status != 'matched' LIMIT 1").get(sourceUrl);
+          if (byUrl) {
+            db.updateThangsPartStatus(byUrl.thangs_model_id, 'matched', catalogId);
+            matched = true;
+          }
+        }
+      }
+
+      // Try matching by normalized name
+      if (!matched && name) {
+        const { normalizeName } = require('./scripts/sync-thangs-catalog');
+        const norm = normalizeName(name);
+        if (norm.length > 3) {
+          const byTitle = d.prepare("SELECT thangs_model_id, title FROM thangs_parts_index WHERE status != 'matched' ORDER BY title").all();
+          for (const tp of byTitle) {
+            const normTitle = normalizeName(tp.title);
+            if (normTitle === norm || (normTitle.length > 5 && norm.length > 5 && (normTitle.includes(norm) || norm.includes(normTitle)))) {
+              db.updateThangsPartStatus(tp.thangs_model_id, 'matched', catalogId);
+              matched = true;
+              break;
+            }
+          }
+        }
+      }
+
+      sendJson(res, 200, { matched, catalogId });
+    } catch (err) {
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // ========================================================================
   // G-CODE CACHE
   // ========================================================================
 

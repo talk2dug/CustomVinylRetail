@@ -1,5 +1,9 @@
 /**
- * Apparel Mockup Pipeline
+ * @deprecated — Replaced by AI-driven apparel mockups via server/ai-apparel-mockup.js
+ * which uses Gemini multi-image compositing for natural fabric-aware placement.
+ * This file is retained for backward compatibility with existing marketing workflows.
+ *
+ * Apparel Mockup Pipeline (LEGACY)
  * 3-step process:
  * 1. Composite graphic design onto apparel blank (using existing mockup-compositor.js)
  * 2. Send composited mockup to Gemini → generate realistic lifestyle scene

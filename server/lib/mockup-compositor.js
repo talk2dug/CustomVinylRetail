@@ -1,5 +1,10 @@
 /**
- * Mockup Compositor - Dynamically composites artwork onto mockup templates
+ * @deprecated — For apparel mockups, use server/ai-apparel-mockup.js instead,
+ * which uses Gemini AI for natural fabric-aware graphic placement.
+ * This file is retained because facebook-post-scheduler.js and sales-pipeline-monitor.js
+ * still import compositeArtwork/generateMockupToFile for non-apparel mockups.
+ *
+ * Mockup Compositor (LEGACY) - Dynamically composites artwork onto mockup templates
  *
  * This module takes a base mockup image and overlays artwork at a specified
  * position with transformations (scale, rotation, perspective).

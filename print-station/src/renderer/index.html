@@ -53,7 +53,9 @@
         </button>
         <div class="dropdown-menu" id="create-dropdown">
           <button class="dropdown-item" data-view="leonardoView">AI Image Generator</button>
-          <button class="dropdown-item" data-view="mockupsView">Mockups</button>
+          <!-- ARCHIVED: old mockups iframe view -->
+          <!-- <button class="dropdown-item" data-view="mockupsView">Mockups</button> -->
+          <button class="dropdown-item" data-view="apparelMockupView">Apparel Mockups</button>
           <button class="dropdown-item" data-view="customArtView">Custom Art</button>
           
         </div>
@@ -88,6 +90,7 @@
           <button class="dropdown-item" data-view="printerFleetView">Printer Fleet</button>
           <button class="dropdown-item" data-view="slicerView">Slice &amp; Print</button>
           <button class="dropdown-item" data-view="printQuotesView">Print Quotes</button>
+          <button class="dropdown-item" data-view="buildPlatesView">Build Plates</button>
         </div>
       </div>
 
@@ -784,6 +787,8 @@
         </div>
       </section>
 
+      <!-- ARCHIVED: old mockups iframe view -->
+      <!--
       <section id="mockupsView" class="view">
         <div class="view-toolbar">
           <div class="catalog-toolbar-actions">
@@ -793,6 +798,215 @@
         </div>
         <div class="inventory-card" style="padding:0; overflow:hidden;">
           <iframe id="mockupsFrame" title="Mockups" style="border:0; width:100%; height:70vh; background:#0f172a;"></iframe>
+        </div>
+      </section>
+      -->
+
+      <!-- ================================================================== -->
+      <!-- APPAREL MOCKUP GENERATOR (New)                                     -->
+      <!-- ================================================================== -->
+      <section id="apparelMockupView" class="view">
+        <div class="apparel-mockup-layout">
+          <!-- Left Sidebar -->
+          <div class="apparel-mockup-sidebar">
+            <!-- Graphic Picker -->
+            <div class="apparel-mockup-panel">
+              <h3 class="apparel-mockup-panel-title">Graphic</h3>
+              <div class="apparel-mockup-catalog-browser">
+                <div style="display:flex;gap:6px;margin-bottom:8px;">
+                  <select id="amCategoryFilter" style="flex:1;font-size:11px;">
+                    <option value="">All Categories</option>
+                  </select>
+                  <input id="amSearchInput" type="search" placeholder="Search..." style="flex:1;font-size:11px;" />
+                </div>
+                <div id="amCatalogGrid" class="apparel-mockup-catalog-grid">
+                  <p class="hint" style="font-size:11px;text-align:center;padding:20px;">Select a category to browse graphics</p>
+                </div>
+              </div>
+              <div id="amSelectedGraphic" class="apparel-mockup-selected-graphic" style="display:none;">
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <img id="amSelectedGraphicImg" src="" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:4px;border:1px solid var(--border);" />
+                  <div style="flex:1;min-width:0;">
+                    <div id="amSelectedGraphicName" style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                    <div id="amSelectedGraphicCategory" style="font-size:10px;color:var(--muted);"></div>
+                  </div>
+                  <button id="amClearGraphic" type="button" class="secondary" style="font-size:10px;padding:2px 6px;">Clear</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Preprocessing Options -->
+            <div class="apparel-mockup-panel">
+              <h3 class="apparel-mockup-panel-title">Preprocessing</h3>
+              <label class="inline" style="font-size:12px;">
+                <input id="amVectorizeCheckbox" type="checkbox" /> Vectorize graphic
+              </label>
+              <label class="inline" style="font-size:12px;">
+                <input id="amRemoveBgCheckbox" type="checkbox" /> Remove background
+              </label>
+              <div id="amPreprocessStatus" class="status-bar muted" style="font-size:10px;margin-top:6px;display:none;"></div>
+              <div id="amPreprocessPreview" style="display:none;margin-top:8px;">
+                <div style="display:flex;gap:8px;">
+                  <div style="flex:1;text-align:center;">
+                    <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Original</div>
+                    <img id="amPreprocessBefore" src="" style="max-width:100%;max-height:80px;border-radius:4px;" />
+                  </div>
+                  <div style="flex:1;text-align:center;">
+                    <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Processed</div>
+                    <img id="amPreprocessAfter" src="" style="max-width:100%;max-height:80px;border-radius:4px;" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Model Selection -->
+            <div class="apparel-mockup-panel">
+              <h3 class="apparel-mockup-panel-title">Human Models</h3>
+              <!-- Filters row -->
+              <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+                <select id="amModelGenderFilter" style="flex:1;font-size:11px;min-width:70px;">
+                  <option value="">Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+                <select id="amModelEthnicityFilter" style="flex:1;font-size:11px;min-width:70px;">
+                  <option value="">Ethnicity</option>
+                </select>
+                <select id="amModelPoseFilter" style="flex:1;font-size:11px;min-width:70px;">
+                  <option value="">Pose</option>
+                </select>
+              </div>
+              <!-- Front model picker -->
+              <div style="margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <label style="font-size:11px;color:var(--muted);">Front Model</label>
+                  <button id="amFrontModelClear" type="button" style="font-size:10px;padding:1px 6px;background:none;border:none;color:var(--muted);cursor:pointer;">clear</button>
+                </div>
+                <div id="amFrontModelGrid" class="am-model-grid"></div>
+                <div id="amFrontModelPreview" class="am-model-selected-preview" hidden>
+                  <img id="amFrontModelPreviewImg" src="" alt="" />
+                  <span id="amFrontModelPreviewLabel"></span>
+                </div>
+              </div>
+              <!-- Back model picker -->
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <label style="font-size:11px;color:var(--muted);">Back Model</label>
+                  <button id="amBackModelClear" type="button" style="font-size:10px;padding:1px 6px;background:none;border:none;color:var(--muted);cursor:pointer;">clear</button>
+                </div>
+                <div id="amBackModelGrid" class="am-model-grid"></div>
+                <div id="amBackModelPreview" class="am-model-selected-preview" hidden>
+                  <img id="amBackModelPreviewImg" src="" alt="" />
+                  <span id="amBackModelPreviewLabel"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Placement Settings -->
+            <div class="apparel-mockup-panel">
+              <h3 class="apparel-mockup-panel-title">Placement</h3>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Garment Type</label>
+              <select id="amGarmentType" style="width:100%;font-size:11px;margin-bottom:8px;">
+                <option value="t-shirt">T-Shirt</option>
+                <option value="hoodie">Hoodie</option>
+                <option value="long-sleeve">Long Sleeve</option>
+                <option value="tank-top">Tank Top</option>
+                <option value="sweatshirt">Sweatshirt</option>
+                <option value="jacket">Jacket</option>
+              </select>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Zone</label>
+              <select id="amZone" style="width:100%;font-size:11px;margin-bottom:8px;">
+                <option value="front-chest">Front (Chest)</option>
+                <option value="back">Back</option>
+                <option value="left-sleeve">Left Sleeve</option>
+                <option value="right-sleeve">Right Sleeve</option>
+              </select>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Size</label>
+              <select id="amSize" style="width:100%;font-size:11px;margin-bottom:8px;">
+                <option value="auto">Auto (AI decides)</option>
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+                <option value="full">Full</option>
+              </select>
+              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Clothing Color</label>
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                <input id="amClothingColor" type="color" value="#ffffff" style="width:32px;height:28px;padding:0;border:1px solid var(--border);border-radius:4px;cursor:pointer;" />
+                <span id="amClothingColorLabel" style="font-size:11px;">#ffffff</span>
+              </div>
+              <div id="amColorPresets" style="display:flex;flex-wrap:wrap;gap:3px;">
+                <button type="button" class="am-color-preset" data-color="#ffffff" style="width:18px;height:18px;border-radius:3px;background:#ffffff;border:2px solid #3b82f6;cursor:pointer;" title="White"></button>
+                <button type="button" class="am-color-preset" data-color="#000000" style="width:18px;height:18px;border-radius:3px;background:#000000;border:1px solid var(--border);cursor:pointer;" title="Black"></button>
+                <button type="button" class="am-color-preset" data-color="#1e3a8a" style="width:18px;height:18px;border-radius:3px;background:#1e3a8a;border:1px solid var(--border);cursor:pointer;" title="Navy"></button>
+                <button type="button" class="am-color-preset" data-color="#dc2626" style="width:18px;height:18px;border-radius:3px;background:#dc2626;border:1px solid var(--border);cursor:pointer;" title="Red"></button>
+                <button type="button" class="am-color-preset" data-color="#16a34a" style="width:18px;height:18px;border-radius:3px;background:#16a34a;border:1px solid var(--border);cursor:pointer;" title="Green"></button>
+                <button type="button" class="am-color-preset" data-color="#facc15" style="width:18px;height:18px;border-radius:3px;background:#facc15;border:1px solid var(--border);cursor:pointer;" title="Yellow"></button>
+                <button type="button" class="am-color-preset" data-color="#ec4899" style="width:18px;height:18px;border-radius:3px;background:#ec4899;border:1px solid var(--border);cursor:pointer;" title="Pink"></button>
+                <button type="button" class="am-color-preset" data-color="#8b5cf6" style="width:18px;height:18px;border-radius:3px;background:#8b5cf6;border:1px solid var(--border);cursor:pointer;" title="Purple"></button>
+              </div>
+            </div>
+
+            <!-- Generate Button -->
+            <button id="amGenerateBtn" type="button" class="primary" style="width:100%;margin-top:8px;">Generate Mockup</button>
+          </div>
+
+          <!-- Main Content Area -->
+          <div class="apparel-mockup-main">
+            <!-- Preview Area -->
+            <div class="apparel-mockup-preview-area">
+              <div id="amPreviewContainer" class="apparel-mockup-preview-container">
+                <div id="amPreviewFront" class="apparel-mockup-preview-slot">
+                  <div class="apparel-mockup-preview-label">Front</div>
+                  <div class="apparel-mockup-preview-placeholder">Select a model and graphic, then click Generate</div>
+                </div>
+                <div id="amPreviewBack" class="apparel-mockup-preview-slot">
+                  <div class="apparel-mockup-preview-label">Back</div>
+                  <div class="apparel-mockup-preview-placeholder">Select a back model (optional)</div>
+                </div>
+              </div>
+
+              <!-- Adjustment Controls -->
+              <div id="amAdjustControls" class="apparel-mockup-adjust-controls" style="display:none;">
+                <div class="apparel-mockup-adjust-buttons">
+                  <button type="button" class="secondary am-adjust-btn" data-dir="left" title="Move left">&#8592;</button>
+                  <button type="button" class="secondary am-adjust-btn" data-dir="right" title="Move right">&#8594;</button>
+                  <button type="button" class="secondary am-adjust-btn" data-dir="up" title="Move up">&#8593;</button>
+                  <button type="button" class="secondary am-adjust-btn" data-dir="down" title="Move down">&#8595;</button>
+                  <button type="button" class="secondary am-adjust-btn" data-dir="bigger" title="Make bigger">+</button>
+                  <button type="button" class="secondary am-adjust-btn" data-dir="smaller" title="Make smaller">-</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;flex:1;">
+                  <span style="font-size:11px;color:var(--muted);white-space:nowrap;">Scale:</span>
+                  <input id="amScaleSlider" type="range" min="50" max="200" value="100" style="flex:1;" />
+                  <span id="amScaleLabel" style="font-size:11px;min-width:35px;">100%</span>
+                </div>
+                <div style="display:flex;gap:6px;">
+                  <button id="amQuickAdjustBtn" type="button" class="secondary" style="font-size:11px;">Quick Adjust</button>
+                  <button id="amReblendBtn" type="button" class="primary" style="font-size:11px;">Re-blend with AI</button>
+                  <button id="amSaveBtn" type="button" style="font-size:11px;background:#10b981;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Save to Library</button>
+                </div>
+              </div>
+
+              <!-- Progress -->
+              <div id="amProgress" class="apparel-mockup-progress" style="display:none;">
+                <div class="spinner" style="width:18px;height:18px;border:2px solid var(--border);border-top-color:#60a5fa;border-radius:50%;animation:spin 1s linear infinite;"></div>
+                <span id="amProgressText" style="font-size:12px;color:var(--muted);">Generating mockup...</span>
+              </div>
+            </div>
+
+            <!-- Campaign Queue (hidden in standalone mode) -->
+            <div id="amCampaignQueue" class="apparel-mockup-campaign-queue" style="display:none;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <h3 style="margin:0;font-size:13px;">Campaign Items</h3>
+                <div style="display:flex;gap:6px;">
+                  <span id="amCampaignProgress" style="font-size:11px;color:var(--muted);"></span>
+                  <button id="amCampaignGenerateAll" type="button" class="secondary" style="font-size:11px;">Generate All Remaining</button>
+                  <button id="amCampaignSendAll" type="button" class="primary" style="font-size:11px;">Send All to Shopify</button>
+                </div>
+              </div>
+              <div id="amCampaignItems" class="apparel-mockup-campaign-items"></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1803,84 +2017,128 @@
       </div>
 
       <!-- Campaign Mockup Settings Modal -->
-      <div class="ssaw-modal" id="campaignMockupSettingsModal" hidden>
+      <!-- ARCHIVED: old AI mockup settings modal - replaced by apparel-mockup-view -->
+      <div class="ssaw-modal" id="campaignMockupSettingsModal" hidden style="display:none !important;">
         <div class="ssaw-modal__backdrop" data-campaign-mockup-close="true"></div>
-        <div class="ssaw-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="campaignMockupSettingsTitle" style="max-width:700px;">
+        <div class="ssaw-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="campaignMockupSettingsTitle" style="max-width:860px;">
           <header class="ssaw-modal__header">
             <div>
-              <h2 id="campaignMockupSettingsTitle">Mockup Settings</h2>
-              <p class="ssaw-modal__subtitle">Adjust overlay size, position, and background. Use a human model for apparel mockups.</p>
+              <h2 id="campaignMockupSettingsTitle">AI Apparel Mockup Generator</h2>
+              <p class="ssaw-modal__subtitle">Select models, add graphic placements, and generate realistic AI mockups.</p>
             </div>
             <button id="campaignMockupSettingsClose" type="button" class="secondary">Close</button>
           </header>
           <div class="ssaw-modal__body">
-            <div class="inventory-form-grid">
-              <label class="full">
-                <span>Apply to</span>
-                <select id="campaignMockupApplySelect">
-                  <option value="item">This item only</option>
-                  <option value="campaign">All items in campaign</option>
-                </select>
-              </label>
-              <label>
-                <span>Width %</span>
-                <input id="campaignMockupWidthInput" type="number" min="10" max="90" step="1" placeholder="40" />
-              </label>
-              <label>
-                <span>Y offset %</span>
-                <input id="campaignMockupYOffsetInput" type="number" min="-50" max="50" step="1" placeholder="0" />
-              </label>
-              <label class="full">
-                <span>Background</span>
-                <select id="campaignMockupBgSelect">
-                  <option value="auto">Auto (detect)</option>
-                  <option value="#e5e7eb">Light gray</option>
-                  <option value="#111827">Dark</option>
-                  <option value="humanModel">Human Model…</option>
-                  <option value="custom">Custom…</option>
-                </select>
-              </label>
-              <label class="full" id="campaignMockupBgCustomRow" style="display:none;">
-                <span>Custom hex</span>
-                <input id="campaignMockupBgCustomInput" type="text" placeholder="#000000" />
-              </label>
-              <!-- Human Model Options -->
-              <div id="campaignMockupHumanModelRow" class="full" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px;background:rgba(59,130,246,0.05);">
-                <div style="display:flex;gap:12px;align-items:flex-start;">
-                  <div style="flex:1;">
-                    <label style="display:block;margin-bottom:8px;">
-                      <span style="font-size:12px;color:var(--muted);">Select Model</span>
-                      <select id="campaignMockupHumanModelSelect" style="width:100%;margin-top:4px;">
-                        <option value="">Choose a model...</option>
-                      </select>
-                    </label>
-                    <label style="display:block;">
-                      <span style="font-size:12px;color:var(--muted);">Clothing Color</span>
-                      <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
-                        <input id="campaignMockupClothingColor" type="color" value="#ffffff" style="width:40px;height:32px;padding:0;border:1px solid var(--border);border-radius:4px;cursor:pointer;" />
-                        <span id="campaignMockupClothingColorLabel" style="font-size:12px;color:var(--text);">#ffffff</span>
+            <div style="display:flex;gap:16px;">
+              <!-- Left column: Controls -->
+              <div style="flex:1;min-width:0;">
+                <!-- Apply to -->
+                <label class="full" style="display:block;margin-bottom:12px;">
+                  <span style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Apply to</span>
+                  <select id="campaignMockupApplySelect" style="width:100%;">
+                    <option value="item">This item only</option>
+                    <option value="campaign">All items in campaign</option>
+                  </select>
+                </label>
+
+                <!-- Garment Type -->
+                <label style="display:block;margin-bottom:12px;">
+                  <span style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Garment Type</span>
+                  <select id="aiMockupGarmentType" style="width:100%;">
+                    <option value="t-shirt">T-Shirt</option>
+                    <option value="hoodie">Hoodie</option>
+                    <option value="long-sleeve">Long Sleeve</option>
+                    <option value="tank-top">Tank Top</option>
+                    <option value="sweatshirt">Sweatshirt</option>
+                    <option value="jacket">Jacket</option>
+                  </select>
+                </label>
+
+                <!-- Model Selection -->
+                <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;background:rgba(59,130,246,0.05);">
+                  <h4 style="margin:0 0 8px;font-size:13px;">Model Selection</h4>
+                  <div style="display:flex;gap:12px;">
+                    <div style="flex:1;">
+                      <label style="display:block;margin-bottom:8px;">
+                        <span style="font-size:11px;color:var(--muted);">Front View Model</span>
+                        <select id="aiMockupFrontModel" style="width:100%;margin-top:4px;">
+                          <option value="">None (skip front)</option>
+                        </select>
+                      </label>
+                      <div id="aiMockupFrontPreview" style="width:70px;height:90px;background:var(--bg-secondary);border-radius:4px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                        <span style="font-size:10px;color:var(--muted);">—</span>
                       </div>
-                    </label>
-                    <div id="campaignMockupColorPresets" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">
-                      <button type="button" class="mockup-color-preset" data-color="#ffffff" style="width:22px;height:22px;border-radius:4px;background:#ffffff;border:2px solid #3b82f6;cursor:pointer;" title="White"></button>
-                      <button type="button" class="mockup-color-preset" data-color="#000000" style="width:22px;height:22px;border-radius:4px;background:#000000;border:1px solid var(--border);cursor:pointer;" title="Black"></button>
-                      <button type="button" class="mockup-color-preset" data-color="#1e3a8a" style="width:22px;height:22px;border-radius:4px;background:#1e3a8a;border:1px solid var(--border);cursor:pointer;" title="Navy"></button>
-                      <button type="button" class="mockup-color-preset" data-color="#dc2626" style="width:22px;height:22px;border-radius:4px;background:#dc2626;border:1px solid var(--border);cursor:pointer;" title="Red"></button>
-                      <button type="button" class="mockup-color-preset" data-color="#16a34a" style="width:22px;height:22px;border-radius:4px;background:#16a34a;border:1px solid var(--border);cursor:pointer;" title="Green"></button>
-                      <button type="button" class="mockup-color-preset" data-color="#facc15" style="width:22px;height:22px;border-radius:4px;background:#facc15;border:1px solid var(--border);cursor:pointer;" title="Yellow"></button>
-                      <button type="button" class="mockup-color-preset" data-color="#ec4899" style="width:22px;height:22px;border-radius:4px;background:#ec4899;border:1px solid var(--border);cursor:pointer;" title="Pink"></button>
-                      <button type="button" class="mockup-color-preset" data-color="#8b5cf6" style="width:22px;height:22px;border-radius:4px;background:#8b5cf6;border:1px solid var(--border);cursor:pointer;" title="Purple"></button>
+                    </div>
+                    <div style="flex:1;">
+                      <label style="display:block;margin-bottom:8px;">
+                        <span style="font-size:11px;color:var(--muted);">Back View Model</span>
+                        <select id="aiMockupBackModel" style="width:100%;margin-top:4px;">
+                          <option value="">None (skip back)</option>
+                        </select>
+                      </label>
+                      <div id="aiMockupBackPreview" style="width:70px;height:90px;background:var(--bg-secondary);border-radius:4px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                        <span style="font-size:10px;color:var(--muted);">—</span>
+                      </div>
                     </div>
                   </div>
-                  <div id="campaignMockupHumanModelPreview" style="width:100px;height:130px;background:var(--bg-secondary);border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
-                    <span style="font-size:11px;color:var(--muted);">No model</span>
+
+                  <!-- Clothing Color -->
+                  <div style="margin-top:10px;">
+                    <span style="font-size:11px;color:var(--muted);">Clothing Color</span>
+                    <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                      <input id="aiMockupClothingColor" type="color" value="#ffffff" style="width:32px;height:28px;padding:0;border:1px solid var(--border);border-radius:4px;cursor:pointer;" />
+                      <span id="aiMockupClothingColorLabel" style="font-size:11px;color:var(--text);">#ffffff</span>
+                    </div>
+                    <div id="aiMockupColorPresets" style="display:flex;flex-wrap:wrap;gap:3px;margin-top:6px;">
+                      <button type="button" class="ai-mockup-color-preset" data-color="#ffffff" style="width:20px;height:20px;border-radius:3px;background:#ffffff;border:2px solid #3b82f6;cursor:pointer;" title="White"></button>
+                      <button type="button" class="ai-mockup-color-preset" data-color="#000000" style="width:20px;height:20px;border-radius:3px;background:#000000;border:1px solid var(--border);cursor:pointer;" title="Black"></button>
+                      <button type="button" class="ai-mockup-color-preset" data-color="#1e3a8a" style="width:20px;height:20px;border-radius:3px;background:#1e3a8a;border:1px solid var(--border);cursor:pointer;" title="Navy"></button>
+                      <button type="button" class="ai-mockup-color-preset" data-color="#dc2626" style="width:20px;height:20px;border-radius:3px;background:#dc2626;border:1px solid var(--border);cursor:pointer;" title="Red"></button>
+                      <button type="button" class="ai-mockup-color-preset" data-color="#16a34a" style="width:20px;height:20px;border-radius:3px;background:#16a34a;border:1px solid var(--border);cursor:pointer;" title="Green"></button>
+                      <button type="button" class="ai-mockup-color-preset" data-color="#facc15" style="width:20px;height:20px;border-radius:3px;background:#facc15;border:1px solid var(--border);cursor:pointer;" title="Yellow"></button>
+                      <button type="button" class="ai-mockup-color-preset" data-color="#ec4899" style="width:20px;height:20px;border-radius:3px;background:#ec4899;border:1px solid var(--border);cursor:pointer;" title="Pink"></button>
+                      <button type="button" class="ai-mockup-color-preset" data-color="#8b5cf6" style="width:20px;height:20px;border-radius:3px;background:#8b5cf6;border:1px solid var(--border);cursor:pointer;" title="Purple"></button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Graphic Placements -->
+                <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <h4 style="margin:0;font-size:13px;">Graphic Placements</h4>
+                    <button id="aiMockupAddPlacement" type="button" class="secondary" style="font-size:11px;padding:4px 10px;">+ Add</button>
+                  </div>
+                  <div id="aiMockupPlacementsList" style="display:flex;flex-direction:column;gap:8px;">
+                    <!-- Placements added dynamically -->
+                    <div class="placeholder" style="text-align:center;padding:16px;color:var(--muted);font-size:12px;">
+                      Click "+ Add" to add a graphic placement
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right column: Preview / Results -->
+              <div style="flex:1;min-width:0;">
+                <div style="border:1px solid var(--border);border-radius:8px;padding:12px;min-height:300px;">
+                  <h4 style="margin:0 0 8px;font-size:13px;">Result Preview</h4>
+                  <div id="aiMockupResultsArea" style="display:flex;flex-direction:column;gap:8px;">
+                    <div class="placeholder" style="text-align:center;padding:40px;color:var(--muted);font-size:12px;">
+                      Generated mockups will appear here
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-          <footer class="ssaw-modal__footer" style="display:flex;justify-content:flex-end;gap:8px;">
-            <button id="campaignMockupSettingsSave" type="button" class="primary">Save</button>
+          <footer class="ssaw-modal__footer" style="display:flex;justify-content:space-between;align-items:center;">
+            <div id="aiMockupProgress" style="display:none;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;">
+              <div class="spinner" style="width:16px;height:16px;border:2px solid var(--border);border-top-color:#60a5fa;border-radius:50%;animation:spin 1s linear infinite;"></div>
+              <span id="aiMockupProgressText">Generating...</span>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button id="aiMockupGenerateBtn" type="button" class="primary">Generate Mockup</button>
+              <button id="campaignMockupSettingsSave" type="button" class="secondary">Save & Close</button>
+            </div>
           </footer>
           <div id="campaignMockupSettingsStatus" class="status-bar muted">Ready.</div>
         </div>
@@ -6860,9 +7118,40 @@
 
         <!-- Main Content: Sidebar + Webview -->
         <div style="display:flex;flex:1;min-height:0;overflow:hidden;">
-          <!-- Left Sidebar: Category Tree -->
-          <div id="mpbSidebar" style="width:240px;border-right:1px solid var(--border);overflow-y:auto;padding:8px;background:var(--bg-secondary);font-size:0.85rem;">
-            <div id="mpbCategoryTree"></div>
+          <!-- Left Sidebar: Category Tree + Missing Parts -->
+          <div id="mpbSidebar" style="width:260px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg-secondary);font-size:0.85rem;">
+            <!-- Tab Switcher -->
+            <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;">
+              <button id="mpbTabCategories" class="mpb-tab active" style="flex:1;padding:8px;border:none;cursor:pointer;font-size:0.8rem;font-weight:600;background:transparent;color:var(--text);">Categories</button>
+              <button id="mpbTabMissing" class="mpb-tab" style="flex:1;padding:8px;border:none;cursor:pointer;font-size:0.8rem;font-weight:600;background:transparent;color:var(--text-secondary);">
+                Missing <span id="mpbMissingBadge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:0.7rem;margin-left:4px;">0</span>
+              </button>
+            </div>
+            <!-- Categories Panel -->
+            <div id="mpbCategoriesPanel" style="flex:1;overflow-y:auto;padding:8px;">
+              <div id="mpbCategoryTree"></div>
+            </div>
+            <!-- Missing Parts Panel -->
+            <div id="mpbMissingPanel" style="flex:1;overflow-y:auto;padding:8px;display:none;">
+              <div style="margin-bottom:8px;">
+                <input id="mpbMissingSearch" type="text" placeholder="Search missing..."
+                  style="width:100%;padding:5px 8px;font-size:0.8rem;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);">
+              </div>
+              <div id="mpbSyncStats" style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:8px;padding:4px 0;">
+                Loading sync status...
+              </div>
+              <div id="mpbMissingList" style="display:flex;flex-direction:column;gap:2px;">
+              </div>
+              <div id="mpbMissingLoadMore" style="text-align:center;padding:8px;display:none;">
+                <button id="mpbLoadMoreBtn" style="padding:4px 12px;font-size:0.75rem;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);cursor:pointer;">Load More</button>
+              </div>
+              <div style="margin-top:12px;padding-top:8px;border-top:1px solid var(--border);">
+                <button id="mpbSyncNowBtn" style="width:100%;padding:6px;font-size:0.8rem;border:1px solid var(--accent);border-radius:4px;background:rgba(56,189,248,0.1);color:var(--accent);cursor:pointer;font-weight:600;">
+                  Sync with Thangs
+                </button>
+                <div id="mpbLastSync" style="font-size:0.7rem;color:var(--text-secondary);text-align:center;margin-top:4px;"></div>
+              </div>
+            </div>
           </div>
 
           <!-- Webview Container -->
@@ -7067,6 +7356,125 @@
             </div>
             <div id="pqDetail" style="display:none;max-width:900px;"></div>
           </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- BUILD PLATES MANAGER                                              -->
+      <!-- ================================================================== -->
+      <section id="buildPlatesView" class="view" style="flex:1;min-height:0;overflow:hidden;gap:0;">
+        <div class="view-toolbar" style="gap:12px;flex-wrap:wrap;">
+          <h2 style="margin:0;">Build Plate Manager</h2>
+          <div style="display:flex;gap:8px;margin-left:auto;align-items:center;">
+            <select id="bpProductFilter" style="min-width:160px;">
+              <option value="">All Products</option>
+            </select>
+            <button id="bpNewPlateBtn" class="primary">+ New Plate</button>
+            <button id="bpRefreshBtn" class="secondary">Refresh</button>
+          </div>
+        </div>
+
+        <div id="bpMainBody" style="flex:1;min-height:0;overflow:hidden;display:flex;gap:0;">
+          <!-- LEFT: Plate List -->
+          <div id="bpPlateListPanel" style="width:280px;min-width:220px;border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;">
+            <div id="bpPlateList" style="flex:1;overflow-y:auto;padding:8px;"></div>
+          </div>
+
+          <!-- CENTER: Visual Plate Editor -->
+          <div id="bpEditorPanel" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+            <!-- Empty state -->
+            <div id="bpEmptyState" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#555;">
+              <div style="font-size:3rem;">&#x1F4E6;</div>
+              <p>Select a plate from the list or create a new one.</p>
+            </div>
+            <!-- Active plate editor -->
+            <div id="bpEditorContent" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+              <!-- Plate header -->
+              <div id="bpPlateHeader" style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+                <input id="bpPlateName" type="text" placeholder="Plate name…" style="flex:1;font-size:1.1em;font-weight:600;">
+                <select id="bpPlateMaterial" style="width:100px;">
+                  <option value="PLA">PLA</option>
+                  <option value="PETG">PETG</option>
+                  <option value="ASA">ASA</option>
+                  <option value="ABS">ABS</option>
+                  <option value="TPU">TPU</option>
+                </select>
+                <select id="bpPlatePrinter" style="width:120px;">
+                  <option value="kobra3">Kobra 3</option>
+                  <option value="ke">KE</option>
+                  <option value="s1pro">S1 Pro</option>
+                </select>
+                <button id="bpSavePlateBtn" class="primary" style="padding:6px 16px;">Save</button>
+                <button id="bpDeletePlateBtn" class="danger" style="padding:6px 12px;">Delete</button>
+              </div>
+
+              <!-- 2D Bed visualization -->
+              <div style="flex:1;display:flex;overflow:hidden;">
+                <div id="bpBedArea" style="flex:1;display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto;">
+                  <canvas id="bpBedCanvas" width="440" height="440" style="border:1px solid var(--border);border-radius:8px;background:#1a1a2e;"></canvas>
+                </div>
+
+                <!-- Right side: items on plate -->
+                <div id="bpPlateItemsPanel" style="width:260px;border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;">
+                  <div style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:600;">Items on Plate</div>
+                  <div id="bpPlateItemsList" style="flex:1;overflow-y:auto;padding:8px;"></div>
+                  <div id="bpPlateStats" style="padding:10px 12px;border-top:1px solid var(--border);font-size:0.85em;color:#888;"></div>
+                </div>
+              </div>
+
+              <!-- Action bar -->
+              <div id="bpActionBar" style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;">
+                <button id="bpSliceBtn" class="primary">Slice Plate</button>
+                <button id="bpSendToPrinterBtn" class="secondary">Send to Printer</button>
+                <select id="bpTargetPrinter" style="width:160px;">
+                  <option value="">Select printer…</option>
+                </select>
+                <div style="flex:1;"></div>
+                <span id="bpSliceStatus" style="font-size:0.85em;color:#888;"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Part Picker -->
+          <div id="bpPartPickerPanel" style="width:280px;min-width:220px;border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;">
+            <div style="padding:10px 12px;border-bottom:1px solid var(--border);">
+              <div style="font-weight:600;margin-bottom:8px;">Part Catalog</div>
+              <input id="bpPartSearch" type="text" placeholder="Search parts…" style="width:100%;box-sizing:border-box;margin-bottom:6px;">
+              <select id="bpPartTypeFilter" style="width:100%;">
+                <option value="">All Types</option>
+                <option value="tile">Tiles</option>
+                <option value="hook">Hooks</option>
+                <option value="bin">Bins</option>
+                <option value="shelf">Shelves</option>
+                <option value="drawer">Drawers</option>
+                <option value="label">Labels</option>
+                <option value="mount">Mounts</option>
+                <option value="peg">Pegs</option>
+                <option value="snap">Snaps</option>
+              </select>
+            </div>
+            <div id="bpPartCatalog" style="flex:1;overflow-y:auto;padding:8px;"></div>
+          </div>
+        </div>
+
+        <!-- BOTTOM: Print Queue -->
+        <div id="bpQueuePanel" style="height:180px;min-height:120px;border-top:2px solid var(--border);overflow-y:auto;">
+          <div style="padding:8px 16px;font-weight:600;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+            Print Queue
+            <span id="bpQueueCount" style="font-size:0.8em;color:#888;"></span>
+          </div>
+          <table id="bpQueueTable" style="width:100%;border-collapse:collapse;font-size:0.9em;">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);text-align:left;">
+                <th style="padding:6px 12px;">Plate</th>
+                <th style="padding:6px 12px;">Material</th>
+                <th style="padding:6px 12px;">Printer</th>
+                <th style="padding:6px 12px;">Status</th>
+                <th style="padding:6px 12px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="bpQueueBody"></tbody>
+          </table>
         </div>
       </section>
 
@@ -7287,6 +7695,8 @@
     <!-- Print Quotes View -->
     <script src="./parts-finder-drawer.js"></script>
     <script src="./quotes-view.js"></script>
+    <script src="./apparel-mockup-view.js"></script>
+    <script src="./build-plate-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>

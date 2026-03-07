@@ -16,9 +16,10 @@ const DEFAULT_FOOTPRINT_MM = 80; // fallback footprint for unknown parts
  * Add more models here as needed.
  */
 const BED_SIZES = {
-  ke:     { w: 220, h: 220 },
-  s1pro:  { w: 256, h: 256 },
-  default:{ w: 220, h: 220 }
+  ke:      { w: 220, h: 220 },
+  kobra3:  { w: 220, h: 220 },
+  s1pro:   { w: 256, h: 256 },
+  default: { w: 220, h: 220 }
 };
 
 /**

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mockups · Swayze's Custom Vinyl</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="./theme.css">
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./mockups.css" />
+    <link rel="stylesheet" href="./theme-pages.css">
+  </head>
+  <body>
+
+    <main class="mockups">
+      <section class="mockups__sidebar" aria-label="Catalog">
+        <header class="mockups__sidebar-header">
+          <h1 class="mockups__title">Catalog</h1>
+          <div class="mockups__filters">
+            <input id="searchInput" class="mockups__search" type="search" placeholder="Search designs…" />
+            <select id="categorySelect" class="mockups__select">
+              <option value="">All categories</option>
+            </select>
+          </div>
+        </header>
+
+        <div id="catalogList" class="mockups__catalog" aria-live="polite"></div>
+        <div class="mockups__catalog-footer">
+          <button id="loadMoreBtn" class="btn" type="button">Load more</button>
+          <span id="resultsInfo" class="mockups__results-info"></span>
+        </div>
+      </section>
+
+      <section class="mockups__editor" aria-label="Editor">
+        <div class="mockups__toolbar">
+          <button id="bgChooseBtn" class="btn" type="button" title="Choose apparel background">Choose Background…</button>
+          <button id="humanModelBtn" class="btn" type="button" title="Add human model with apparel">Human Model…</button>
+          <button id="clearBtn" class="btn" type="button">Clear Overlays</button>
+          <button id="vectorizeBtn" class="btn" type="button" title="Convert selected overlay to vector (SVG)">Vectorize Selected</button>
+          <label class="mockups__option" title="Automatically remove solid background (any color) during vectorization" style="display:flex;gap:6px;align-items:center;">
+            <input id="vectorizeRemoveWhite" type="checkbox" checked />
+            <span>Remove background (auto)</span>
+          </label>
+          <select id="productTypeSelect" class="mockups__select" title="Product type">
+            <option value="tshirt">T‑Shirt</option>
+            <option value="hoodie">Hoodie</option>
+            <option value="hat">Hat</option>
+            <option value="beanie">Beanie</option>
+            <option value="headband">Headband</option>
+            <option value="accessory">Accessory</option>
+            <option value="drinkware">Drinkware</option>
+          </select>
+          <select id="saveCategorySelect" class="mockups__select" title="Library category">
+            <option value="">Loading categories…</option>
+          </select>
+          <input id="saveCategoryInput" class="mockups__select" type="text" placeholder="New category name" style="display:none;" />
+          <div class="mockups__spacer"></div>
+          <button id="downloadPngBtn" class="btn btn--primary" type="button">Save to Apparel</button>
+        </div>
+        <div class="mockups__stage-wrap">
+          <canvas id="mockupCanvas" width="1000" height="1000"></canvas>
+          <div id="vectorizeLoading" class="mockups__loading" hidden>
+            <div class="mockups__spinner" aria-hidden="true"></div>
+            <div class="mockups__loading-text">
+              <span id="vectorizeStepText">Vectorizing…</span>
+            </div>
+            <div class="mockups__progress" aria-hidden="true">
+              <div id="vectorizeProgressBar" class="mockups__progress-bar" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+        <p class="mockups__hint">Tip: Click a design to add it to the shirt. Drag, resize handles, and rotate as needed.</p>
+      </section>
+    </main>
+
+    <!-- Background chooser modal -->
+    <div id="bgChooserModal" class="designer-modal" hidden>
+      <div class="designer-modal__backdrop" data-close="bg"></div>
+      <div class="designer-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="bgChooserTitle">
+        <header class="designer-modal__header">
+          <div>
+            <h2 id="bgChooserTitle">Choose apparel background</h2>
+            <p class="designer-modal__subtitle">Pick a garment from your apparel catalog to use as the mockup background.</p>
+          </div>
+          <button id="bgChooserClose" class="icon-button" type="button" aria-label="Close">&times;</button>
+        </header>
+        <div class="designer-modal__body">
+          <div class="designer-modal__stage" style="padding: 1rem; overflow: auto;">
+            <div id="bgChooserGrid" class="mockups__catalog" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Human Model chooser modal -->
+    <div id="humanModelModal" class="designer-modal" hidden>
+      <div class="designer-modal__backdrop" data-close="humanModel"></div>
+      <div class="designer-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="humanModelTitle" style="max-width:900px;">
+        <header class="designer-modal__header">
+          <div>
+            <h2 id="humanModelTitle">Choose Human Model</h2>
+            <p class="designer-modal__subtitle">Select a model and customize the clothing color.</p>
+          </div>
+          <button id="humanModelClose" class="icon-button" type="button" aria-label="Close">&times;</button>
+        </header>
+        <div class="designer-modal__body" style="display:flex;gap:16px;">
+          <!-- Filters -->
+          <div style="width:200px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;">
+            <div>
+              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Category</label>
+              <select id="humanModelCategoryFilter" style="width:100%;">
+                <option value="">All Categories</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Gender</label>
+              <select id="humanModelGenderFilter" style="width:100%;">
+                <option value="">All</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="unisex">Unisex</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Pose Type</label>
+              <select id="humanModelPoseFilter" style="width:100%;">
+                <option value="">All Poses</option>
+                <option value="standing">Standing</option>
+                <option value="sitting">Sitting</option>
+                <option value="walking">Walking</option>
+                <option value="action">Action</option>
+                <option value="casual">Casual</option>
+                <option value="lifestyle">Lifestyle</option>
+              </select>
+            </div>
+            <hr style="border:none;border-top:1px solid #334155;margin:8px 0;" />
+            <div>
+              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">Clothing Color</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input id="humanModelColorPicker" type="color" value="#ffffff" style="width:48px;height:32px;padding:0;border:none;cursor:pointer;" />
+                <span id="humanModelColorLabel" style="font-size:13px;color:#e2e8f0;">#ffffff</span>
+              </div>
+              <div id="humanModelColorPresets" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+                <button type="button" class="color-preset" data-color="#ffffff" style="width:24px;height:24px;border-radius:4px;background:#ffffff;border:2px solid #3b82f6;cursor:pointer;" title="White"></button>
+                <button type="button" class="color-preset" data-color="#000000" style="width:24px;height:24px;border-radius:4px;background:#000000;border:1px solid #475569;cursor:pointer;" title="Black"></button>
+                <button type="button" class="color-preset" data-color="#1e3a8a" style="width:24px;height:24px;border-radius:4px;background:#1e3a8a;border:1px solid #475569;cursor:pointer;" title="Navy"></button>
+                <button type="button" class="color-preset" data-color="#dc2626" style="width:24px;height:24px;border-radius:4px;background:#dc2626;border:1px solid #475569;cursor:pointer;" title="Red"></button>
+                <button type="button" class="color-preset" data-color="#16a34a" style="width:24px;height:24px;border-radius:4px;background:#16a34a;border:1px solid #475569;cursor:pointer;" title="Green"></button>
+                <button type="button" class="color-preset" data-color="#facc15" style="width:24px;height:24px;border-radius:4px;background:#facc15;border:1px solid #475569;cursor:pointer;" title="Yellow"></button>
+                <button type="button" class="color-preset" data-color="#ec4899" style="width:24px;height:24px;border-radius:4px;background:#ec4899;border:1px solid #475569;cursor:pointer;" title="Pink"></button>
+                <button type="button" class="color-preset" data-color="#8b5cf6" style="width:24px;height:24px;border-radius:4px;background:#8b5cf6;border:1px solid #475569;cursor:pointer;" title="Purple"></button>
+                <button type="button" class="color-preset" data-color="#f97316" style="width:24px;height:24px;border-radius:4px;background:#f97316;border:1px solid #475569;cursor:pointer;" title="Orange"></button>
+                <button type="button" class="color-preset" data-color="#6b7280" style="width:24px;height:24px;border-radius:4px;background:#6b7280;border:1px solid #475569;cursor:pointer;" title="Gray"></button>
+              </div>
+            </div>
+          </div>
+          <!-- Model Grid -->
+          <div style="flex:1;overflow:auto;max-height:60vh;">
+            <div id="humanModelGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;"></div>
+            <div id="humanModelEmpty" style="display:none;text-align:center;padding:40px;color:#64748b;">
+              <p>No human models found.</p>
+              <p style="font-size:13px;">Add models in Print Station → Human Models</p>
+            </div>
+          </div>
+        </div>
+        <footer class="designer-modal__footer" style="display:flex;justify-content:flex-end;gap:8px;padding:16px;border-top:1px solid #334155;">
+          <button id="humanModelCancelBtn" class="btn" type="button">Cancel</button>
+          <button id="humanModelApplyBtn" class="btn btn--primary" type="button" disabled>Apply Model</button>
+        </footer>
+      </div>
+    </div>
+
+    <script src="./theme.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
+    <script src="./mockups.js"></script>
+  </body>
+  </html>

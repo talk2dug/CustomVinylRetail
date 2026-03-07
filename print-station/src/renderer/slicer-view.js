@@ -40,7 +40,8 @@ const slicerState = {
   plateMode: false,      // whether multi-select plate mode is active
   plateItems: [],        // array of catalog item objects on the plate
   platePreview: null,    // { renderer, scene, camera, controls, animId, resizeObs, meshes[], selectedMeshIndex, ... }
-  plateTransforms: {}    // { [stlId]: { rx, ry, rz, scale, posX, posZ } } — persists rotation + scale + position across preview open/close
+  plateTransforms: {},   // { [stlId]: { rx, ry, rz, scale, posX, posZ } } — persists rotation + scale + position across preview open/close
+  plateInstanceTransforms: null  // ordered array of per-instance { stlId, rx, ry, rz, scale, posX, posZ } from last preview — used for slicing
 };
 
 // ============================================================================
@@ -2359,8 +2360,9 @@ async function slicerTogglePlateMode() {
   if (btn) btn.classList.toggle('active', slicerState.plateMode);
 
   if (!slicerState.plateMode) {
-    // Exiting plate mode — clear plate items
+    // Exiting plate mode — clear plate items and instance transforms
     slicerState.plateItems = [];
+    slicerState.plateInstanceTransforms = null;
   }
 
   slicerUpdatePlateBar();
@@ -3542,6 +3544,22 @@ function bpWireEvents(bedDims) {
   if (continueBtn) {
     continueBtn.addEventListener('click', () => {
       const isSingle = pp._isSingleItem;
+      // Save per-instance positions before closing — each mesh gets its own transform
+      // This preserves the user's arrangement for qty>1 items (multiple copies at different positions)
+      if (!isSingle && pp.meshes && pp.meshes.length > 0) {
+        slicerState.plateInstanceTransforms = pp.meshes.map(entry => {
+          const baseT = slicerState.plateTransforms[entry.stlId] || {};
+          return {
+            stlId: entry.stlId,
+            rx: baseT.rx || 0,
+            ry: baseT.ry || 0,
+            rz: baseT.rz || 0,
+            scale: baseT.scale || 1,
+            posX: entry.mesh.position.x,
+            posZ: entry.mesh.position.z
+          };
+        });
+      }
       bpClosePreview();
       if (!isSingle) slicerShowPlateSettings();
     });
@@ -3821,27 +3839,36 @@ async function slicerSlicePlate() {
     }
   }
 
-  // Expand items by quantity and collect transforms
+  // Expand items by quantity and collect per-instance transforms
+  // Each copy gets its own position from the build plate preview arrangement
   const expandedIds = [];
-  const transforms = {};
+  const instanceTransforms = [];
+  const pit = slicerState.plateInstanceTransforms; // per-instance positions from preview
+  let pitIdx = 0;
+
   for (const item of slicerState.plateItems) {
     const qty = item.qty || 1;
-    for (let c = 0; c < qty; c++) expandedIds.push(item.id);
-    const t = slicerState.plateTransforms[item.id];
-    if (t) {
-      // When qty > 1, clear positions so PrusaSlicer auto-arranges copies
-      transforms[item.id] = {
-        rx: t.rx || 0, ry: t.ry || 0, rz: t.rz || 0,
-        scale: t.scale || 1,
-        posX: qty > 1 ? 0 : (t.posX || 0),
-        posZ: qty > 1 ? 0 : (t.posZ || 0)
-      };
+    const baseT = slicerState.plateTransforms[item.id] || {};
+    for (let c = 0; c < qty; c++) {
+      expandedIds.push(item.id);
+      // Use per-instance transform from preview if available, otherwise fall back to per-stlId
+      if (pit && pitIdx < pit.length && pit[pitIdx].stlId === item.id) {
+        instanceTransforms.push(pit[pitIdx]);
+        pitIdx++;
+      } else {
+        instanceTransforms.push({
+          stlId: item.id,
+          rx: baseT.rx || 0, ry: baseT.ry || 0, rz: baseT.rz || 0,
+          scale: baseT.scale || 1,
+          posX: baseT.posX || 0, posZ: baseT.posZ || 0
+        });
+      }
     }
   }
 
   const sliceOptions = {
     stl_ids: expandedIds,
-    transforms,
+    instance_transforms: instanceTransforms,
     profile: slicerState.settings.profile || 'custom',
     printer_model: printerModel || 'kobra3',
     material: slicerState.settings.material,
@@ -4258,25 +4285,26 @@ async function slicerSliceSavedPlate(plate) {
 
     overlay.remove();
 
-    // Expand items by quantity
+    // Expand items by quantity with per-instance transforms
     const expandedIds = [];
-    const transforms = {};
+    const instanceTransforms = [];
     for (const item of items) {
       const qty = item.qty || 1;
-      for (let c = 0; c < qty; c++) expandedIds.push(item.stl_id);
-      if (item.transform) {
-        transforms[item.stl_id] = {
-          rx: item.transform.rx || 0, ry: item.transform.ry || 0, rz: item.transform.rz || 0,
-          scale: item.transform.scale || 1,
-          posX: qty > 1 ? 0 : (item.transform.posX || 0),
-          posZ: qty > 1 ? 0 : (item.transform.posZ || 0)
-        };
+      const t = item.transform || {};
+      for (let c = 0; c < qty; c++) {
+        expandedIds.push(item.stl_id);
+        instanceTransforms.push({
+          stlId: item.stl_id,
+          rx: t.rx || 0, ry: t.ry || 0, rz: t.rz || 0,
+          scale: t.scale || 1,
+          posX: t.posX || 0, posZ: t.posZ || 0
+        });
       }
     }
 
     const sliceOptions = {
       stl_ids: expandedIds,
-      transforms,
+      instance_transforms: instanceTransforms,
       profile: settings.profile || 'custom',
       printer_model: printerModel,
       material: settings.material,

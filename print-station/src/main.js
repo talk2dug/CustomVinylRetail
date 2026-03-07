@@ -7267,6 +7267,72 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
+  // Product Build Plates
+  ipcMain.handle('slicer:product-plates:list', async (_event, productId) => {
+    const url = productId ? `/api/slicer/product-plates?product_id=${encodeURIComponent(productId)}` : '/api/slicer/product-plates';
+    const resp = await slicerFetch(url);
+    return resp.json();
+  });
+  ipcMain.handle('slicer:product-plates:create', async (_event, data) => {
+    const resp = await slicerFetch('/api/slicer/product-plates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return resp.json();
+  });
+  ipcMain.handle('slicer:product-plates:update', async (_event, { id, updates }) => {
+    const resp = await slicerFetch(`/api/slicer/product-plates/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    return resp.json();
+  });
+  ipcMain.handle('slicer:product-plates:delete', async (_event, id) => {
+    const resp = await slicerFetch(`/api/slicer/product-plates/${id}`, { method: 'DELETE' });
+    return resp.json();
+  });
+
+  // Thangs Parts Sync
+  ipcMain.handle('slicer:thangs-sync:status', async () => {
+    const resp = await slicerFetch('/api/slicer/thangs-sync/status');
+    return resp.json();
+  });
+  ipcMain.handle('slicer:thangs-sync:missing', async (_event, opts = {}) => {
+    const params = new URLSearchParams();
+    if (opts.search) params.set('search', opts.search);
+    if (opts.limit) params.set('limit', opts.limit);
+    if (opts.offset) params.set('offset', opts.offset);
+    const qs = params.toString();
+    const resp = await slicerFetch(`/api/slicer/thangs-sync/missing${qs ? '?' + qs : ''}`);
+    return resp.json();
+  });
+  ipcMain.handle('slicer:thangs-sync:run', async () => {
+    const resp = await slicerFetch('/api/slicer/thangs-sync/run', { method: 'POST' });
+    return resp.json();
+  });
+  ipcMain.handle('slicer:thangs-sync:import', async (_event, models) => {
+    const resp = await slicerFetch('/api/slicer/thangs-sync/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ models })
+    });
+    return resp.json();
+  });
+  ipcMain.handle('slicer:thangs-sync:skip', async (_event, modelId) => {
+    const resp = await slicerFetch(`/api/slicer/thangs-sync/${modelId}/skip`, { method: 'PUT' });
+    return resp.json();
+  });
+  ipcMain.handle('slicer:thangs-sync:match', async (_event, { modelId, catalogId }) => {
+    const resp = await slicerFetch(`/api/slicer/thangs-sync/${modelId}/match`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ catalog_id: catalogId })
+    });
+    return resp.json();
+  });
+
   // Select 3D model file dialog (for upload)
   ipcMain.handle('slicer:selectStlFile', async () => {
     const result = await dialog.showOpenDialog({
@@ -7320,6 +7386,14 @@ Return ONLY valid JSON, nothing else:
 
   // Clean up a temp directory after ZIP extraction uploads complete
   ipcMain.handle('slicer:cleanupTemp', async (_event, dirPath) => {
+    try {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    } catch (_) {}
+  });
+
+  // Generic temp directory cleanup (for ZIP extractions, etc.)
+  ipcMain.handle('util:cleanupTempDir', async (_event, dirPath) => {
+    if (!dirPath || !dirPath.includes(os.tmpdir())) return;
     try {
       fs.rmSync(dirPath, { recursive: true, force: true });
     } catch (_) {}
@@ -7691,6 +7765,21 @@ app.on('ready', async () => {
           try {
             const modelName = path.basename(filename, ext).replace(/[-_]+/g, ' ');
             const result = await catalogMultiboardFile(savePath, modelName, metadata);
+            // Auto-match against Thangs index
+            if (result?.item?.id) {
+              try {
+                const { fetch: doFetch2 } = await ensureFetch();
+                const settings2 = ensureServerConfigured();
+                await doFetch2(`${settings2.serverBaseUrl}/api/slicer/thangs-sync/auto-match`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', ...(settings2.apiKey ? { 'X-API-Key': settings2.apiKey } : {}) },
+                  body: JSON.stringify({ catalogId: result.item.id, name: modelName, sourceUrl: sourceUrl })
+                });
+                console.log(`[Multiboard] Auto-matched Thangs index for catalog id=${result.item.id}`);
+              } catch (matchErr) {
+                console.warn(`[Multiboard] Thangs auto-match failed:`, matchErr.message);
+              }
+            }
             if (w && !w.isDestroyed()) {
               w.webContents.send('multiboard:download-complete', {
                 filename, savePath, success: true, format: ext.replace('.', ''),

@@ -4,6 +4,7 @@
  * Mounts at /api/ai-images/* and /api/leonardo/* (backward compat)
  */
 
+const fs = require('fs');
 const path = require('path');
 const { NanoBananaWorkflow, MODELS, ASPECT_RATIOS } = require('./nano-banana-workflow');
 const { ImagePromptGenerator, PROMPT_TEMPLATES } = require('./leonardo-prompt-generator');
@@ -394,6 +395,313 @@ async function handleAiImageRoute(pathname, req, res) {
       const results = await wf.runBatch(keywordsList, options);
 
       sendJson(res, 200, { success: true, results });
+      return true;
+    }
+
+    // POST /apparel-mockup - AI apparel mockup generation
+    if (req.method === 'POST' && route === '/apparel-mockup') {
+      const body = await parseBody(req);
+      const {
+        modelFrontId,
+        modelBackId,
+        clothingColor,
+        placements = [],
+        backPlacements = [],
+        garmentType = 't-shirt',
+        generateSideBySide = true
+      } = body;
+
+      if (!modelFrontId && !modelBackId) {
+        sendJson(res, 400, { success: false, error: 'At least one model ID (modelFrontId or modelBackId) required' });
+        return true;
+      }
+
+      if (placements.length === 0 && backPlacements.length === 0) {
+        sendJson(res, 400, { success: false, error: 'At least one placement required' });
+        return true;
+      }
+
+      // Resolve and validate placement graphic paths
+      const LIBRARY_ROOT = process.env.LIBRARY_ROOT || path.join(__dirname, '..', 'web', 'library');
+      for (const p of [...placements, ...backPlacements]) {
+        if (!p.graphicPath) {
+          sendJson(res, 400, { success: false, error: 'Each placement requires a graphicPath' });
+          return true;
+        }
+        // Strip full URL to path — handles https://blueridgecustomco.com/library/... or https://store.swayzecustomvinyl.com/library/...
+        if (/^https?:\/\//i.test(p.graphicPath)) {
+          try {
+            const urlObj = new URL(p.graphicPath);
+            p.graphicPath = decodeURIComponent(urlObj.pathname);
+          } catch (_) {
+            // If URL parsing fails, try simple regex extraction
+            p.graphicPath = p.graphicPath.replace(/^https?:\/\/[^/]+/, '');
+          }
+        }
+        // Resolve web-relative paths to filesystem paths
+        if (!path.isAbsolute(p.graphicPath)) {
+          // Handle paths like "library/designs/..." or "/library/designs/..."
+          let relPath = p.graphicPath.replace(/^\//, '');
+          if (relPath.startsWith('library/')) {
+            p.graphicPath = path.join(LIBRARY_ROOT, relPath.slice('library/'.length));
+          } else {
+            p.graphicPath = path.join(LIBRARY_ROOT, relPath);
+          }
+        } else if (p.graphicPath.startsWith('/library/')) {
+          p.graphicPath = path.join(LIBRARY_ROOT, p.graphicPath.slice('/library/'.length));
+        }
+        if (!fs.existsSync(p.graphicPath)) {
+          sendJson(res, 400, { success: false, error: `Graphic file not found: ${p.graphicPath}` });
+          return true;
+        }
+      }
+
+      const { AiApparelMockupService } = require('./ai-apparel-mockup');
+      const mockupService = new AiApparelMockupService({ service: getService() });
+
+      // Get DB from main server (has human_models table)
+      const mainDb = require('./db').getDb();
+
+      const result = await mockupService.generateFullMockupSet({
+        db: mainDb,
+        modelFrontId,
+        modelBackId,
+        clothingColor,
+        placements,
+        backPlacements,
+        garmentType,
+        generateSideBySide
+      });
+
+      // Build response with web-accessible paths
+      const response = { success: true };
+      if (result.front) {
+        response.front = {
+          imagePath: result.front.imagePath.replace(/.*[/\\]web[/\\]/, '/'),
+          placements: result.front.placements
+        };
+      }
+      if (result.back) {
+        response.back = {
+          imagePath: result.back.imagePath.replace(/.*[/\\]web[/\\]/, '/'),
+          placements: result.back.placements
+        };
+      }
+      if (result.combined) {
+        response.combined = {
+          imagePath: result.combined.imagePath.replace(/.*[/\\]web[/\\]/, '/')
+        };
+      }
+
+      sendJson(res, 200, response);
+      return true;
+    }
+
+    // POST /remove-background - Remove background from image using AI
+    if (req.method === 'POST' && route === '/remove-background') {
+      const body = await parseBody(req);
+      const { imagePath } = body;
+
+      if (!imagePath) {
+        sendJson(res, 400, { success: false, error: 'imagePath required' });
+        return true;
+      }
+
+      // Resolve path
+      const LIBRARY_ROOT = process.env.LIBRARY_ROOT || path.join(__dirname, '..', 'web', 'library');
+      let resolvedPath = imagePath;
+      if (!path.isAbsolute(resolvedPath)) {
+        let relPath = resolvedPath.replace(/^\//, '');
+        if (relPath.startsWith('library/')) {
+          resolvedPath = path.join(LIBRARY_ROOT, relPath.slice('library/'.length));
+        } else {
+          resolvedPath = path.join(LIBRARY_ROOT, relPath);
+        }
+      } else if (resolvedPath.startsWith('/library/')) {
+        resolvedPath = path.join(LIBRARY_ROOT, resolvedPath.slice('/library/'.length));
+      }
+
+      if (!fs.existsSync(resolvedPath)) {
+        sendJson(res, 400, { success: false, error: `Image file not found: ${resolvedPath}` });
+        return true;
+      }
+
+      const svc = getService();
+      const results = await svc.removeBackground(resolvedPath);
+
+      if (results.length === 0) {
+        sendJson(res, 500, { success: false, error: 'No image generated' });
+        return true;
+      }
+
+      const image = results[0];
+      sendJson(res, 200, {
+        success: true,
+        image: {
+          localPath: image.localPath,
+          filename: image.filename,
+          webPath: image.localPath.replace(/.*[/\\]web[/\\]/, '/')
+        }
+      });
+      return true;
+    }
+
+    // POST /apparel-mockup/adjust - Quick Sharp-based adjustment of generated mockup
+    if (req.method === 'POST' && route === '/apparel-mockup/adjust') {
+      const body = await parseBody(req);
+      const { sourceImage, adjustX = 0, adjustY = 0, adjustScale = 100 } = body;
+
+      if (!sourceImage) {
+        sendJson(res, 400, { success: false, error: 'sourceImage required' });
+        return true;
+      }
+
+      const LIBRARY_ROOT = process.env.LIBRARY_ROOT || path.join(__dirname, '..', 'web', 'library');
+      let resolvedSource = sourceImage;
+      if (resolvedSource.startsWith('/')) {
+        resolvedSource = path.join(__dirname, '..', 'web', resolvedSource);
+      }
+
+      if (!fs.existsSync(resolvedSource)) {
+        sendJson(res, 400, { success: false, error: `Source image not found: ${resolvedSource}` });
+        return true;
+      }
+
+      const sharp = require('sharp');
+      const crypto = require('crypto');
+
+      // Load original image
+      const metadata = await sharp(resolvedSource).metadata();
+      const imgWidth = metadata.width;
+      const imgHeight = metadata.height;
+
+      // Calculate pixel offsets from percentage values
+      const pixelX = Math.round((adjustX / 100) * imgWidth);
+      const pixelY = Math.round((adjustY / 100) * imgHeight);
+      const scale = adjustScale / 100;
+
+      // Create adjusted version using Sharp extract + resize + composite
+      const newWidth = Math.round(imgWidth * scale);
+      const newHeight = Math.round(imgHeight * scale);
+
+      let adjusted = sharp(resolvedSource).resize(newWidth, newHeight, { fit: 'fill' });
+
+      // Composite onto canvas at offset position
+      const adjustedBuf = await adjusted.toBuffer();
+      const left = Math.round((imgWidth - newWidth) / 2) + pixelX;
+      const top = Math.round((imgHeight - newHeight) / 2) + pixelY;
+
+      const outputFilename = `adjusted_${crypto.randomUUID().slice(0, 8)}.png`;
+      const outputDir = path.join(__dirname, '..', 'web', 'images', 'ai-generated', 'apparel-mockups');
+      if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+      const outputPath = path.join(outputDir, outputFilename);
+
+      await sharp({
+        create: {
+          width: imgWidth,
+          height: imgHeight,
+          channels: 4,
+          background: { r: 255, g: 255, b: 255, alpha: 1 }
+        }
+      })
+        .composite([{
+          input: adjustedBuf,
+          left: Math.max(0, left),
+          top: Math.max(0, top)
+        }])
+        .png()
+        .toFile(outputPath);
+
+      sendJson(res, 200, {
+        success: true,
+        imagePath: `/images/ai-generated/apparel-mockups/${outputFilename}`
+      });
+      return true;
+    }
+
+    // GET /apparel-mockup/options - Get available zones and sizes
+    if (req.method === 'GET' && route === '/apparel-mockup/options') {
+      const { AiApparelMockupService } = require('./ai-apparel-mockup');
+      sendJson(res, 200, {
+        success: true,
+        zones: AiApparelMockupService.getZones(),
+        sizes: AiApparelMockupService.getSizes()
+      });
+      return true;
+    }
+
+    // POST /apparel-mockup/save - Save a generated mockup to permanent storage
+    if (req.method === 'POST' && route === '/apparel-mockup/save') {
+      const body = await parseBody(req);
+      const { title, imagePath, humanModelId, graphicName, graphicPath, garmentType, clothingColor, tags } = body;
+
+      if (!imagePath) {
+        sendJson(res, 400, { success: false, error: 'imagePath required' });
+        return true;
+      }
+      if (!title) {
+        sendJson(res, 400, { success: false, error: 'title required' });
+        return true;
+      }
+
+      // Resolve the source image path
+      let sourcePath = imagePath;
+      if (sourcePath.startsWith('/')) {
+        sourcePath = path.join(__dirname, '..', 'web', sourcePath);
+      }
+      if (!fs.existsSync(sourcePath)) {
+        sendJson(res, 400, { success: false, error: `Source image not found: ${sourcePath}` });
+        return true;
+      }
+
+      const sharp = require('sharp');
+      const crypto = require('crypto');
+
+      // Permanent storage directory
+      const SAVE_DIR = '/mnt/dbFiles/apparel-mockups';
+      if (!fs.existsSync(SAVE_DIR)) {
+        fs.mkdirSync(SAVE_DIR, { recursive: true });
+      }
+
+      // Generate filename from title
+      const safeName = title.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 80);
+      const filename = `${safeName}_${Date.now()}.png`;
+      const destPath = path.join(SAVE_DIR, filename);
+
+      // Copy file to permanent storage
+      fs.copyFileSync(sourcePath, destPath);
+
+      // Get dimensions
+      const metadata = await sharp(destPath).metadata();
+      const fileStats = fs.statSync(destPath);
+
+      // Save to database
+      const mainDb = require('./db');
+      const mockupId = mainDb.createCustomArtMockup({
+        title,
+        filename,
+        filePath: destPath,
+        url: `/apparel-mockups/${filename}`,
+        mockupType: 'apparel-ai',
+        width: metadata.width || null,
+        height: metadata.height || null,
+        fileSize: fileStats.size || null,
+        tags: tags || null,
+        humanModelId: humanModelId || null,
+        graphicName: graphicName || null,
+        graphicPath: graphicPath || null,
+        garmentType: garmentType || null,
+        clothingColor: clothingColor || null
+      });
+
+      console.log(`[AI Apparel] Saved mockup: ${title} → ${filename} (${mockupId})`);
+
+      sendJson(res, 200, {
+        success: true,
+        mockupId,
+        filename,
+        url: `/apparel-mockups/${filename}`
+      });
       return true;
     }
 

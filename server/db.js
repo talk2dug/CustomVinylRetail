@@ -2980,6 +2980,13 @@ function initCustomArtTables() {
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_custom_art_mockups_type ON custom_art_mockups(mockup_type)`); } catch (e) { /* ignore */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_custom_art_mockups_active ON custom_art_mockups(active)`); } catch (e) { /* ignore */ }
 
+  // Apparel AI mockup columns
+  ensureColumn('custom_art_mockups', 'human_model_id', 'TEXT');
+  ensureColumn('custom_art_mockups', 'graphic_name', 'TEXT');
+  ensureColumn('custom_art_mockups', 'graphic_path', 'TEXT');
+  ensureColumn('custom_art_mockups', 'garment_type', 'TEXT');
+  ensureColumn('custom_art_mockups', 'clothing_color', 'TEXT');
+
   // Mockup Backgrounds - background images for compositing decal mockups in print-station
   db.exec(`
     CREATE TABLE IF NOT EXISTS mockup_backgrounds (
@@ -3432,6 +3439,25 @@ function initCustomArtTables() {
   // JSON string: {"rx":0,"ry":0,"rz":0,"scale":1}
   ensureColumn('stl_catalog', 'default_transform', 'TEXT DEFAULT NULL');
 
+  // Thangs Parts Index (sync Multiboard parts from Thangs API)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS thangs_parts_index (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      thangs_model_id TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      filename TEXT,
+      thumbnail_url TEXT,
+      owner TEXT,
+      part_ids TEXT DEFAULT '[]',
+      download_url TEXT,
+      matched_catalog_id INTEGER,
+      status TEXT DEFAULT 'missing',
+      synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_thangs_parts_model_id ON thangs_parts_index(thangs_model_id);
+    CREATE INDEX IF NOT EXISTS idx_thangs_parts_status ON thangs_parts_index(status);
+  `);
+
   // Calibration log table (for future calibration wizard)
   db.exec(`
     CREATE TABLE IF NOT EXISTS calibration_log (
@@ -3556,6 +3582,22 @@ function initCustomArtTables() {
       updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_saved_build_plates_name ON saved_build_plates(name);
+  `);
+
+  // Product build plates (pre-configured plates for product kits)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS product_build_plates (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id    TEXT NOT NULL,
+      plate_index   INTEGER DEFAULT 0,
+      name          TEXT,
+      items         TEXT NOT NULL DEFAULT '[]',
+      material      TEXT DEFAULT 'PLA',
+      printer_model TEXT DEFAULT 'kobra3',
+      settings      TEXT DEFAULT '{}',
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_build_plates_product ON product_build_plates(product_id);
   `);
 
   console.log('[Slicer] ✅ Tables initialized successfully');
@@ -4328,11 +4370,11 @@ function mapCustomArtTile(row) {
 // Custom Art Mockups (Standalone mockup image management)
 // ============================================================================
 
-function createCustomArtMockup({ title, filename, filePath, url, productId, artworkId, roomId, campaignSlug, materialId, mockupType, width, height, fileSize, tags, notes }) {
+function createCustomArtMockup({ title, filename, filePath, url, productId, artworkId, roomId, campaignSlug, materialId, mockupType, width, height, fileSize, tags, notes, humanModelId, graphicName, graphicPath, garmentType, clothingColor }) {
   const id = `mockup_${crypto.randomBytes(8).toString('hex')}`;
   db.prepare(`
-    INSERT INTO custom_art_mockups (id, title, filename, file_path, url, product_id, artwork_id, room_id, campaign_slug, material_id, mockup_type, width, height, file_size, tags, notes)
-    VALUES (@id, @title, @filename, @filePath, @url, @productId, @artworkId, @roomId, @campaignSlug, @materialId, @mockupType, @width, @height, @fileSize, @tags, @notes)
+    INSERT INTO custom_art_mockups (id, title, filename, file_path, url, product_id, artwork_id, room_id, campaign_slug, material_id, mockup_type, width, height, file_size, tags, notes, human_model_id, graphic_name, graphic_path, garment_type, clothing_color)
+    VALUES (@id, @title, @filename, @filePath, @url, @productId, @artworkId, @roomId, @campaignSlug, @materialId, @mockupType, @width, @height, @fileSize, @tags, @notes, @humanModelId, @graphicName, @graphicPath, @garmentType, @clothingColor)
   `).run({
     id,
     title: title || null,
@@ -4349,7 +4391,12 @@ function createCustomArtMockup({ title, filename, filePath, url, productId, artw
     height: height || null,
     fileSize: fileSize || null,
     tags: tags || null,
-    notes: notes || null
+    notes: notes || null,
+    humanModelId: humanModelId || null,
+    graphicName: graphicName || null,
+    graphicPath: graphicPath || null,
+    garmentType: garmentType || null,
+    clothingColor: clothingColor || null
   });
   return id;
 }
@@ -7330,6 +7377,101 @@ function deleteSavedBuildPlate(id) {
 }
 
 // ============================================================================
+// PRODUCT BUILD PLATES
+// ============================================================================
+
+function createProductBuildPlate({ product_id, plate_index, name, items, material, printer_model, settings }) {
+  const result = db.prepare(`
+    INSERT INTO product_build_plates (product_id, plate_index, name, items, material, printer_model, settings)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    product_id, plate_index || 0, name || null,
+    JSON.stringify(items || []), material || 'PLA',
+    printer_model || 'kobra3', JSON.stringify(settings || {})
+  );
+  return db.prepare('SELECT * FROM product_build_plates WHERE id = ?').get(result.lastInsertRowid);
+}
+
+function listProductBuildPlates(productId) {
+  if (productId) {
+    return db.prepare('SELECT * FROM product_build_plates WHERE product_id = ? ORDER BY plate_index').all(productId);
+  }
+  return db.prepare('SELECT * FROM product_build_plates ORDER BY product_id, plate_index').all();
+}
+
+function deleteProductBuildPlates(productId) {
+  return db.prepare('DELETE FROM product_build_plates WHERE product_id = ?').run(productId);
+}
+
+// ============================================================================
+// THANGS PARTS INDEX
+// ============================================================================
+
+function upsertThangsPartIndex({ thangs_model_id, title, filename, thumbnail_url, owner, part_ids, download_url }) {
+  return db.prepare(`
+    INSERT INTO thangs_parts_index (thangs_model_id, title, filename, thumbnail_url, owner, part_ids, download_url, synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(thangs_model_id) DO UPDATE SET
+      title = excluded.title,
+      filename = excluded.filename,
+      thumbnail_url = excluded.thumbnail_url,
+      owner = excluded.owner,
+      part_ids = excluded.part_ids,
+      download_url = excluded.download_url,
+      synced_at = datetime('now')
+  `).run(
+    String(thangs_model_id), title, filename || null, thumbnail_url || null,
+    owner || null, JSON.stringify(part_ids || []), download_url || null
+  );
+}
+
+function listThangsMissingParts({ search, limit, offset } = {}) {
+  let sql = "SELECT * FROM thangs_parts_index WHERE status = 'missing'";
+  const params = [];
+  if (search) {
+    sql += ' AND title LIKE ?';
+    params.push(`%${search}%`);
+  }
+  sql += ' ORDER BY title';
+  if (limit) {
+    sql += ' LIMIT ?';
+    params.push(limit);
+    if (offset) {
+      sql += ' OFFSET ?';
+      params.push(offset);
+    }
+  }
+  return db.prepare(sql).all(...params);
+}
+
+function getThangsSyncStatus() {
+  const total = db.prepare('SELECT COUNT(*) as c FROM thangs_parts_index').get().c;
+  const matched = db.prepare("SELECT COUNT(*) as c FROM thangs_parts_index WHERE status = 'matched'").get().c;
+  const missing = db.prepare("SELECT COUNT(*) as c FROM thangs_parts_index WHERE status = 'missing'").get().c;
+  const skipped = db.prepare("SELECT COUNT(*) as c FROM thangs_parts_index WHERE status = 'skipped'").get().c;
+  const lastSync = db.prepare('SELECT MAX(synced_at) as t FROM thangs_parts_index').get().t;
+  return { total, matched, missing, skipped, lastSync };
+}
+
+function updateThangsPartStatus(thangsModelId, status, matchedCatalogId) {
+  return db.prepare(`
+    UPDATE thangs_parts_index SET status = ?, matched_catalog_id = ? WHERE thangs_model_id = ?
+  `).run(status, matchedCatalogId || null, String(thangsModelId));
+}
+
+function getThangsPartByModelId(thangsModelId) {
+  return db.prepare('SELECT * FROM thangs_parts_index WHERE thangs_model_id = ?').get(String(thangsModelId));
+}
+
+function findThangsPartByTitle(title) {
+  return db.prepare('SELECT * FROM thangs_parts_index WHERE title = ?').get(title);
+}
+
+function clearThangsPartsIndex() {
+  return db.prepare('DELETE FROM thangs_parts_index').run();
+}
+
+// ============================================================================
 // PRINT QUOTES CRUD
 // ============================================================================
 
@@ -7730,6 +7872,18 @@ module.exports = {
   listSavedBuildPlates,
   updateSavedBuildPlate,
   deleteSavedBuildPlate,
+  // Product Build Plates
+  createProductBuildPlate,
+  listProductBuildPlates,
+  deleteProductBuildPlates,
+  // Thangs Parts Index
+  upsertThangsPartIndex,
+  listThangsMissingParts,
+  getThangsSyncStatus,
+  updateThangsPartStatus,
+  getThangsPartByModelId,
+  findThangsPartByTitle,
+  clearThangsPartsIndex,
   // Print Quotes
   createPrintQuote,
   getPrintQuote,
