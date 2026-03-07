@@ -584,6 +584,9 @@ contextBridge.exposeInMainWorld('printStation', {
     parsePartInfo: (name, description) => ipcRenderer.invoke('slicer:catalog:parsePartInfo', { name, description }),
     fetchStlBytes: (stlId) => ipcRenderer.invoke('slicer:stl:fetch', stlId),
 
+    // Mount Merger
+    addMount: (opts) => ipcRenderer.invoke('slicer:stl:addMount', opts),
+
     // Slicing
     slice: (options) => ipcRenderer.invoke('slicer:slice', options),
     sliceAndPrint: (sliceOptions, printerId) => ipcRenderer.invoke('slicer:sliceAndPrint', { sliceOptions, printerId }),

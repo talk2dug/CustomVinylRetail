@@ -10,6 +10,7 @@ const url = require('url');
 const { formidable } = require('formidable');
 const { parseBody, sendJson, sendError } = require('./utils/http');
 const slicer = require('./slicer-service');
+const { mergeStlWithMount } = require('./multiboard-merger');
 
 /**
  * Handle Slicer API routes
@@ -589,6 +590,111 @@ async function handleSlicerRoute(pathname, req, res, db) {
       fs.createReadStream(absPath).pipe(res);
     } catch (err) {
       console.error('[Slicer] Serve STL error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // ========================================================================
+  // MULTIBOARD MOUNT MERGER
+  // ========================================================================
+
+  // POST /api/slicer/stl/add-mount — merge a mount STL onto a source STL via OpenSCAD
+  if (req.method === 'POST' && route === '/stl/add-mount') {
+    try {
+      const body = await parseBody(req);
+      const { sourceStlId, mountStlId, transform, mountType, face, gridSize } = body;
+
+      // Validate required fields
+      if (!sourceStlId || !mountStlId || !transform) {
+        sendError(res, 400, 'Missing required fields: sourceStlId, mountStlId, transform');
+        return true;
+      }
+      if (!Array.isArray(transform) || transform.length !== 16) {
+        sendError(res, 400, 'transform must be a 16-element array (column-major 4x4 matrix)');
+        return true;
+      }
+
+      // Look up both STLs
+      const sourceItem = db.getStlCatalogItem(sourceStlId);
+      if (!sourceItem) {
+        sendError(res, 404, `Source STL not found: ${sourceStlId}`);
+        return true;
+      }
+      const mountItem = db.getStlCatalogItem(mountStlId);
+      if (!mountItem) {
+        sendError(res, 404, `Mount STL not found: ${mountStlId}`);
+        return true;
+      }
+
+      // Resolve absolute paths
+      const sourceStlPath = path.join(slicer.STL_MODELS, sourceItem.stl_path.trim());
+      const mountStlPath = path.join(slicer.STL_MODELS, mountItem.stl_path.trim());
+
+      if (!fs.existsSync(sourceStlPath)) {
+        sendError(res, 404, `Source STL file missing on disk: ${sourceItem.stl_path}`);
+        return true;
+      }
+      if (!fs.existsSync(mountStlPath)) {
+        sendError(res, 404, `Mount STL file missing on disk: ${mountItem.stl_path}`);
+        return true;
+      }
+
+      // Build output filename
+      const baseName = path.basename(sourceItem.stl_path, '.stl');
+      const mountLabel = (mountType || mountItem.mb_type || 'mount').replace(/\s+/g, '-');
+      const timestamp = Date.now();
+      const outputFilename = `${baseName}_multiboard_${mountLabel}_${timestamp}.stl`;
+      const outputPath = path.join(slicer.STL_MODELS, outputFilename);
+
+      console.log(`[Merger] Merging: ${sourceItem.name} + ${mountItem.name} (${mountLabel})`);
+
+      // Run OpenSCAD merge
+      const result = await mergeStlWithMount({
+        sourceStlPath,
+        mountStlPath,
+        transformMatrix4x4: transform,
+        outputPath
+      });
+
+      if (!result.success) {
+        console.error('[Merger] Failed:', result.error);
+        sendError(res, 500, `Merge failed: ${result.error}`);
+        return true;
+      }
+
+      // Get output file stats
+      const stat = fs.statSync(outputPath);
+
+      // Build remix name
+      const remixName = `${sourceItem.name} + ${mountLabel}`;
+
+      // Build tags
+      const tags = ['multiboard-remix'];
+      if (mountLabel) tags.push(mountLabel);
+
+      // Insert into catalog
+      const catalogEntry = db.insertRemixCatalogItem({
+        name: remixName,
+        category: sourceItem.category || 'Multiboard',
+        stl_path: outputFilename,
+        parent_id: sourceStlId,
+        tags,
+        mount_type: mountType || mountItem.mb_type || null,
+        mount_config: { face, gridSize, transform, mountStlId },
+        file_size: stat.size
+      });
+
+      console.log(`[Merger] Success: ${catalogEntry.name} (id=${catalogEntry.id})`);
+
+      sendJson(res, 200, {
+        success: true,
+        newStlId: catalogEntry.id,
+        newStlPath: outputFilename,
+        catalogEntry
+      });
+    } catch (err) {
+      console.error('[Merger] Route error:', err);
       sendError(res, 500, err.message);
     }
     return true;

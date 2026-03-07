@@ -3439,6 +3439,12 @@ function initCustomArtTables() {
   // JSON string: {"rx":0,"ry":0,"rz":0,"scale":1}
   ensureColumn('stl_catalog', 'default_transform', 'TEXT DEFAULT NULL');
 
+  // Multiboard Mount Merger — remix tracking columns
+  ensureColumn('stl_catalog', 'parent_id', 'INTEGER DEFAULT NULL');
+  ensureColumn('stl_catalog', 'is_remix', 'INTEGER DEFAULT 0');
+  ensureColumn('stl_catalog', 'tags', 'TEXT DEFAULT NULL');       // JSON array e.g. ["multiboard-remix"]
+  ensureColumn('stl_catalog', 'mount_config', 'TEXT DEFAULT NULL'); // JSON: { face, gridSize, transform, mountStlId }
+
   // Thangs Parts Index (sync Multiboard parts from Thangs API)
   db.exec(`
     CREATE TABLE IF NOT EXISTS thangs_parts_index (
@@ -7057,6 +7063,33 @@ function listMultiboardParts() {
   `).all();
 }
 
+/**
+ * Insert a remix catalog item (output of Multiboard Mount Merger).
+ */
+function insertRemixCatalogItem({ name, category, stl_path, parent_id, tags, mount_type, mount_config, file_size, dim_x, dim_y, dim_z, triangle_count }) {
+  const stmt = db.prepare(`
+    INSERT INTO stl_catalog (name, category, stl_path, parent_id, is_remix, tags, mount_type, mount_config,
+      file_size, dim_x, dim_y, dim_z, triangle_count)
+    VALUES (@name, @category, @stl_path, @parent_id, 1, @tags, @mount_type, @mount_config,
+      @file_size, @dim_x, @dim_y, @dim_z, @triangle_count)
+  `);
+  const info = stmt.run({
+    name: name || 'Unnamed Remix',
+    category: category || 'Multiboard',
+    stl_path,
+    parent_id: parent_id || null,
+    tags: tags ? JSON.stringify(tags) : '["multiboard-remix"]',
+    mount_type: mount_type || null,
+    mount_config: mount_config ? JSON.stringify(mount_config) : null,
+    file_size: file_size || null,
+    dim_x: dim_x || null,
+    dim_y: dim_y || null,
+    dim_z: dim_z || null,
+    triangle_count: triangle_count || null
+  });
+  return getStlCatalogItem(info.lastInsertRowid);
+}
+
 // ============================================================================
 // MULTIBOARD HOW-TO SYSTEM
 // ============================================================================
@@ -7853,6 +7886,7 @@ module.exports = {
   migrateMultiboardItems,
   backfillMultiboardHardware,
   listMultiboardParts,
+  insertRemixCatalogItem,
   // How-To System
   seedMultiboardHowtos,
   listHowtos,

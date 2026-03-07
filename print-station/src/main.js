@@ -6949,6 +6949,17 @@ Return ONLY valid JSON, nothing else:
     return Buffer.from(buf).toString('utf-8');
   });
 
+  // Mount Merger — merge mount STL onto source STL via OpenSCAD
+  ipcMain.handle('slicer:stl:addMount', async (_event, { sourceStlId, mountStlId, transform, mountType, face, gridSize }) => {
+    const resp = await slicerFetch('/api/slicer/stl/add-mount', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceStlId, mountStlId, transform, mountType, face, gridSize }),
+      timeout: 180000 // 3 minutes for OpenSCAD
+    });
+    return resp.json();
+  });
+
   // Slicing
   ipcMain.handle('slicer:slice', async (_event, options) => {
     const resp = await slicerFetch('/api/slicer/slice', {

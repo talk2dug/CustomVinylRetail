@@ -196,6 +196,17 @@ function slicerWireEvents() {
     });
   }
 
+  // Add Mount button — opens Mount Merger
+  const addMountBtn = document.getElementById('slicerAddMountBtn');
+  if (addMountBtn) {
+    addMountBtn.addEventListener('click', () => {
+      if (!slicerState.selectedItem) return;
+      if (typeof openMountMerger === 'function') {
+        openMountMerger(slicerState.selectedItem);
+      }
+    });
+  }
+
   // Slice
   if (sliceBtn) {
     sliceBtn.addEventListener('click', () => slicerSliceAndPrint());
