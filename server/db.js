@@ -3610,6 +3610,31 @@ function initCustomArtTables() {
   console.log('[Howtos] ✅ Tables initialized successfully');
   console.log('[PrintQuotes] ✅ Tables initialized successfully');
 
+  // Marketing team tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS marketing_journal (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+      type TEXT NOT NULL,
+      category TEXT,
+      action TEXT NOT NULL,
+      context TEXT,
+      outcome TEXT,
+      score REAL,
+      tags TEXT,
+      related_id TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS marketing_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      metric_type TEXT NOT NULL,
+      data TEXT NOT NULL,
+      UNIQUE(date, metric_type)
+    );
+  `);
+  console.log('[Marketing] ✅ Tables initialized successfully');
+
   // Auto-classify existing Multiboard items that lack metadata
   migrateMultiboardItems();
   // Absorb Snap_Tiles category into Multiboard

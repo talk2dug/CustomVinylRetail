@@ -57,6 +57,7 @@ const trendMonitor = require('./modules/trend-monitor');
 const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
 const aiSalesAgent = require('./modules/ai-sales-agent');
 const telegramPrinterBot = require('./modules/telegram-printer-bot');
+const marketingTeam = require('./modules/marketing-team');
 // Shared utilities
 const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
 const { sendJson, handleOptions } = require('./utils/http');
@@ -3551,6 +3552,100 @@ const requestHandler = async (req, res) => {
   if (parsedUrl.pathname.startsWith('/api/agent/')) {
     if (aiSalesAgent.handleAgentRoute(req, res, parsedUrl, sendJson, db)) return;
   }
+  // Marketing Team API
+  if (parsedUrl.pathname.startsWith('/api/marketing/')) {
+    const { parseBody: parseB } = require('./utils/http');
+
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/marketing/status') {
+      try {
+        const status = marketingTeam.getTeamStatus();
+        sendJson(res, 200, status);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/marketing/dashboard') {
+      try {
+        const data = marketingTeam.getDashboardData(db);
+        sendJson(res, 200, data);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/marketing/journal') {
+      try {
+        const limit = parseInt(parsedUrl.searchParams.get('limit')) || 100;
+        const type = parsedUrl.searchParams.get('type');
+        let rows;
+        if (type) {
+          rows = db.prepare('SELECT * FROM marketing_journal WHERE type = ? ORDER BY timestamp DESC LIMIT ?').all(type, limit);
+        } else {
+          rows = db.prepare('SELECT * FROM marketing_journal ORDER BY timestamp DESC LIMIT ?').all(limit);
+        }
+        sendJson(res, 200, rows);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/marketing/budget') {
+      try {
+        const budget = marketingTeam.getBudget ? marketingTeam.getBudget() : {};
+        sendJson(res, 200, budget);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/marketing/budget') {
+      try {
+        const body = await parseBody(req);
+        const result = marketingTeam.updateBudget(body);
+        sendJson(res, 200, result);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/marketing/meeting') {
+      try {
+        const body = await parseB(req);
+        const result = await marketingTeam.triggerMeeting(body.type || 'standup');
+        sendJson(res, 200, result);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/marketing/metrics') {
+      try {
+        const date = parsedUrl.searchParams.get('date');
+        const metricType = parsedUrl.searchParams.get('type');
+        let rows;
+        if (date && metricType) {
+          rows = db.prepare('SELECT * FROM marketing_metrics WHERE date = ? AND metric_type = ? ORDER BY date DESC').all(date, metricType);
+        } else if (date) {
+          rows = db.prepare('SELECT * FROM marketing_metrics WHERE date = ? ORDER BY date DESC').all(date);
+        } else if (metricType) {
+          rows = db.prepare('SELECT * FROM marketing_metrics WHERE metric_type = ? ORDER BY date DESC').all(metricType);
+        } else {
+          rows = db.prepare('SELECT * FROM marketing_metrics ORDER BY date DESC LIMIT 100').all();
+        }
+        sendJson(res, 200, rows);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+  }
 
   // Printer Notification API (from Electron print station)
   if (parsedUrl.pathname.startsWith('/api/notify/')) {
@@ -3564,6 +3659,16 @@ const requestHandler = async (req, res) => {
         sendJson(res, 200, { ok: true });
       } catch (err) {
         console.error('[Notify] Printer event error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/printer-status') {
+      try {
+        const cache = telegramPrinterBot.getCache();
+        sendJson(res, 200, cache);
+      } catch (err) {
         sendJson(res, 500, { error: err.message });
       }
       return;
@@ -11584,7 +11689,100 @@ Keep it concise and actionable.`;
     return;
   }
 
-  // OCR Text Extraction for Catalog Items (Server-Sent Events)
+  // ========================================================================
+  // CATALOG CLASSIFICATION — LLaVA Vision AI
+  // ========================================================================
+
+  // Trigger catalog classification (async job)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/catalog/classify') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        const category = payload.category || null;
+        const force = !!payload.force;
+        const limit = parseInt(payload.limit, 10) || 0;
+
+        // Build CLI args
+        const args = [path.join(APP_ROOT, 'scripts', 'classify-catalog.js')];
+        if (category) args.push('--category', category);
+        if (force) args.push('--force');
+        if (limit > 0) args.push('--limit', String(limit));
+
+        // Run async — don't wait for completion
+        const jobId = 'classify-' + Date.now();
+        const { spawn } = require('child_process');
+        const child = spawn('node', args, {
+          cwd: APP_ROOT,
+          stdio: 'ignore',
+          detached: true
+        });
+        child.unref();
+
+        sendJson(res, 200, {
+          success: true,
+          jobId,
+          message: 'Classification started',
+          args: args.slice(1)
+        });
+      } catch (err) {
+        console.error('Classify trigger error:', err);
+        sendJson(res, 500, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  // Get catalog classification stats
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/admin/catalog/classify-stats') {
+    try {
+      const catalogPath = path.join(WEB_DIR, 'catalog.json');
+      const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+
+      let total = 0;
+      let classified = 0;
+      const byCategory = [];
+
+      for (const cat of (catalog.categories || [])) {
+        const designs = cat.designs || [];
+        const catTotal = designs.length;
+        const catClassified = designs.filter(d => d.classifiedAt).length;
+        total += catTotal;
+        classified += catClassified;
+
+        if (catTotal > 0) {
+          byCategory.push({
+            slug: cat.slug,
+            name: cat.name,
+            total: catTotal,
+            classified: catClassified,
+            unclassified: catTotal - catClassified
+          });
+        }
+      }
+
+      // Sort by most unclassified first
+      byCategory.sort((a, b) => b.unclassified - a.unclassified);
+
+      sendJson(res, 200, {
+        total,
+        classified,
+        unclassified: total - classified,
+        percentComplete: total > 0 ? ((classified / total) * 100).toFixed(1) : '0.0',
+        byCategory
+      });
+    } catch (err) {
+      console.error('Classify stats error:', err);
+      sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+    // OCR Text Extraction for Catalog Items (Server-Sent Events)
   if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/catalog/ocr-extract') {
     if (!requireInternalKey(req, res)) return;
     collectRequestBody(req, async (error, body) => {
@@ -20701,13 +20899,16 @@ if (require.main === module) {
       console.error('[Server] Failed to start AI Sales Agent:', error.message);
     }
 
-    // Start Telegram printer bot polling for /printerstatus commands
+    // Initialize Marketing Team
     try {
-      telegramPrinterBot.startPolling();
-      console.log('[Server] Telegram printer bot polling started');
+      marketingTeam.init();
+      console.log('[Server] Marketing team initialized');
     } catch (error) {
-      console.error('[Server] Failed to start printer bot polling:', error.message);
+      console.error('[Server] Failed to initialize marketing team:', error.message);
     }
+
+    // Telegram printer bot polling disabled — conflicts with main Telegram bot service
+    // telegramPrinterBot.startPolling();
 
     // Start abandoned cart recovery processor (runs every 15 minutes)
     try {
