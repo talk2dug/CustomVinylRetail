@@ -1633,6 +1633,7 @@ function initNavDropdowns() {
   }
 }
 
+window.switchView = switchView;
 function switchView(viewId) {
   // Force close any blocking modals when switching views
   try { forceCloseAllBlockingModals(); } catch (_) {}

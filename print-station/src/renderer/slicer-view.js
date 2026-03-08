@@ -200,11 +200,19 @@ function slicerWireEvents() {
   const addMountBtn = document.getElementById('slicerAddMountBtn');
   if (addMountBtn) {
     addMountBtn.addEventListener('click', () => {
-      if (!slicerState.selectedItem) return;
+      console.log('[Slicer] Add Mount clicked, selectedItem:', slicerState.selectedItem);
+      if (!slicerState.selectedItem) {
+        console.warn('[Slicer] No item selected, cannot open mount merger');
+        return;
+      }
       if (typeof openMountMerger === 'function') {
         openMountMerger(slicerState.selectedItem);
+      } else {
+        console.error('[Slicer] openMountMerger is not defined — mount-merger-view.js may have failed to load');
       }
     });
+  } else {
+    console.warn('[Slicer] slicerAddMountBtn not found in DOM');
   }
 
   // Slice
