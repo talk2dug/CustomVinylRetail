@@ -3859,22 +3859,26 @@ async function slicerSlicePlate() {
   }
 
   // Expand items by quantity and collect per-instance transforms
-  // Each copy gets its own position from the build plate preview arrangement
+  // The build plate preview saves per-instance positions (plateInstanceTransforms)
+  // when the user clicks Continue — use those directly since they have correct positions.
   const expandedIds = [];
   const instanceTransforms = [];
   const pit = slicerState.plateInstanceTransforms; // per-instance positions from preview
-  let pitIdx = 0;
 
-  for (const item of slicerState.plateItems) {
-    const qty = item.qty || 1;
-    const baseT = slicerState.plateTransforms[item.id] || {};
-    for (let c = 0; c < qty; c++) {
-      expandedIds.push(item.id);
-      // Use per-instance transform from preview if available, otherwise fall back to per-stlId
-      if (pit && pitIdx < pit.length && pit[pitIdx].stlId === item.id) {
-        instanceTransforms.push(pit[pitIdx]);
-        pitIdx++;
-      } else {
+  if (pit && pit.length > 0) {
+    // Use preview positions directly — pit already has one entry per expanded instance
+    // with correct bed positions from the Three.js auto-arranger
+    for (const entry of pit) {
+      expandedIds.push(entry.stlId);
+      instanceTransforms.push(entry);
+    }
+  } else {
+    // No preview was run — expand manually without positions (server will auto-arrange)
+    for (const item of slicerState.plateItems) {
+      const qty = item.qty || 1;
+      const baseT = slicerState.plateTransforms[item.id] || {};
+      for (let c = 0; c < qty; c++) {
+        expandedIds.push(item.id);
         instanceTransforms.push({
           stlId: item.id,
           rx: baseT.rx || 0, ry: baseT.ry || 0, rz: baseT.rz || 0,

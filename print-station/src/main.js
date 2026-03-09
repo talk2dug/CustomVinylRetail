@@ -5249,6 +5249,11 @@ Return ONLY valid JSON, nothing else:
     }
   });
 
+  // Generate driver/co-driver name cut files
+  ipcMain.handle('vinyl-cutter:driver-names', (_event, data) =>
+    httpRequest('/api/vinyl-cutter/driver-names', { method: 'POST', body: data || {} })
+  );
+
   // ========================================
   // Studio3 Parser Handlers
   // ========================================

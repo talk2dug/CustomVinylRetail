@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="25.4mm" height="16.93mm" viewBox="0 0 25.4 16.93">
+  <!-- Outer rectangle -->
+  <rect x="0.25" y="0.25" width="24.9" height="16.43" fill="none" stroke="#000" stroke-width="0.5"/>
+  <!-- Two horizontal lines dividing into thirds -->
+  <line x1="0.25" y1="5.72" x2="25.15" y2="5.72" stroke="#000" stroke-width="0.5"/>
+  <line x1="0.25" y1="11.19" x2="25.15" y2="11.19" stroke="#000" stroke-width="0.5"/>
+</svg>

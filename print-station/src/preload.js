@@ -363,7 +363,8 @@ contextBridge.exposeInMainWorld('printStation', {
     generate: (data) => ipcRenderer.invoke('vinyl-cutter:generate', data || {}),
     list: () => ipcRenderer.invoke('vinyl-cutter:list'),
     delete: (batchName) => ipcRenderer.invoke('vinyl-cutter:delete', { batchName }),
-    sendToSilhouette: (payload) => ipcRenderer.invoke('vinyl-cutter:send-to-silhouette', payload || {})
+    sendToSilhouette: (payload) => ipcRenderer.invoke('vinyl-cutter:send-to-silhouette', payload || {}),
+    generateDriverNames: (data) => ipcRenderer.invoke('vinyl-cutter:driver-names', data || {})
   },
 
   // Silhouette Cameo API (local cutting via sendto_silhouette.py)

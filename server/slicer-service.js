@@ -398,7 +398,7 @@ function buildRotationMatrix(rx, ry, rz) {
  * @returns {string|null} - Path to baked temp STL, or null
  */
 function bakeTransformToSTL(stlPath, transform, stlId) {
-  if (!hasNonIdentityTransform(transform)) return null;
+  if (!transform._forceBake && !hasNonIdentityTransform(transform)) return null;
 
   const fileBuffer = fs.readFileSync(stlPath);
 
@@ -1305,7 +1305,7 @@ async function sliceSTL(stlPath, options, dbInstance) {
       });
       proc.stdout.on('data', (data) => { stdout += data.toString(); });
       proc.stderr.on('data', (data) => { stderr += data.toString(); });
-      proc.on('close', (code) => {
+      proc.on('close', (code, signal) => {
         if (code === 0) {
           resolve({ stdout, stderr });
         } else {
@@ -1313,7 +1313,9 @@ async function sliceSTL(stlPath, options, dbInstance) {
           if (output.includes('gcode path conflicts')) {
             reject(new Error(`Models overlap on the build plate — ${actualCopies > 1 ? `${actualCopies} copies won't fit. Try fewer copies or a smaller model.` : 'the model may be too large for the bed.'}`));
           } else {
-            reject(new Error(`PrusaSlicer exited with code ${code}: ${output}`));
+            const detail = signal ? `killed by signal ${signal}` : `exited with code ${code}`;
+            console.error(`[Slicer] PrusaSlicer ${detail}. stderr: ${output.slice(0, 500)}`);
+            reject(new Error(`PrusaSlicer ${detail}: ${output}`));
           }
         }
       });
@@ -1461,13 +1463,23 @@ async function slicePlate(stlPaths, options, dbInstance) {
     });
   }
 
-  // Bake per-instance transforms (rotation, scale, position) into temp STL files
+  // Bake per-instance transforms (rotation, scale, position) into temp STL files.
+  // When ANY item has a transform, bake ALL items — even identity transforms need
+  // centering/flooring so they merge correctly with positioned items.
   if (hasTransforms) {
     slicePaths = slicePaths.map((p, idx) => {
       const t = instanceTransforms[idx];
-      if (t && hasNonIdentityTransform(t)) {
+      if (t) {
+        // Force a position for items without explicit positions so they get
+        // centered/floored consistently with the rest of the merged plate
+        const tWithDefaults = {
+          rx: t.rx || 0, ry: t.ry || 0, rz: t.rz || 0,
+          scale: t.scale || 1,
+          posX: t.posX || 0, posZ: t.posZ || 0,
+          _forceBake: true  // signal to bakeTransformToSTL to always bake
+        };
         try {
-          const baked = bakeTransformToSTL(p, t, `inst${idx}`);
+          const baked = bakeTransformToSTL(p, tWithDefaults, `inst${idx}`);
           if (baked) {
             bakedTempFiles.push(baked);
             return baked;
@@ -1491,42 +1503,22 @@ async function slicePlate(stlPaths, options, dbInstance) {
     finalSlicePaths = [mergedTmpPath];
   }
 
-  // Compute center of the combined model bounding box for --center
-  // This tells PrusaSlicer exactly where to place the merged object on the bed
+  // Use bed center for --center so PrusaSlicer places the merged plate in the middle of the bed.
+  // The items are already positioned relative to each other in the merged STL,
+  // so centering the group on the bed is all that's needed.
   const [bedX, bedY] = (printerInfo.build || '220x220x250').split('x').map(Number);
-  let centerArg = [];
-  if (hasTransforms && mergedTmpPath) {
-    // Read the merged STL to find its XY center
-    try {
-      const mergedBuf = fs.readFileSync(mergedTmpPath);
-      const triCount = mergedBuf.readUInt32LE(80);
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (let i = 0; i < triCount; i++) {
-        const base = 84 + i * 50 + 12; // skip normal (12 bytes)
-        for (let v = 0; v < 3; v++) {
-          const off = base + v * 12;
-          const x = mergedBuf.readFloatLE(off);
-          const y = mergedBuf.readFloatLE(off + 4);
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
-      const cx = (minX + maxX) / 2;
-      const cy = (minY + maxY) / 2;
-      centerArg = ['--center', `${cx.toFixed(1)},${cy.toFixed(1)}`];
-      console.log(`[Slicer] Merged model center: ${cx.toFixed(1)},${cy.toFixed(1)} (bounds X ${minX.toFixed(1)}-${maxX.toFixed(1)}, Y ${minY.toFixed(1)}-${maxY.toFixed(1)})`);
-    } catch (err) {
-      console.warn(`[Slicer] Could not compute merged center, using bed center: ${err.message}`);
-      centerArg = ['--center', `${bedX / 2},${bedY / 2}`];
-    }
+  const centerArg = hasTransforms
+    ? ['--center', `${(bedX / 2).toFixed(1)},${(bedY / 2).toFixed(1)}`]
+    : [];  // No center arg when auto-arranging
+  if (hasTransforms) {
+    console.log(`[Slicer] Using bed center: ${bedX / 2},${bedY / 2} (bed: ${bedX}x${bedY})`);
+  } else {
+    console.log(`[Slicer] No transforms — PrusaSlicer will auto-arrange ${slicePaths.length} items`);
   }
 
   const cliArgs = [
     '--export-gcode',
-    '--dont-arrange',
-    '--ensure-on-bed',
+    ...(hasTransforms ? ['--dont-arrange', '--ensure-on-bed'] : []),
     ...centerArg,
     '--load', printProfile,
     '--load', filamentProfile,
@@ -1548,25 +1540,53 @@ async function slicePlate(stlPaths, options, dbInstance) {
   }
   await acquireSliceLock();
 
+  // Helper to run PrusaSlicer with given args
+  const runSlicer = (args) => new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    const proc = spawn(SLICER_PATH, args, {
+      timeout: 600000, // 10 min for plates
+      env: { ...process.env, DISPLAY: '' }
+    });
+    proc.stdout.on('data', (data) => { stdout += data.toString(); });
+    proc.stderr.on('data', (data) => { stderr += data.toString(); });
+    proc.on('close', (code, signal) => {
+      if (code === 0) resolve({ stdout, stderr });
+      else {
+        const detail = signal ? `killed by signal ${signal}` : `exited with code ${code}`;
+        console.error(`[Slicer] PrusaSlicer ${detail}. stderr: ${stderr.slice(0, 500)}`);
+        reject(new Error(`PrusaSlicer ${detail}: ${stderr || stdout}`));
+      }
+    });
+    proc.on('error', (err) => {
+      reject(new Error(`Failed to spawn PrusaSlicer: ${err.message}`));
+    });
+  });
+
   let result;
   try {
-    result = await new Promise((resolve, reject) => {
-      let stdout = '';
-      let stderr = '';
-      const proc = spawn(SLICER_PATH, cliArgs, {
-        timeout: 600000, // 10 min for plates
-        env: { ...process.env, DISPLAY: '' }
-      });
-      proc.stdout.on('data', (data) => { stdout += data.toString(); });
-      proc.stderr.on('data', (data) => { stderr += data.toString(); });
-      proc.on('close', (code) => {
-        if (code === 0) resolve({ stdout, stderr });
-        else reject(new Error(`PrusaSlicer exited with code ${code}: ${stderr || stdout}`));
-      });
-      proc.on('error', (err) => {
-        reject(new Error(`Failed to spawn PrusaSlicer: ${err.message}`));
-      });
-    });
+    try {
+      result = await runSlicer(cliArgs);
+    } catch (mergedErr) {
+      // If the merged/positioned approach crashed, fall back to separate files + auto-arrange
+      if (mergedTmpPath && slicePaths.length > 1) {
+        console.warn(`[Slicer] Merged plate slice crashed (${mergedErr.message}). Retrying with auto-arrange...`);
+        const fallbackArgs = [
+          '--threads', '1',  // Single-threaded for stability
+          '--export-gcode',
+          '--load', printProfile,
+          '--load', filamentProfile,
+          '--load', printerProfile,
+          ...mapOptionsToSlicerArgs(options),
+          '--output', gcodeAbsPath,
+          ...slicePaths  // Pass individual STLs, let PrusaSlicer arrange
+        ];
+        console.log(`[Slicer] Fallback CLI: ${SLICER_PATH} ${fallbackArgs.join(' ')}`);
+        result = await runSlicer(fallbackArgs);
+      } else {
+        throw mergedErr;
+      }
+    }
   } finally {
     // Clean up temp files before releasing lock — avoids race where a queued
     // request with the same stl_id can have its baked file deleted after it's written

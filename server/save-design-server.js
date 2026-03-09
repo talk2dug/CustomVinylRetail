@@ -7977,6 +7977,16 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // Generate driver/co-driver name cut files
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/driver-names') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylDriverNames(req, res).catch(err => {
+      console.error('[Vinyl Driver Names Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
   // ===== STUDIO3 CATALOG API =====
   // Store parsed Studio3 file data for catalog/training purposes
   if (req.method === 'POST' && parsedUrl.pathname === '/api/studio3/catalog') {
@@ -23988,6 +23998,171 @@ async function handleVinylSendToSilhouette(req, res) {
 
   } catch (err) {
     console.error('[Vinyl Send to Silhouette Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+// ============================================================================
+// DRIVER / CO-DRIVER NAME CUT FILE GENERATOR
+// ============================================================================
+
+let _cachedFont = null;
+
+async function loadCutFont() {
+  if (_cachedFont) return _cachedFont;
+  const opentype = require('opentype.js');
+  const fontPath = path.join(__dirname, 'data', 'fonts', 'liberation-sans-bold.ttf');
+  _cachedFont = await opentype.load(fontPath);
+  return _cachedFont;
+}
+
+async function handleVinylDriverNames(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { driverName, coDriverName, country, racingBody } = body;
+
+    if (!driverName || !driverName.trim()) {
+      return sendJson(res, 400, { success: false, error: 'Driver name is required' });
+    }
+
+    // Regulation heights in inches
+    const NAME_HEIGHT_INCHES = {
+      'ARA':        2.5,
+      'SCCA':       2,
+      'NASA_E30':   3,
+      'NASA_S3':    3,
+      'RallyCross': 2.5,
+      'AutoCross':  2
+    };
+
+    const heightInches = NAME_HEIGHT_INCHES[racingBody] || 2.5;
+    const heightMm = heightInches * 25.4;
+
+    console.log(`[Driver Names] Generating: "${driverName}" ${coDriverName ? '+ "' + coDriverName + '"' : ''}, ${racingBody}, ${country}, ${heightInches}" height`);
+
+    const font = await loadCutFont();
+
+    // Render at reference font size, then scale to target height
+    const refSize = 72; // points
+
+    // Generate driver name path
+    const driverText = driverName.trim().toUpperCase();
+    const driverPath = font.getPath(driverText, 0, 0, refSize);
+    const driverBBox = driverPath.getBoundingBox();
+    const driverRefH = driverBBox.y2 - driverBBox.y1;
+    const driverRefW = driverBBox.x2 - driverBBox.x1;
+
+    // Scale factor: target height in mm / reference height in points * points-to-mm
+    // 1 point = 0.3528mm
+    const ptToMm = 0.3528;
+    const driverScale = heightMm / (driverRefH * ptToMm);
+
+    const driverWidthMm = driverRefW * ptToMm * driverScale;
+    const driverHeightMm = heightMm;
+
+    // Load country flag SVG if available
+    let flagSvgContent = '';
+    let flagWidthMm = 0;
+    const flagGap = 3; // mm gap between flag and name
+    const flagPath = path.join(__dirname, 'data', 'flags', `${(country || 'US').toUpperCase()}.svg`);
+    try {
+      await fs.promises.access(flagPath);
+      const flagRaw = await fs.promises.readFile(flagPath, 'utf8');
+      // Extract inner content (everything inside the root <svg>)
+      const innerMatch = flagRaw.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+      if (innerMatch) {
+        // Scale flag to match name height (flag is ~16.93mm tall by default)
+        const flagScale = heightMm / 16.93;
+        flagWidthMm = 25.4 * flagScale;
+        flagSvgContent = `<g transform="translate(0,0) scale(${flagScale.toFixed(4)})">${innerMatch[1]}</g>`;
+      }
+    } catch (_) {
+      // No flag file — skip it
+      console.log(`[Driver Names] No flag SVG for country: ${country}`);
+    }
+
+    const nameOffsetX = flagWidthMm > 0 ? flagWidthMm + flagGap : 0;
+
+    // Build driver name SVG group
+    // opentype renders with baseline at y=0, so text goes upward (negative y).
+    // We need to translate so the top of the bbox is at y=0.
+    const driverOffsetY = -driverBBox.y1 * ptToMm * driverScale;
+    const driverPathData = driverPath.toPathData(2);
+    const driverSvg = `<g id="driver-name" transform="translate(${nameOffsetX.toFixed(2)}, ${driverOffsetY.toFixed(2)}) scale(${(ptToMm * driverScale).toFixed(6)})">
+    <path d="${driverPathData}" fill="none" stroke="#000" stroke-width="${(0.5 / (ptToMm * driverScale)).toFixed(2)}"/>
+  </g>`;
+
+    // Co-driver name (optional)
+    let coDriverSvg = '';
+    let coDriverHeightMm = 0;
+    const nameGapMm = 5;
+    let coFlagSvg = '';
+
+    if (coDriverName && coDriverName.trim()) {
+      const coText = coDriverName.trim().toUpperCase();
+      const coPath = font.getPath(coText, 0, 0, refSize);
+      const coBBox = coPath.getBoundingBox();
+      const coRefH = coBBox.y2 - coBBox.y1;
+      const coScale = heightMm / (coRefH * ptToMm);
+      const coOffsetY = -coBBox.y1 * ptToMm * coScale;
+      const coPathData = coPath.toPathData(2);
+      coDriverHeightMm = heightMm;
+
+      const coYPosition = driverHeightMm + nameGapMm;
+
+      // Co-driver flag (same country for now, could be different)
+      if (flagSvgContent) {
+        const flagScale = heightMm / 16.93;
+        coFlagSvg = `<g transform="translate(0,${coYPosition.toFixed(2)}) scale(${flagScale.toFixed(4)})">${flagSvgContent.match(/<g[^>]*>([\s\S]*)<\/g>/)?.[1] || ''}</g>`;
+      }
+
+      coDriverSvg = `<g id="codriver-name" transform="translate(${nameOffsetX.toFixed(2)}, ${(coYPosition + coOffsetY).toFixed(2)}) scale(${(ptToMm * coScale).toFixed(6)})">
+    <path d="${coPathData}" fill="none" stroke="#000" stroke-width="${(0.5 / (ptToMm * coScale)).toFixed(2)}"/>
+  </g>`;
+    }
+
+    // Total SVG dimensions
+    const totalWidth = nameOffsetX + Math.max(driverWidthMm, driverWidthMm) + 5; // 5mm margin
+    const totalHeight = driverHeightMm + (coDriverHeightMm > 0 ? nameGapMm + coDriverHeightMm : 0) + 5;
+
+    const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="${totalWidth.toFixed(2)}mm" height="${totalHeight.toFixed(2)}mm"
+     viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}">
+  <title>Driver Names - ${racingBody} - ${driverText}</title>
+  <desc>Racing body: ${racingBody}, Height: ${heightInches}", Country: ${country || 'US'}</desc>
+  ${flagSvgContent ? `<!-- Driver flag -->\n  ${flagSvgContent}` : ''}
+  ${driverSvg}
+  ${coFlagSvg ? `<!-- Co-driver flag -->\n  ${coFlagSvg}` : ''}
+  ${coDriverSvg}
+</svg>`;
+
+    // Write to output directory
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const batchName = `driver-names-${timestamp}`;
+    const batchDir = path.join(VINYL_OUTPUT_DIR, batchName);
+    await fs.promises.mkdir(batchDir, { recursive: true });
+
+    const fileName = 'names.svg';
+    const filePath = path.join(batchDir, fileName);
+    await fs.promises.writeFile(filePath, svgContent, 'utf8');
+
+    const downloadUrl = `/library/vinyl-cuts/${batchName}/${fileName}`;
+
+    console.log(`[Driver Names] Generated: ${filePath} (${totalWidth.toFixed(1)}mm x ${totalHeight.toFixed(1)}mm)`);
+
+    sendJson(res, 200, {
+      success: true,
+      batchName,
+      downloadUrl,
+      svgContent,
+      heightInches,
+      heightMm,
+      files: [{ name: fileName, url: downloadUrl }]
+    });
+
+  } catch (err) {
+    console.error('[Driver Names Error]', err);
     sendJson(res, 500, { success: false, error: err.message });
   }
 }
