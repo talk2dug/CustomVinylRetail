@@ -20,6 +20,56 @@ if (fs.existsSync(ENV_PATH)) {
   require('dotenv').config({ path: ENV_PATH });
 }
 
+// =============================================================================
+// CRASH HANDLERS — alert via Telegram on uncaught errors
+// =============================================================================
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err.message, err.stack);
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (token && chatId) {
+      const https = require('https');
+      const body = JSON.stringify({
+        chat_id: chatId,
+        text: `🚨 SERVER CRASH — Uncaught Exception\n\n${err.message}\n\n${(err.stack || '').slice(0, 500)}`,
+        disable_web_page_preview: true
+      });
+      const req = https.request(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+      });
+      req.write(body);
+      req.end();
+    }
+  } catch (_) { /* best effort */ }
+  // Let PM2 restart us
+  setTimeout(() => process.exit(1), 2000);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[ERROR] Unhandled promise rejection:', reason);
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (token && chatId) {
+      const https = require('https');
+      const msg = reason instanceof Error ? `${reason.message}\n${(reason.stack || '').slice(0, 300)}` : String(reason).slice(0, 500);
+      const body = JSON.stringify({
+        chat_id: chatId,
+        text: `⚠️ Unhandled Promise Rejection\n\n${msg}`,
+        disable_web_page_preview: true
+      });
+      const req = https.request(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+      });
+      req.write(body);
+      req.end();
+    }
+  } catch (_) { /* best effort */ }
+});
+
 const db = require('./db');
 const ollamaClient = require('./lib/ollama-client');
 const { sendAccountEmail } = require('./mailer');
@@ -58,6 +108,12 @@ const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
 const aiSalesAgent = require('./modules/ai-sales-agent');
 const telegramPrinterBot = require('./modules/telegram-printer-bot');
 const marketingTeam = require('./modules/marketing-team');
+const shopifyOrderSync = require('./modules/shopify-order-sync');
+const salesTeam = require('./modules/sales-team');
+const fbMarketplaceLister = require('./modules/fb-marketplace-lister');
+const utmAttribution = require('./modules/utm-attribution');
+const fbEngagementBot = require('./modules/fb-engagement-bot');
+const etsyListingGenerator = require('./modules/etsy-listing-generator');
 // Shared utilities
 const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
 const { sendJson, handleOptions } = require('./utils/http');
@@ -3531,9 +3587,80 @@ const requestHandler = async (req, res) => {
   if (parsedUrl.pathname.startsWith('/api/cart-recovery/')) {
     if (cartRecovery.handleCartRecoveryRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
   }
+  // Storefront cart tracking (public endpoint for theme JS snippet)
+  // Accepts cart data from the Shopify storefront when checkout begins
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/storefront/track-cart') {
+    // Add CORS headers for cross-origin storefront requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const payload = JSON.parse(body || '{}');
+        if (payload && (payload.email || payload.customer?.email)) {
+          cartRecovery.trackCart(payload);
+          console.log('[Storefront] Cart tracked for recovery:', payload.token || payload.id || 'unknown');
+          sendJson(res, 200, { success: true });
+        } else {
+          sendJson(res, 200, { success: true, note: 'No email provided, cart not tracked' });
+        }
+      } catch (e) {
+        console.error('[Storefront] Cart tracking error:', e.message);
+        sendJson(res, 400, { error: 'Invalid request' });
+      }
+    });
+    return;
+  }
+  // CORS preflight for storefront track-cart
+  if (req.method === 'OPTIONS' && parsedUrl.pathname === '/api/storefront/track-cart') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   // Listing Optimizer API
   if (parsedUrl.pathname.startsWith('/api/listings/')) {
     if (listingOptimizer.handleListingRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data), db)) return;
+  }
+  // Health endpoint — returns status of all module intervals
+  if (parsedUrl.pathname === '/api/health' && req.method === 'GET') {
+    const health = {
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      memory: process.memoryUsage(),
+      modules: {
+        aiSalesAgent: { running: aiSalesAgent.isRunning() },
+        pipelineMonitor: { running: true },
+        marketingTeam: { status: 'running' },
+        salesTeam: { status: 'initializing' }
+      }
+    };
+    try {
+      const teamStatus = marketingTeam.getTeamStatus();
+      health.modules.marketingTeam = {
+        status: teamStatus.orchestrator?.status || 'unknown',
+        lastStandup: teamStatus.orchestrator?.lastStandup || null,
+        lastAnalysis: teamStatus.orchestrator?.lastAnalysis || null
+      };
+    } catch (e) { /* ok */ }
+    try {
+      health.modules.salesTeam = salesTeam.getStatus();
+    } catch (e) { /* ok */ }
+    try {
+      health.modules.fbMarketplace = fbMarketplaceLister.getStatus();
+    } catch (e) { /* ok */ }
+    try {
+      health.modules.utmAttribution = utmAttribution.getStatus();
+    } catch (e) { /* ok */ }
+    try {
+      health.modules.fbEngagement = fbEngagementBot.getStatus();
+    } catch (e) { /* ok */ }
+    sendJson(res, 200, health);
+    return;
   }
   // Sales Analytics API
   if (parsedUrl.pathname.startsWith('/api/analytics/')) {
@@ -3645,6 +3772,31 @@ const requestHandler = async (req, res) => {
       }
       return;
     }
+  }
+
+  // Sales Team API
+  if (parsedUrl.pathname.startsWith('/api/sales-team/')) {
+    if (salesTeam.handleRoute(parsedUrl.pathname, req, res, db.getDb())) return;
+  }
+
+  // FB Marketplace Lister API
+  if (parsedUrl.pathname.startsWith('/api/fb-marketplace/')) {
+    if (fbMarketplaceLister.handleRoute(parsedUrl.pathname, req, res, db.getDb())) return;
+  }
+
+  // UTM Attribution API
+  if (parsedUrl.pathname.startsWith('/api/attribution/')) {
+    if (utmAttribution.handleRoute(parsedUrl.pathname, req, res, db.getDb())) return;
+  }
+
+  // FB Engagement Bot API
+  if (parsedUrl.pathname.startsWith('/api/fb-engagement/')) {
+    if (fbEngagementBot.handleRoute(parsedUrl.pathname, req, res, db.getDb())) return;
+  }
+
+  // Etsy Listing Generator API
+  if (parsedUrl.pathname.startsWith('/api/etsy-listings')) {
+    if (etsyListingGenerator.handleRoute(parsedUrl.pathname, req, res)) return;
   }
 
   // Printer Notification API (from Electron print station)
@@ -7601,10 +7753,63 @@ Keep it concise and actionable.`;
           id: payload && (payload.id || null)
         };
         appendShopifyCartEvent({ meta, payload });
+
+        // Feed cart data into cart recovery system for abandonment tracking
+        try {
+          if (payload && (payload.email || payload.customer?.email)) {
+            cartRecovery.trackCart(payload);
+            console.log('[Webhook] Cart tracked for recovery:', meta.token || meta.id);
+          }
+        } catch (cartErr) {
+          console.error('[Webhook] Cart recovery tracking error:', cartErr.message);
+        }
+
         sendJson(res, 200, { success: true });
       } catch (e) {
         console.error('Shopify carts/create webhook error:', e);
         sendJson(res, 500, { error: e?.message || 'Unable to process cart webhook.' });
+      }
+    });
+    return;
+  }
+
+  // Shopify webhook: checkouts/create (abandoned checkout detection)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/webhooks/shopify/checkouts/create') {
+    const sharedSecret =
+      process.env.SHOPIFY_WEBHOOK_SECRET ||
+      process.env.SHOPIFY_WEBHOOK_SHARED_SECRET ||
+      '';
+    const hmacHeader = req.headers['x-shopify-hmac-sha256'] || '';
+    const topicHeader = req.headers['x-shopify-topic'] || '';
+    const shopHeader = req.headers['x-shopify-shop-domain'] || '';
+    collectRequestBody(req, async (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        if (sharedSecret && hmacHeader) {
+          try {
+            const digest = crypto.createHmac('sha256', sharedSecret).update(body || '', 'utf8').digest('base64');
+            if (digest !== String(hmacHeader).trim()) { sendJson(res, 401, { error: 'Invalid webhook signature.' }); return; }
+          } catch (_) { sendJson(res, 401, { error: 'Invalid webhook signature.' }); return; }
+        }
+        let payload = {};
+        try { payload = JSON.parse(body || '{}'); } catch (_) {}
+
+        // Track checkout for cart recovery — this is the primary abandoned cart data source
+        try {
+          if (payload && (payload.email || payload.customer?.email)) {
+            cartRecovery.trackCart(payload);
+            console.log('[Webhook] Checkout tracked for recovery:', payload.token || payload.id);
+          } else {
+            console.log('[Webhook] Checkout received without email, skipping recovery tracking');
+          }
+        } catch (cartErr) {
+          console.error('[Webhook] Checkout recovery tracking error:', cartErr.message);
+        }
+
+        sendJson(res, 200, { success: true });
+      } catch (e) {
+        console.error('Shopify checkouts/create webhook error:', e);
+        sendJson(res, 500, { error: e?.message || 'Unable to process checkout webhook.' });
       }
     });
     return;
@@ -7972,6 +8177,16 @@ Keep it concise and actionable.`;
     if (!requireInternalKey(req, res)) return;
     handleVinylSendToSilhouette(req, res).catch(err => {
       console.error('[Vinyl Send to Silhouette Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Generate driver/co-driver name cut files
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/driver-names') {
+    if (!requireInternalKey(req, res)) return;
+    handleVinylDriverNames(req, res).catch(err => {
+      console.error('[Vinyl Driver Names Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
     });
     return;
@@ -13728,11 +13943,17 @@ Keep it concise and actionable.`;
       const { schedulePostsForCampaign } = require('./lib/facebook-post-scheduler');
 
       // schedulePostsForCampaign is now async (for AI generation)
+      // Tag collection URL with UTM params if provided
+      const utmTagUrl = require('./modules/utm-attribution').tagUrl;
+      const taggedCollectionUrl = collectionUrl ? utmTagUrl(collectionUrl, {
+        source: 'facebook', medium: 'social', campaign: campaignSlug
+      }) : undefined;
+
       const result = await schedulePostsForCampaign(campaign, db, {
         templateId,
         postText,
         postHashtags,
-        collectionUrl,
+        collectionUrl: taggedCollectionUrl,
         startDate,
         intervalHours: intervalHours || 24,
         excludeProductUids: excludeProductUids || [],
@@ -20907,6 +21128,54 @@ if (require.main === module) {
       console.error('[Server] Failed to initialize marketing team:', error.message);
     }
 
+    // Initialize Sales Team
+    try {
+      salesTeam.init(db.getDb());
+      console.log('[Server] Sales team initialized');
+    } catch (error) {
+      console.error('[Server] Failed to initialize sales team:', error.message);
+    }
+
+    // Initialize FB Marketplace Lister
+    try {
+      fbMarketplaceLister.init(db.getDb());
+      console.log('[Server] FB Marketplace lister initialized');
+    } catch (error) {
+      console.error('[Server] Failed to initialize FB Marketplace lister:', error.message);
+    }
+
+    // Initialize UTM Attribution
+    try {
+      utmAttribution.init(db.getDb());
+      console.log('[Server] UTM attribution initialized');
+    } catch (error) {
+      console.error('[Server] Failed to initialize UTM attribution:', error.message);
+    }
+
+    // Initialize FB Engagement Bot
+    try {
+      fbEngagementBot.init(db.getDb());
+      console.log('[Server] FB Engagement bot initialized');
+    } catch (error) {
+      console.error('[Server] Failed to initialize FB Engagement bot:', error.message);
+    }
+
+    // Initialize Etsy Listing Generator
+    try {
+      etsyListingGenerator.init(db.getDb());
+      console.log('[Server] Etsy listing generator initialized');
+    } catch (error) {
+      console.error('[Server] Failed to initialize Etsy listing generator:', error.message);
+    }
+
+    // Start Shopify order sync daemon (runs every 30 minutes)
+    try {
+      shopifyOrderSync.startSync(db.getDb());
+      console.log('[Server] Shopify order sync started');
+    } catch (error) {
+      console.error('[Server] Failed to start Shopify order sync:', error.message);
+    }
+
     // Telegram printer bot polling disabled — conflicts with main Telegram bot service
     // telegramPrinterBot.startPolling();
 
@@ -23988,6 +24257,171 @@ async function handleVinylSendToSilhouette(req, res) {
 
   } catch (err) {
     console.error('[Vinyl Send to Silhouette Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+// ============================================================================
+// DRIVER / CO-DRIVER NAME CUT FILE GENERATOR
+// ============================================================================
+
+let _cachedFont = null;
+
+async function loadCutFont() {
+  if (_cachedFont) return _cachedFont;
+  const opentype = require('opentype.js');
+  const fontPath = path.join(__dirname, 'data', 'fonts', 'liberation-sans-bold.ttf');
+  _cachedFont = await opentype.load(fontPath);
+  return _cachedFont;
+}
+
+async function handleVinylDriverNames(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { driverName, coDriverName, country, racingBody } = body;
+
+    if (!driverName || !driverName.trim()) {
+      return sendJson(res, 400, { success: false, error: 'Driver name is required' });
+    }
+
+    // Regulation heights in inches
+    const NAME_HEIGHT_INCHES = {
+      'ARA':        2.5,
+      'SCCA':       2,
+      'NASA_E30':   3,
+      'NASA_S3':    3,
+      'RallyCross': 2.5,
+      'AutoCross':  2
+    };
+
+    const heightInches = NAME_HEIGHT_INCHES[racingBody] || 2.5;
+    const heightMm = heightInches * 25.4;
+
+    console.log(`[Driver Names] Generating: "${driverName}" ${coDriverName ? '+ "' + coDriverName + '"' : ''}, ${racingBody}, ${country}, ${heightInches}" height`);
+
+    const font = await loadCutFont();
+
+    // Render at reference font size, then scale to target height
+    const refSize = 72; // points
+
+    // Generate driver name path
+    const driverText = driverName.trim().toUpperCase();
+    const driverPath = font.getPath(driverText, 0, 0, refSize);
+    const driverBBox = driverPath.getBoundingBox();
+    const driverRefH = driverBBox.y2 - driverBBox.y1;
+    const driverRefW = driverBBox.x2 - driverBBox.x1;
+
+    // Scale factor: target height in mm / reference height in points * points-to-mm
+    // 1 point = 0.3528mm
+    const ptToMm = 0.3528;
+    const driverScale = heightMm / (driverRefH * ptToMm);
+
+    const driverWidthMm = driverRefW * ptToMm * driverScale;
+    const driverHeightMm = heightMm;
+
+    // Load country flag SVG if available
+    let flagSvgContent = '';
+    let flagWidthMm = 0;
+    const flagGap = 3; // mm gap between flag and name
+    const flagPath = path.join(__dirname, 'data', 'flags', `${(country || 'US').toUpperCase()}.svg`);
+    try {
+      await fs.promises.access(flagPath);
+      const flagRaw = await fs.promises.readFile(flagPath, 'utf8');
+      // Extract inner content (everything inside the root <svg>)
+      const innerMatch = flagRaw.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+      if (innerMatch) {
+        // Scale flag to match name height (flag is ~16.93mm tall by default)
+        const flagScale = heightMm / 16.93;
+        flagWidthMm = 25.4 * flagScale;
+        flagSvgContent = `<g transform="translate(0,0) scale(${flagScale.toFixed(4)})">${innerMatch[1]}</g>`;
+      }
+    } catch (_) {
+      // No flag file — skip it
+      console.log(`[Driver Names] No flag SVG for country: ${country}`);
+    }
+
+    const nameOffsetX = flagWidthMm > 0 ? flagWidthMm + flagGap : 0;
+
+    // Build driver name SVG group
+    // opentype renders with baseline at y=0, so text goes upward (negative y).
+    // We need to translate so the top of the bbox is at y=0.
+    const driverOffsetY = -driverBBox.y1 * ptToMm * driverScale;
+    const driverPathData = driverPath.toPathData(2);
+    const driverSvg = `<g id="driver-name" transform="translate(${nameOffsetX.toFixed(2)}, ${driverOffsetY.toFixed(2)}) scale(${(ptToMm * driverScale).toFixed(6)})">
+    <path d="${driverPathData}" fill="none" stroke="#000" stroke-width="${(0.5 / (ptToMm * driverScale)).toFixed(2)}"/>
+  </g>`;
+
+    // Co-driver name (optional)
+    let coDriverSvg = '';
+    let coDriverHeightMm = 0;
+    const nameGapMm = 5;
+    let coFlagSvg = '';
+
+    if (coDriverName && coDriverName.trim()) {
+      const coText = coDriverName.trim().toUpperCase();
+      const coPath = font.getPath(coText, 0, 0, refSize);
+      const coBBox = coPath.getBoundingBox();
+      const coRefH = coBBox.y2 - coBBox.y1;
+      const coScale = heightMm / (coRefH * ptToMm);
+      const coOffsetY = -coBBox.y1 * ptToMm * coScale;
+      const coPathData = coPath.toPathData(2);
+      coDriverHeightMm = heightMm;
+
+      const coYPosition = driverHeightMm + nameGapMm;
+
+      // Co-driver flag (same country for now, could be different)
+      if (flagSvgContent) {
+        const flagScale = heightMm / 16.93;
+        coFlagSvg = `<g transform="translate(0,${coYPosition.toFixed(2)}) scale(${flagScale.toFixed(4)})">${flagSvgContent.match(/<g[^>]*>([\s\S]*)<\/g>/)?.[1] || ''}</g>`;
+      }
+
+      coDriverSvg = `<g id="codriver-name" transform="translate(${nameOffsetX.toFixed(2)}, ${(coYPosition + coOffsetY).toFixed(2)}) scale(${(ptToMm * coScale).toFixed(6)})">
+    <path d="${coPathData}" fill="none" stroke="#000" stroke-width="${(0.5 / (ptToMm * coScale)).toFixed(2)}"/>
+  </g>`;
+    }
+
+    // Total SVG dimensions
+    const totalWidth = nameOffsetX + Math.max(driverWidthMm, driverWidthMm) + 5; // 5mm margin
+    const totalHeight = driverHeightMm + (coDriverHeightMm > 0 ? nameGapMm + coDriverHeightMm : 0) + 5;
+
+    const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="${totalWidth.toFixed(2)}mm" height="${totalHeight.toFixed(2)}mm"
+     viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}">
+  <title>Driver Names - ${racingBody} - ${driverText}</title>
+  <desc>Racing body: ${racingBody}, Height: ${heightInches}", Country: ${country || 'US'}</desc>
+  ${flagSvgContent ? `<!-- Driver flag -->\n  ${flagSvgContent}` : ''}
+  ${driverSvg}
+  ${coFlagSvg ? `<!-- Co-driver flag -->\n  ${coFlagSvg}` : ''}
+  ${coDriverSvg}
+</svg>`;
+
+    // Write to output directory
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const batchName = `driver-names-${timestamp}`;
+    const batchDir = path.join(VINYL_OUTPUT_DIR, batchName);
+    await fs.promises.mkdir(batchDir, { recursive: true });
+
+    const fileName = 'names.svg';
+    const filePath = path.join(batchDir, fileName);
+    await fs.promises.writeFile(filePath, svgContent, 'utf8');
+
+    const downloadUrl = `/library/vinyl-cuts/${batchName}/${fileName}`;
+
+    console.log(`[Driver Names] Generated: ${filePath} (${totalWidth.toFixed(1)}mm x ${totalHeight.toFixed(1)}mm)`);
+
+    sendJson(res, 200, {
+      success: true,
+      batchName,
+      downloadUrl,
+      svgContent,
+      heightInches,
+      heightMm,
+      files: [{ name: fileName, url: downloadUrl }]
+    });
+
+  } catch (err) {
+    console.error('[Driver Names Error]', err);
     sendJson(res, 500, { success: false, error: err.message });
   }
 }

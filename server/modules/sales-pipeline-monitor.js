@@ -613,6 +613,22 @@ async function evaluateRules(healthResults, metrics) {
           message: `${pendingDesigns.length} approved trend designs ready to fast-track to Shopify + social`
         });
       }
+
+      // Rule: Stuck approved designs — approved but not listed after 24 hours
+      const stuckDesigns = (trendData.designs || []).filter(d => {
+        if (d.status !== 'approved' || d.shopifyProductId) return false;
+        const approvedAt = d.approvedAt ? new Date(d.approvedAt).getTime() : 0;
+        return approvedAt > 0 && (Date.now() - approvedAt) > 24 * 60 * 60 * 1000;
+      });
+      if (stuckDesigns.length > 0) {
+        actions.push({
+          trigger: 'stuck_approved_designs',
+          type: 'send_alert',
+          severity: 'warning',
+          details: { count: stuckDesigns.length, designs: stuckDesigns.map(d => ({ id: d.id, phrase: d.phrase, approvedAt: d.approvedAt })).slice(0, 5) },
+          message: `${stuckDesigns.length} design(s) approved 24h+ ago but never listed to Shopify — possible listing failure`
+        });
+      }
     } catch (e) {
       // trend-monitor not available, skip
     }
@@ -1456,6 +1472,20 @@ async function runCycle() {
   logEntry('health', 'cycle_complete', 'info',
     `Cycle #${_cycleNumber} complete in ${cycleDuration}ms. ${actions.length} actions triggered.`,
     { durationMs: cycleDuration, actions: actions.length });
+
+  // Write heartbeat file — external cron can alert if stale
+  try {
+    const heartbeatPath = path.join(APP_ROOT, 'data', 'pipeline-heartbeat.json');
+    const tmp = heartbeatPath + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({
+      lastCycle: _lastCycleAt,
+      cycleNumber: _cycleNumber,
+      durationMs: cycleDuration,
+      actionsTriggered: actions.length,
+      healthy: healthResults.allHealthy
+    }));
+    fs.renameSync(tmp, heartbeatPath);
+  } catch (e) { /* best effort */ }
 
   console.log(`${LOG_PREFIX} === Cycle #${_cycleNumber} complete (${cycleDuration}ms, ${actions.length} actions) ===`);
 

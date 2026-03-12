@@ -1857,6 +1857,9 @@ function switchView(viewId) {
   if (viewId === 'stickersView') {
     if (typeof window.initStickersView === 'function') window.initStickersView();
   }
+  if (viewId === 'etsyListingsView') {
+    if (typeof window.initEtsyListingsView === 'function') window.initEtsyListingsView();
+  }
 }
 
 // =============== Dashboard ===============

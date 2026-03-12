@@ -18,6 +18,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const http = require('http');
 const ollamaClient = require('../lib/ollama-client');
+const { tagUrl } = require('./utm-attribution');
 const Database = require('better-sqlite3');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
@@ -159,7 +160,7 @@ const DEFAULT_CONFIG = {
     facebook: { enabled: true, postsPerDay: 2, bestHours: [10, 14, 19], maxPostsPerWeek: 14 },
     pinterest: { enabled: false, postsPerDay: 0, note: 'Token expired - needs PINTEREST_ACCESS_TOKEN' },
     tiktok: { enabled: true, postsPerDay: 0, note: 'TikTok Shop active via Shopify channel' },
-    instagram: { enabled: false, postsPerDay: 0, note: 'Needs IG Business account linked to FB page' }
+    instagram: { enabled: !!process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID, postsPerDay: 2, note: 'Cross-posts from FB — set INSTAGRAM_BUSINESS_ACCOUNT_ID env var to enable' }
   },
   tiktokShop: {
     enabled: true,
@@ -318,7 +319,11 @@ function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-      // Merge with defaults to fill any missing keys
+      return deepMerge(DEFAULT_CONFIG, data);
+    } else if (fs.existsSync(CONFIG_PATH + '.tmp')) {
+      const data = JSON.parse(fs.readFileSync(CONFIG_PATH + '.tmp', 'utf8'));
+      fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
+      console.log('[AI Agent] Config recovered from .tmp file');
       return deepMerge(DEFAULT_CONFIG, data);
     }
   } catch (e) {
@@ -329,7 +334,9 @@ function loadConfig() {
 
 function saveConfig(config) {
   try {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    const tmp = CONFIG_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(config, null, 2));
+    fs.renameSync(tmp, CONFIG_PATH);
   } catch (e) {
     console.error('[AI Agent] Error saving config:', e.message);
   }
@@ -424,8 +431,8 @@ async function collectEngagementData() {
     `).get(post.id);
 
     const hoursOld = (Date.now() - new Date(post.published_at).getTime()) / 3600000;
-    // Collect every 6 hours for first 3 days, then every 24 hours
-    const collectInterval = hoursOld < 72 ? 6 : 24;
+    // Collect every 1 hour for first 6 hours (catch viral window), every 6 hours for first 3 days, then every 24 hours
+    const collectInterval = hoursOld < 6 ? 1 : hoursOld < 72 ? 6 : 24;
     return !lastCollected?.last ||
       (Date.now() - new Date(lastCollected.last).getTime()) > collectInterval * 3600000;
   });
@@ -1098,7 +1105,13 @@ async function executeContentPlan() {
       const scheduledFor = `${entry.planned_date}T${entry.planned_time || '12:00'}:00Z`;
       const postId = crypto.randomUUID().slice(0, 20);
       const hashtags = catConfig.defaultHashtags || '';
-      const collectionUrl = COLLECTION_URL_MAP[entry.product_category] || 'https://blueridgecustomco.us/collections/all';
+      const rawCollectionUrl = COLLECTION_URL_MAP[entry.product_category] || 'https://blueridgecustomco.us/collections/all';
+      const collectionUrl = tagUrl(rawCollectionUrl, {
+        source: 'facebook',
+        medium: 'social',
+        campaign: `agent-${entry.product_category}`,
+        content: product.handle || String(product.id)
+      });
 
       const postText = caption.text || `Check out ${product.title}! Available now at Blue Ridge Custom Co.`;
       const postHashtags = caption.hashtags || hashtags;

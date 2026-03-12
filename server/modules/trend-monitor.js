@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const crypto = require('crypto');
+const ollamaClient = require('../lib/ollama-client');
 
 const DATA_DIR = path.resolve(__dirname, '..', '..', 'data');
 const TRENDS_FILE = path.join(DATA_DIR, 'trend-monitor.json');
@@ -33,7 +34,7 @@ const DEFAULT_SETTINGS = {
   notifySms: true,
   notifyEmail: true,
   notifyDesktop: true,
-  smsRecipients: ['+18888581105', '+12027408240'],
+  smsRecipients: (process.env.TREND_ALERT_PHONES || '+18888581105,+12027408240').split(',').map(s => s.trim()).filter(Boolean),
   emailRecipients: [],
   contentFilters: {
     blockSexualAssault: true,
@@ -92,7 +93,9 @@ function loadData() {
 function saveData(data) {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(TRENDS_FILE, JSON.stringify(data, null, 2));
+    const tmp = TRENDS_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    fs.renameSync(tmp, TRENDS_FILE);
   } catch (e) {
     console.error('[TrendMonitor] Error saving data:', e.message);
   }
@@ -112,7 +115,16 @@ function loadHistory() {
 function saveHistory(history) {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
+    // Cap both arrays to prevent unbounded growth
+    if (history.archivedTrends && history.archivedTrends.length > 500) {
+      history.archivedTrends = history.archivedTrends.slice(-500);
+    }
+    if (history.archivedDesigns && history.archivedDesigns.length > 500) {
+      history.archivedDesigns = history.archivedDesigns.slice(-500);
+    }
+    const tmp = HISTORY_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(history, null, 2));
+    fs.renameSync(tmp, HISTORY_FILE);
   } catch (e) {
     console.error('[TrendMonitor] Error saving history:', e.message);
   }
@@ -122,7 +134,7 @@ function saveHistory(history) {
 // HTTP HELPER (raw https — matches sms.js and shopify.js pattern)
 // =============================================================================
 
-function httpGet(url, headers = {}) {
+function httpGet(url, headers = {}, _retries = 0) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const opts = {
@@ -139,6 +151,17 @@ function httpGet(url, headers = {}) {
 
     const protocol = u.protocol === 'http:' ? require('http') : https;
     const req = protocol.request(opts, (res) => {
+      // Handle 429 Too Many Requests with exponential backoff
+      if (res.statusCode === 429 && _retries < 3) {
+        const retryAfter = parseInt(res.headers['retry-after'] || '0', 10);
+        const backoffMs = Math.max(retryAfter * 1000, Math.pow(2, _retries + 1) * 1000);
+        console.warn(`[TrendMonitor] 429 rate limited by ${u.hostname}, retrying in ${backoffMs}ms (attempt ${_retries + 1}/3)`);
+        res.resume(); // drain response
+        setTimeout(() => {
+          httpGet(url, headers, _retries + 1).then(resolve).catch(reject);
+        }, backoffMs);
+        return;
+      }
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
@@ -337,9 +360,6 @@ function calculateCompositeScore(breakdown) {
 async function analyzeTrendsWithClaude(rawTrends, settings) {
   if (!rawTrends.length) return [];
 
-  const Anthropic = require('@anthropic-ai/sdk');
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY });
-
   const systemPrompt = `You are a trend-to-apparel design analyst for a print-on-demand business.
 Evaluate social media trends for sarcastic/witty/comical t-shirt design potential.
 Target: GenX, Millennials, GenZ. Style: ${settings.designStyle}.
@@ -368,19 +388,16 @@ Return ONLY a JSON array. No markdown fences, no explanation, no text outside th
     }));
 
     try {
-      console.log(`[TrendMonitor] Claude batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(trendsToAnalyze.length / BATCH_SIZE)} (${batchData.length} trends)...`);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(trendsToAnalyze.length / BATCH_SIZE);
+      console.log(`[TrendMonitor] Ollama batch ${batchNum}/${totalBatches} (${batchData.length} trends)...`);
 
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
-        system: systemPrompt,
-        messages: [{
-          role: 'user',
-          content: `Evaluate these ${batchData.length} trends. Only return the ones good for t-shirts:\n${JSON.stringify(batchData)}`
-        }]
-      });
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Evaluate these ${batchData.length} trends. Only return the ones good for t-shirts:\n${JSON.stringify(batchData)}` }
+      ];
 
-      const text = response.content[0].text;
+      const text = await ollamaClient.chat(messages, { temperature: 0.5, timeout: 180000 });
       const cleaned = text.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim();
       const results = JSON.parse(cleaned);
 
@@ -416,11 +433,11 @@ Return ONLY a JSON array. No markdown fences, no explanation, no text outside th
         }
       }
     } catch (err) {
-      console.error(`[TrendMonitor] Claude batch ${Math.floor(i / BATCH_SIZE) + 1} error:`, err.message);
+      console.error(`[TrendMonitor] Ollama batch ${Math.floor(i / BATCH_SIZE) + 1} error:`, err.message);
     }
   }
 
-  console.log(`[TrendMonitor] Claude analysis complete: ${allAnalyzed.length} trends qualify for apparel`);
+  console.log(`[TrendMonitor] Ollama analysis complete: ${allAnalyzed.length} trends qualify for apparel`);
   return allAnalyzed;
 }
 

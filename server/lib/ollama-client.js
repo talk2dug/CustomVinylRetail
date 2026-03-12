@@ -222,6 +222,59 @@ async function chat(messages, options = {}) {
   }
 }
 
+
+/**
+ * Vision analysis using /api/generate with images (LLaVA) with failover
+ *
+ * @param {string} prompt - The prompt describing what to analyze
+ * @param {string[]} imagesBase64 - Array of base64-encoded image strings
+ * @param {object} options - { model, temperature, maxTokens, timeout }
+ * @returns {string} The vision model response text
+ */
+async function vision(prompt, imagesBase64, options = {}) {
+  const timeout = options.timeout || 120000;
+  const temperature = options.temperature || 0.3;
+  const maxTokens = options.maxTokens || 500;
+  const visionModel = options.model || 'llava:13b';
+
+  const buildPayload = (model) => ({
+    model,
+    prompt,
+    images: imagesBase64,
+    stream: false,
+    options: { temperature, num_predict: maxTokens }
+  });
+
+  // Try GPU bridge first
+  if (isConfigured()) {
+    const remoteHealthy = await checkRemoteHealth();
+    if (remoteHealthy) {
+      try {
+        const result = await ollamaRequest(GPU_BRIDGE_HOST, GPU_BRIDGE_PORT, '/api/generate', buildPayload(visionModel), timeout);
+        _stats.gpuRequests++;
+        _stats.lastGpuRequest = new Date().toISOString();
+        console.log('[gpu-bridge] vision served by remote GPU (' + GPU_BRIDGE_HOST + '), model: ' + visionModel);
+        return result.response || '';
+      } catch (e) {
+        console.warn('[gpu-bridge] Remote GPU vision failed, falling back to local: ' + e.message);
+        _stats.gpuFailovers++;
+        _healthCache = { healthy: false, checkedAt: Date.now(), error: e.message };
+      }
+    }
+  }
+
+  // Fallback to local
+  try {
+    const result = await ollamaRequest(LOCAL_HOST, LOCAL_PORT, '/api/generate', buildPayload(visionModel), timeout);
+    _stats.localRequests++;
+    _stats.lastLocalRequest = new Date().toISOString();
+    console.log('[local] vision served by local CPU Ollama, model: ' + visionModel);
+    return result.response || '';
+  } catch (e) {
+    throw new Error('Ollama vision failed (both remote and local): ' + e.message);
+  }
+}
+
 /**
  * Get status info for monitoring
  */
@@ -245,4 +298,4 @@ function getStatus() {
   };
 }
 
-module.exports = { generate, chat, getStatus, isConfigured, checkRemoteHealth };
+module.exports = { generate, chat, vision, getStatus, isConfigured, checkRemoteHealth };

@@ -53,7 +53,9 @@ function saveAnalytics(data) {
     const serializable = JSON.parse(JSON.stringify(data, (key, value) =>
       value instanceof Set ? [...value] : value
     ));
-    fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(serializable, null, 2));
+    const tmp = ANALYTICS_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(serializable, null, 2));
+    fs.renameSync(tmp, ANALYTICS_FILE);
   } catch (e) {
     console.error('[Analytics] Error saving data:', e.message);
   }
@@ -177,7 +179,9 @@ function recordDailyMetric(metric, value) {
       keysToRemove.forEach(k => delete daily[k]);
     }
 
-    fs.writeFileSync(DAILY_FILE, JSON.stringify(daily, null, 2));
+    const tmp = DAILY_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(daily, null, 2));
+    fs.renameSync(tmp, DAILY_FILE);
   } catch (e) {
     // Non-critical
   }

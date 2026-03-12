@@ -16,7 +16,8 @@ const http = require('http');
 const ollamaClient = require('./ollama-client');
 const { compositeArtwork, generateMockupToFile } = require('./mockup-compositor');
 const sharp = require('sharp');
-const { Anthropic } = require('@anthropic-ai/sdk');
+const { tagUrl } = require('../modules/utm-attribution');
+// Anthropic SDK removed — all LLM calls go through ollama-client (GPU bridge → local fallback)
 
 // Load environment
 const envPath = path.resolve(__dirname, '..', '..', '.env');
@@ -28,6 +29,9 @@ if (fs.existsSync(envPath)) {
 // Configuration - Support multiple Facebook pages
 const FB_PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN || process.env.FB_ACCESS_TOKEN || "";
 const FB_PAGE_ID = process.env.FB_PAGE_ID || "";
+
+// Instagram Business Account (linked to FB Page — uses same FB_PAGE_ACCESS_TOKEN)
+const INSTAGRAM_BUSINESS_ACCOUNT_ID = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID || "";
 
 // Swayzes Custom Vinyl page (for apparel/stickers)
 const FB_PAGE_ACCESS_TOKEN_SWAYZE = process.env.FB_PAGE_ACCESS_TOKEN_SWAYZE || "";
@@ -73,9 +77,7 @@ function cleanKey(value) {
   return trimmed;
 }
 
-const CLAUDE_MODEL = cleanKey(process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514');
-const ANTHROPIC_API_KEY = cleanKey(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || '');
-const anthropicClient = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+// LLM handled by ollamaClient (imported above) — GPU bridge → local fallback
 
 /**
  * Generate unique AI post content for a single item
@@ -86,61 +88,50 @@ const anthropicClient = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_AP
  * @returns {Promise<{text: string, hashtags: string}>}
  */
 async function generateAiPostForItem(item, campaign, style = 'showcase', collectionUrl = '') {
-  if (!anthropicClient) {
-    console.warn('[FB Scheduler] No Anthropic API key - using default text');
-    return null;
-  }
-
   try {
     // Get image path - check artworkPath for metal prints/custom art
     const imagePath = item.mockupImage || item.mockup || item.artworkPath || item.image || item.imagePath || item.artwork;
-    if (!imagePath) {
-      console.warn(`[FB Scheduler] No image for item ${item.name} - using default text`);
-      return null;
-    }
 
-    // Prepare image for Claude
-    let imageBuffer = null;
-    try {
-      if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        const downloaded = await downloadImage(imagePath);
-        imageBuffer = await sharp(downloaded)
-          .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
-          .jpeg({ quality: 85 })
-          .toBuffer();
-      } else if (imagePath.startsWith('/')) {
-        // Server-relative path - download from server
-        const fullUrl = `${SERVER_BASE_URL}${imagePath}`;
-        const downloaded = await downloadImage(fullUrl);
-        imageBuffer = await sharp(downloaded)
-          .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
-          .jpeg({ quality: 85 })
-          .toBuffer();
-      } else {
-        // Local file path
-        const possiblePaths = [
-          imagePath,
-          path.resolve(__dirname, '..', '..', 'web', imagePath),
-          path.resolve(__dirname, '..', '..', imagePath)
-        ];
-        for (const p of possiblePaths) {
-          if (fs.existsSync(p)) {
-            imageBuffer = await sharp(p)
-              .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
-              .jpeg({ quality: 85 })
-              .toBuffer();
-            break;
+    // Prepare image for vision model (optional — works without image too)
+    let imageBase64 = null;
+    if (imagePath) {
+      try {
+        let imageBuffer = null;
+        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+          const downloaded = await downloadImage(imagePath);
+          imageBuffer = await sharp(downloaded)
+            .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 85 })
+            .toBuffer();
+        } else if (imagePath.startsWith('/')) {
+          const fullUrl = `${SERVER_BASE_URL}${imagePath}`;
+          const downloaded = await downloadImage(fullUrl);
+          imageBuffer = await sharp(downloaded)
+            .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 85 })
+            .toBuffer();
+        } else {
+          const possiblePaths = [
+            imagePath,
+            path.resolve(__dirname, '..', '..', 'web', imagePath),
+            path.resolve(__dirname, '..', '..', imagePath)
+          ];
+          for (const p of possiblePaths) {
+            if (fs.existsSync(p)) {
+              imageBuffer = await sharp(p)
+                .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 85 })
+                .toBuffer();
+              break;
+            }
           }
         }
+        if (imageBuffer) {
+          imageBase64 = imageBuffer.toString('base64');
+        }
+      } catch (imgErr) {
+        console.warn(`[FB Scheduler] Could not load image for ${item.name}, continuing without vision:`, imgErr.message);
       }
-    } catch (imgErr) {
-      console.warn(`[FB Scheduler] Could not load image for ${item.name}:`, imgErr.message);
-      return null;
-    }
-
-    if (!imageBuffer) {
-      console.warn(`[FB Scheduler] No valid image buffer for ${item.name}`);
-      return null;
     }
 
     // Build apparel info
@@ -193,7 +184,6 @@ async function generateAiPostForItem(item, campaign, style = 'showcase', collect
       urgency: 'Use PAS: disorganization costs time daily. Agitate the frustration. Package deal value as the solve. Apply Loss Aversion — calculate time wasted looking for things.'
     };
 
-    // A8: New category style prompts
     const racingStylePrompts = {
       showcase: 'Use AIDA: hook with a specific racing detail visible in the image. Build interest with the customization options. Create desire through identity — what this says about the racer. Contrast against generic number stickers.',
       lifestyle: 'Use BAB: bare/stock car before, race-ready look after. Paint a race day scene — grid, paddock, victory lap. Use Identity Signaling — you built this car, the livery should match your ambition.',
@@ -306,7 +296,6 @@ ${NO_LINKS_RULE}`;
     let userPrompt;
     if (isMultiboard) {
       const room = item.room_use_case || item.room || campaign?.room || 'home';
-      const pillar = item.pillar || style || 'showcase';
       userPrompt = `Create ONE engaging Facebook post for this Multiboard product:
 
 Product: ${item.name || 'Multiboard Wall Organization System'}
@@ -335,7 +324,7 @@ Output as JSON:
   "hashtags": ["#tag1", "#tag2"]
 }`;
     } else if (isSticker) {
-      userPrompt = `Look at this design and create ONE punchy Facebook post:
+      userPrompt = `Create ONE punchy Facebook post for this design:
 
 Design: ${item.name || 'Custom Sticker'}
 ${campaign?.title ? `Collection: ${campaign.title}` : ''}
@@ -349,7 +338,7 @@ Write a post that:
 
 Then add 6-8 hashtags mixing:
 - Sticker/decal tags
-- Design style tags based on the image
+- Design style tags
 - Interest/hobby tags relevant to the design
 
 Output as JSON:
@@ -358,7 +347,7 @@ Output as JSON:
   "hashtags": ["#tag1", "#tag2"]
 }`;
     } else if (isArtProduct) {
-      userPrompt = `Look at this artwork and create ONE compelling Facebook post:
+      userPrompt = `Create ONE compelling Facebook post for this artwork:
 
 Title: ${item.name || 'Custom Art Print'}
 ${campaign?.title ? `Collection: ${campaign.title}` : ''}
@@ -367,15 +356,15 @@ ${collectionUrl ? `Shop: ${collectionUrl}` : ''}
 Style Guidance: ${stylePrompts[style] || stylePrompts.showcase}
 
 Write a post that:
-- Starts with a vivid, emotional hook that connects to the artwork you see
+- Starts with a vivid, emotional hook
 - Tells a mini-story or evokes a specific feeling/memory (2-3 sentences max)
 - Naturally mentions it's available as a metal print WITHOUT sounding salesy
 - Ends with subtle call to action
 
 Then add 8-10 hashtags mixing:
 - Art/decor specific tags
-- Emotional/vibe tags based on the image
-- Location tags if relevant to the artwork
+- Emotional/vibe tags
+- Location tags if relevant
 
 Output as JSON:
 {
@@ -404,27 +393,32 @@ Output as JSON:
 }`;
     }
 
-    const response = await anthropicClient.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 500,
-      system: systemPrompt,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: 'image/jpeg',
-              data: imageBuffer.toString('base64')
-            }
-          },
-          { type: 'text', text: userPrompt }
-        ]
-      }]
-    });
+    let responseText;
 
-    const responseText = response.content[0].text;
+    // Try vision model (llava) if we have an image
+    if (imageBase64) {
+      try {
+        responseText = await ollamaClient.vision(
+          `${systemPrompt}\n\n${userPrompt}`,
+          [imageBase64],
+          { temperature: 0.8, maxTokens: 500, timeout: 180000 }
+        );
+        console.log(`[FB Scheduler] Vision AI (llava) generated text for: ${item.name}`);
+      } catch (visionErr) {
+        console.warn(`[FB Scheduler] Vision model failed for ${item.name}, falling back to text-only:`, visionErr.message);
+      }
+    }
+
+    // Fallback: text-only chat (no image)
+    if (!responseText) {
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ];
+      responseText = await ollamaClient.chat(messages, { temperature: 0.8, timeout: 120000 });
+      console.log(`[FB Scheduler] Text AI (ollama chat) generated text for: ${item.name}`);
+    }
+
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.warn('[FB Scheduler] Could not parse AI response');
@@ -440,8 +434,6 @@ Output as JSON:
     };
   } catch (err) {
     console.error(`[FB Scheduler] AI generation failed for ${item.name}:`, err.message);
-    console.error(`[FB Scheduler] Full error:`, err);
-    if (err.error) console.error(`[FB Scheduler] Error details:`, err.error);
     return null;
   }
 }
@@ -715,7 +707,7 @@ async function postToFacebook(imagePathOrBuffer, text, category = "") {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'graph.facebook.com',
-      path: `/v18.0/${pageId}/photos`,
+      path: `/v21.0/${pageId}/photos`,
       method: 'POST',
       headers: {
         'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -751,6 +743,126 @@ async function postToFacebook(imagePathOrBuffer, text, category = "") {
 }
 
 /**
+ * Publish a photo to Instagram via the Instagram Graph API.
+ * Requires an Instagram Business account linked to the Facebook Page and
+ * FB_PAGE_ACCESS_TOKEN with instagram_basic + instagram_content_publish permissions.
+ *
+ * Two-step process:
+ *   1. POST /{ig-user-id}/media  (creates a container)
+ *   2. POST /{ig-user-id}/media_publish  (publishes the container)
+ *
+ * @param {string} imageUrl - A publicly accessible image URL (IG fetches it server-side)
+ * @param {string} caption - Post caption text
+ * @param {string} hashtags - Additional hashtags to append
+ * @param {string} category - Product category (for credential lookup)
+ * @returns {Promise<{success: boolean, igPostId: string}>}
+ */
+async function publishToInstagram(imageUrl, caption, hashtags = "", category = "") {
+  if (!INSTAGRAM_BUSINESS_ACCOUNT_ID) {
+    return { success: false, skipped: true, reason: 'INSTAGRAM_BUSINESS_ACCOUNT_ID not configured' };
+  }
+
+  const creds = getFacebookCredentials(category);
+  const accessToken = creds.accessToken;
+
+  if (!accessToken) {
+    throw new Error('No FB_PAGE_ACCESS_TOKEN available for Instagram publishing');
+  }
+
+  // Build full caption with hashtags
+  const fullCaption = hashtags ? `${caption}\n\n${hashtags}` : caption;
+
+  console.log(`[Instagram] Publishing to IG account ${INSTAGRAM_BUSINESS_ACCOUNT_ID}...`);
+
+  // Step 1: Create media container
+  const containerId = await new Promise((resolve, reject) => {
+    const postData = JSON.stringify({
+      image_url: imageUrl,
+      caption: fullCaption,
+      access_token: accessToken
+    });
+
+    const req = https.request({
+      hostname: 'graph.facebook.com',
+      path: `/v18.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          if (result.error) {
+            reject(new Error(`IG container creation failed: ${result.error.message}`));
+          } else if (!result.id) {
+            reject(new Error(`IG container creation returned no ID: ${data}`));
+          } else {
+            console.log(`[Instagram] Container created: ${result.id}`);
+            resolve(result.id);
+          }
+        } catch (e) {
+          reject(new Error(`IG container parse error: ${e.message} — raw: ${data}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
+  });
+
+  // Step 2: Publish the container
+  // Brief delay to allow IG to process the container
+  await new Promise(r => setTimeout(r, 3000));
+
+  const publishResult = await new Promise((resolve, reject) => {
+    const postData = JSON.stringify({
+      creation_id: containerId,
+      access_token: accessToken
+    });
+
+    const req = https.request({
+      hostname: 'graph.facebook.com',
+      path: `/v18.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          if (result.error) {
+            reject(new Error(`IG publish failed: ${result.error.message}`));
+          } else {
+            console.log(`[Instagram] Published successfully: ${result.id}`);
+            resolve(result);
+          }
+        } catch (e) {
+          reject(new Error(`IG publish parse error: ${e.message} — raw: ${data}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
+  });
+
+  return {
+    success: true,
+    igPostId: publishResult.id
+  };
+}
+
+/**
  * Phase 1a: Post a comment on a Facebook post (used for shop link as first comment)
  * @param {string} postId - The Facebook post ID to comment on
  * @param {string} message - Comment text
@@ -772,7 +884,7 @@ async function postFirstComment(postId, message, category = "") {
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: 'graph.facebook.com',
-      path: `/v18.0/${postId}/comments`,
+      path: `/v21.0/${postId}/comments`,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -919,42 +1031,12 @@ async function processScheduledPost(post, db, options = {}) {
             postHashtags: postHashtags
           });
         } else {
-          // Try Ollama as fallback before using default text
-          console.log(`[FB Scheduler] Claude unavailable, trying Ollama for: ${post.productName}`);
-          const ollamaResult = await generateAiPostViaOllama(
-            itemData,
-            campaignData || { slug: post.campaignSlug, productType: post.campaignType },
-            post.aiStyle || 'showcase'
-          );
-          if (ollamaResult) {
-            postText = ollamaResult.text;
-            postHashtags = ollamaResult.hashtags || postHashtags;
-            console.log(`[FB Scheduler] Ollama generated text for: ${post.productName}`);
-            db.updateScheduledPost(post.id, { postText, postHashtags });
-          } else {
-            postText = `Check out ${post.productName}! Available now.`;
-            console.log(`[FB Scheduler] All AI failed, using fallback for: ${post.productName}`);
-          }
+          postText = `Check out ${post.productName}! Available now.`;
+          console.log(`[FB Scheduler] AI generation returned null, using default for: ${post.productName}`);
         }
       } catch (aiError) {
-        console.error(`[FB Scheduler] AI generation error:`, aiError.message);
-        try {
-          console.log(`[FB Scheduler] Trying Ollama fallback for: ${post.productName}`);
-          const ollamaFallback = await generateAiPostViaOllama(
-            { name: post.productName, uid: post.productUid },
-            { slug: post.campaignSlug, productType: post.campaignType },
-            post.aiStyle || 'showcase'
-          );
-          if (ollamaFallback) {
-            postText = ollamaFallback.text;
-            postHashtags = ollamaFallback.hashtags || postHashtags;
-            console.log(`[FB Scheduler] Ollama fallback succeeded for: ${post.productName}`);
-          } else {
-            postText = `Check out ${post.productName}! Available now.`;
-          }
-        } catch (ollamaErr) {
-          postText = `Check out ${post.productName}! Available now.`;
-        }
+        console.error(`[FB Scheduler] AI generation error for ${post.productName}:`, aiError.message);
+        postText = `Check out ${post.productName}! Available now.`;
       }
     }
 
@@ -1001,6 +1083,31 @@ async function processScheduledPost(post, db, options = {}) {
       }
     }
 
+    // Cross-post to Instagram (non-fatal — only if configured)
+    let igResult = null;
+    if (INSTAGRAM_BUSINESS_ACCOUNT_ID) {
+      try {
+        // Instagram requires a publicly accessible image URL (not a buffer/local path)
+        let igImageUrl = imagePath;
+        if (!igImageUrl.startsWith('http://') && !igImageUrl.startsWith('https://')) {
+          // Convert local path to a public URL via the server
+          const relativePath = igImageUrl.startsWith('/') && igImageUrl.includes('/data/')
+            ? igImageUrl.substring(igImageUrl.indexOf('/data/'))
+            : igImageUrl;
+          igImageUrl = `${SERVER_BASE_URL}${relativePath}`;
+        }
+
+        const postCategory = post.category || post.productCategory || post.campaignSlug || post.campaignProductType || "";
+        igResult = await publishToInstagram(igImageUrl, postText, "", postCategory);
+        if (igResult.success) {
+          console.log(`[FB Scheduler] Instagram cross-post successful: ${igResult.igPostId}`);
+        }
+      } catch (igErr) {
+        console.warn(`[FB Scheduler] Instagram cross-post failed (non-fatal): ${igErr.message}`);
+        igResult = { success: false, error: igErr.message };
+      }
+    }
+
     // Mark as published
     db.markScheduledPostPublished(post.id, fbResult.postId);
 
@@ -1010,6 +1117,7 @@ async function processScheduledPost(post, db, options = {}) {
       success: true,
       postId: post.id,
       facebookPostId: fbResult.postId,
+      instagramPostId: igResult && igResult.success ? igResult.igPostId : null,
       imagePath
     };
 
@@ -1036,9 +1144,10 @@ async function processPendingPosts(db, options = {}) {
   const allPending = db.getPendingScheduledPosts();
 
   // Filter out non-Facebook posts (e.g. pinterest) - those need their own publisher
+  // Note: instagram posts are now handled via cross-posting from Facebook
   const pendingPosts = allPending.filter(post => {
     const ctype = (post.campaignType || '').toLowerCase();
-    if (ctype === 'pinterest' || ctype === 'instagram') {
+    if (ctype === 'pinterest') {
       console.log(`[FB Scheduler] Skipping ${ctype} post ${post.id} (${post.productName}) - not a Facebook post`);
       return false;
     }
@@ -1353,8 +1462,80 @@ async function getPostInsights(facebookPostId) {
     throw new Error('Facebook post ID is required');
   }
 
-  // Fetch basic engagement (likes, comments, shares) and insights in one call
-  const fields = [
+  const API_VERSION = 'v21.0';
+
+  // Helper to make a Graph API GET request and parse JSON
+  function fbGet(url) {
+    return new Promise((resolve, reject) => {
+      https.get(url, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }).on('error', reject);
+    });
+  }
+
+  // Helper to parse a Graph API result into our insights format
+  function parseInsightsResult(result) {
+    const insights = {
+      postId: result.id,
+      message: result.message,
+      createdTime: result.created_time,
+      permalinkUrl: result.permalink_url,
+      likes: result.likes?.summary?.total_count || 0,
+      comments: result.comments?.summary?.total_count || 0,
+      shares: result.shares?.count || 0,
+      impressions: 0,
+      reach: 0,
+      engagedUsers: 0,
+      clicks: 0
+    };
+
+    // Parse insights data if available
+    if (result.insights?.data) {
+      for (const metric of result.insights.data) {
+        const value = metric.values?.[0]?.value || 0;
+        switch (metric.name) {
+          case 'post_impressions':
+            insights.impressions = value;
+            break;
+          case 'post_impressions_unique':
+            insights.reach = value;
+            break;
+          case 'post_engaged_users':
+            insights.engagedUsers = value;
+            break;
+          case 'post_clicks':
+          case 'post_clicks_by_type':
+            // post_clicks_by_type returns an object; sum its values
+            if (typeof value === 'object' && value !== null) {
+              insights.clicks = Object.values(value).reduce((a, b) => a + b, 0);
+            } else {
+              insights.clicks = value;
+            }
+            break;
+        }
+      }
+    }
+
+    // Calculate engagement rate
+    if (insights.reach > 0) {
+      insights.engagementRate = ((insights.likes + insights.comments + insights.shares) / insights.reach * 100).toFixed(2);
+    } else {
+      insights.engagementRate = '0.00';
+    }
+
+    return insights;
+  }
+
+  // Strategy 1: Try with full insights metrics
+  const insightsFields = [
     'id',
     'message',
     'created_time',
@@ -1362,76 +1543,53 @@ async function getPostInsights(facebookPostId) {
     'shares',
     'likes.summary(true).limit(0)',
     'comments.summary(true).limit(0)',
-    'insights.metric(post_impressions,post_impressions_unique,post_engaged_users,post_clicks)'
+    'insights.metric(post_impressions,post_impressions_unique,post_engaged_users,post_clicks_by_type)'
   ].join(',');
 
-  const url = `https://graph.facebook.com/v18.0/${facebookPostId}?fields=${encodeURIComponent(fields)}&access_token=${FB_PAGE_ACCESS_TOKEN}`;
+  const insightsUrl = `https://graph.facebook.com/${API_VERSION}/${facebookPostId}?fields=${encodeURIComponent(insightsFields)}&access_token=${FB_PAGE_ACCESS_TOKEN}`;
 
-  return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const result = JSON.parse(data);
+  try {
+    const result = await fbGet(insightsUrl);
 
-          if (result.error) {
-            console.error('[FB Insights] API Error:', result.error);
-            reject(new Error(result.error.message));
-            return;
-          }
+    if (!result.error) {
+      return parseInsightsResult(result);
+    }
 
-          // Parse the response into a cleaner format
-          const insights = {
-            postId: result.id,
-            message: result.message,
-            createdTime: result.created_time,
-            permalinkUrl: result.permalink_url,
-            likes: result.likes?.summary?.total_count || 0,
-            comments: result.comments?.summary?.total_count || 0,
-            shares: result.shares?.count || 0,
-            impressions: 0,
-            reach: 0,
-            engagedUsers: 0,
-            clicks: 0
-          };
+    // If insights metric error (#100), fall back to basic fields only
+    if (result.error.code === 100 || (result.error.message && result.error.message.includes('insights metric'))) {
+      console.warn('[FB Insights] Insights metrics unavailable, falling back to basic engagement fields. Error:', result.error.message);
+    } else {
+      // Some other error — still try fallback but log it
+      console.error('[FB Insights] API Error (will try fallback):', result.error);
+    }
+  } catch (e) {
+    console.error('[FB Insights] Request error (will try fallback):', e.message);
+  }
 
-          // Parse insights data
-          if (result.insights?.data) {
-            for (const metric of result.insights.data) {
-              const value = metric.values?.[0]?.value || 0;
-              switch (metric.name) {
-                case 'post_impressions':
-                  insights.impressions = value;
-                  break;
-                case 'post_impressions_unique':
-                  insights.reach = value;
-                  break;
-                case 'post_engaged_users':
-                  insights.engagedUsers = value;
-                  break;
-                case 'post_clicks':
-                  insights.clicks = value;
-                  break;
-              }
-            }
-          }
+  // Strategy 2: Fallback — basic engagement fields only (no insights subquery)
+  const basicFields = [
+    'id',
+    'message',
+    'created_time',
+    'permalink_url',
+    'shares',
+    'likes.summary(true).limit(0)',
+    'comments.summary(true).limit(0)'
+  ].join(',');
 
-          // Calculate engagement rate
-          if (insights.reach > 0) {
-            insights.engagementRate = ((insights.likes + insights.comments + insights.shares) / insights.reach * 100).toFixed(2);
-          } else {
-            insights.engagementRate = '0.00';
-          }
+  const basicUrl = `https://graph.facebook.com/${API_VERSION}/${facebookPostId}?fields=${encodeURIComponent(basicFields)}&access_token=${FB_PAGE_ACCESS_TOKEN}`;
 
-          resolve(insights);
-        } catch (e) {
-          console.error('[FB Insights] Parse error:', e);
-          reject(e);
-        }
-      });
-    }).on('error', reject);
-  });
+  const basicResult = await fbGet(basicUrl);
+
+  if (basicResult.error) {
+    console.error('[FB Insights] Fallback also failed:', basicResult.error);
+    throw new Error(basicResult.error.message);
+  }
+
+  const insights = parseInsightsResult(basicResult);
+  insights._fallback = true; // Flag that we only got basic data
+  console.log(`[FB Insights] Got basic engagement for ${facebookPostId}: ${insights.likes} likes, ${insights.comments} comments, ${insights.shares} shares`);
+  return insights;
 }
 
 /**
@@ -1560,6 +1718,7 @@ function scheduleMultiboardPosts(db, options = {}) {
 module.exports = {
   generateMockupForPost,
   postToFacebook,
+  publishToInstagram,
   postFirstComment,
   processScheduledPost,
   processPendingPosts,

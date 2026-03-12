@@ -61,7 +61,7 @@ function adminUrl(pathname) {
  * Rate-limited GET against the Shopify Admin REST API.
  * Returns { body, linkHeader } so callers can handle pagination.
  */
-async function shopifyGet(endpoint) {
+async function shopifyGet(endpoint, _retries = 0) {
   await waitForRateLimit();
 
   const url = adminUrl(endpoint);
@@ -81,6 +81,17 @@ async function shopifyGet(endpoint) {
           },
         },
         (res) => {
+          // Handle 429 Too Many Requests with exponential backoff
+          if (res.statusCode === 429 && _retries < 3) {
+            const retryAfter = parseFloat(res.headers['retry-after'] || '2');
+            const backoffMs = Math.max(retryAfter * 1000, Math.pow(2, _retries + 1) * 1000);
+            console.warn(`[shopify-analytics] 429 rate limited, retrying in ${backoffMs}ms (attempt ${_retries + 1}/3)`);
+            res.resume(); // drain response
+            setTimeout(() => {
+              shopifyGet(endpoint, _retries + 1).then(resolve).catch(reject);
+            }, backoffMs);
+            return;
+          }
           const chunks = [];
           res.on('data', (c) => chunks.push(c));
           res.on('end', () => {

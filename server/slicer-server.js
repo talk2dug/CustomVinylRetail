@@ -708,7 +708,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
   if (req.method === 'POST' && route === '/slice') {
     try {
       const body = await parseBody(req);
-      const { stl_id, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient, copies, transform } = body;
+      const { stl_id, profile, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient, copies, transform } = body;
 
       if (!stl_id) {
         sendError(res, 400, 'stl_id is required');
@@ -731,6 +731,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
 
       const result = await slicer.sliceSTL(stlAbsPath, {
         stl_id,
+        profile: profile || 'custom',
         printer_model: printer_model || 'kobra3',
         material: material || item.default_material || 'pla',
         quality: quality || item.default_quality || 'standard',
@@ -757,7 +758,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
   if (req.method === 'POST' && route === '/slice-plate') {
     try {
       const body = await parseBody(req);
-      const { stl_ids, instance_transforms, transforms, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient } = body;
+      const { stl_ids, instance_transforms, transforms, profile, printer_model, material, quality, strength, speed, texture, surface, supports, auto_orient } = body;
 
       if (!stl_ids || !Array.isArray(stl_ids) || stl_ids.length === 0) {
         sendError(res, 400, 'stl_ids (array) is required');
@@ -820,6 +821,7 @@ async function handleSlicerRoute(pathname, req, res, db) {
       const result = await slicer.slicePlate(stlPaths, {
         stl_ids,
         instance_transforms: finalInstanceTransforms,
+        profile: profile || 'custom',
         printer_model: printer_model || 'kobra3',
         material: material || firstItem.default_material || 'pla',
         quality: quality || firstItem.default_quality || 'standard',

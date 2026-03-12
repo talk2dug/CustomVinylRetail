@@ -65,7 +65,15 @@
       <button class="tab-button" data-view="stickersView">Stickers</button>
       <button class="tab-button" data-view="vinylCutterView">Vinyl Cutter</button>
       <button class="tab-button" data-view="campaignsView">Campaigns</button>
-      <button class="tab-button" data-view="salesView">Sales</button>
+      <div class="nav-dropdown">
+        <button class="tab-button dropdown-toggle" data-dropdown="sales">
+          Sales <span class="dropdown-arrow">▼</span>
+        </button>
+        <div class="dropdown-menu" id="sales-dropdown">
+          <button class="dropdown-item" data-view="salesView">Sales Dashboard</button>
+          <button class="dropdown-item" data-view="etsyListingsView">Etsy Listings</button>
+        </div>
+      </div>
 
       <!-- POS Dropdown -->
       <div class="nav-dropdown">
@@ -3510,6 +3518,76 @@
             <div class="inventory-card" id="salesByCampaignCard">
               <h3>By campaign</h3>
               <div id="salesByCampaign" class="placeholder">—</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- ETSY LISTINGS                                                       -->
+      <!-- ================================================================== -->
+      <section id="etsyListingsView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Etsy Listings</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="etsyCollectionFilter">
+              <option value="">All Products</option>
+              <option value="512424182048">Laser Engraving</option>
+            </select>
+            <button id="etsyGenerateBulkBtn" class="primary">Generate All</button>
+            <button id="etsyRefreshBtn" class="secondary">Refresh</button>
+          </div>
+        </div>
+        <div class="view-content" style="display:flex;gap:16px;height:calc(100vh - 140px);">
+          <!-- Listings List -->
+          <div style="flex:1;overflow-y:auto;border-right:1px solid #e0e0e0;padding-right:16px;">
+            <div id="etsyListingsList" class="placeholder" style="padding:20px;">
+              Click "Generate All" to create Etsy listings from your Shopify products, or "Refresh" to see existing listings.
+            </div>
+          </div>
+          <!-- Listing Detail -->
+          <div id="etsyListingDetail" style="flex:1.5;overflow-y:auto;padding-left:16px;display:none;">
+            <div class="inventory-card" style="margin-bottom:12px;">
+              <div style="display:flex;gap:12px;align-items:start;">
+                <img id="etsyDetailImage" src="" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid #ddd;" />
+                <div style="flex:1;">
+                  <div style="font-size:0.8rem;color:#888;margin-bottom:4px;">Original Shopify Title</div>
+                  <div id="etsyDetailOrigTitle" style="font-weight:600;margin-bottom:8px;"></div>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <span id="etsyDetailPrice" style="font-size:1.2rem;font-weight:700;color:#f56400;"></span>
+                    <span id="etsyDetailStatus" class="status-badge"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="inventory-card" style="margin-bottom:12px;">
+              <label style="font-weight:600;display:block;margin-bottom:4px;">Etsy Title <span style="color:#888;font-weight:400;">(140 char max)</span></label>
+              <input id="etsyDetailTitle" type="text" maxlength="140" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:0.95rem;" />
+              <div id="etsyDetailTitleCount" style="text-align:right;font-size:0.75rem;color:#888;margin-top:2px;"></div>
+            </div>
+
+            <div class="inventory-card" style="margin-bottom:12px;">
+              <label style="font-weight:600;display:block;margin-bottom:4px;">Etsy Description</label>
+              <textarea id="etsyDetailDesc" rows="8" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:0.9rem;resize:vertical;"></textarea>
+            </div>
+
+            <div class="inventory-card" style="margin-bottom:12px;">
+              <label style="font-weight:600;display:block;margin-bottom:4px;">Etsy Tags <span style="color:#888;font-weight:400;">(13 max, comma-separated)</span></label>
+              <input id="etsyDetailTags" type="text" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;" />
+              <div id="etsyDetailTagCount" style="text-align:right;font-size:0.75rem;color:#888;margin-top:2px;"></div>
+            </div>
+
+            <div class="inventory-card" style="margin-bottom:12px;">
+              <label style="font-weight:600;display:block;margin-bottom:4px;">Suggested Category</label>
+              <div id="etsyDetailCategory" style="color:#555;"></div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:12px;">
+              <button id="etsyDetailSaveBtn" class="primary">Save Changes</button>
+              <button id="etsyDetailRegenBtn" class="secondary">Regenerate</button>
+              <button id="etsyDetailCopyBtn" class="secondary">Copy All to Clipboard</button>
+              <button id="etsyDetailMarkListedBtn" class="secondary" style="margin-left:auto;">Mark as Listed</button>
             </div>
           </div>
         </div>
@@ -7778,6 +7856,7 @@
     <script src="./quotes-view.js"></script>
     <script src="./apparel-mockup-view.js"></script>
     <script src="./build-plate-view.js"></script>
+    <script src="./etsy-listings-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>

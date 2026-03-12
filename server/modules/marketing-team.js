@@ -71,18 +71,26 @@ function loadState() {
       const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
       state = { ...state, ...raw };
       console.log('[MarketingTeam] State loaded from', DATA_FILE);
+    } else if (fs.existsSync(DATA_FILE + '.tmp')) {
+      // Recover from interrupted atomic write
+      const raw = JSON.parse(fs.readFileSync(DATA_FILE + '.tmp', 'utf8'));
+      state = { ...state, ...raw };
+      fs.renameSync(DATA_FILE + '.tmp', DATA_FILE);
+      console.log('[MarketingTeam] State recovered from .tmp file');
     } else {
       console.log('[MarketingTeam] No existing state file, using defaults');
     }
   } catch (e) {
-    console.error('[MarketingTeam] Error loading state:', e.message);
+    console.error('[MarketingTeam] Error loading state (using defaults):', e.message);
   }
 }
 
 function saveState() {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2));
+    const tmp = DATA_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
+    fs.renameSync(tmp, DATA_FILE);
   } catch (e) {
     console.error('[MarketingTeam] Error saving state:', e.message);
   }
@@ -267,36 +275,7 @@ async function callLLM(systemPrompt, userPrompt, maxTokens = 4096) {
       return result;
     }
   } catch (e) {
-    console.warn('[MarketingTeam] Ollama failed, trying Claude API:', e.message);
-  }
-
-  // Fallback: Claude API
-  const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    console.warn('[MarketingTeam] No LLM available (Ollama down, no Claude API key)');
-    return null;
-  }
-
-  const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
-  try {
-    const result = await httpsPost('https://api.anthropic.com/v1/messages', {
-      model,
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
-    }, {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01'
-    });
-
-    if (result && result.content && result.content.length > 0) {
-      console.log('[MarketingTeam] LLM response via Claude API');
-      return result.content[0].text;
-    }
-    console.error('[MarketingTeam] Claude API unexpected response:', JSON.stringify(result).slice(0, 500));
-    return null;
-  } catch (e) {
-    console.error('[MarketingTeam] Claude API error:', e.message);
+    console.error('[MarketingTeam] Ollama failed (GPU bridge + local):', e.message);
     return null;
   }
 }

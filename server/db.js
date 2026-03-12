@@ -3610,31 +3610,6 @@ function initCustomArtTables() {
   console.log('[Howtos] ✅ Tables initialized successfully');
   console.log('[PrintQuotes] ✅ Tables initialized successfully');
 
-  // Marketing team tables
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS marketing_journal (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-      type TEXT NOT NULL,
-      category TEXT,
-      action TEXT NOT NULL,
-      context TEXT,
-      outcome TEXT,
-      score REAL,
-      tags TEXT,
-      related_id TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS marketing_metrics (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      date TEXT NOT NULL,
-      metric_type TEXT NOT NULL,
-      data TEXT NOT NULL,
-      UNIQUE(date, metric_type)
-    );
-  `);
-  console.log('[Marketing] ✅ Tables initialized successfully');
-
   // Auto-classify existing Multiboard items that lack metadata
   migrateMultiboardItems();
   // Absorb Snap_Tiles category into Multiboard
@@ -6726,7 +6701,11 @@ function parseMultiboardMetadata(name) {
   if (!name) return { mb_type: 'unknown', mu_width: 2, mu_height: 2, folder: 'Uncategorized' };
 
   // --- Part Type Detection (keyword priority order) ---
+  // IMPORTANT: Rules are first-match-wins — put multi-keyword types (Rail) above
+  // generic words (Insert, Bin) that appear in compound names like "Insert Rail".
   const TYPE_RULES = [
+    // --- High-priority compound names ---
+    { pattern: /\bRail\b/i,                       type: 'rail',       folder: 'Rails' },
     // --- Container types ---
     { pattern: /\bGridfinity\b/i,                 type: 'gridfinity', folder: 'Gridfinity' },
     { pattern: /\bShell\b/i,                      type: 'shell',      folder: 'Shells' },
@@ -6746,7 +6725,6 @@ function parseMultiboardMetadata(name) {
     { pattern: /\b(Bracket|Clip)\b/i,             type: 'bracket',    folder: 'Brackets & Clips' },
     { pattern: /\b(Hinge|Beam)\b/i,               type: 'hinge',      folder: 'Hinges & Beams' },
     { pattern: /\b(Bolt|Thread|Spacer|Washer)\b/i, type: 'fastener',   folder: 'Fasteners' },
-    { pattern: /\bRail\b/i,                       type: 'rail',       folder: 'Snaps & Connectors' },
     { pattern: /\b(Cap|Screw)\b/i,                type: 'fastener',   folder: 'Fasteners' },
     // --- Accessories ---
     { pattern: /\b(Label|Holder)\b/i,             type: 'label',      folder: 'Labels & Holders' },

@@ -228,9 +228,20 @@ function stopPolling() {
   pollingActive = false;
 }
 
+function getCache() {
+  return {
+    printers: printerCache.printers.map(p => ({
+      ...p,
+      snapshot: p.snapshot ? p.snapshot.toString('base64') : null
+    })),
+    updatedAt: printerCache.updatedAt
+  };
+}
+
 module.exports = {
   startPolling,
   stopPolling,
   updateCache,
-  handlePrinterEvent
+  handlePrinterEvent,
+  getCache
 };
