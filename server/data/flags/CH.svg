@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16.93mm" height="16.93mm" viewBox="0 0 16.93 16.93">
+  <!-- Square outline (Swiss flag is square) -->
+  <rect x="0.25" y="0.25" width="16.43" height="16.43" fill="none" stroke="#000" stroke-width="0.5"/>
+  <!-- Cross (plus sign) in center -->
+  <path d="M6.47 3.5 L10.47 3.5 L10.47 6.47 L13.43 6.47 L13.43 10.47 L10.47 10.47 L10.47 13.43 L6.47 13.43 L6.47 10.47 L3.5 10.47 L3.5 6.47 L6.47 6.47 Z" fill="none" stroke="#000" stroke-width="0.5"/>
+</svg>

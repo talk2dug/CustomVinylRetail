@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="25.4mm" height="16.93mm" viewBox="0 0 25.4 16.93">
+  <!-- Outer rectangle -->
+  <rect x="0.25" y="0.25" width="24.9" height="16.43" fill="none" stroke="#000" stroke-width="0.5"/>
+  <!-- Small Union Jack in upper-left corner -->
+  <rect x="0.25" y="0.25" width="10" height="8.22" fill="none" stroke="#000" stroke-width="0.5"/>
+  <line x1="5.25" y1="0.25" x2="5.25" y2="8.47" stroke="#000" stroke-width="0.5"/>
+  <line x1="0.25" y1="4.36" x2="10.25" y2="4.36" stroke="#000" stroke-width="0.5"/>
+  <line x1="0.25" y1="0.25" x2="10.25" y2="8.47" stroke="#000" stroke-width="0.5"/>
+  <line x1="10.25" y1="0.25" x2="0.25" y2="8.47" stroke="#000" stroke-width="0.5"/>
+  <!-- 4 stars (Southern Cross) on right side -->
+  <path d="M19 4 L19.3 4.9 L20.2 4.9 L19.45 5.45 L19.7 6.35 L19 5.8 L18.3 6.35 L18.55 5.45 L17.8 4.9 L18.7 4.9 Z" fill="none" stroke="#000" stroke-width="0.5"/>
+  <path d="M21.5 7 L21.8 7.9 L22.7 7.9 L21.95 8.45 L22.2 9.35 L21.5 8.8 L20.8 9.35 L21.05 8.45 L20.3 7.9 L21.2 7.9 Z" fill="none" stroke="#000" stroke-width="0.5"/>
+  <path d="M19.5 10.5 L19.8 11.4 L20.7 11.4 L19.95 11.95 L20.2 12.85 L19.5 12.3 L18.8 12.85 L19.05 11.95 L18.3 11.4 L19.2 11.4 Z" fill="none" stroke="#000" stroke-width="0.5"/>
+  <path d="M17 7.5 L17.3 8.4 L18.2 8.4 L17.45 8.95 L17.7 9.85 L17 9.3 L16.3 9.85 L16.55 8.95 L15.8 8.4 L16.7 8.4 Z" fill="none" stroke="#000" stroke-width="0.5"/>
+</svg>

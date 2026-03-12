@@ -501,8 +501,9 @@
 
       <section id="quotesView" class="view">
         <div class="view-toolbar">
-          <div>
+          <div style="display:flex;gap:8px;">
             <button id="refreshQuotesButton" class="primary">Refresh quotes</button>
+            <button id="createDriverNamesBtn" class="secondary" style="background:#8b5cf6;color:#fff;border-color:#8b5cf6;">Create Driver/Co-Driver Names</button>
           </div>
           <div>
             <input
@@ -539,6 +540,71 @@
           </aside>
         </div>
       </section>
+
+      <!-- Driver/Co-Driver Names Modal -->
+      <div id="driverNamesModal" class="modal-overlay" style="display:none;">
+        <div class="modal-dialog" style="max-width:480px;">
+          <div class="modal-header">
+            <h3>Create Driver/Co-Driver Names</h3>
+            <button class="modal-close" id="dnCloseBtn">&times;</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+            <div class="form-row">
+              <label>Driver Name *</label>
+              <input type="text" id="dnDriverName" placeholder="LASTNAME" style="text-transform:uppercase;" />
+            </div>
+            <div class="form-row">
+              <label>Co-Driver Name (optional)</label>
+              <input type="text" id="dnCoDriverName" placeholder="LASTNAME" style="text-transform:uppercase;" />
+            </div>
+            <div class="form-row">
+              <label>Country</label>
+              <select id="dnCountry">
+                <option value="US">United States</option>
+                <option value="CA">Canada</option>
+                <option value="MX">Mexico</option>
+                <option value="GB">United Kingdom</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="IT">Italy</option>
+                <option value="JP">Japan</option>
+                <option value="AU">Australia</option>
+                <option value="NZ">New Zealand</option>
+                <option value="BR">Brazil</option>
+                <option value="AT">Austria</option>
+                <option value="CH">Switzerland</option>
+                <option value="SE">Sweden</option>
+                <option value="FI">Finland</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Racing Body</label>
+              <select id="dnRacingBody">
+                <option value="ARA">ARA (American Rally Association)</option>
+                <option value="SCCA">SCCA (Sports Car Club of America)</option>
+                <option value="NASA_E30">NASA Spec E30</option>
+                <option value="NASA_S3">NASA Spec3</option>
+                <option value="RallyCross">RallyCross</option>
+                <option value="AutoCross">AutoCross</option>
+              </select>
+            </div>
+            <div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:6px;font-size:12px;color:var(--text-secondary);">
+              <strong>Auto-sized per regulations:</strong>
+              <span id="dnSizePreview">ARA: 2.5" height, bold sans-serif, with national flag</span>
+            </div>
+            <div id="dnResultArea" style="display:none;">
+              <div id="dnPreviewSvg" style="background:#fff;padding:12px;border-radius:4px;text-align:center;margin-bottom:8px;"></div>
+              <div style="display:flex;gap:8px;">
+                <a id="dnDownloadLink" class="primary" style="text-decoration:none;padding:8px 16px;text-align:center;flex:1;border-radius:4px;display:block;" download>Download SVG</a>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+            <button id="dnGenerateBtn" class="primary">Generate &amp; Download</button>
+            <button id="dnEditorBtn" class="secondary" style="background:#8b5cf6;color:#fff;border-color:#8b5cf6;">Generate &amp; Send to Vinyl Editor</button>
+          </div>
+        </div>
+      </div>
 
       <section id="catalogView" class="view">
         <!-- Catalog Type Tabs -->
@@ -7679,18 +7745,23 @@
         <div style="display:flex;height:100%;">
           <!-- Zone A: Mount Selector Sidebar -->
           <div id="mmSidebar" style="width:280px;min-width:280px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg-secondary);overflow:hidden;">
-            <!-- Header -->
-            <div style="padding:12px;border-bottom:1px solid var(--border);">
+            <!-- Header (pinned) -->
+            <div style="padding:12px;border-bottom:1px solid var(--border);flex-shrink:0;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                 <h3 style="margin:0;font-size:0.95rem;">Mount Merger</h3>
                 <button id="mmCloseBtn" style="background:none;border:none;color:var(--text-primary);cursor:pointer;font-size:1.3rem;">&times;</button>
               </div>
               <div id="mmSourceInfo" style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px;"></div>
-              <!-- Mount type toggle -->
-              <div style="display:flex;gap:4px;margin-bottom:8px;">
-                <button id="mmTypeSnap" class="mm-type-btn active" data-type="snap-receiver" style="flex:1;padding:6px;font-size:0.75rem;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--accent);color:#fff;">Snap Receivers</button>
-                <button id="mmTypeShell" class="mm-type-btn" data-type="multibin-shell" style="flex:1;padding:6px;font-size:0.75rem;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg-primary);color:var(--text-primary);">Multibin Shell</button>
-                <button id="mmTypeTray" class="mm-type-btn" data-type="tray-base" style="flex:1;padding:6px;font-size:0.75rem;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg-primary);color:var(--text-primary);">Tray Base</button>
+              <!-- Mount type filter -->
+              <div style="margin-bottom:8px;">
+                <label style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:4px;">Mount Type:</label>
+                <select id="mmMountTypeFilter" style="width:100%;padding:5px;font-size:0.8rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);">
+                  <option value="">All Mounts</option>
+                  <option value="tile">Base Plates</option>
+                  <option value="fastener">Bolts &amp; Washers</option>
+                  <option value="hook,snap">Hook Snaps</option>
+                  <option value="rail">Bolt Locked Rails</option>
+                </select>
               </div>
               <!-- Grid size picker (for snap receivers) -->
               <div id="mmGridPicker" style="margin-bottom:8px;">
@@ -7712,7 +7783,7 @@
               </div>
             </div>
             <!-- Mount parts list -->
-            <div id="mmPartsList" style="flex:1;overflow-y:auto;padding:8px;"></div>
+            <div id="mmPartsList" style="flex:1;min-height:0;overflow-y:auto;padding:8px;"></div>
           </div>
 
           <!-- Zone B: Three.js Viewport -->
@@ -7737,7 +7808,7 @@
               <span id="mmStatus" style="font-size:0.75rem;color:var(--text-secondary);"></span>
             </div>
             <!-- Canvas container -->
-            <div id="mmViewport" style="flex:1;min-height:0;position:relative;background:#0a0a1a;"></div>
+            <div id="mmViewport" style="flex:1;min-height:0;max-height:500px;position:relative;background:#0a0a1a;"></div>
             <!-- Zone C: Action Bar -->
             <div id="mmActionBar" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--border);background:var(--bg-secondary);flex-shrink:0;">
               <button id="mmGenerateBtn" class="primary" style="padding:8px 20px;font-size:0.85rem;" disabled>Generate &amp; Save</button>

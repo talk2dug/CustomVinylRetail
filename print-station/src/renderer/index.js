@@ -1633,6 +1633,7 @@ function initNavDropdowns() {
   }
 }
 
+window.switchView = switchView;
 function switchView(viewId) {
   // Force close any blocking modals when switching views
   try { forceCloseAllBlockingModals(); } catch (_) {}
@@ -8078,6 +8079,181 @@ function formatNameWithCountry(name, country) {
   const label = formatCountryLabel(country);
   return label ? `${name} (${label})` : name;
 }
+
+// ============================================================================
+// DRIVER / CO-DRIVER NAME GENERATOR
+// ============================================================================
+
+const DN_SIZE_MAP = {
+  'ARA': '2.5"', 'SCCA': '2"', 'NASA_E30': '3"',
+  'NASA_S3': '3"', 'RallyCross': '2.5"', 'AutoCross': '2"'
+};
+
+function openDriverNamesModal() {
+  const modal = document.getElementById('driverNamesModal');
+  if (modal) {
+    modal.style.display = 'flex';
+    document.getElementById('dnResultArea').style.display = 'none';
+    updateDnSizePreview();
+  }
+}
+
+function closeDriverNamesModal() {
+  const modal = document.getElementById('driverNamesModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function updateDnSizePreview() {
+  const body = document.getElementById('dnRacingBody')?.value || 'ARA';
+  const el = document.getElementById('dnSizePreview');
+  if (el) el.textContent = `${body}: ${DN_SIZE_MAP[body] || '2.5"'} height, bold sans-serif, with national flag`;
+}
+
+async function generateDriverNames(sendToEditor) {
+  const driverName = document.getElementById('dnDriverName')?.value?.trim();
+  const coDriverName = document.getElementById('dnCoDriverName')?.value?.trim();
+  const country = document.getElementById('dnCountry')?.value || 'US';
+  const racingBody = document.getElementById('dnRacingBody')?.value || 'ARA';
+
+  if (!driverName) {
+    showToast('Driver name is required', 'error');
+    return;
+  }
+
+  const genBtn = document.getElementById('dnGenerateBtn');
+  const editorBtn = document.getElementById('dnEditorBtn');
+  if (genBtn) genBtn.disabled = true;
+  if (editorBtn) editorBtn.disabled = true;
+
+  try {
+    const result = await printStation.vinylCutter.generateDriverNames({
+      driverName, coDriverName, country, racingBody
+    });
+
+    if (!result || !result.success) {
+      throw new Error(result?.error || 'Generation failed');
+    }
+
+    // Show result area with preview
+    const resultArea = document.getElementById('dnResultArea');
+    resultArea.style.display = 'block';
+
+    // SVG preview — render inline
+    const previewEl = document.getElementById('dnPreviewSvg');
+    if (previewEl && result.svgContent) {
+      previewEl.innerHTML = result.svgContent;
+      // Scale SVG to fit preview
+      const svg = previewEl.querySelector('svg');
+      if (svg) {
+        svg.style.maxWidth = '100%';
+        svg.style.maxHeight = '120px';
+        svg.style.width = 'auto';
+        svg.style.height = 'auto';
+      }
+    }
+
+    // Download link
+    const downloadLink = document.getElementById('dnDownloadLink');
+    if (downloadLink && result.downloadUrl) {
+      const config = await printStation.getConfig();
+      const base = config?.serverBaseUrl || '';
+      downloadLink.href = base + result.downloadUrl;
+      downloadLink.download = `driver-names-${driverName}.svg`;
+    }
+
+    if (sendToEditor) {
+      // Switch to vinyl cutter view and add the SVG
+      window.switchView('vinylCutterView');
+      closeDriverNamesModal();
+
+      // Add to vinyl cutter canvas if available
+      if (typeof addDriverNameToVinylCanvas === 'function') {
+        addDriverNameToVinylCanvas(result);
+      }
+    }
+
+    showToast(`Driver names generated! (${DN_SIZE_MAP[racingBody] || '2.5"'} height)`, 'success');
+
+  } catch (err) {
+    showToast('Failed: ' + err.message, 'error');
+    console.error('[Driver Names]', err);
+  } finally {
+    if (genBtn) genBtn.disabled = false;
+    if (editorBtn) editorBtn.disabled = false;
+  }
+}
+
+function addDriverNameToVinylCanvas(result) {
+  if (!result.svgContent) return;
+  // If vinyl cutter editor is loaded and has fabric.js canvas
+  if (typeof initVinylCutterEditor === 'function' && typeof fabric !== 'undefined') {
+    if (!window.vinylCutterState?.canvas) {
+      initVinylCutterEditor();
+    }
+    const canvas = window.vinylCutterState?.canvas;
+    if (!canvas) return;
+
+    fabric.loadSVGFromString(result.svgContent, (objects, options) => {
+      if (!objects || objects.length === 0) return;
+      const group = fabric.util.groupSVGElements(objects, options);
+      group.set({
+        left: 50,
+        top: 50,
+        selectable: true,
+        hasControls: true,
+        hasBorders: true,
+        cornerStyle: 'circle',
+        cornerColor: '#8b5cf6',
+        borderColor: '#8b5cf6'
+      });
+      group.vinylData = {
+        id: `driver-name-${Date.now()}`,
+        title: `Driver Names`,
+        colors: [{ hex: '#000000', name: 'Black', contourPath: null, count: 1, percentage: 100 }]
+      };
+      canvas.add(group);
+      canvas.setActiveObject(group);
+      canvas.renderAll();
+      if (window.vinylCutterState?.items) {
+        window.vinylCutterState.items.push(group);
+      }
+    });
+  }
+}
+
+// Wire up driver names UI
+(function wireDriverNamesUI() {
+  const wire = () => {
+    const btn = document.getElementById('createDriverNamesBtn');
+    if (btn) btn.addEventListener('click', openDriverNamesModal);
+
+    const closeBtn = document.getElementById('dnCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', closeDriverNamesModal);
+
+    const genBtn = document.getElementById('dnGenerateBtn');
+    if (genBtn) genBtn.addEventListener('click', () => generateDriverNames(false));
+
+    const editorBtn = document.getElementById('dnEditorBtn');
+    if (editorBtn) editorBtn.addEventListener('click', () => generateDriverNames(true));
+
+    const racingSelect = document.getElementById('dnRacingBody');
+    if (racingSelect) racingSelect.addEventListener('change', updateDnSizePreview);
+
+    // Close modal on overlay click
+    const modal = document.getElementById('driverNamesModal');
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeDriverNamesModal();
+      });
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wire);
+  } else {
+    wire();
+  }
+})();
 
 function escapeHtml(value) {
   return String(value || '')

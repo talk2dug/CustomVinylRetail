@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="25.4mm" height="16.93mm" viewBox="0 0 25.4 16.93">
+  <!-- Outer rectangle -->
+  <rect x="0.25" y="0.25" width="24.9" height="16.43" fill="none" stroke="#000" stroke-width="0.5"/>
+  <!-- Horizontal stripes (3 lines dividing into 4 bands) -->
+  <line x1="0.25" y1="4.36" x2="25.15" y2="4.36" stroke="#000" stroke-width="0.5" fill="none"/>
+  <line x1="0.25" y1="8.47" x2="25.15" y2="8.47" stroke="#000" stroke-width="0.5" fill="none"/>
+  <line x1="0.25" y1="12.58" x2="25.15" y2="12.58" stroke="#000" stroke-width="0.5" fill="none"/>
+  <!-- Canton (small rectangle upper-left) -->
+  <rect x="0.25" y="0.25" width="10" height="8.22" fill="none" stroke="#000" stroke-width="0.5"/>
+</svg>

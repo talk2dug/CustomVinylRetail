@@ -6,6 +6,8 @@
 
 /* global printStation, THREE, switchView */
 
+console.log('[MountMerger] mount-merger-view.js loaded successfully');
+
 // ============================================================================
 // STATE
 // ============================================================================
@@ -53,7 +55,7 @@ async function openMountMerger(sourceItem) {
   mmState.mountItem = null;
 
   // Switch to the view
-  switchView('mountMergerView');
+  window.switchView('mountMergerView');
 
   // Show source info
   const infoEl = document.getElementById('mmSourceInfo');
@@ -439,15 +441,17 @@ async function mmLoadMountParts() {
     const resp = await printStation.slicer.listCatalog({ category: 'Multiboard' });
     let items = resp.items || [];
 
-    // Filter by mount type
-    const mbTypeFilters = {
-      'snap-receiver': ['tile', 'snap', 'peg'],
-      'multibin-shell': ['bin', 'shell'],
-      'tray-base': ['tray', 'shelf', 'drawer']
-    };
-    const mbTypeFilter = mbTypeFilters[mmState.mountType] || ['tile', 'snap', 'peg'];
+    // Only show mountable part types
+    const allowedTypes = ['tile', 'fastener', 'hook', 'snap', 'rail'];
+    items = items.filter(i => i.mb_type && allowedTypes.includes(i.mb_type));
 
-    items = items.filter(i => i.mb_type && mbTypeFilter.includes(i.mb_type));
+    // Apply mount type dropdown filter
+    const typeFilterEl = document.getElementById('mmMountTypeFilter');
+    const typeFilterVal = typeFilterEl ? typeFilterEl.value : '';
+    if (typeFilterVal) {
+      const selectedTypes = typeFilterVal.split(',');
+      items = items.filter(i => selectedTypes.includes(i.mb_type));
+    }
 
     // Filter by grid size if specified
     const gw = parseInt(document.getElementById('mmGridW').value);
@@ -561,7 +565,7 @@ async function mmGenerate() {
       sourceStlId: mmState.sourceItem.id,
       mountStlId: mmState.mountItem.id,
       transform,
-      mountType: mmState.mountItem.mb_type || mmState.mountType,
+      mountType: mmState.mountItem.mb_type || 'unknown',
       face,
       gridSize: (gw && gh) ? `${gw}x${gh}` : undefined
     });
@@ -656,28 +660,11 @@ function mmWireEvents() {
     }
   });
 
-  // Mount type toggle
-  document.querySelectorAll('.mm-type-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.mm-type-btn').forEach(b => {
-        b.style.background = 'var(--bg-primary)';
-        b.style.color = 'var(--text-primary)';
-        b.classList.remove('active');
-      });
-      btn.style.background = 'var(--accent)';
-      btn.style.color = '#fff';
-      btn.classList.add('active');
-      mmState.mountType = btn.dataset.type;
-      // Show/hide grid picker (only for snap receivers)
-      document.getElementById('mmGridPicker').style.display =
-        mmState.mountType === 'snap-receiver' ? 'block' : 'none';
-      // Default tray-base placement to bottom
-      if (mmState.mountType === 'tray-base' && mmState.mountMesh) {
-        mmAutoPlaceMount('bottom');
-      }
-      mmLoadMountParts();
-    });
-  });
+  // Mount type dropdown filter
+  const mountTypeFilter = document.getElementById('mmMountTypeFilter');
+  if (mountTypeFilter) {
+    mountTypeFilter.addEventListener('change', () => mmLoadMountParts());
+  }
 
   // Grid size filter change
   document.getElementById('mmGridW').addEventListener('change', () => mmLoadMountParts());
