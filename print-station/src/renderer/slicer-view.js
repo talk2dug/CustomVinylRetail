@@ -789,6 +789,45 @@ async function slicerUploadStl() {
 
     const ext = filePath.split('.').pop().toLowerCase();
 
+    // 3MF flow: extract objects + create plates
+    if (ext === '3mf') {
+      slicerShowProgress('Importing 3MF project...', ['Extracting objects and plates', 'Uploading to catalog', 'Creating build plates'], 0);
+      try {
+        const category = document.getElementById('slicerCategoryFilter')?.value || '';
+        const result = await printStation.slicer.import3mf({
+          filePath,
+          category,
+          printer_model: 'kobra3'
+        });
+
+        slicerHideProgress();
+
+        if (result.errors && result.errors.length > 0) {
+          console.warn('[Slicer] 3MF import had errors:', result.errors);
+        }
+
+        const msg = `Imported ${result.totalObjects} object${result.totalObjects !== 1 ? 's' : ''} and created ${result.totalPlates} plate${result.totalPlates !== 1 ? 's' : ''} from "${result.baseName}"`;
+        showToast(msg, 'success', 5000);
+
+        if (slicerState.selectedFolder && result.uploadedItems) {
+          for (const item of result.uploadedItems) {
+            try {
+              await printStation.slicer.updateCatalogItem(item.id, { folder: slicerState.selectedFolder });
+            } catch (_) {}
+          }
+        }
+
+        await slicerLoadFolders();
+        await slicerLoadCatalog();
+        await slicerLoadCategories();
+      } catch (err) {
+        slicerHideProgress();
+        console.error('[Slicer] 3MF import error:', err);
+        alert('3MF import failed: ' + err.message);
+      }
+      return;
+    }
+
     // ZIP flow: extract and upload each model inside
     if (ext === 'zip') {
       slicerShowProgress('Extracting ZIP archive...', 'Finding 3D models');
@@ -821,7 +860,7 @@ async function slicerUploadStl() {
     }
 
     // Normal single-file flow
-    const basename = filePath.split(/[\\/]/).pop().replace(/\.(stl|step|stp)$/i, '').replace(/[_-]/g, ' ');
+    const basename = filePath.split(/[\\/]/).pop().replace(/\.(stl|step|stp|3mf)$/i, '').replace(/[_-]/g, ' ');
 
     slicerShowProgress('Uploading 3D model...', 'Sending file to server');
 
@@ -930,11 +969,20 @@ async function slicerRunBulkUploadBackground(files, tempDir = null) {
     if (barEl) barEl.style.width = pct + '%';
 
     try {
-      await printStation.slicer.bulkUploadOne({
-        filePath: file.filePath,
-        name: file.name,
-        category: file.category || ''
-      });
+      const fileExt = file.filePath.split('.').pop().toLowerCase();
+      if (fileExt === '3mf') {
+        await printStation.slicer.import3mf({
+          filePath: file.filePath,
+          category: file.category || '',
+          printer_model: 'kobra3'
+        });
+      } else {
+        await printStation.slicer.bulkUploadOne({
+          filePath: file.filePath,
+          name: file.name,
+          category: file.category || ''
+        });
+      }
     } catch (err) {
       failed++;
       console.warn('[Slicer] Bulk upload failed for', file.name, err.message);

@@ -614,6 +614,9 @@ contextBridge.exposeInMainWorld('printStation', {
     extractZip: (zipPath) => ipcRenderer.invoke('slicer:extractZip', zipPath),
     cleanupTemp: (dirPath) => ipcRenderer.invoke('slicer:cleanupTemp', dirPath),
 
+    // 3MF import
+    import3mf: (opts) => ipcRenderer.invoke('slicer:import3mf', opts),
+
     // Bulk import
     bulkScan: (directory) => ipcRenderer.invoke('slicer:stl:bulkScan', directory),
     bulkUploadOne: (opts) => ipcRenderer.invoke('slicer:stl:bulkUploadOne', opts),

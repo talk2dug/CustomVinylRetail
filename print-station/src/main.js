@@ -6850,7 +6850,7 @@ Return ONLY valid JSON, nothing else:
           await walk(full);
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
-          if (ext === '.stl' || ext === '.step' || ext === '.stp') {
+          if (ext === '.stl' || ext === '.step' || ext === '.stp' || ext === '.3mf') {
             // Category = immediate parent folder name (unless it's the root selected folder)
             const parentDir = path.dirname(full);
             const category = parentDir === rootDir
@@ -6872,7 +6872,7 @@ Return ONLY valid JSON, nothing else:
               for (const zipEntry of zipDir.files) {
                 if (zipEntry.type === 'Directory') continue;
                 const zExt = path.extname(zipEntry.path).toLowerCase();
-                if (zExt !== '.stl' && zExt !== '.step' && zExt !== '.stp') continue;
+                if (zExt !== '.stl' && zExt !== '.step' && zExt !== '.stp' && zExt !== '.3mf') continue;
                 if (zipEntry.path.includes('__MACOSX') || zipEntry.path.includes('/.')) continue;
                 const destName = path.basename(zipEntry.path);
                 let destPath = path.join(tempDir, destName);
@@ -6930,6 +6930,100 @@ Return ONLY valid JSON, nothing else:
       throw new Error(text || `Upload failed (${resp.status})`);
     }
     return resp.json();
+  });
+
+  // Import 3MF file — extract objects + plates, upload STLs, create build plates
+  ipcMain.handle('slicer:import3mf', async (_event, { filePath, category, printer_model } = {}) => {
+    if (!filePath) throw new Error('No 3MF file path provided');
+    const { extract3MFToStls } = require('./threemf-parser');
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+
+    // Step 1: Parse and extract STLs from the 3MF
+    let extracted;
+    try {
+      extracted = extract3MFToStls(filePath);
+    } catch (err) {
+      throw new Error(`Failed to parse 3MF file: ${err.message}`);
+    }
+
+    if (extracted.totalObjects === 0) {
+      throw new Error('No 3D objects found in the 3MF file');
+    }
+
+    // Step 2: Upload each unique STL to the server catalog
+    const uploadedMap = {}; // objectId -> catalogItem
+    const errors = [];
+
+    for (const stl of extracted.stlFiles) {
+      try {
+        const form = new FormData();
+        form.append('file', fs.createReadStream(stl.filePath), path.basename(stl.filePath));
+        form.append('name', stl.name);
+        if (category) form.append('category', category);
+        const headers = form.getHeaders();
+        if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+        const resp = await doFetch(`${settings.serverBaseUrl}/api/slicer/catalog`, {
+          method: 'POST',
+          headers,
+          body: form
+        });
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          throw new Error(text || `Upload failed (${resp.status})`);
+        }
+        const result = await resp.json();
+        if (result.item) {
+          uploadedMap[stl.objectId] = result.item;
+        }
+      } catch (err) {
+        errors.push({ name: stl.name, error: err.message });
+      }
+    }
+
+    // Step 3: Create saved build plates
+    const createdPlates = [];
+    for (const plate of extracted.plates) {
+      const items = [];
+      for (const pi of plate.items) {
+        const catalogItem = uploadedMap[pi.objectId];
+        if (!catalogItem) continue;
+        items.push({ stl_id: catalogItem.id, qty: pi.qty });
+      }
+      if (items.length === 0) continue;
+
+      try {
+        const plateResp = await slicerFetch('/api/slicer/plates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: `${extracted.baseName} - ${plate.name}`,
+            printer_model: printer_model || 'kobra3',
+            items,
+            settings: {}
+          })
+        });
+        const plateResult = await plateResp.json();
+        createdPlates.push(plateResult);
+      } catch (err) {
+        errors.push({ name: plate.name, error: err.message });
+      }
+    }
+
+    // Step 4: Cleanup temp files
+    try {
+      fs.rmSync(extracted.tempDir, { recursive: true, force: true });
+    } catch {}
+
+    return {
+      success: true,
+      baseName: extracted.baseName,
+      totalObjects: extracted.totalObjects,
+      totalPlates: extracted.totalPlates,
+      uploadedItems: Object.values(uploadedMap),
+      createdPlates,
+      errors
+    };
   });
 
   // STL file download (for 3D preview in renderer)
@@ -7354,7 +7448,8 @@ Return ONLY valid JSON, nothing else:
     const result = await dialog.showOpenDialog({
       title: 'Select 3D Model File',
       filters: [
-        { name: '3D Models & Archives', extensions: ['stl', 'step', 'stp', 'zip'] },
+        { name: '3D Models & Archives', extensions: ['stl', 'step', 'stp', '3mf', 'zip'] },
+        { name: '3MF Projects', extensions: ['3mf'] },
         { name: '3D Models', extensions: ['stl', 'step', 'stp'] },
         { name: 'ZIP Archives', extensions: ['zip'] }
       ],
@@ -7609,7 +7704,7 @@ app.on('ready', async () => {
       for (const entry of zipDir.files) {
         if (entry.type === 'Directory') continue;
         const zExt = path.extname(entry.path).toLowerCase();
-        if (zExt !== '.stl' && zExt !== '.step' && zExt !== '.stp') continue;
+        if (zExt !== '.stl' && zExt !== '.step' && zExt !== '.stp' && zExt !== '.3mf') continue;
         if (entry.path.includes('__MACOSX') || entry.path.includes('/.')) continue;
 
         const destName = path.basename(entry.path);
