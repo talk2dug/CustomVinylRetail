@@ -156,7 +156,13 @@ async function handlePrinterEvent(eventData) {
     print_failed:    { icon: '🚨', title: 'Print Failed',    body: `${name}${msg ? ': ' + msg : ' encountered an error'}` },
     print_cancelled: { icon: '❌', title: 'Print Cancelled',  body: `${name} cancelled${pct ? ' at ' + pct : ''}` },
     printer_offline: { icon: '🔌', title: 'Printer Offline',  body: `${name} is offline` },
-    printer_online:  { icon: '🟢', title: 'Printer Online',   body: `${name} is back online` }
+    printer_online:  { icon: '🟢', title: 'Printer Online',   body: `${name} is back online` },
+    // Inkjet events
+    inkjet_started:   { icon: '🖨️', title: 'Inkjet Print Started',   body: `${name} started printing${fname ? ' ' + fname : ''}` },
+    inkjet_completed: { icon: '✅', title: 'Inkjet Print Complete',   body: `${name} finished${fname ? ' ' + fname : ''}` },
+    inkjet_failed:    { icon: '🚨', title: 'Inkjet Print Failed',    body: `${name}${msg ? ': ' + msg : ' encountered an error'}` },
+    inkjet_cancelled: { icon: '❌', title: 'Inkjet Print Cancelled',  body: `${name} cancelled` },
+    ink_low:          { icon: '🪫', title: 'Low Ink Alert',          body: `${name}${msg ? ': ' + msg : ' ink is running low'}` }
   };
 
   const tmpl = templates[event];

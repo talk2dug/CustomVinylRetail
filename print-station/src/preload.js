@@ -559,6 +559,34 @@ contextBridge.exposeInMainWorld('printStation', {
   },
 
   // ============================================================================
+  // INKJET PRINTER API (proxied to Pi print server)
+  // ============================================================================
+  inkjetFleet: {
+    // Printer CRUD
+    listPrinters: (query) => ipcRenderer.invoke('inkjet:printers:list', query || {}),
+    getPrinter: (id) => ipcRenderer.invoke('inkjet:printers:get', id),
+    addPrinter: (printer) => ipcRenderer.invoke('inkjet:printers:add', printer),
+    updatePrinter: (id, updates) => ipcRenderer.invoke('inkjet:printers:update', { id, updates }),
+    removePrinter: (id) => ipcRenderer.invoke('inkjet:printers:remove', id),
+
+    // Status & Capabilities
+    getCapabilities: (id) => ipcRenderer.invoke('inkjet:printers:capabilities', id),
+    getInkLevels: (id) => ipcRenderer.invoke('inkjet:printers:inkLevels', id),
+    getAllInkLevels: () => ipcRenderer.invoke('inkjet:printers:allInkLevels'),
+    getStatus: () => ipcRenderer.invoke('inkjet:printers:status'),
+    discover: () => ipcRenderer.invoke('inkjet:printers:discover'),
+
+    // Jobs
+    submitJob: (job) => ipcRenderer.invoke('inkjet:jobs:submit', job),
+    listJobs: (query) => ipcRenderer.invoke('inkjet:jobs:list', query || {}),
+    cancelJob: (id) => ipcRenderer.invoke('inkjet:jobs:cancel', id),
+    getActiveJobs: () => ipcRenderer.invoke('inkjet:jobs:active'),
+  },
+
+  // Combined print server status
+  printServerStatus: () => ipcRenderer.invoke('print-server:status'),
+
+  // ============================================================================
   // 3D SLICER API (STL catalog, slicing, G-code cache)
   // ============================================================================
   slicer: {

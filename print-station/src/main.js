@@ -6355,117 +6355,100 @@ Return ONLY valid JSON, nothing else:
     return { updated: count };
   });
 
-  // ==================== 3D Printer Fleet IPC ====================
+  // ==================== 3D Printer Fleet IPC (proxied to print server) ====================
+
+  // Helper: proxy fleet requests through vinylApp server → Pi print server
+  async function fleetFetch(endpoint, options = {}) {
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const url = `${settings.serverBaseUrl}/api/print-server${endpoint}`;
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+    const timeoutMs = options.timeout || 30000;
+    const resp = await doFetch(url, { ...options, headers, signal: AbortSignal.timeout(timeoutMs) });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      let errMsg;
+      try { errMsg = JSON.parse(text).error; } catch (_) { errMsg = text; }
+      throw new Error(errMsg || `Print server returned ${resp.status}`);
+    }
+    return resp.json();
+  }
 
   // --- Printer CRUD ---
-  ipcMain.handle('fleet:printers:list', (_event, query = {}) => {
-    if (!fleetDb) return [];
-    return fleetDb.listPrinters(query);
+  ipcMain.handle('fleet:printers:list', async (_event, query = {}) => {
+    const params = new URLSearchParams();
+    if (query.active !== undefined) params.set('active', String(query.active));
+    if (query.search) params.set('search', query.search);
+    const qs = params.toString();
+    return fleetFetch(`/3d/printers${qs ? '?' + qs : ''}`);
   });
 
-  ipcMain.handle('fleet:printers:get', (_event, id) => {
-    if (!fleetDb) return null;
-    return fleetDb.getPrinter(id);
+  ipcMain.handle('fleet:printers:get', async (_event, id) => {
+    return fleetFetch(`/3d/printers/${id}`);
   });
 
-  ipcMain.handle('fleet:printers:upsert', (_event, printer) => {
-    if (!fleetDb) throw new Error('Fleet DB not initialized');
-    const result = fleetDb.upsertPrinter(printer);
-    if (result && result.active) connectToPrinter(result);
-    return result;
+  ipcMain.handle('fleet:printers:upsert', async (_event, printer) => {
+    return fleetFetch('/3d/printers', {
+      method: 'POST', body: JSON.stringify(printer)
+    });
   });
 
-  ipcMain.handle('fleet:printers:update', (_event, { id, updates } = {}) => {
-    if (!fleetDb || !id) return null;
-    const before = fleetDb.getPrinter(id);
-    const result = fleetDb.updatePrinter(id, updates || {});
-    // Reconnect if URL changed or printer was re-enabled
-    if (result && before) {
-      if (before.api_url !== result.api_url || (!before.active && result.active)) {
-        disconnectPrinter(before);
-        if (result.active) connectToPrinter(result);
-      }
-    }
-    return result;
+  ipcMain.handle('fleet:printers:update', async (_event, { id, updates } = {}) => {
+    if (!id) return null;
+    return fleetFetch(`/3d/printers/${id}`, {
+      method: 'PUT', body: JSON.stringify(updates || {})
+    });
   });
 
-  ipcMain.handle('fleet:printers:remove', (_event, id) => {
-    if (!fleetDb || !id) return { changes: 0 };
-    const printer = fleetDb.getPrinter(id);
-    if (printer) disconnectPrinter(printer);
-    return fleetDb.removePrinter(id);
+  ipcMain.handle('fleet:printers:remove', async (_event, id) => {
+    if (!id) return { changes: 0 };
+    return fleetFetch(`/3d/printers/${id}`, { method: 'DELETE' });
   });
 
   // --- Printer Status ---
   ipcMain.handle('fleet:printers:status', async (_event, id) => {
-    if (!fleetDb || !printerService) return null;
-    const printer = fleetDb.getPrinter(id);
-    if (!printer) return null;
-    // Return cached status if available, otherwise fetch live
-    const cached = printerService.getCachedStatus(printer.api_url);
-    if (cached && Date.now() - cached.timestamp < 10000) return cached;
     try {
-      return await printerService.getPrinterStatus(printer.api_url);
+      return await fleetFetch(`/3d/printers/${id}/status`);
     } catch (err) {
       return { state: 'offline', error: err.message, timestamp: Date.now() };
     }
   });
 
   ipcMain.handle('fleet:printers:statusAll', async () => {
-    if (!fleetDb || !printerService) return [];
-    const printers = fleetDb.listPrinters({ active: true });
-    const results = [];
-    for (const p of printers) {
-      const cached = printerService.getCachedStatus(p.api_url);
-      if (cached && Date.now() - cached.timestamp < 10000) {
-        results.push({ ...p, status: cached });
-      } else {
-        try {
-          const status = await printerService.getPrinterStatus(p.api_url);
-          results.push({ ...p, status });
-        } catch (err) {
-          results.push({ ...p, status: { state: 'offline', error: err.message, timestamp: Date.now() } });
-        }
-      }
+    try {
+      const printers = await fleetFetch('/3d/printers?active=true');
+      return printers.map(p => ({ ...p, status: p.live_status || { state: 'unknown' } }));
+    } catch (err) {
+      return [];
     }
-    return results;
   });
 
   ipcMain.handle('fleet:printers:reconnect', async (_event, id) => {
-    if (!fleetDb || !printerService) return { success: false };
-    const printer = fleetDb.getPrinter(id);
-    if (!printer) return { success: false, error: 'Printer not found' };
-    disconnectPrinter(printer);
-    connectToPrinter(printer);
-    return { success: true };
+    return fleetFetch(`/3d/printers/${id}/reconnect`, { method: 'POST' });
   });
 
   ipcMain.handle('fleet:printers:testConnection', async (_event, apiUrl) => {
-    if (!printerService) return { success: false, error: 'Service not initialized' };
+    // Test connection still goes directly to the printer from print server
+    // We add the printer temporarily to test, then the server handles it
     try {
-      const status = await printerService.getPrinterStatus(apiUrl);
-      const info = await printerService.getPrinterInfo(apiUrl);
-
-      // Also query build volume and auto-update fleet DB if printer exists
-      let buildVolume = null;
-      try {
-        buildVolume = await printerService.getBuildVolume(apiUrl);
-        if (buildVolume && fleetDb) {
-          const existing = fleetDb.getPrinterByUrl(apiUrl);
-          if (existing) {
-            fleetDb.updatePrinter(existing.id, {
-              build_width: buildVolume.width,
-              build_depth: buildVolume.depth,
-              build_height: buildVolume.height
-            });
-            console.log(`[Fleet] Auto-updated build volume for ${existing.name}: ${buildVolume.width}x${buildVolume.depth}x${buildVolume.height}`);
-          }
-        }
-      } catch (bvErr) {
-        console.warn('[Fleet] Could not query build volume:', bvErr.message);
+      // Use the print server's test endpoint
+      const printers = await fleetFetch('/3d/printers');
+      const existing = printers.find(p => p.api_url === apiUrl);
+      if (existing) {
+        const result = await fleetFetch(`/3d/printers/${existing.id}/test`, { method: 'POST' });
+        return { success: true, ...result };
       }
-
-      return { success: true, status, info, buildVolume };
+      // For new printers, add temporarily to test
+      const tmpPrinter = await fleetFetch('/3d/printers', {
+        method: 'POST', body: JSON.stringify({ api_url: apiUrl, name: 'Test', active: false })
+      });
+      try {
+        const result = await fleetFetch(`/3d/printers/${tmpPrinter.id}/test`, { method: 'POST' });
+        return { success: true, ...result };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
     } catch (err) {
       return { success: false, error: err.message };
     }
@@ -6473,20 +6456,7 @@ Return ONLY valid JSON, nothing else:
 
   // --- Build Volume Query ---
   ipcMain.handle('fleet:printers:buildVolume', async (_event, id) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(id);
-    if (!printer) throw new Error('Printer not found');
-
-    const buildVolume = await printerService.getBuildVolume(printer.api_url);
-    if (buildVolume) {
-      // Save to fleet DB
-      fleetDb.updatePrinter(id, {
-        build_width: buildVolume.width,
-        build_depth: buildVolume.depth,
-        build_height: buildVolume.height
-      });
-    }
-    return buildVolume;
+    return fleetFetch(`/3d/printers/${id}/build-volume`);
   });
 
   // --- G-code File Management ---
@@ -6500,139 +6470,166 @@ Return ONLY valid JSON, nothing else:
   });
 
   ipcMain.handle('fleet:files:upload', async (_event, { printerId, filePath }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.uploadGcode(printer.api_url, filePath);
+    return fleetFetch('/3d/files/upload', {
+      method: 'POST',
+      body: JSON.stringify({ printer_id: printerId, file_path: filePath }),
+      timeout: 120000
+    });
   });
 
   ipcMain.handle('fleet:files:list', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.listFiles(printer.api_url);
+    return fleetFetch(`/3d/printers/${printerId}/files`);
   });
 
   ipcMain.handle('fleet:files:delete', async (_event, { printerId, filename }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.deleteFile(printer.api_url, filename);
+    return fleetFetch('/3d/files/delete', {
+      method: 'POST', body: JSON.stringify({ printer_id: printerId, filename })
+    });
   });
 
   // --- Print Job Control ---
   ipcMain.handle('fleet:print:start', async (_event, { printerId, filename, shopifyOrderId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-
-    // Start print — the G-code's START_PRINT macro handles homing, leveling, and heating
-    await printerService.startPrint(printer.api_url, filename);
-    fleetDb.completeStaleJobs(printerId);
-    const job = fleetDb.createJob({
-      printer_id: printerId,
-      filename,
-      status: 'printing',
-      started_at: new Date().toISOString(),
-      shopify_order_id: shopifyOrderId || null
+    return fleetFetch('/3d/print/start', {
+      method: 'POST',
+      body: JSON.stringify({ printer_id: printerId, filename, shopify_order_id: shopifyOrderId }),
+      timeout: 120000
     });
-    printerService.updatePollRate(printer.api_url, true);
-    return job;
   });
 
   ipcMain.handle('fleet:print:pause', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    await printerService.pausePrint(printer.api_url);
-    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId);
-    if (activeJobs.length) fleetDb.updateJob(activeJobs[0].id, { status: 'paused' });
-    return { success: true };
+    return fleetFetch('/3d/print/pause', {
+      method: 'POST', body: JSON.stringify({ printer_id: printerId })
+    });
   });
 
   ipcMain.handle('fleet:print:resume', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    await printerService.resumePrint(printer.api_url);
-    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId && j.status === 'paused');
-    if (activeJobs.length) fleetDb.updateJob(activeJobs[0].id, { status: 'printing' });
-    printerService.updatePollRate(printer.api_url, true);
-    return { success: true };
+    return fleetFetch('/3d/print/resume', {
+      method: 'POST', body: JSON.stringify({ printer_id: printerId })
+    });
   });
 
   ipcMain.handle('fleet:print:cancel', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    await printerService.cancelPrint(printer.api_url);
-    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId);
-    if (activeJobs.length) {
-      fleetDb.updateJob(activeJobs[0].id, {
-        status: 'cancelled',
-        completed_at: new Date().toISOString()
-      });
-    }
-    printerService.updatePollRate(printer.api_url, false);
-    return { success: true };
+    return fleetFetch('/3d/print/cancel', {
+      method: 'POST', body: JSON.stringify({ printer_id: printerId })
+    });
   });
 
   ipcMain.handle('fleet:print:emergencyStop', async (_event, { printerId }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    await printerService.emergencyStop(printer.api_url);
-    const activeJobs = fleetDb.getActiveJobs().filter(j => j.printer_id === printerId);
-    if (activeJobs.length) {
-      fleetDb.updateJob(activeJobs[0].id, {
-        status: 'error',
-        error_message: 'Emergency stop triggered',
-        completed_at: new Date().toISOString()
-      });
-    }
-    return { success: true };
+    return fleetFetch('/3d/print/emergency-stop', {
+      method: 'POST', body: JSON.stringify({ printer_id: printerId })
+    });
   });
 
   ipcMain.handle('fleet:gcode:send', async (_event, { printerId, command }) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.sendGcode(printer.api_url, command);
+    return fleetFetch('/3d/gcode', {
+      method: 'POST', body: JSON.stringify({ printer_id: printerId, command })
+    });
   });
 
   // --- Webcam ---
   ipcMain.handle('fleet:webcam:urls', async (_event, printerId) => {
-    if (!fleetDb || !printerService) throw new Error('Fleet not initialized');
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-    return await printerService.getWebcamUrls(printer.api_url);
+    return fleetFetch(`/3d/printers/${printerId}/webcam`);
   });
 
   // --- Job History ---
-  ipcMain.handle('fleet:jobs:list', (_event, query = {}) => {
-    if (!fleetDb) return [];
-    return fleetDb.listJobs(query);
+  ipcMain.handle('fleet:jobs:list', async (_event, query = {}) => {
+    const params = new URLSearchParams();
+    if (query.printerId) params.set('printer_id', query.printerId);
+    if (query.status) params.set('status', query.status);
+    if (query.limit) params.set('limit', query.limit);
+    if (query.offset) params.set('offset', query.offset);
+    const qs = params.toString();
+    return fleetFetch(`/3d/jobs${qs ? '?' + qs : ''}`);
   });
 
-  ipcMain.handle('fleet:jobs:active', () => {
-    if (!fleetDb) return [];
-    return fleetDb.getActiveJobs();
+  ipcMain.handle('fleet:jobs:active', async () => {
+    return fleetFetch('/3d/jobs/active');
   });
 
-  ipcMain.handle('fleet:jobs:stats', () => {
-    if (!fleetDb) return {};
-    return fleetDb.getJobStats();
+  ipcMain.handle('fleet:jobs:stats', async () => {
+    return fleetFetch('/3d/jobs/stats');
   });
 
-  ipcMain.handle('fleet:jobs:clearStale', () => {
-    if (!fleetDb) return { cleared: 0 };
-    const now = new Date().toISOString();
-    const result = fleetDb.db.prepare(`
-      UPDATE print_jobs SET status = 'completed', completed_at = @now
-      WHERE status IN ('printing', 'paused', 'queued')
-    `).run({ now });
-    console.log(`[Fleet] Manually cleared ${result.changes} stale job(s)`);
-    return { cleared: result.changes };
+  ipcMain.handle('fleet:jobs:clearStale', async () => {
+    // Not directly supported by print server yet, return empty
+    return { cleared: 0 };
+  });
+
+  // ==================== Inkjet Printer Fleet IPC ====================
+
+  ipcMain.handle('inkjet:printers:list', async (_event, query = {}) => {
+    const params = new URLSearchParams();
+    if (query.active !== undefined) params.set('active', String(query.active));
+    const qs = params.toString();
+    return fleetFetch(`/inkjet/printers${qs ? '?' + qs : ''}`);
+  });
+
+  ipcMain.handle('inkjet:printers:get', async (_event, id) => {
+    return fleetFetch(`/inkjet/printers/${id}`);
+  });
+
+  ipcMain.handle('inkjet:printers:add', async (_event, printer) => {
+    return fleetFetch('/inkjet/printers', {
+      method: 'POST', body: JSON.stringify(printer)
+    });
+  });
+
+  ipcMain.handle('inkjet:printers:update', async (_event, { id, updates }) => {
+    return fleetFetch(`/inkjet/printers/${id}`, {
+      method: 'PUT', body: JSON.stringify(updates)
+    });
+  });
+
+  ipcMain.handle('inkjet:printers:remove', async (_event, id) => {
+    return fleetFetch(`/inkjet/printers/${id}?remove_cups=true`, { method: 'DELETE' });
+  });
+
+  ipcMain.handle('inkjet:printers:capabilities', async (_event, id) => {
+    return fleetFetch(`/inkjet/printers/${id}/capabilities`);
+  });
+
+  ipcMain.handle('inkjet:printers:inkLevels', async (_event, id) => {
+    return fleetFetch(`/inkjet/printers/${id}/ink-levels`);
+  });
+
+  ipcMain.handle('inkjet:printers:allInkLevels', async () => {
+    return fleetFetch('/inkjet/ink-levels');
+  });
+
+  ipcMain.handle('inkjet:printers:status', async () => {
+    return fleetFetch('/inkjet/status');
+  });
+
+  ipcMain.handle('inkjet:printers:discover', async () => {
+    return fleetFetch('/inkjet/discover');
+  });
+
+  ipcMain.handle('inkjet:jobs:submit', async (_event, job) => {
+    return fleetFetch('/inkjet/jobs', {
+      method: 'POST', body: JSON.stringify(job), timeout: 60000
+    });
+  });
+
+  ipcMain.handle('inkjet:jobs:list', async (_event, query = {}) => {
+    const params = new URLSearchParams();
+    if (query.printerId) params.set('printer_id', query.printerId);
+    if (query.status) params.set('status', query.status);
+    if (query.limit) params.set('limit', query.limit);
+    const qs = params.toString();
+    return fleetFetch(`/inkjet/jobs${qs ? '?' + qs : ''}`);
+  });
+
+  ipcMain.handle('inkjet:jobs:cancel', async (_event, id) => {
+    return fleetFetch(`/inkjet/jobs/${id}/cancel`, { method: 'POST' });
+  });
+
+  ipcMain.handle('inkjet:jobs:active', async () => {
+    return fleetFetch('/inkjet/jobs/active');
+  });
+
+  // Combined status
+  ipcMain.handle('print-server:status', async () => {
+    return fleetFetch('/status');
   });
 
   // ============================================================================
@@ -7084,96 +7081,56 @@ Return ONLY valid JSON, nothing else:
     return data;
   });
 
-  // Slice plate + Download + Upload to printer + Start print
+  // Slice plate + Download + Upload to printer + Start print (via print server)
   ipcMain.handle('slicer:slicePlateAndPrint', async (_event, { sliceOptions, printerId } = {}) => {
     if (!printerId) throw new Error('printerId is required');
-    if (!fleetDb) throw new Error('Fleet DB not initialized');
-    if (!printerService) throw new Error('Printer service not initialized');
 
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-
-    // Step 1: Slice plate on server
+    // Step 1: Slice plate on vinylApp server
     console.log('[Slicer] Plate Step 1: Slicing plate on server...', JSON.stringify(sliceOptions?.stl_ids));
     const sliceResp = await slicerFetch('/api/slicer/slice-plate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sliceOptions),
-      timeout: 600000 // 10 minutes for plate slicing
+      timeout: 600000
     });
     const sliceResult = await sliceResp.json();
     if (sliceResult.error) throw new Error(`Server slicing error: ${sliceResult.error}`);
-    if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
-    console.log(`[Slicer] Plate Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
+    if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id');
+    console.log(`[Slicer] Plate Step 1 done: ${sliceResult.gcode_filename}`);
 
-    // Step 2: Download G-code from server, write to temp
+    // Step 2: Download G-code, write to temp
     console.log('[Slicer] Plate Step 2: Downloading G-code...');
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
-    const arrayBuf = await gcodeResp.arrayBuffer();
-    const gcodeBuf = Buffer.from(arrayBuf);
+    const gcodeBuf = Buffer.from(await gcodeResp.arrayBuffer());
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
     fs.writeFileSync(tmpPath, gcodeBuf);
-    console.log(`[Slicer] Plate Step 2 done: ${tmpPath} (${gcodeBuf.length} bytes)`);
 
-    // Step 3: Upload to printer via Moonraker
-    console.log(`[Slicer] Plate Step 3: Uploading to printer ${printer.name} (${printer.api_url})...`);
+    // Step 3-5: Upload + level + start via print server
+    console.log('[Slicer] Plate Step 3-5: Starting print via print server...');
     try {
-      await printerService.uploadGcode(printer.api_url, tmpPath);
-    } catch (uploadErr) {
+      const job = await fleetFetch('/3d/print/start', {
+        method: 'POST',
+        body: JSON.stringify({
+          printer_id: printerId, filename: sliceResult.gcode_filename,
+          file_path: tmpPath, level_bed: true
+        }),
+        timeout: 600000
+      });
       try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`Failed to upload plate G-code to printer "${printer.name}": ${uploadErr.message}`);
-    }
-    console.log('[Slicer] Plate Step 3 done: uploaded');
-
-    // Step 4: Run bed leveling for Kobra printers
-    const isKobra = (printer.model || '').startsWith('kobra');
-    if (isKobra) {
-      console.log(`[Slicer] Plate Step 4: Running pre-print bed leveling on ${printer.name}...`);
-      try {
-        await printerService.runBedLeveling(printer.api_url);
-      } catch (levelErr) {
-        console.warn(`[Slicer] Bed leveling failed (continuing with saved mesh): ${levelErr.message}`);
-      }
-      console.log('[Slicer] Plate Step 4 done: bed leveling complete');
-    }
-
-    // Step 5: Start print
-    console.log('[Slicer] Plate Step 5: Starting print...');
-    try {
-      await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
-    } catch (startErr) {
+      return { success: true, job, sliceResult };
+    } catch (err) {
       try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`Plate G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
+      throw err;
     }
-    console.log('[Slicer] Plate Step 5 done: print started');
-
-    // Step 6: Create fleet job record (auto-complete any stale jobs first)
-    fleetDb.completeStaleJobs(printerId);
-    const job = fleetDb.createJob({
-      printer_id: printerId,
-      filename: sliceResult.gcode_filename,
-      status: 'printing',
-      started_at: new Date().toISOString()
-    });
-
-    // Clean up temp file
-    try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-
-    return { success: true, job, sliceResult };
   });
 
-  // Slice + Download + Upload to printer + Start print
+  // Slice + Download + Upload to printer + Start print (via print server)
   ipcMain.handle('slicer:sliceAndPrint', async (_event, { sliceOptions, printerId } = {}) => {
     if (!printerId) throw new Error('printerId is required');
-    if (!fleetDb) throw new Error('Fleet DB not initialized');
-    if (!printerService) throw new Error('Printer service not initialized');
 
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
-
-    // Step 1: Slice on server
+    // Step 1: Slice on vinylApp server
     console.log('[Slicer] Step 1: Slicing on server...');
     const sliceResp = await slicerFetch('/api/slicer/slice', {
       method: 'POST',
@@ -7182,82 +7139,43 @@ Return ONLY valid JSON, nothing else:
     });
     const sliceResult = await sliceResp.json();
     if (sliceResult.error) throw new Error(`Server slicing error: ${sliceResult.error}`);
-    if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id — slicing may have failed silently');
-    console.log(`[Slicer] Step 1 done: ${sliceResult.gcode_filename} (cached: ${sliceResult.cached})`);
+    if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id');
 
-    // Step 2: Download G-code from server, write to temp
-    console.log('[Slicer] Step 2: Downloading G-code...');
+    // Step 2: Download G-code, write to temp
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
-    const arrayBuf = await gcodeResp.arrayBuffer();
-    const gcodeBuf = Buffer.from(arrayBuf);
+    const gcodeBuf = Buffer.from(await gcodeResp.arrayBuffer());
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
     fs.writeFileSync(tmpPath, gcodeBuf);
-    console.log(`[Slicer] Step 2 done: ${tmpPath} (${gcodeBuf.length} bytes)`);
 
-    // Step 3: Upload to printer via Moonraker
-    console.log(`[Slicer] Step 3: Uploading to printer ${printer.name} (${printer.api_url})...`);
+    // Step 3-5: Upload + level + start via print server
     try {
-      await printerService.uploadGcode(printer.api_url, tmpPath);
-    } catch (uploadErr) {
+      const job = await fleetFetch('/3d/print/start', {
+        method: 'POST',
+        body: JSON.stringify({
+          printer_id: printerId, filename: sliceResult.gcode_filename,
+          file_path: tmpPath, level_bed: true
+        }),
+        timeout: 600000
+      });
       try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
-    }
-    console.log('[Slicer] Step 3 done: uploaded');
-
-    // Step 4: Run bed leveling for Kobra printers (must happen BEFORE print start;
-    // the Anycubic firmware blocks all probing during SD-card prints)
-    const isKobra = (printer.model || '').startsWith('kobra');
-    if (isKobra) {
-      console.log(`[Slicer] Step 4: Running pre-print bed leveling on ${printer.name}...`);
-      try {
-        await printerService.runBedLeveling(printer.api_url);
-      } catch (levelErr) {
-        console.warn(`[Slicer] Bed leveling failed (continuing with saved mesh): ${levelErr.message}`);
-      }
-      console.log('[Slicer] Step 4 done: bed leveling complete');
-    }
-
-    // Step 5: Start print
-    console.log('[Slicer] Step 5: Starting print...');
-    try {
-      await printerService.startPrint(printer.api_url, sliceResult.gcode_filename);
-    } catch (startErr) {
+      return { success: true, job, sliceResult };
+    } catch (err) {
       try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
+      throw err;
     }
-    console.log('[Slicer] Step 5 done: print started');
-
-    // Step 6: Create fleet job record (auto-complete any stale jobs first)
-    fleetDb.completeStaleJobs(printerId);
-    const job = fleetDb.createJob({
-      printer_id: printerId,
-      filename: sliceResult.gcode_filename,
-      status: 'printing',
-      started_at: new Date().toISOString()
-    });
-
-    // Clean up temp file
-    try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-
-    return { success: true, job, sliceResult };
   });
 
-  // Print existing G-code (download from server + upload to printer)
+  // Print existing G-code (download from server + upload to printer via print server)
   ipcMain.handle('slicer:printGcode', async (event, { gcodeId, printerId } = {}) => {
     if (!gcodeId || !printerId) throw new Error('gcodeId and printerId required');
-    if (!fleetDb) throw new Error('Fleet DB not initialized');
-    if (!printerService) throw new Error('Printer service not initialized');
-
-    const printer = fleetDb.getPrinter(printerId);
-    if (!printer) throw new Error('Printer not found');
 
     const sendProgress = (step, detail) => {
       try { event.sender.send('slicer:printProgress', { step, detail }); } catch {}
     };
 
-    // Step 1: Download G-code from server
+    // Step 1: Download G-code from vinylApp server
     sendProgress(1, 'Downloading G-code from server...');
     const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 180000 });
     const contentDisp = gcodeResp.headers.get('content-disposition') || '';
@@ -7273,57 +7191,30 @@ Return ONLY valid JSON, nothing else:
       throw err;
     }
 
-    // Step 2: Prepare file, write temp
+    // Step 2: Write to temp
     sendProgress(2, 'Preparing G-code file...');
     const gcodeBuf = Buffer.from(arrayBuf);
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     fs.mkdirSync(tmpDir, { recursive: true });
     const tmpPath = path.join(tmpDir, filename);
     fs.writeFileSync(tmpPath, gcodeBuf);
-    const fileSizeMB = (gcodeBuf.length / (1024 * 1024)).toFixed(1);
 
-    // Step 3: Upload to printer
-    sendProgress(3, `Uploading ${fileSizeMB} MB to ${printer.name}...`);
+    // Step 3-5: Upload + level + start via print server
+    sendProgress(3, 'Sending to print server...');
     try {
-      await printerService.uploadGcode(printer.api_url, tmpPath);
-    } catch (uploadErr) {
+      const job = await fleetFetch('/3d/print/start', {
+        method: 'POST',
+        body: JSON.stringify({
+          printer_id: printerId, filename, file_path: tmpPath, level_bed: true
+        }),
+        timeout: 600000
+      });
       try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`Failed to upload G-code to printer "${printer.name}": ${uploadErr.message}`);
-    }
-
-    // Step 4: Run bed leveling for Kobra printers
-    const isKobra = (printer.model || '').startsWith('kobra');
-    if (isKobra) {
-      sendProgress(4, `Running bed leveling on ${printer.name}...`);
-      try {
-        await printerService.runBedLeveling(printer.api_url);
-      } catch (levelErr) {
-        console.warn(`[Slicer] Bed leveling failed (continuing with saved mesh): ${levelErr.message}`);
-      }
-    }
-
-    // Step 5: Start print
-    sendProgress(5, `Starting print on ${printer.name}...`);
-    try {
-      await printerService.startPrint(printer.api_url, filename);
-    } catch (startErr) {
+      return { success: true, job };
+    } catch (err) {
       try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-      throw new Error(`G-code uploaded but failed to start print on "${printer.name}": ${startErr.message}. The file is on the printer — you can start it manually.`);
+      throw err;
     }
-
-    // Create fleet job record (auto-complete any stale jobs first)
-    fleetDb.completeStaleJobs(printerId);
-    const job = fleetDb.createJob({
-      printer_id: printerId,
-      filename: filename,
-      status: 'printing',
-      started_at: new Date().toISOString()
-    });
-
-    // Clean up temp file
-    try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
-
-    return { success: true, job };
   });
 
   // G-code cache
@@ -7627,27 +7518,19 @@ app.on('ready', async () => {
   } catch (err) {
     console.warn('Local catalog DB unavailable:', err?.message || err);
   }
-  // Initialize 3D Printer Fleet
+  // 3D Printer Fleet — now proxied to Pi print server (pi4server001)
+  // Local fleetDb and printerService kept for backward compat but not used for monitoring
   try {
     fleetDb = new PrinterFleetDB(app);
-    console.log('[Fleet] Printer fleet database initialized');
+    console.log('[Fleet] Local fleet DB initialized (legacy, print server is primary)');
   } catch (err) {
     console.warn('Printer fleet DB unavailable:', err?.message || err);
   }
   try {
-    const { fetch: fleetFetch } = await ensureFetch();
-    printerService = new PrinterService({ fetch: fleetFetch });
-    console.log('[Fleet] Printer service initialized');
-    // Auto-connect to all active printers
-    if (fleetDb) {
-      const activePrinters = fleetDb.listPrinters({ active: true });
-      for (const p of activePrinters) {
-        connectToPrinter(p);
-      }
-      if (activePrinters.length) {
-        console.log(`[Fleet] Connecting to ${activePrinters.length} active printer(s)`);
-      }
-    }
+    const { fetch: fetchFn } = await ensureFetch();
+    printerService = new PrinterService({ fetch: fetchFn });
+    console.log('[Fleet] Printer service available (print server on pi4server001 handles monitoring)');
+    // NOTE: No longer auto-connecting to printers locally — Pi print server handles all monitoring
   } catch (err) {
     console.warn('Printer service unavailable:', err?.message || err);
   }

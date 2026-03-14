@@ -3839,6 +3839,34 @@ const requestHandler = async (req, res) => {
     }
   }
 
+  // Print Server Proxy — forwards to Pi print server (pi4server001)
+  if (parsedUrl.pathname.startsWith('/api/print-server/')) {
+    const PRINT_SERVER_URL = process.env.PRINT_SERVER_URL || 'http://100.64.0.7:5000';
+    const targetPath = parsedUrl.pathname.replace('/api/print-server', '/api');
+    const targetUrl = `${PRINT_SERVER_URL}${targetPath}${parsedUrl.search || ''}`;
+
+    try {
+      const headers = { 'Content-Type': req.headers['content-type'] || 'application/json' };
+      if (process.env.INTERNAL_API_KEY) headers['X-API-Key'] = process.env.INTERNAL_API_KEY;
+
+      const fetchOpts = { method: req.method, headers, signal: AbortSignal.timeout(120000) };
+
+      if (req.method === 'POST' || req.method === 'PUT') {
+        const { parseBody: parseB } = require('./utils/http');
+        const body = await parseB(req);
+        fetchOpts.body = JSON.stringify(body);
+      }
+
+      const proxyResp = await fetch(targetUrl, fetchOpts);
+      const data = await proxyResp.json();
+      sendJson(res, proxyResp.status, data);
+    } catch (err) {
+      console.error('[PrintServerProxy] Error:', err.message);
+      sendJson(res, 502, { error: `Print server unreachable: ${err.message}` });
+    }
+    return;
+  }
+
   if (parsedUrl.pathname.startsWith('/api/email-sequences')) {
     if (emailSequences.handleEmailSequenceRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
   }
