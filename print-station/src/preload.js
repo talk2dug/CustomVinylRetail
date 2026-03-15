@@ -590,6 +590,9 @@ contextBridge.exposeInMainWorld('printStation', {
   // 3D SLICER API (STL catalog, slicing, G-code cache)
   // ============================================================================
   slicer: {
+    // Generic server API fetch (for print monitor, etc.)
+    fetch: (endpoint, options) => ipcRenderer.invoke('server:apiFetch', endpoint, options || {}),
+
     // Presets (human-readable options)
     getPresets: () => ipcRenderer.invoke('slicer:presets'),
 

@@ -95,7 +95,8 @@
         <div class="dropdown-menu" id="threed-dropdown">
           <button class="dropdown-item" data-view="multiboardDesignerView">Multiboard Designer</button>
           <button class="dropdown-item" data-view="multiboardPartsBrowserView">Parts Browser</button>
-          <button class="dropdown-item" data-view="printerFleetView">Printer Fleet</button>
+          <button class="dropdown-item" data-view="printerFleetView">3D Printer Fleet</button>
+          <button class="dropdown-item" data-view="inkjetFleetView">Inkjet Printers</button>
           <button class="dropdown-item" data-view="slicerView">Slice &amp; Print</button>
           <button class="dropdown-item" data-view="printQuotesView">Print Quotes</button>
           <button class="dropdown-item" data-view="buildPlatesView">Build Plates</button>
@@ -6954,6 +6955,58 @@
       </section>
 
       <!-- ================================================================== -->
+      <!-- INKJET PRINTER FLEET                                               -->
+      <!-- ================================================================== -->
+      <section id="inkjetFleetView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Inkjet Printers</h2>
+          <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
+            <span id="inkjetLastUpdated" class="muted" style="font-size:0.85rem;"></span>
+            <button id="inkjetRefreshBtn" class="secondary" style="padding:6px 14px;">Refresh</button>
+            <button id="inkjetDiscoverBtn" class="secondary" style="padding:6px 14px;">Discover</button>
+            <button id="inkjetAddPrinterBtn" class="primary" style="padding:6px 14px;">Add Printer</button>
+          </div>
+        </div>
+
+        <!-- Summary Bar -->
+        <div class="inventory-card" style="margin:0 16px;padding:12px 16px;">
+          <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
+            <div><strong id="inkjetTotalPrinters">0</strong> <span class="muted">Printers</span></div>
+            <div><span id="inkjetOnlineCount" style="color:var(--success);">0</span> <span class="muted">Online</span></div>
+            <div><span id="inkjetPrintingCount" style="color:var(--accent);">0</span> <span class="muted">Printing</span></div>
+            <div><span id="inkjetIdleCount" style="color:var(--muted);">0</span> <span class="muted">Idle</span></div>
+            <div><span id="inkjetOfflineCount" style="color:var(--danger);">0</span> <span class="muted">Offline</span></div>
+          </div>
+        </div>
+
+        <!-- Printer Cards Grid -->
+        <div id="inkjetPrinterGrid" class="dashboard-grid" style="margin:0 16px 16px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));">
+          <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
+            Click <strong>Add Printer</strong> or <strong>Discover</strong> to find your inkjet printers.
+          </div>
+        </div>
+
+        <!-- Print Queue -->
+        <div style="margin:0 16px 16px;">
+          <div class="inventory-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="margin:0;">Print Queue &amp; History</h3>
+              <select id="inkjetJobFilter" style="padding:6px 12px;">
+                <option value="">All Jobs</option>
+                <option value="printing">Printing</option>
+                <option value="queued">Queued</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div id="inkjetJobsList" style="max-height:400px;overflow-y:auto;">
+              <div class="muted" style="text-align:center;padding:20px;">No print jobs yet</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
       <!-- SLICE & PRINT (3D Slicer)                                          -->
       <!-- ================================================================== -->
       <section id="slicerView" class="view">
@@ -7915,6 +7968,7 @@
     <script src="./multiboard-parts-browser-view.js"></script>
     <!-- 3D Printer Fleet View -->
     <script src="./printer-fleet-view.js"></script>
+    <script src="./inkjet-fleet-view.js"></script>
     <!-- Slicer View -->
     <script src="./slicer-view.js"></script>
     <script src="./mount-merger-view.js"></script>

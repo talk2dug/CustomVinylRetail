@@ -1,0 +1,1580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finance Manager — Blue Ridge Custom Co</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Montserrat:wght@400;600;700&display=swap">
+  <style>
+:root {
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --muted: #4b5563;
+  --border: #d1d5db;
+  --accent: #2563eb;
+  --accent-dark: #1d4ed8;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  font-family: "Barlow", "Montserrat", system-ui, -apple-system, sans-serif;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+
+/* Topbar */
+.topbar {
+  padding: 1.25rem 2rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(15,23,42,0.08);
+}
+.topbar-top {
+  display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+  margin-bottom: 1rem;
+}
+.topbar h1 { margin: 0; font-size: 1.6rem; }
+.topbar p { margin: 0.3rem 0 0; color: var(--muted); font-size: 0.95rem; }
+.topbar-actions { display: flex; gap: 0.5rem; align-items: center; }
+.topbar-actions a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+
+/* Tabs */
+.tab-bar { display: flex; gap: 0; border-bottom: 2px solid var(--border); }
+.tab-btn {
+  padding: 0.6rem 1.25rem; border: none; background: none; cursor: pointer;
+  font: inherit; font-weight: 600; font-size: 0.95rem; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s;
+}
+.tab-btn:hover { color: var(--accent); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Main */
+main { flex: 1; padding: 1.5rem 2rem; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Cards & Layout */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 1rem; padding: 1.5rem;
+  box-shadow: 0 8px 20px rgba(15,23,42,0.08);
+}
+.card h2 { margin: 0 0 1rem; font-size: 1.25rem; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.stat-card {
+  background: var(--surface-alt); border: 1px solid var(--border);
+  border-radius: 0.75rem; padding: 1rem 1.25rem; text-align: center;
+}
+.stat-card .label { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.25rem; }
+.stat-card .value { font-size: 1.6rem; font-weight: 700; }
+.stat-card .value.success { color: var(--success); }
+.stat-card .value.danger { color: var(--danger); }
+
+/* Buttons */
+.btn {
+  font: inherit; font-weight: 600; padding: 0.5rem 1rem;
+  border-radius: 0.65rem; cursor: pointer; transition: all 0.15s; border: none;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-dark); }
+.btn-secondary { background: var(--surface); color: #0f172a; border: 1px solid var(--border); }
+.btn-secondary:hover { background: #e2e8f0; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: #dc2626; }
+.btn-sm { padding: 0.35rem 0.75rem; font-size: 0.85rem; }
+.btn-ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+.btn-ghost:hover { background: #dbeafe; }
+
+/* Tables */
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.data-table th {
+  text-align: left; padding: 0.6rem 0.75rem; background: var(--surface-alt);
+  font-weight: 600; color: var(--muted); border-bottom: 2px solid var(--border);
+  font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.data-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.data-table tr:hover td { background: #f8fafc; }
+.data-table .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+.data-table .actions { white-space: nowrap; }
+.data-table .actions button { margin-left: 0.25rem; }
+
+/* Badges */
+.badge {
+  display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px;
+  font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.badge-high { background: #fef2f2; color: var(--danger); }
+.badge-medium { background: #fffbeb; color: #b45309; }
+.badge-low { background: #f0fdf4; color: #15803d; }
+.badge-active { background: #ecfdf5; color: var(--success); }
+.badge-needs-repair { background: #fef2f2; color: var(--danger); }
+.badge-retired { background: #f3f4f6; color: var(--muted); }
+.badge-wishlist { background: #eff6ff; color: var(--accent); }
+.badge-researching { background: #fffbeb; color: #b45309; }
+.badge-approved { background: #ecfdf5; color: var(--success); }
+.badge-purchased { background: #f3f4f6; color: var(--muted); }
+
+/* Forms */
+.form-row { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 1rem; }
+.form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.form-group label { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.form-group input, .form-group select, .form-group textarea {
+  font: inherit; padding: 0.55rem 0.75rem; border-radius: 0.65rem;
+  border: 1px solid var(--border); background: var(--surface-alt);
+}
+.form-group textarea { resize: vertical; min-height: 60px; }
+.form-actions { display: flex; gap: 0.75rem; margin-top: 1rem; align-items: center; }
+
+/* Filter bar */
+.filter-bar {
+  display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end;
+  margin-bottom: 1.25rem; padding: 1rem; background: var(--surface-alt);
+  border: 1px solid var(--border); border-radius: 0.75rem;
+}
+.filter-bar .form-group { margin-bottom: 0; }
+.filter-bar input, .filter-bar select {
+  font: inherit; padding: 0.45rem 0.65rem; border-radius: 0.5rem;
+  border: 1px solid var(--border); background: var(--surface); font-size: 0.9rem;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,0.5); z-index: 100;
+  display: flex; align-items: center; justify-content: center; padding: 1rem;
+}
+.modal-overlay[hidden] { display: none; }
+.modal {
+  background: var(--surface); border-radius: 1rem; padding: 1.75rem;
+  width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 30px 50px rgba(15,23,42,0.25);
+}
+.modal h3 { margin: 0 0 1.25rem; font-size: 1.2rem; }
+
+/* Spend bar chart */
+.spend-bars { display: flex; flex-direction: column; gap: 0.5rem; }
+.spend-bar-row { display: flex; align-items: center; gap: 0.75rem; }
+.spend-bar-label { width: 120px; font-size: 0.85rem; font-weight: 600; color: var(--muted); text-align: right; flex-shrink: 0; }
+.spend-bar-track { flex: 1; height: 22px; background: var(--surface-alt); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.spend-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #60a5fa); border-radius: 4px; transition: width 0.4s; }
+.spend-bar-amount { width: 80px; font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Vinyl roll meter */
+.roll-meter { margin: 0.5rem 0; }
+.roll-meter-track { height: 14px; background: #e5e7eb; border-radius: 7px; overflow: hidden; }
+.roll-meter-fill { height: 100%; border-radius: 7px; transition: width 0.4s; }
+.roll-meter-fill.high { background: var(--success); }
+.roll-meter-fill.mid { background: var(--warning); }
+.roll-meter-fill.low { background: var(--danger); }
+.roll-meter-text { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+
+/* Vinyl swatch */
+.swatch-img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
+.swatch-placeholder {
+  width: 48px; height: 48px; border-radius: 8px; border: 1px dashed var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; color: var(--muted); background: var(--surface-alt); cursor: pointer;
+}
+
+/* Low stock alert */
+.low-stock { background: #fef2f2; }
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 3rem 1rem; color: var(--muted);
+  border: 1px dashed var(--border); border-radius: 1rem; background: var(--surface-alt);
+}
+.empty-state p { margin: 0.5rem 0; }
+
+/* Equipment cards */
+.equip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+.equip-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 0.85rem;
+  padding: 1.25rem; cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s;
+}
+.equip-card:hover { border-color: var(--accent); box-shadow: 0 4px 12px rgba(37,99,235,0.1); }
+.equip-card h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
+.equip-card .equip-meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
+.equip-card .equip-footer { display: flex; justify-content: space-between; align-items: center; }
+.equip-card .equip-cost { font-weight: 700; }
+
+/* Maintenance timeline */
+.maint-timeline { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem; }
+.maint-entry {
+  display: flex; gap: 0.75rem; padding: 0.75rem; background: var(--surface-alt);
+  border-radius: 0.65rem; border-left: 3px solid var(--accent); font-size: 0.9rem;
+}
+.maint-entry .maint-date { font-weight: 600; color: var(--muted); white-space: nowrap; min-width: 80px; }
+.maint-entry .maint-body { flex: 1; }
+.maint-entry .maint-type { font-weight: 600; text-transform: capitalize; }
+.maint-entry .maint-cost { color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .topbar { padding: 1rem; }
+  .topbar h1 { font-size: 1.3rem; }
+  main { padding: 1rem; }
+  .tab-btn { padding: 0.5rem 0.75rem; font-size: 0.85rem; }
+  .form-row { grid-template-columns: 1fr; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .spend-bar-label { width: 80px; font-size: 0.75rem; }
+  .equip-grid { grid-template-columns: 1fr; }
+  .data-table { font-size: 0.8rem; }
+  .data-table th, .data-table td { padding: 0.4rem 0.5rem; }
+}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-top">
+      <div>
+        <h1>Finance Manager</h1>
+        <p>Track expenses, equipment, inventory, and planned purchases.</p>
+      </div>
+      <div class="topbar-actions">
+        <a id="hubLink" href="/hub">&larr; Tool Hub</a>
+      </div>
+    </div>
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="expenses">Expenses</button>
+      <button class="tab-btn" data-tab="planned">Planned</button>
+      <button class="tab-btn" data-tab="equipment">Equipment</button>
+      <button class="tab-btn" data-tab="inventory">Inventory</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ==================== DASHBOARD ==================== -->
+    <section id="tab-dashboard" class="tab-panel active">
+      <div class="card-grid" id="dashStats"></div>
+      <div class="card" style="margin-bottom:1.5rem">
+        <h2>Spending by Category (YTD)</h2>
+        <div class="spend-bars" id="dashCategoryBars">
+          <div class="empty-state"><p>No expenses recorded yet.</p></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div class="card">
+          <h2>Upcoming Planned Purchases</h2>
+          <div id="dashPlanned"><div class="empty-state"><p>Nothing planned yet.</p></div></div>
+        </div>
+        <div class="card">
+          <h2>Low Stock Alerts</h2>
+          <div id="dashLowStock"><div class="empty-state"><p>All stocked up!</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== EXPENSES ==================== -->
+    <section id="tab-expenses" class="tab-panel">
+      <div class="filter-bar">
+        <div class="form-group">
+          <label>From</label>
+          <input type="date" id="expFilterFrom">
+        </div>
+        <div class="form-group">
+          <label>To</label>
+          <input type="date" id="expFilterTo">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="expFilterCategory"><option value="">All</option></select>
+        </div>
+        <div class="form-group">
+          <label>Search</label>
+          <input type="text" id="expFilterSearch" placeholder="vendor, description...">
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="loadExpenses()">Filter</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-primary" onclick="openExpenseModal()">+ Add Expense</button>
+      </div>
+      <div class="card">
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date</th><th>Category</th><th>Vendor</th><th>Description</th>
+                <th style="text-align:right">Amount</th><th>Payment</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="expTableBody">
+              <tr><td colspan="7" class="empty-state">No expenses yet. Click "+ Add Expense" to get started.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== PLANNED PURCHASES ==================== -->
+    <section id="tab-planned" class="tab-panel">
+      <div class="filter-bar">
+        <div class="form-group">
+          <label>Status</label>
+          <select id="planFilterStatus">
+            <option value="">All</option>
+            <option value="wishlist">Wishlist</option>
+            <option value="researching">Researching</option>
+            <option value="approved">Approved</option>
+            <option value="purchased">Purchased</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Priority</label>
+          <select id="planFilterPriority">
+            <option value="">All</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="loadPlanned()">Filter</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-primary" onclick="openPlannedModal()">+ Add Planned Purchase</button>
+      </div>
+      <div class="card">
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Name</th><th>Category</th><th>Est. Cost</th><th>Priority</th>
+                <th>Status</th><th>Target Date</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="planTableBody">
+              <tr><td colspan="7" class="empty-state">No planned purchases yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== EQUIPMENT ==================== -->
+    <section id="tab-equipment" class="tab-panel">
+      <div class="filter-bar">
+        <div class="form-group">
+          <label>Category</label>
+          <select id="equipFilterCategory">
+            <option value="">All</option>
+            <option value="3D Printer">3D Printer</option>
+            <option value="Heat Press">Heat Press</option>
+            <option value="Laser Engraver">Laser Engraver</option>
+            <option value="Vinyl Cutter">Vinyl Cutter</option>
+            <option value="Inkjet Printer">Inkjet Printer</option>
+            <option value="Computer">Computer</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="equipFilterStatus">
+            <option value="">All</option>
+            <option value="active">Active</option>
+            <option value="needs-repair">Needs Repair</option>
+            <option value="retired">Retired</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="loadEquipment()">Filter</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-primary" onclick="openEquipmentModal()">+ Add Equipment</button>
+      </div>
+      <div class="equip-grid" id="equipGrid">
+        <div class="empty-state"><p>No equipment registered yet.</p></div>
+      </div>
+    </section>
+
+    <!-- ==================== INVENTORY ==================== -->
+    <section id="tab-inventory" class="tab-panel">
+      <div class="filter-bar">
+        <div class="form-group">
+          <label>Category</label>
+          <select id="invFilterCategory">
+            <option value="">All</option>
+            <option value="Vinyl">Vinyl</option>
+            <option value="Paper">Paper</option>
+            <option value="Metal Blanks">Metal Blanks</option>
+            <option value="Ink/Toner">Ink/Toner</option>
+            <option value="Filament">Filament</option>
+            <option value="Packaging">Packaging</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Search</label>
+          <input type="text" id="invFilterSearch" placeholder="name, sku...">
+        </div>
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;font-weight:600;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="invFilterLowStock"> Low stock only
+        </label>
+        <button class="btn btn-secondary btn-sm" onclick="loadInventory()">Filter</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-primary" onclick="openInventoryModal()">+ Add Item</button>
+      </div>
+      <div class="card">
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th></th><th>Name</th><th>Category</th><th>Qty</th><th>Unit</th>
+                <th style="text-align:right">Unit Cost</th><th>Vendor</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="invTableBody">
+              <tr><td colspan="8" class="empty-state">No inventory items yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- Expense Modal -->
+  <div class="modal-overlay" id="expenseModal" hidden>
+    <div class="modal">
+      <h3 id="expModalTitle">Add Expense</h3>
+      <input type="hidden" id="expEditId">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" id="expDate" required>
+        </div>
+        <div class="form-group">
+          <label>Amount ($) *</label>
+          <input type="number" id="expAmount" step="0.01" min="0" placeholder="0.00" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Category *</label>
+          <input type="text" id="expCategory" list="expCategoryList" placeholder="e.g. Materials">
+          <datalist id="expCategoryList"></datalist>
+        </div>
+        <div class="form-group">
+          <label>Vendor</label>
+          <input type="text" id="expVendor" placeholder="e.g. Amazon">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Description *</label>
+          <input type="text" id="expDescription" placeholder="What was purchased?">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Payment Method</label>
+          <select id="expPayment">
+            <option value="">--</option>
+            <option value="Credit Card">Credit Card</option>
+            <option value="Debit Card">Debit Card</option>
+            <option value="PayPal">PayPal</option>
+            <option value="Cash">Cash</option>
+            <option value="Bank Transfer">Bank Transfer</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Recurring?</label>
+          <select id="expRecurring">
+            <option value="0">No</option>
+            <option value="1">Yes</option>
+          </select>
+        </div>
+        <div class="form-group" id="expRecurringIntervalGroup" style="display:none">
+          <label>Interval</label>
+          <select id="expRecurringInterval">
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+            <option value="weekly">Weekly</option>
+            <option value="quarterly">Quarterly</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Notes</label>
+          <textarea id="expNotes" rows="2" placeholder="Optional notes..."></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveExpense()">Save</button>
+        <button class="btn btn-secondary" onclick="closeModal('expenseModal')">Cancel</button>
+        <span id="expModalStatus" class="status-message"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Planned Purchase Modal -->
+  <div class="modal-overlay" id="plannedModal" hidden>
+    <div class="modal">
+      <h3 id="planModalTitle">Add Planned Purchase</h3>
+      <input type="hidden" id="planEditId">
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Name *</label>
+          <input type="text" id="planName" placeholder="What do you want to buy?">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Category</label>
+          <input type="text" id="planCategory" placeholder="e.g. Equipment">
+        </div>
+        <div class="form-group">
+          <label>Estimated Cost ($)</label>
+          <input type="number" id="planCost" step="0.01" min="0" placeholder="0.00">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Priority</label>
+          <select id="planPriority">
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="planStatus">
+            <option value="wishlist">Wishlist</option>
+            <option value="researching">Researching</option>
+            <option value="approved">Approved</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Target Date</label>
+          <input type="date" id="planTargetDate">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Link / URL</label>
+          <input type="url" id="planUrl" placeholder="https://...">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Description / Notes</label>
+          <textarea id="planNotes" rows="2" placeholder="Why do you need this?"></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="savePlanned()">Save</button>
+        <button class="btn btn-secondary" onclick="closeModal('plannedModal')">Cancel</button>
+        <span id="planModalStatus" class="status-message"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Equipment Modal -->
+  <div class="modal-overlay" id="equipmentModal" hidden>
+    <div class="modal">
+      <h3 id="equipModalTitle">Add Equipment</h3>
+      <input type="hidden" id="equipEditId">
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Name *</label>
+          <input type="text" id="equipName" placeholder="e.g. Ender 3 V2">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Category</label>
+          <select id="equipCategory">
+            <option value="">--</option>
+            <option value="3D Printer">3D Printer</option>
+            <option value="Heat Press">Heat Press</option>
+            <option value="Laser Engraver">Laser Engraver</option>
+            <option value="Vinyl Cutter">Vinyl Cutter</option>
+            <option value="Inkjet Printer">Inkjet Printer</option>
+            <option value="Computer">Computer</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="equipStatus">
+            <option value="active">Active</option>
+            <option value="needs-repair">Needs Repair</option>
+            <option value="retired">Retired</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Make</label>
+          <input type="text" id="equipMake" placeholder="e.g. Creality">
+        </div>
+        <div class="form-group">
+          <label>Model</label>
+          <input type="text" id="equipModel" placeholder="e.g. Ender 3 V2">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Serial Number</label>
+          <input type="text" id="equipSerial" placeholder="SN-xxxxx">
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" id="equipLocation" placeholder="e.g. Workshop">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Purchase Date</label>
+          <input type="date" id="equipPurchaseDate">
+        </div>
+        <div class="form-group">
+          <label>Purchase Cost ($)</label>
+          <input type="number" id="equipCost" step="0.01" min="0" placeholder="0.00">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Vendor</label>
+          <input type="text" id="equipVendor" placeholder="Where purchased?">
+        </div>
+        <div class="form-group">
+          <label>Warranty Expires</label>
+          <input type="date" id="equipWarranty">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Notes</label>
+          <textarea id="equipNotes" rows="2" placeholder="Optional notes..."></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveEquipment()">Save</button>
+        <button class="btn btn-secondary" onclick="closeModal('equipmentModal')">Cancel</button>
+        <span id="equipModalStatus" class="status-message"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Equipment Detail Modal -->
+  <div class="modal-overlay" id="equipDetailModal" hidden>
+    <div class="modal" style="max-width:700px">
+      <div id="equipDetailContent"></div>
+      <div class="form-actions" style="margin-top:1.5rem">
+        <button class="btn btn-secondary" onclick="closeModal('equipDetailModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Maintenance Modal -->
+  <div class="modal-overlay" id="maintModal" hidden>
+    <div class="modal" style="max-width:450px">
+      <h3>Add Maintenance Entry</h3>
+      <input type="hidden" id="maintEquipId">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" id="maintDate">
+        </div>
+        <div class="form-group">
+          <label>Type *</label>
+          <select id="maintType">
+            <option value="cleaning">Cleaning</option>
+            <option value="repair">Repair</option>
+            <option value="calibration">Calibration</option>
+            <option value="upgrade">Upgrade</option>
+            <option value="inspection">Inspection</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Description</label>
+          <textarea id="maintDescription" rows="2" placeholder="What was done?"></textarea>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cost ($)</label>
+          <input type="number" id="maintCost" step="0.01" min="0" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Next Due</label>
+          <input type="date" id="maintNextDue">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveMaintenance()">Save</button>
+        <button class="btn btn-secondary" onclick="closeModal('maintModal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inventory Modal -->
+  <div class="modal-overlay" id="inventoryModal" hidden>
+    <div class="modal" style="max-width:650px">
+      <h3 id="invModalTitle">Add Inventory Item</h3>
+      <input type="hidden" id="invEditId">
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Name *</label>
+          <input type="text" id="invName" placeholder="e.g. Oracal 651 Glossy White">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Category</label>
+          <select id="invCategory" onchange="toggleVinylFields()">
+            <option value="">--</option>
+            <option value="Vinyl">Vinyl</option>
+            <option value="Paper">Paper</option>
+            <option value="Metal Blanks">Metal Blanks</option>
+            <option value="Ink/Toner">Ink/Toner</option>
+            <option value="Filament">Filament</option>
+            <option value="Packaging">Packaging</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Subcategory</label>
+          <input type="text" id="invSubcategory" placeholder="e.g. Permanent">
+        </div>
+        <div class="form-group">
+          <label>SKU</label>
+          <input type="text" id="invSku" placeholder="Optional SKU">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Quantity</label>
+          <input type="number" id="invQty" step="0.01" min="0" value="0">
+        </div>
+        <div class="form-group">
+          <label>Unit</label>
+          <input type="text" id="invUnit" value="unit" placeholder="roll, sheet, etc.">
+        </div>
+        <div class="form-group">
+          <label>Reorder At</label>
+          <input type="number" id="invReorder" step="0.01" min="0" placeholder="Low stock threshold">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Unit Cost ($)</label>
+          <input type="number" id="invUnitCost" step="0.01" min="0" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Vendor</label>
+          <input type="text" id="invVendor" placeholder="Supplier name">
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" id="invLocation" placeholder="Where stored?">
+        </div>
+      </div>
+
+      <!-- Vinyl Roll Fields -->
+      <div id="vinylFields" style="display:none">
+        <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0">
+        <h4 style="margin:0 0 0.75rem;color:var(--accent)">Vinyl Roll Details</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Color</label>
+            <input type="text" id="invVinylColor" placeholder="e.g. Glossy White">
+          </div>
+          <div class="form-group">
+            <label>Finish</label>
+            <select id="invVinylFinish">
+              <option value="">--</option>
+              <option value="Glossy">Glossy</option>
+              <option value="Matte">Matte</option>
+              <option value="Satin">Satin</option>
+              <option value="Metallic">Metallic</option>
+              <option value="Holographic">Holographic</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Width (inches)</label>
+            <input type="number" id="invRollWidth" step="0.1" placeholder="12">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Full Roll Weight (g)</label>
+            <input type="number" id="invRollWeightFull" step="1" placeholder="Weigh a full roll">
+          </div>
+          <div class="form-group">
+            <label>Empty Core Weight (g)</label>
+            <input type="number" id="invRollCoreWeight" step="1" placeholder="Weigh the empty tube">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Total Length (feet)</label>
+            <input type="number" id="invRollLength" step="0.1" placeholder="e.g. 150">
+          </div>
+          <div class="form-group">
+            <label>Current Weight (g)</label>
+            <input type="number" id="invRollWeightCurrent" step="1" placeholder="Weigh now">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:1rem">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Notes</label>
+          <textarea id="invNotes" rows="2" placeholder="Optional notes..."></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveInventory()">Save</button>
+        <button class="btn btn-secondary" onclick="closeModal('inventoryModal')">Cancel</button>
+        <span id="invModalStatus" class="status-message"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vinyl Weigh Modal -->
+  <div class="modal-overlay" id="weighModal" hidden>
+    <div class="modal" style="max-width:400px">
+      <h3>Weigh Vinyl Roll</h3>
+      <input type="hidden" id="weighItemId">
+      <p id="weighItemName" style="color:var(--muted);margin:0 0 1rem"></p>
+      <div class="form-group">
+        <label>Current Weight (grams)</label>
+        <input type="number" id="weighValue" step="1" placeholder="Put roll on scale...">
+      </div>
+      <div id="weighResult" style="margin-top:1rem;display:none">
+        <div class="roll-meter">
+          <div class="roll-meter-track"><div class="roll-meter-fill" id="weighMeterFill"></div></div>
+          <div class="roll-meter-text" id="weighMeterText"></div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="submitWeigh()">Save Weight</button>
+        <button class="btn btn-secondary" onclick="closeModal('weighModal')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo Upload (hidden file input) -->
+  <input type="file" id="photoUploadInput" accept="image/*" style="display:none" onchange="handlePhotoUpload(event)">
+
+<script>
+// ============================================================================
+// CONFIG & API
+// ============================================================================
+const API = '/api/finance';
+// Grab API key from ?key= URL param, falling back to localStorage
+const urlKey = new URLSearchParams(window.location.search).get('key');
+const API_KEY = urlKey || localStorage.getItem('apiKey') || '';
+if (urlKey) localStorage.setItem('apiKey', urlKey);
+// Pass key to hub link
+if (API_KEY) document.getElementById('hubLink').href = '/hub?key=' + encodeURIComponent(API_KEY);
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY, ...(opts.headers || {}) }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Request failed');
+  }
+  return res.json();
+}
+
+function dollars(cents) {
+  if (cents == null) return '--';
+  return '$' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function toCents(dollarStr) { return Math.round(parseFloat(dollarStr || '0') * 100); }
+function formatDate(d) { return d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'; }
+
+// ============================================================================
+// TAB SWITCHING
+// ============================================================================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    const loaders = { dashboard: loadDashboard, expenses: loadExpenses, planned: loadPlanned, equipment: loadEquipment, inventory: loadInventory };
+    loaders[btn.dataset.tab]?.();
+  });
+});
+
+// ============================================================================
+// MODAL HELPERS
+// ============================================================================
+function openModal(id) { document.getElementById(id).hidden = false; }
+function closeModal(id) { document.getElementById(id).hidden = true; }
+
+// Close modals on backdrop click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.hidden = true; });
+});
+
+// ============================================================================
+// DASHBOARD
+// ============================================================================
+async function loadDashboard() {
+  try {
+    const d = await apiFetch('/dashboard');
+    document.getElementById('dashStats').innerHTML = `
+      <div class="stat-card"><div class="label">This Month</div><div class="value">${dollars(d.this_month_cents)}</div></div>
+      <div class="stat-card"><div class="label">Last Month</div><div class="value">${dollars(d.last_month_cents)}</div></div>
+      <div class="stat-card"><div class="label">Year to Date</div><div class="value">${dollars(d.ytd_cents)}</div></div>
+      <div class="stat-card"><div class="label">Active Equipment</div><div class="value">${d.active_equipment_count}</div></div>
+      <div class="stat-card"><div class="label">Equipment Value</div><div class="value">${dollars(d.total_equipment_value_cents)}</div></div>
+    `;
+    // Category bars
+    const bars = document.getElementById('dashCategoryBars');
+    if (d.spend_by_category && d.spend_by_category.length) {
+      const max = Math.max(...d.spend_by_category.map(c => c.total));
+      bars.innerHTML = d.spend_by_category.map(c => `
+        <div class="spend-bar-row">
+          <div class="spend-bar-label">${c.category}</div>
+          <div class="spend-bar-track"><div class="spend-bar-fill" style="width:${max > 0 ? (c.total / max * 100) : 0}%"></div></div>
+          <div class="spend-bar-amount">${dollars(c.total)}</div>
+        </div>
+      `).join('');
+    } else {
+      bars.innerHTML = '<div class="empty-state"><p>No expenses recorded yet.</p></div>';
+    }
+    // Planned
+    const planDiv = document.getElementById('dashPlanned');
+    if (d.upcoming_planned && d.upcoming_planned.length) {
+      planDiv.innerHTML = '<table class="data-table"><tbody>' + d.upcoming_planned.map(p => `
+        <tr>
+          <td><span class="badge badge-${p.priority}">${p.priority}</span></td>
+          <td>${p.name}</td>
+          <td class="amount">${dollars(p.estimated_cost_cents)}</td>
+          <td>${p.target_date ? formatDate(p.target_date) : '--'}</td>
+        </tr>
+      `).join('') + '</tbody></table>';
+    } else {
+      planDiv.innerHTML = '<div class="empty-state"><p>Nothing planned yet.</p></div>';
+    }
+    // Low stock
+    const stockDiv = document.getElementById('dashLowStock');
+    if (d.low_stock_items && d.low_stock_items.length) {
+      stockDiv.innerHTML = '<table class="data-table"><tbody>' + d.low_stock_items.map(i => `
+        <tr class="low-stock">
+          <td>${i.name}</td>
+          <td>${i.quantity} ${i.unit || ''}</td>
+          <td>Reorder at: ${i.reorder_threshold}</td>
+        </tr>
+      `).join('') + '</tbody></table>';
+    } else {
+      stockDiv.innerHTML = '<div class="empty-state"><p>All stocked up!</p></div>';
+    }
+  } catch (err) {
+    console.error('Dashboard error:', err);
+  }
+}
+
+// ============================================================================
+// EXPENSES
+// ============================================================================
+let expenseCategories = [];
+
+async function loadExpenseCategories() {
+  try {
+    const d = await apiFetch('/expenses/categories');
+    expenseCategories = d.categories || [];
+    const dl = document.getElementById('expCategoryList');
+    const sel = document.getElementById('expFilterCategory');
+    dl.innerHTML = expenseCategories.map(c => `<option value="${c}">`).join('');
+    const existing = sel.querySelector('option[value=""]');
+    sel.innerHTML = '';
+    sel.appendChild(existing || Object.assign(document.createElement('option'), { value: '', textContent: 'All' }));
+    expenseCategories.forEach(c => sel.add(new Option(c, c)));
+  } catch (_) {}
+}
+
+async function loadExpenses() {
+  await loadExpenseCategories();
+  const from = document.getElementById('expFilterFrom').value;
+  const to = document.getElementById('expFilterTo').value;
+  const cat = document.getElementById('expFilterCategory').value;
+  const search = document.getElementById('expFilterSearch').value;
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (cat) params.set('category', cat);
+  if (search) params.set('search', search);
+  params.set('limit', '200');
+  try {
+    const d = await apiFetch('/expenses?' + params);
+    const tbody = document.getElementById('expTableBody');
+    if (!d.items || !d.items.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No expenses found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.items.map(e => `
+      <tr>
+        <td>${formatDate(e.date)}</td>
+        <td><span class="badge badge-${(e.category||'').toLowerCase().includes('equipment')?'medium':'low'}">${e.category}</span></td>
+        <td>${e.vendor || '--'}</td>
+        <td>${e.description}${e.recurring ? ' <span title="Recurring" style="color:var(--accent)">&#x21bb;</span>' : ''}</td>
+        <td class="amount" style="text-align:right">${dollars(e.amount_cents)}</td>
+        <td>${e.payment_method || '--'}</td>
+        <td class="actions">
+          <button class="btn btn-secondary btn-sm" onclick="editExpense('${e.id}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteExpense('${e.id}')">Del</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('Expenses error:', err);
+  }
+}
+
+function openExpenseModal(item) {
+  document.getElementById('expModalTitle').textContent = item ? 'Edit Expense' : 'Add Expense';
+  document.getElementById('expEditId').value = item?.id || '';
+  document.getElementById('expDate').value = item?.date || new Date().toISOString().slice(0, 10);
+  document.getElementById('expAmount').value = item ? (item.amount_cents / 100).toFixed(2) : '';
+  document.getElementById('expCategory').value = item?.category || '';
+  document.getElementById('expVendor').value = item?.vendor || '';
+  document.getElementById('expDescription').value = item?.description || '';
+  document.getElementById('expPayment').value = item?.payment_method || '';
+  document.getElementById('expRecurring').value = item?.recurring ? '1' : '0';
+  document.getElementById('expRecurringInterval').value = item?.recurring_interval || 'monthly';
+  document.getElementById('expNotes').value = item?.notes || '';
+  toggleRecurring();
+  document.getElementById('expModalStatus').textContent = '';
+  openModal('expenseModal');
+}
+
+document.getElementById('expRecurring').addEventListener('change', toggleRecurring);
+function toggleRecurring() {
+  document.getElementById('expRecurringIntervalGroup').style.display = document.getElementById('expRecurring').value === '1' ? '' : 'none';
+}
+
+async function saveExpense() {
+  const id = document.getElementById('expEditId').value;
+  const body = {
+    date: document.getElementById('expDate').value,
+    category: document.getElementById('expCategory').value,
+    vendor: document.getElementById('expVendor').value || null,
+    description: document.getElementById('expDescription').value,
+    amount_cents: toCents(document.getElementById('expAmount').value),
+    payment_method: document.getElementById('expPayment').value || null,
+    recurring: document.getElementById('expRecurring').value === '1',
+    recurring_interval: document.getElementById('expRecurring').value === '1' ? document.getElementById('expRecurringInterval').value : null,
+    notes: document.getElementById('expNotes').value || null
+  };
+  if (!body.date || !body.category || !body.description || !body.amount_cents) {
+    document.getElementById('expModalStatus').textContent = 'Fill in required fields.';
+    return;
+  }
+  try {
+    if (id) await apiFetch('/expenses/' + id, { method: 'PATCH', body: JSON.stringify(body) });
+    else await apiFetch('/expenses', { method: 'POST', body: JSON.stringify(body) });
+    closeModal('expenseModal');
+    loadExpenses();
+  } catch (err) {
+    document.getElementById('expModalStatus').textContent = err.message;
+  }
+}
+
+async function editExpense(id) {
+  try {
+    const item = await apiFetch('/expenses/' + id);
+    openExpenseModal(item);
+  } catch (err) { alert(err.message); }
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  try {
+    await apiFetch('/expenses/' + id, { method: 'DELETE' });
+    loadExpenses();
+  } catch (err) { alert(err.message); }
+}
+
+// ============================================================================
+// PLANNED PURCHASES
+// ============================================================================
+async function loadPlanned() {
+  const status = document.getElementById('planFilterStatus').value;
+  const priority = document.getElementById('planFilterPriority').value;
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (priority) params.set('priority', priority);
+  try {
+    const d = await apiFetch('/planned?' + params);
+    const tbody = document.getElementById('planTableBody');
+    if (!d.items || !d.items.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No planned purchases.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.items.map(p => `
+      <tr>
+        <td><strong>${p.name}</strong>${p.purchase_url ? ` <a href="${p.purchase_url}" target="_blank" style="color:var(--accent);font-size:0.8rem">[link]</a>` : ''}</td>
+        <td>${p.category || '--'}</td>
+        <td class="amount">${dollars(p.estimated_cost_cents)}</td>
+        <td><span class="badge badge-${p.priority}">${p.priority}</span></td>
+        <td><span class="badge badge-${p.status}">${p.status}</span></td>
+        <td>${p.target_date ? formatDate(p.target_date) : '--'}</td>
+        <td class="actions">
+          ${p.status !== 'purchased' ? `<button class="btn btn-ghost btn-sm" onclick="markPurchased('${p.id}')">Bought</button>` : ''}
+          <button class="btn btn-secondary btn-sm" onclick="editPlanned('${p.id}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deletePlanned('${p.id}')">Del</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) { console.error('Planned error:', err); }
+}
+
+function openPlannedModal(item) {
+  document.getElementById('planModalTitle').textContent = item ? 'Edit Planned Purchase' : 'Add Planned Purchase';
+  document.getElementById('planEditId').value = item?.id || '';
+  document.getElementById('planName').value = item?.name || '';
+  document.getElementById('planCategory').value = item?.category || '';
+  document.getElementById('planCost').value = item?.estimated_cost_cents ? (item.estimated_cost_cents / 100).toFixed(2) : '';
+  document.getElementById('planPriority').value = item?.priority || 'medium';
+  document.getElementById('planStatus').value = item?.status || 'wishlist';
+  document.getElementById('planTargetDate').value = item?.target_date || '';
+  document.getElementById('planUrl').value = item?.purchase_url || '';
+  document.getElementById('planNotes').value = item?.notes || item?.description || '';
+  document.getElementById('planModalStatus').textContent = '';
+  openModal('plannedModal');
+}
+
+async function savePlanned() {
+  const id = document.getElementById('planEditId').value;
+  const body = {
+    name: document.getElementById('planName').value,
+    category: document.getElementById('planCategory').value || null,
+    estimated_cost_cents: toCents(document.getElementById('planCost').value) || null,
+    priority: document.getElementById('planPriority').value,
+    status: document.getElementById('planStatus').value,
+    target_date: document.getElementById('planTargetDate').value || null,
+    purchase_url: document.getElementById('planUrl').value || null,
+    notes: document.getElementById('planNotes').value || null
+  };
+  if (!body.name) {
+    document.getElementById('planModalStatus').textContent = 'Name is required.';
+    return;
+  }
+  try {
+    if (id) await apiFetch('/planned/' + id, { method: 'PATCH', body: JSON.stringify(body) });
+    else await apiFetch('/planned', { method: 'POST', body: JSON.stringify(body) });
+    closeModal('plannedModal');
+    loadPlanned();
+  } catch (err) { document.getElementById('planModalStatus').textContent = err.message; }
+}
+
+async function editPlanned(id) {
+  try {
+    const item = await apiFetch('/planned/' + id);
+    openPlannedModal(item);
+  } catch (err) { alert(err.message); }
+}
+
+async function deletePlanned(id) {
+  if (!confirm('Delete this planned purchase?')) return;
+  try {
+    await apiFetch('/planned/' + id, { method: 'DELETE' });
+    loadPlanned();
+  } catch (err) { alert(err.message); }
+}
+
+async function markPurchased(id) {
+  const actualCost = prompt('Actual cost in dollars (or leave blank to use estimate):');
+  try {
+    const body = { date: new Date().toISOString().slice(0, 10) };
+    if (actualCost) body.actual_cost_cents = toCents(actualCost);
+    await apiFetch('/planned/' + id + '/purchase', { method: 'POST', body: JSON.stringify(body) });
+    loadPlanned();
+  } catch (err) { alert(err.message); }
+}
+
+// ============================================================================
+// EQUIPMENT
+// ============================================================================
+async function loadEquipment() {
+  const cat = document.getElementById('equipFilterCategory').value;
+  const status = document.getElementById('equipFilterStatus').value;
+  const params = new URLSearchParams();
+  if (cat) params.set('category', cat);
+  if (status) params.set('status', status);
+  try {
+    const d = await apiFetch('/equipment?' + params);
+    const grid = document.getElementById('equipGrid');
+    if (!d.items || !d.items.length) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><p>No equipment registered yet.</p></div>';
+      return;
+    }
+    grid.innerHTML = d.items.map(e => `
+      <div class="equip-card" onclick="viewEquipment('${e.id}')">
+        <h3>${e.name}</h3>
+        <div class="equip-meta">
+          ${e.make || ''} ${e.model || ''}
+          ${e.category ? `&middot; ${e.category}` : ''}
+          ${e.serial_number ? `<br>SN: ${e.serial_number}` : ''}
+        </div>
+        <div class="equip-footer">
+          <span class="badge badge-${e.status}">${e.status}</span>
+          <span class="equip-cost">${dollars(e.purchase_cost_cents)}</span>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) { console.error('Equipment error:', err); }
+}
+
+function openEquipmentModal(item) {
+  document.getElementById('equipModalTitle').textContent = item ? 'Edit Equipment' : 'Add Equipment';
+  document.getElementById('equipEditId').value = item?.id || '';
+  document.getElementById('equipName').value = item?.name || '';
+  document.getElementById('equipCategory').value = item?.category || '';
+  document.getElementById('equipStatus').value = item?.status || 'active';
+  document.getElementById('equipMake').value = item?.make || '';
+  document.getElementById('equipModel').value = item?.model || '';
+  document.getElementById('equipSerial').value = item?.serial_number || '';
+  document.getElementById('equipLocation').value = item?.location || '';
+  document.getElementById('equipPurchaseDate').value = item?.purchase_date || '';
+  document.getElementById('equipCost').value = item?.purchase_cost_cents ? (item.purchase_cost_cents / 100).toFixed(2) : '';
+  document.getElementById('equipVendor').value = item?.vendor || '';
+  document.getElementById('equipWarranty').value = item?.warranty_expires || '';
+  document.getElementById('equipNotes').value = item?.notes || '';
+  document.getElementById('equipModalStatus').textContent = '';
+  openModal('equipmentModal');
+}
+
+async function saveEquipment() {
+  const id = document.getElementById('equipEditId').value;
+  const body = {
+    name: document.getElementById('equipName').value,
+    category: document.getElementById('equipCategory').value || null,
+    status: document.getElementById('equipStatus').value,
+    make: document.getElementById('equipMake').value || null,
+    model: document.getElementById('equipModel').value || null,
+    serial_number: document.getElementById('equipSerial').value || null,
+    location: document.getElementById('equipLocation').value || null,
+    purchase_date: document.getElementById('equipPurchaseDate').value || null,
+    purchase_cost_cents: toCents(document.getElementById('equipCost').value) || null,
+    vendor: document.getElementById('equipVendor').value || null,
+    warranty_expires: document.getElementById('equipWarranty').value || null,
+    notes: document.getElementById('equipNotes').value || null
+  };
+  if (!body.name) {
+    document.getElementById('equipModalStatus').textContent = 'Name is required.';
+    return;
+  }
+  try {
+    if (id) await apiFetch('/equipment/' + id, { method: 'PATCH', body: JSON.stringify(body) });
+    else await apiFetch('/equipment', { method: 'POST', body: JSON.stringify(body) });
+    closeModal('equipmentModal');
+    loadEquipment();
+  } catch (err) { document.getElementById('equipModalStatus').textContent = err.message; }
+}
+
+async function viewEquipment(id) {
+  try {
+    const e = await apiFetch('/equipment/' + id);
+    const maint = e.maintenance || [];
+    document.getElementById('equipDetailContent').innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:1rem">
+        <div>
+          <h3 style="margin:0">${e.name}</h3>
+          <p style="margin:0.25rem 0 0;color:var(--muted)">${e.make || ''} ${e.model || ''} ${e.category ? '&middot; ' + e.category : ''}</p>
+        </div>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn btn-secondary btn-sm" onclick="closeModal('equipDetailModal');openEquipmentModal(window._equipDetail)">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteEquipment('${e.id}')">Delete</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem;margin-bottom:1.25rem">
+        <div><small style="color:var(--muted)">Status</small><br><span class="badge badge-${e.status}">${e.status}</span></div>
+        <div><small style="color:var(--muted)">Purchase Date</small><br>${formatDate(e.purchase_date)}</div>
+        <div><small style="color:var(--muted)">Cost</small><br><strong>${dollars(e.purchase_cost_cents)}</strong></div>
+        <div><small style="color:var(--muted)">Vendor</small><br>${e.vendor || '--'}</div>
+        <div><small style="color:var(--muted)">Serial</small><br>${e.serial_number || '--'}</div>
+        <div><small style="color:var(--muted)">Location</small><br>${e.location || '--'}</div>
+        <div><small style="color:var(--muted)">Warranty Expires</small><br>${formatDate(e.warranty_expires)}</div>
+      </div>
+      ${e.notes ? `<p style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem">${e.notes}</p>` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+        <h4 style="margin:0">Maintenance Log</h4>
+        <button class="btn btn-ghost btn-sm" onclick="openMaintModal('${e.id}')">+ Add Entry</button>
+      </div>
+      ${maint.length ? `<div class="maint-timeline">${maint.map(m => `
+        <div class="maint-entry">
+          <div class="maint-date">${formatDate(m.date)}</div>
+          <div class="maint-body">
+            <div class="maint-type">${m.type}</div>
+            <div>${m.description || ''}</div>
+            ${m.cost_cents ? `<div class="maint-cost">${dollars(m.cost_cents)}</div>` : ''}
+            ${m.next_due ? `<div class="maint-cost">Next due: ${formatDate(m.next_due)}</div>` : ''}
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="deleteMaint('${m.id}','${e.id}')" style="align-self:flex-start">&times;</button>
+        </div>
+      `).join('')}</div>` : '<p style="color:var(--muted);font-style:italic">No maintenance entries yet.</p>'}
+    `;
+    window._equipDetail = e;
+    openModal('equipDetailModal');
+  } catch (err) { alert(err.message); }
+}
+
+async function deleteEquipment(id) {
+  if (!confirm('Delete this equipment?')) return;
+  try {
+    await apiFetch('/equipment/' + id, { method: 'DELETE' });
+    closeModal('equipDetailModal');
+    loadEquipment();
+  } catch (err) { alert(err.message); }
+}
+
+function openMaintModal(equipId) {
+  document.getElementById('maintEquipId').value = equipId;
+  document.getElementById('maintDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('maintType').value = 'cleaning';
+  document.getElementById('maintDescription').value = '';
+  document.getElementById('maintCost').value = '';
+  document.getElementById('maintNextDue').value = '';
+  openModal('maintModal');
+}
+
+async function saveMaintenance() {
+  const equipId = document.getElementById('maintEquipId').value;
+  const body = {
+    date: document.getElementById('maintDate').value,
+    type: document.getElementById('maintType').value,
+    description: document.getElementById('maintDescription').value || null,
+    cost_cents: toCents(document.getElementById('maintCost').value) || 0,
+    next_due: document.getElementById('maintNextDue').value || null
+  };
+  if (!body.date || !body.type) return;
+  try {
+    await apiFetch('/equipment/' + equipId + '/maintenance', { method: 'POST', body: JSON.stringify(body) });
+    closeModal('maintModal');
+    viewEquipment(equipId);
+  } catch (err) { alert(err.message); }
+}
+
+async function deleteMaint(maintId, equipId) {
+  if (!confirm('Delete this maintenance entry?')) return;
+  try {
+    await apiFetch('/equipment/maintenance/' + maintId, { method: 'DELETE' });
+    viewEquipment(equipId);
+  } catch (err) { alert(err.message); }
+}
+
+// ============================================================================
+// INVENTORY
+// ============================================================================
+async function loadInventory() {
+  const cat = document.getElementById('invFilterCategory').value;
+  const search = document.getElementById('invFilterSearch').value;
+  const low = document.getElementById('invFilterLowStock').checked;
+  const params = new URLSearchParams();
+  if (cat) params.set('category', cat);
+  if (search) params.set('search', search);
+  if (low) params.set('low_stock', '1');
+  try {
+    const d = await apiFetch('/inventory?' + params);
+    const tbody = document.getElementById('invTableBody');
+    if (!d.items || !d.items.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No inventory items found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.items.map(i => {
+      const isLow = i.reorder_threshold != null && i.quantity <= i.reorder_threshold;
+      let swatchHtml = '';
+      if (i.image_url) {
+        swatchHtml = `<img src="${i.image_url}" class="swatch-img" onclick="event.stopPropagation();triggerPhotoUpload('${i.id}')" title="Click to change photo">`;
+      } else if (i.is_vinyl_roll) {
+        swatchHtml = `<div class="swatch-placeholder" onclick="event.stopPropagation();triggerPhotoUpload('${i.id}')" title="Click to add photo">+</div>`;
+      }
+      let vinylInfo = '';
+      if (i.is_vinyl_roll) {
+        let pct = null;
+        if (i.roll_weight_full_grams && i.roll_core_weight_grams && i.roll_weight_current_grams) {
+          const usable = i.roll_weight_full_grams - i.roll_core_weight_grams;
+          const current = i.roll_weight_current_grams - i.roll_core_weight_grams;
+          pct = usable > 0 ? Math.max(0, Math.min(100, (current / usable) * 100)) : 0;
+        }
+        vinylInfo = `<div style="margin-top:0.35rem">
+          ${i.vinyl_color ? `<span style="font-size:0.8rem;color:var(--muted)">${i.vinyl_color}${i.vinyl_finish ? ' ' + i.vinyl_finish : ''}</span>` : ''}
+          ${pct !== null ? `
+            <div class="roll-meter" style="max-width:120px">
+              <div class="roll-meter-track"><div class="roll-meter-fill ${pct > 50 ? 'high' : pct > 20 ? 'mid' : 'low'}" style="width:${pct}%"></div></div>
+              <div class="roll-meter-text">${Math.round(pct)}% remaining</div>
+            </div>
+          ` : ''}
+          <button class="btn btn-ghost btn-sm" style="margin-top:0.25rem;font-size:0.75rem" onclick="event.stopPropagation();openWeighModal('${i.id}','${i.name.replace(/'/g, "\\'")}')">Weigh</button>
+        </div>`;
+      }
+      return `
+        <tr class="${isLow ? 'low-stock' : ''}">
+          <td>${swatchHtml}</td>
+          <td>${i.name}${vinylInfo}</td>
+          <td>${i.category || '--'}</td>
+          <td>${i.quantity}${isLow ? ' <span style="color:var(--danger);font-weight:600" title="Low stock!">&#9888;</span>' : ''}</td>
+          <td>${i.unit || '--'}</td>
+          <td class="amount" style="text-align:right">${dollars(i.unit_cost_cents)}</td>
+          <td>${i.vendor || '--'}</td>
+          <td class="actions">
+            <button class="btn btn-secondary btn-sm" onclick="editInventory('${i.id}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteInventory('${i.id}')">Del</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) { console.error('Inventory error:', err); }
+}
+
+function toggleVinylFields() {
+  const isVinyl = document.getElementById('invCategory').value === 'Vinyl';
+  document.getElementById('vinylFields').style.display = isVinyl ? '' : 'none';
+  if (isVinyl) document.getElementById('invUnit').value = 'roll';
+}
+
+function openInventoryModal(item) {
+  document.getElementById('invModalTitle').textContent = item ? 'Edit Inventory Item' : 'Add Inventory Item';
+  document.getElementById('invEditId').value = item?.id || '';
+  document.getElementById('invName').value = item?.name || '';
+  document.getElementById('invCategory').value = item?.category || '';
+  document.getElementById('invSubcategory').value = item?.subcategory || '';
+  document.getElementById('invSku').value = item?.sku || '';
+  document.getElementById('invQty').value = item?.quantity ?? 0;
+  document.getElementById('invUnit').value = item?.unit || 'unit';
+  document.getElementById('invReorder').value = item?.reorder_threshold ?? '';
+  document.getElementById('invUnitCost').value = item?.unit_cost_cents ? (item.unit_cost_cents / 100).toFixed(2) : '';
+  document.getElementById('invVendor').value = item?.vendor || '';
+  document.getElementById('invLocation').value = item?.location || '';
+  document.getElementById('invNotes').value = item?.notes || '';
+  // Vinyl fields
+  document.getElementById('invVinylColor').value = item?.vinyl_color || '';
+  document.getElementById('invVinylFinish').value = item?.vinyl_finish || '';
+  document.getElementById('invRollWidth').value = item?.roll_width_inches ?? '';
+  document.getElementById('invRollWeightFull').value = item?.roll_weight_full_grams ?? '';
+  document.getElementById('invRollCoreWeight').value = item?.roll_core_weight_grams ?? '';
+  document.getElementById('invRollLength').value = item?.roll_total_length_feet ?? '';
+  document.getElementById('invRollWeightCurrent').value = item?.roll_weight_current_grams ?? '';
+  toggleVinylFields();
+  document.getElementById('invModalStatus').textContent = '';
+  openModal('inventoryModal');
+}
+
+async function saveInventory() {
+  const id = document.getElementById('invEditId').value;
+  const isVinyl = document.getElementById('invCategory').value === 'Vinyl';
+  const body = {
+    name: document.getElementById('invName').value,
+    category: document.getElementById('invCategory').value || null,
+    subcategory: document.getElementById('invSubcategory').value || null,
+    sku: document.getElementById('invSku').value || null,
+    quantity: parseFloat(document.getElementById('invQty').value) || 0,
+    unit: document.getElementById('invUnit').value || 'unit',
+    reorder_threshold: document.getElementById('invReorder').value ? parseFloat(document.getElementById('invReorder').value) : null,
+    unit_cost_cents: toCents(document.getElementById('invUnitCost').value) || null,
+    vendor: document.getElementById('invVendor').value || null,
+    location: document.getElementById('invLocation').value || null,
+    notes: document.getElementById('invNotes').value || null,
+    is_vinyl_roll: isVinyl
+  };
+  if (isVinyl) {
+    body.vinyl_color = document.getElementById('invVinylColor').value || null;
+    body.vinyl_finish = document.getElementById('invVinylFinish').value || null;
+    body.roll_width_inches = parseFloat(document.getElementById('invRollWidth').value) || null;
+    body.roll_weight_full_grams = parseFloat(document.getElementById('invRollWeightFull').value) || null;
+    body.roll_core_weight_grams = parseFloat(document.getElementById('invRollCoreWeight').value) || null;
+    body.roll_total_length_feet = parseFloat(document.getElementById('invRollLength').value) || null;
+    body.roll_weight_current_grams = parseFloat(document.getElementById('invRollWeightCurrent').value) || null;
+  }
+  if (!body.name) {
+    document.getElementById('invModalStatus').textContent = 'Name is required.';
+    return;
+  }
+  try {
+    if (id) await apiFetch('/inventory/' + id, { method: 'PATCH', body: JSON.stringify(body) });
+    else await apiFetch('/inventory', { method: 'POST', body: JSON.stringify(body) });
+    closeModal('inventoryModal');
+    loadInventory();
+  } catch (err) { document.getElementById('invModalStatus').textContent = err.message; }
+}
+
+async function editInventory(id) {
+  try {
+    const item = await apiFetch('/inventory/' + id);
+    openInventoryModal(item);
+  } catch (err) { alert(err.message); }
+}
+
+async function deleteInventory(id) {
+  if (!confirm('Delete this inventory item?')) return;
+  try {
+    await apiFetch('/inventory/' + id, { method: 'DELETE' });
+    loadInventory();
+  } catch (err) { alert(err.message); }
+}
+
+// Weigh modal
+function openWeighModal(id, name) {
+  document.getElementById('weighItemId').value = id;
+  document.getElementById('weighItemName').textContent = name;
+  document.getElementById('weighValue').value = '';
+  document.getElementById('weighResult').style.display = 'none';
+  openModal('weighModal');
+  document.getElementById('weighValue').focus();
+}
+
+async function submitWeigh() {
+  const id = document.getElementById('weighItemId').value;
+  const weight = parseFloat(document.getElementById('weighValue').value);
+  if (!weight) return;
+  try {
+    const result = await apiFetch('/inventory/' + id + '/weigh', {
+      method: 'POST', body: JSON.stringify({ weight_grams: weight })
+    });
+    if (result.remaining_pct !== undefined) {
+      const pct = result.remaining_pct;
+      const fill = document.getElementById('weighMeterFill');
+      fill.style.width = pct + '%';
+      fill.className = 'roll-meter-fill ' + (pct > 50 ? 'high' : pct > 20 ? 'mid' : 'low');
+      document.getElementById('weighMeterText').textContent = `${pct}% remaining — ~${result.remaining_feet} ft left`;
+      document.getElementById('weighResult').style.display = '';
+    }
+    setTimeout(() => { closeModal('weighModal'); loadInventory(); }, 1500);
+  } catch (err) { alert(err.message); }
+}
+
+// Photo upload
+let photoUploadTargetId = null;
+function triggerPhotoUpload(itemId) {
+  photoUploadTargetId = itemId;
+  document.getElementById('photoUploadInput').click();
+}
+
+async function handlePhotoUpload(event) {
+  const file = event.target.files[0];
+  if (!file || !photoUploadTargetId) return;
+  const formData = new FormData();
+  formData.append('photo', file);
+  try {
+    await fetch(API + '/inventory/' + photoUploadTargetId + '/photo', {
+      method: 'POST', headers: { 'X-API-Key': API_KEY }, body: formData
+    });
+    loadInventory();
+  } catch (err) { alert('Upload failed: ' + err.message); }
+  event.target.value = '';
+  photoUploadTargetId = null;
+}
+
+// ============================================================================
+// INIT
+// ============================================================================
+loadDashboard();
+</script>
+</body>
+</html>

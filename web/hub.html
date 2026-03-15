@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tool Hub — Blue Ridge Custom Co</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Montserrat:wght@400;600;700&display=swap">
+  <style>
+    :root {
+      --surface: #ffffff;
+      --surface-alt: #f8fafc;
+      --muted: #4b5563;
+      --border: #d1d5db;
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --success: #10b981;
+      --danger: #ef4444;
+      --navy: #0f172a;
+      --navy-light: #1e293b;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Barlow', system-ui, sans-serif;
+      background: var(--surface-alt);
+      color: #1f2937;
+      min-height: 100vh;
+    }
+
+    /* ---- Header ---- */
+    header {
+      background: var(--navy);
+      color: #fff;
+      padding: 2rem 2rem 2.5rem;
+    }
+
+    header .inner {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header .brand {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      font-size: .85rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      opacity: .7;
+      margin-bottom: .25rem;
+    }
+
+    header h1 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    header p {
+      margin-top: .5rem;
+      opacity: .65;
+      font-size: .95rem;
+    }
+
+    /* ---- Main ---- */
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    /* ---- Category Sections ---- */
+    .category {
+      margin-bottom: 2.5rem;
+    }
+
+    .category h2 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 1rem;
+      padding-bottom: .4rem;
+      border-bottom: 2px solid var(--border);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    /* ---- Card Grid ---- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.25rem 1.15rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      text-decoration: none;
+      color: inherit;
+      transition: box-shadow .2s, border-color .2s, transform .15s;
+    }
+
+    a.card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 4px 16px rgba(37, 99, 235, .12);
+      transform: translateY(-2px);
+    }
+
+    .card .icon {
+      flex-shrink: 0;
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+    }
+
+    .card .info h3 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: .95rem;
+      font-weight: 700;
+      margin-bottom: .25rem;
+      color: #111827;
+    }
+
+    .card .info p {
+      font-size: .85rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .card.no-link {
+      opacity: .75;
+      cursor: default;
+    }
+
+    .card .badge {
+      display: inline-block;
+      font-size: .7rem;
+      font-weight: 600;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: .15em .5em;
+      border-radius: 4px;
+      margin-top: .35rem;
+    }
+
+    /* Icon color themes */
+    .icon.blue   { background: #dbeafe; color: #2563eb; }
+    .icon.green  { background: #d1fae5; color: #059669; }
+    .icon.purple { background: #ede9fe; color: #7c3aed; }
+    .icon.orange { background: #ffedd5; color: #ea580c; }
+    .icon.pink   { background: #fce7f3; color: #db2777; }
+    .icon.slate  { background: #e2e8f0; color: #475569; }
+
+    /* ---- Footer ---- */
+    footer {
+      text-align: center;
+      padding: 1.5rem;
+      color: var(--muted);
+      font-size: .8rem;
+      border-top: 1px solid var(--border);
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 640px) {
+      header { padding: 1.5rem 1rem 2rem; }
+      header h1 { font-size: 1.35rem; }
+      main { padding: 1.25rem 1rem 3rem; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <div class="brand">Blue Ridge Custom Co</div>
+    <h1>Tool Hub</h1>
+    <p>Central access to all internal tools, dashboards, and customer-facing pages.</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- Business Tools -->
+  <section class="category">
+    <h2>Business Tools</h2>
+    <div class="grid">
+      <a class="card" href="/finance">
+        <div class="icon blue">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
+        <div class="info">
+          <h3>Finance Manager</h3>
+          <p>Track expenses, equipment, inventory, and planned purchases</p>
+        </div>
+      </a>
+      <a class="card" href="/footage">
+        <div class="icon blue">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        </div>
+        <div class="info">
+          <h3>Footage Library</h3>
+          <p>Upload and catalog video clips for TikTok content</p>
+        </div>
+      </a>
+      <a class="card" href="/web/admin.html">
+        <div class="icon blue">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </div>
+        <div class="info">
+          <h3>Admin Dashboard</h3>
+          <p>Orders, artwork uploads, storefront settings</p>
+        </div>
+      </a>
+      <a class="card" href="/calendar" onclick="window.open(window.location.protocol+'//'+window.location.hostname+':3000/calendar','_blank');return false;">
+        <div class="icon blue">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div class="info">
+          <h3>Event Calendar</h3>
+          <p>Vendor markets and event tracking</p>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- Design & Creative -->
+  <section class="category">
+    <h2>Design &amp; Creative</h2>
+    <div class="grid">
+      <a class="card" href="/web/designer.html">
+        <div class="icon purple">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+        </div>
+        <div class="info">
+          <h3>Sticker Designer</h3>
+          <p>Custom sticker design tool</p>
+        </div>
+      </a>
+      <a class="card" href="/web/racing-designer.html">
+        <div class="icon purple">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"/><polygon points="12 15 17 21 7 21 12 15"/></svg>
+        </div>
+        <div class="info">
+          <h3>Racing Designer</h3>
+          <p>Race car decal designer</p>
+        </div>
+      </a>
+      <a class="card" href="/web/wall-art-mockup.html">
+        <div class="icon purple">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <div class="info">
+          <h3>Wall Art Mockups</h3>
+          <p>Wall art mockup generator</p>
+        </div>
+      </a>
+      <a class="card" href="/web/custom-stickers.html">
+        <div class="icon purple">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34"/><path d="M14 3v4a2 2 0 0 0 2 2h4"/><path d="M22 12l-4.5 4.5L14 13"/></svg>
+        </div>
+        <div class="info">
+          <h3>Custom Stickers</h3>
+          <p>Sticker category browser</p>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- Sales & Marketing -->
+  <section class="category">
+    <h2>Sales &amp; Marketing</h2>
+    <div class="grid">
+      <a class="card" href="/web/product-catalog.html">
+        <div class="icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        </div>
+        <div class="info">
+          <h3>Product Catalog</h3>
+          <p>Browse product catalog</p>
+        </div>
+      </a>
+      <a class="card" href="/web/campaign.html">
+        <div class="icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <div class="info">
+          <h3>Campaign Manager</h3>
+          <p>Marketing campaigns</p>
+        </div>
+      </a>
+      <a class="card" href="/web/apparel.html">
+        <div class="icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46L16 2 12 5 8 2 3.62 3.46a2 2 0 0 0-1.34 1.44l-1.08 4.32A1 1 0 0 0 2.18 10h3.73l.28 8.41a2 2 0 0 0 2 1.59h7.62a2 2 0 0 0 2-1.59L18.09 10h3.73a1 1 0 0 0 .97-1.22l-1.07-4.32a2 2 0 0 0-1.34-1z"/></svg>
+        </div>
+        <div class="info">
+          <h3>Apparel Store</h3>
+          <p>Apparel products</p>
+        </div>
+      </a>
+      <a class="card" href="/web/metal-prints.html">
+        <div class="icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="info">
+          <h3>Metal Prints</h3>
+          <p>Metal print products</p>
+        </div>
+      </a>
+      <a class="card" href="/web/art-showcase-index.html">
+        <div class="icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        </div>
+        <div class="info">
+          <h3>Art Showcase</h3>
+          <p>Art gallery display</p>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- Kiosk & Display -->
+  <section class="category">
+    <h2>Kiosk &amp; Display</h2>
+    <div class="grid">
+      <a class="card" href="/kiosk">
+        <div class="icon orange">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="info">
+          <h3>Kiosk Display</h3>
+          <p>Retail kiosk mode</p>
+        </div>
+      </a>
+      <a class="card" href="/web/kiosk-admin.html">
+        <div class="icon orange">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+        <div class="info">
+          <h3>Kiosk Admin</h3>
+          <p>Manage kiosk displays and promotions</p>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- Customer & B2B -->
+  <section class="category">
+    <h2>Customer &amp; B2B</h2>
+    <div class="grid">
+      <a class="card" href="/web/customer.html">
+        <div class="icon pink">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div class="info">
+          <h3>Customer Portal</h3>
+          <p>Customer account portal</p>
+        </div>
+      </a>
+      <a class="card" href="/b2b/">
+        <div class="icon pink">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="info">
+          <h3>B2B Portal</h3>
+          <p>Business-to-business ordering</p>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- Production -->
+  <section class="category">
+    <h2>Production</h2>
+    <div class="grid">
+      <div class="card no-link">
+        <div class="icon slate">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        </div>
+        <div class="info">
+          <h3>Print Station</h3>
+          <p>Electron desktop app for production management</p>
+          <span class="badge">Desktop App</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Blue Ridge Custom Co &mdash; Asheville, NC
+</footer>
+
+<script>
+// Pass API key through to internal tool links
+const urlKey = new URLSearchParams(window.location.search).get('key');
+if (urlKey) {
+  localStorage.setItem('apiKey', urlKey);
+  document.querySelectorAll('a.card[href]').forEach(a => {
+    const href = a.getAttribute('href');
+    // Only add key to internal paths that need auth (finance, kiosk, kiosk-admin)
+    if (href.startsWith('/finance') || href.startsWith('/footage') || href.startsWith('/kiosk')) {
+      const sep = href.includes('?') ? '&' : '?';
+      a.setAttribute('href', href + sep + 'key=' + encodeURIComponent(urlKey));
+    }
+  });
+}
+</script>
+</body>
+</html>

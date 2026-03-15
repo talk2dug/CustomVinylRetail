@@ -3610,6 +3610,127 @@ function initCustomArtTables() {
   console.log('[Howtos] ✅ Tables initialized successfully');
   console.log('[PrintQuotes] ✅ Tables initialized successfully');
 
+  // Finance Manager tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fin_expenses (
+      id TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      category TEXT NOT NULL,
+      vendor TEXT,
+      description TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      payment_method TEXT,
+      receipt_url TEXT,
+      notes TEXT,
+      recurring INTEGER DEFAULT 0,
+      recurring_interval TEXT,
+      tags TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS fin_planned_purchases (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      category TEXT,
+      estimated_cost_cents INTEGER,
+      priority TEXT DEFAULT 'medium',
+      status TEXT DEFAULT 'wishlist',
+      target_date TEXT,
+      purchase_url TEXT,
+      notes TEXT,
+      purchased_date TEXT,
+      actual_cost_cents INTEGER,
+      expense_id TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS fin_equipment (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT,
+      make TEXT,
+      model TEXT,
+      serial_number TEXT,
+      purchase_date TEXT,
+      purchase_cost_cents INTEGER,
+      vendor TEXT,
+      warranty_expires TEXT,
+      status TEXT DEFAULT 'active',
+      location TEXT,
+      notes TEXT,
+      image_url TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS fin_equipment_maintenance (
+      id TEXT PRIMARY KEY,
+      equipment_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      type TEXT NOT NULL,
+      description TEXT,
+      cost_cents INTEGER DEFAULT 0,
+      next_due TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (equipment_id) REFERENCES fin_equipment(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS fin_inventory (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT,
+      subcategory TEXT,
+      sku TEXT,
+      unit TEXT DEFAULT 'unit',
+      quantity REAL NOT NULL DEFAULT 0,
+      reorder_threshold REAL,
+      unit_cost_cents INTEGER,
+      vendor TEXT,
+      location TEXT,
+      notes TEXT,
+      image_url TEXT,
+      is_vinyl_roll INTEGER DEFAULT 0,
+      roll_width_inches REAL,
+      roll_weight_full_grams REAL,
+      roll_weight_current_grams REAL,
+      roll_core_weight_grams REAL,
+      roll_total_length_feet REAL,
+      vinyl_color TEXT,
+      vinyl_finish TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS footage_library (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      original_name TEXT,
+      file_path TEXT NOT NULL,
+      file_size INTEGER,
+      duration_seconds REAL,
+      mime_type TEXT,
+      category TEXT,
+      subcategory TEXT,
+      product_id TEXT,
+      product_name TEXT,
+      tags TEXT,
+      notes TEXT,
+      thumbnail_path TEXT,
+      status TEXT DEFAULT 'raw',
+      source TEXT DEFAULT 'upload',
+      width INTEGER,
+      height INTEGER,
+      used_in_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  console.log('[Finance] ✅ Tables initialized successfully');
+
   // Auto-classify existing Multiboard items that lack metadata
   migrateMultiboardItems();
   // Absorb Snap_Tiles category into Multiboard
@@ -7603,6 +7724,295 @@ function updatePrintQuotePlate(id, { gcode_id, status, printer_id } = {}) {
   return db.prepare('SELECT * FROM print_quote_plates WHERE id = ?').get(id);
 }
 
+// ============================================================================
+// FINANCE MANAGER
+// ============================================================================
+
+// --- Expenses ---
+function listFinExpenses({ category, from, to, search, limit = 50, offset = 0 } = {}) {
+  let sql = 'SELECT * FROM fin_expenses WHERE 1=1';
+  const params = [];
+  if (category) { sql += ' AND category = ?'; params.push(category); }
+  if (from) { sql += ' AND date >= ?'; params.push(from); }
+  if (to) { sql += ' AND date <= ?'; params.push(to); }
+  if (search) { sql += ' AND (description LIKE ? OR vendor LIKE ? OR notes LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  sql += ' ORDER BY date DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+  return db.prepare(sql).all(...params);
+}
+
+function getFinExpense(id) {
+  return db.prepare('SELECT * FROM fin_expenses WHERE id = ?').get(id);
+}
+
+function createFinExpense({ date, category, vendor, description, amount_cents, payment_method, receipt_url, notes, recurring, recurring_interval, tags }) {
+  const id = crypto.randomUUID();
+  db.prepare(`INSERT INTO fin_expenses (id, date, category, vendor, description, amount_cents, payment_method, receipt_url, notes, recurring, recurring_interval, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, date, category, vendor || null, description, amount_cents, payment_method || null, receipt_url || null, notes || null, recurring ? 1 : 0, recurring_interval || null, tags || null);
+  return getFinExpense(id);
+}
+
+function updateFinExpense(id, fields) {
+  const allowed = ['date', 'category', 'vendor', 'description', 'amount_cents', 'payment_method', 'receipt_url', 'notes', 'recurring', 'recurring_interval', 'tags'];
+  const sets = [];
+  const params = [];
+  for (const key of allowed) {
+    if (fields[key] !== undefined) {
+      sets.push(`${key} = ?`);
+      params.push(key === 'recurring' ? (fields[key] ? 1 : 0) : fields[key]);
+    }
+  }
+  if (!sets.length) return getFinExpense(id);
+  sets.push("updated_at = CURRENT_TIMESTAMP");
+  params.push(id);
+  db.prepare(`UPDATE fin_expenses SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getFinExpense(id);
+}
+
+function deleteFinExpense(id) {
+  return db.prepare('DELETE FROM fin_expenses WHERE id = ?').run(id);
+}
+
+function listFinExpenseCategories() {
+  return db.prepare('SELECT DISTINCT category FROM fin_expenses ORDER BY category').all().map(r => r.category);
+}
+
+// --- Planned Purchases ---
+function listFinPlanned({ status, priority, sort = 'target_date' } = {}) {
+  let sql = 'SELECT * FROM fin_planned_purchases WHERE 1=1';
+  const params = [];
+  if (status) { sql += ' AND status = ?'; params.push(status); }
+  if (priority) { sql += ' AND priority = ?'; params.push(priority); }
+  const validSorts = { target_date: 'target_date ASC', priority_rank: "CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END", estimated_cost: 'estimated_cost_cents DESC', created: 'created_at DESC' };
+  sql += ` ORDER BY ${validSorts[sort] || 'target_date ASC NULLS LAST'}`;
+  return db.prepare(sql).all(...params);
+}
+
+function getFinPlanned(id) {
+  return db.prepare('SELECT * FROM fin_planned_purchases WHERE id = ?').get(id);
+}
+
+function createFinPlanned({ name, description, category, estimated_cost_cents, priority, status, target_date, purchase_url, notes }) {
+  const id = crypto.randomUUID();
+  db.prepare(`INSERT INTO fin_planned_purchases (id, name, description, category, estimated_cost_cents, priority, status, target_date, purchase_url, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, description || null, category || null, estimated_cost_cents || null, priority || 'medium', status || 'wishlist', target_date || null, purchase_url || null, notes || null);
+  return getFinPlanned(id);
+}
+
+function updateFinPlanned(id, fields) {
+  const allowed = ['name', 'description', 'category', 'estimated_cost_cents', 'priority', 'status', 'target_date', 'purchase_url', 'notes', 'purchased_date', 'actual_cost_cents', 'expense_id'];
+  const sets = [];
+  const params = [];
+  for (const key of allowed) {
+    if (fields[key] !== undefined) { sets.push(`${key} = ?`); params.push(fields[key]); }
+  }
+  if (!sets.length) return getFinPlanned(id);
+  sets.push("updated_at = CURRENT_TIMESTAMP");
+  params.push(id);
+  db.prepare(`UPDATE fin_planned_purchases SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getFinPlanned(id);
+}
+
+function deleteFinPlanned(id) {
+  return db.prepare('DELETE FROM fin_planned_purchases WHERE id = ?').run(id);
+}
+
+// --- Equipment ---
+function listFinEquipment({ category, status } = {}) {
+  let sql = 'SELECT * FROM fin_equipment WHERE 1=1';
+  const params = [];
+  if (category) { sql += ' AND category = ?'; params.push(category); }
+  if (status) { sql += ' AND status = ?'; params.push(status); }
+  sql += ' ORDER BY name';
+  return db.prepare(sql).all(...params);
+}
+
+function getFinEquipment(id) {
+  return db.prepare('SELECT * FROM fin_equipment WHERE id = ?').get(id);
+}
+
+function createFinEquipment({ name, category, make, model, serial_number, purchase_date, purchase_cost_cents, vendor, warranty_expires, status, location, notes, image_url }) {
+  const id = crypto.randomUUID();
+  db.prepare(`INSERT INTO fin_equipment (id, name, category, make, model, serial_number, purchase_date, purchase_cost_cents, vendor, warranty_expires, status, location, notes, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, category || null, make || null, model || null, serial_number || null, purchase_date || null, purchase_cost_cents || null, vendor || null, warranty_expires || null, status || 'active', location || null, notes || null, image_url || null);
+  return getFinEquipment(id);
+}
+
+function updateFinEquipment(id, fields) {
+  const allowed = ['name', 'category', 'make', 'model', 'serial_number', 'purchase_date', 'purchase_cost_cents', 'vendor', 'warranty_expires', 'status', 'location', 'notes', 'image_url'];
+  const sets = [];
+  const params = [];
+  for (const key of allowed) {
+    if (fields[key] !== undefined) { sets.push(`${key} = ?`); params.push(fields[key]); }
+  }
+  if (!sets.length) return getFinEquipment(id);
+  sets.push("updated_at = CURRENT_TIMESTAMP");
+  params.push(id);
+  db.prepare(`UPDATE fin_equipment SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getFinEquipment(id);
+}
+
+function deleteFinEquipment(id) {
+  return db.prepare('DELETE FROM fin_equipment WHERE id = ?').run(id);
+}
+
+// --- Equipment Maintenance ---
+function listFinMaintenance(equipmentId) {
+  return db.prepare('SELECT * FROM fin_equipment_maintenance WHERE equipment_id = ? ORDER BY date DESC').all(equipmentId);
+}
+
+function createFinMaintenance(equipmentId, { date, type, description, cost_cents, next_due, notes }) {
+  const id = crypto.randomUUID();
+  db.prepare(`INSERT INTO fin_equipment_maintenance (id, equipment_id, date, type, description, cost_cents, next_due, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, equipmentId, date, type, description || null, cost_cents || 0, next_due || null, notes || null);
+  return db.prepare('SELECT * FROM fin_equipment_maintenance WHERE id = ?').get(id);
+}
+
+function deleteFinMaintenance(id) {
+  return db.prepare('DELETE FROM fin_equipment_maintenance WHERE id = ?').run(id);
+}
+
+// --- Inventory ---
+function listFinInventory({ category, search, low_stock } = {}) {
+  let sql = 'SELECT * FROM fin_inventory WHERE 1=1';
+  const params = [];
+  if (category) { sql += ' AND category = ?'; params.push(category); }
+  if (search) { sql += ' AND (name LIKE ? OR sku LIKE ? OR notes LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  if (low_stock) { sql += ' AND reorder_threshold IS NOT NULL AND quantity <= reorder_threshold'; }
+  sql += ' ORDER BY category, name';
+  return db.prepare(sql).all(...params);
+}
+
+function getFinInventoryItem(id) {
+  return db.prepare('SELECT * FROM fin_inventory WHERE id = ?').get(id);
+}
+
+function createFinInventoryItem({ name, category, subcategory, sku, unit, quantity, reorder_threshold, unit_cost_cents, vendor, location, notes, image_url, is_vinyl_roll, roll_width_inches, roll_weight_full_grams, roll_weight_current_grams, roll_core_weight_grams, roll_total_length_feet, vinyl_color, vinyl_finish }) {
+  const id = crypto.randomUUID();
+  db.prepare(`INSERT INTO fin_inventory (id, name, category, subcategory, sku, unit, quantity, reorder_threshold, unit_cost_cents, vendor, location, notes, image_url, is_vinyl_roll, roll_width_inches, roll_weight_full_grams, roll_weight_current_grams, roll_core_weight_grams, roll_total_length_feet, vinyl_color, vinyl_finish) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, category || null, subcategory || null, sku || null, unit || 'unit', quantity || 0, reorder_threshold || null, unit_cost_cents || null, vendor || null, location || null, notes || null, image_url || null, is_vinyl_roll ? 1 : 0, roll_width_inches || null, roll_weight_full_grams || null, roll_weight_current_grams || null, roll_core_weight_grams || null, roll_total_length_feet || null, vinyl_color || null, vinyl_finish || null);
+  return getFinInventoryItem(id);
+}
+
+function updateFinInventoryItem(id, fields) {
+  const allowed = ['name', 'category', 'subcategory', 'sku', 'unit', 'quantity', 'reorder_threshold', 'unit_cost_cents', 'vendor', 'location', 'notes', 'image_url', 'is_vinyl_roll', 'roll_width_inches', 'roll_weight_full_grams', 'roll_weight_current_grams', 'roll_core_weight_grams', 'roll_total_length_feet', 'vinyl_color', 'vinyl_finish'];
+  const sets = [];
+  const params = [];
+  for (const key of allowed) {
+    if (fields[key] !== undefined) {
+      sets.push(`${key} = ?`);
+      params.push(key === 'is_vinyl_roll' ? (fields[key] ? 1 : 0) : fields[key]);
+    }
+  }
+  if (!sets.length) return getFinInventoryItem(id);
+  sets.push("updated_at = CURRENT_TIMESTAMP");
+  params.push(id);
+  db.prepare(`UPDATE fin_inventory SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getFinInventoryItem(id);
+}
+
+function deleteFinInventoryItem(id) {
+  return db.prepare('DELETE FROM fin_inventory WHERE id = ?').run(id);
+}
+
+function adjustFinInventoryQty(id, delta) {
+  db.prepare('UPDATE fin_inventory SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(delta, id);
+  return getFinInventoryItem(id);
+}
+
+function weighFinVinylRoll(id, currentWeightGrams) {
+  db.prepare('UPDATE fin_inventory SET roll_weight_current_grams = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(currentWeightGrams, id);
+  const item = getFinInventoryItem(id);
+  if (item && item.roll_weight_full_grams && item.roll_core_weight_grams && item.roll_total_length_feet) {
+    const usableWeight = item.roll_weight_full_grams - item.roll_core_weight_grams;
+    const currentUsable = currentWeightGrams - item.roll_core_weight_grams;
+    const pct = usableWeight > 0 ? Math.max(0, Math.min(100, (currentUsable / usableWeight) * 100)) : 0;
+    const remainingFeet = usableWeight > 0 ? Math.max(0, (currentUsable / usableWeight) * item.roll_total_length_feet) : 0;
+    return { ...item, remaining_pct: Math.round(pct * 10) / 10, remaining_feet: Math.round(remainingFeet * 10) / 10 };
+  }
+  return item;
+}
+
+// --- Dashboard ---
+function getFinDashboard() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const lastMonth = now.getMonth() === 0 ? `${year - 1}-12` : `${year}-${String(now.getMonth()).padStart(2, '0')}`;
+  const thisMonth = `${year}-${month}`;
+
+  const thisMonthSpend = db.prepare("SELECT COALESCE(SUM(amount_cents), 0) as total FROM fin_expenses WHERE date LIKE ?").get(thisMonth + '%');
+  const lastMonthSpend = db.prepare("SELECT COALESCE(SUM(amount_cents), 0) as total FROM fin_expenses WHERE date LIKE ?").get(lastMonth + '%');
+  const ytdSpend = db.prepare("SELECT COALESCE(SUM(amount_cents), 0) as total FROM fin_expenses WHERE date LIKE ?").get(year + '%');
+  const byCategory = db.prepare("SELECT category, SUM(amount_cents) as total FROM fin_expenses WHERE date LIKE ? GROUP BY category ORDER BY total DESC").all(year + '%');
+  const upcomingPlanned = db.prepare("SELECT * FROM fin_planned_purchases WHERE status != 'purchased' ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, target_date ASC LIMIT 10").all();
+  const lowStock = db.prepare("SELECT * FROM fin_inventory WHERE reorder_threshold IS NOT NULL AND quantity <= reorder_threshold").all();
+  const equipmentCount = db.prepare("SELECT COUNT(*) as count FROM fin_equipment WHERE status = 'active'").get();
+  const totalEquipmentValue = db.prepare("SELECT COALESCE(SUM(purchase_cost_cents), 0) as total FROM fin_equipment").get();
+
+  return {
+    this_month_cents: thisMonthSpend.total,
+    last_month_cents: lastMonthSpend.total,
+    ytd_cents: ytdSpend.total,
+    spend_by_category: byCategory,
+    upcoming_planned: upcomingPlanned,
+    low_stock_items: lowStock,
+    active_equipment_count: equipmentCount.count,
+    total_equipment_value_cents: totalEquipmentValue.total
+  };
+}
+
+// ============================================================================
+// FOOTAGE LIBRARY
+// ============================================================================
+
+function listFootage({ category, product_id, status, tags, search, limit = 50, offset = 0 } = {}) {
+  let sql = 'SELECT * FROM footage_library WHERE 1=1';
+  const params = [];
+  if (category) { sql += ' AND category = ?'; params.push(category); }
+  if (product_id) { sql += ' AND product_id = ?'; params.push(product_id); }
+  if (status) { sql += ' AND status = ?'; params.push(status); }
+  if (tags) { sql += ' AND tags LIKE ?'; params.push('%' + tags + '%'); }
+  if (search) { sql += ' AND (original_name LIKE ? OR notes LIKE ? OR product_name LIKE ?)'; params.push('%' + search + '%', '%' + search + '%', '%' + search + '%'); }
+  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+  return db.prepare(sql).all(...params);
+}
+
+function getFootage(id) {
+  return db.prepare('SELECT * FROM footage_library WHERE id = ?').get(id);
+}
+
+function createFootage({ filename, original_name, file_path, file_size, duration_seconds, mime_type, category, subcategory, product_id, product_name, tags, notes, thumbnail_path, status, source, width, height }) {
+  const id = crypto.randomUUID();
+  db.prepare(`INSERT INTO footage_library (id, filename, original_name, file_path, file_size, duration_seconds, mime_type, category, subcategory, product_id, product_name, tags, notes, thumbnail_path, status, source, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, filename, original_name || null, file_path, file_size || null, duration_seconds || null, mime_type || null, category || null, subcategory || null, product_id || null, product_name || null, tags || null, notes || null, thumbnail_path || null, status || 'raw', source || 'upload', width || null, height || null);
+  return getFootage(id);
+}
+
+function updateFootage(id, fields) {
+  const allowed = ['category', 'subcategory', 'product_id', 'product_name', 'tags', 'notes', 'status', 'duration_seconds', 'thumbnail_path', 'used_in_count', 'width', 'height'];
+  const sets = [];
+  const params = [];
+  for (const key of allowed) {
+    if (fields[key] !== undefined) { sets.push(key + ' = ?'); params.push(fields[key]); }
+  }
+  if (!sets.length) return getFootage(id);
+  sets.push("updated_at = CURRENT_TIMESTAMP");
+  params.push(id);
+  db.prepare('UPDATE footage_library SET ' + sets.join(', ') + ' WHERE id = ?').run(...params);
+  return getFootage(id);
+}
+
+function deleteFootage(id) {
+  return db.prepare('DELETE FROM footage_library WHERE id = ?').run(id);
+}
+
+function listFootageCategories() {
+  return db.prepare('SELECT DISTINCT category FROM footage_library WHERE category IS NOT NULL ORDER BY category').all().map(r => r.category);
+}
+
+function getFootageStats() {
+  const total = db.prepare('SELECT COUNT(*) as count, COALESCE(SUM(file_size), 0) as total_bytes FROM footage_library').get();
+  const byCategory = db.prepare('SELECT category, COUNT(*) as count FROM footage_library GROUP BY category ORDER BY count DESC').all();
+  const byStatus = db.prepare('SELECT status, COUNT(*) as count FROM footage_library GROUP BY status ORDER BY count DESC').all();
+  return { total_clips: total.count, total_bytes: total.total_bytes, by_category: byCategory, by_status: byStatus };
+}
+
 module.exports = {
   initDatabase,
   normalizeEmail,
@@ -7932,5 +8342,41 @@ module.exports = {
   deletePrintQuoteItems,
   upsertPrintQuotePlates,
   listPrintQuotePlates,
-  updatePrintQuotePlate
+  updatePrintQuotePlate,
+  // Finance Manager
+  listFinExpenses,
+  getFinExpense,
+  createFinExpense,
+  updateFinExpense,
+  deleteFinExpense,
+  listFinExpenseCategories,
+  listFinPlanned,
+  getFinPlanned,
+  createFinPlanned,
+  updateFinPlanned,
+  deleteFinPlanned,
+  listFinEquipment,
+  getFinEquipment,
+  createFinEquipment,
+  updateFinEquipment,
+  deleteFinEquipment,
+  listFinMaintenance,
+  createFinMaintenance,
+  deleteFinMaintenance,
+  listFinInventory,
+  getFinInventoryItem,
+  createFinInventoryItem,
+  updateFinInventoryItem,
+  deleteFinInventoryItem,
+  adjustFinInventoryQty,
+  weighFinVinylRoll,
+  getFinDashboard,
+  // Footage Library
+  listFootage,
+  getFootage,
+  createFootage,
+  updateFootage,
+  deleteFootage,
+  listFootageCategories,
+  getFootageStats
 };

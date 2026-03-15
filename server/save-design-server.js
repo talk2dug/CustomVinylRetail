@@ -88,6 +88,8 @@ const { handleMultiboardRoute } = require('./multiboard-server');
 const { handleHowtoRoute } = require('./multiboard-howto-server');
 const { handleSlicerRoute } = require('./slicer-server');
 const { handleQuoteRoute } = require('./quote-server');
+const { handleFinanceRoute } = require('./finance-server');
+const { handleFootageRoute } = require('./footage-server');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
@@ -107,6 +109,7 @@ const trendMonitor = require('./modules/trend-monitor');
 const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
 const aiSalesAgent = require('./modules/ai-sales-agent');
 const telegramPrinterBot = require('./modules/telegram-printer-bot');
+const printMonitor = require('./modules/print-monitor');
 const marketingTeam = require('./modules/marketing-team');
 const shopifyOrderSync = require('./modules/shopify-order-sync');
 const salesTeam = require('./modules/sales-team');
@@ -3839,6 +3842,62 @@ const requestHandler = async (req, res) => {
     }
   }
 
+  // AI Print Monitor API
+  if (parsedUrl.pathname.startsWith('/api/print-monitor')) {
+    if (!requireInternalKey(req, res)) return;
+    const pmRoute = parsedUrl.pathname.replace('/api/print-monitor', '') || '/';
+
+    // GET /api/print-monitor/status
+    if (req.method === 'GET' && pmRoute === '/status') {
+      sendJson(res, 200, printMonitor.getStatus());
+      return;
+    }
+    // GET /api/print-monitor/results
+    if (req.method === 'GET' && pmRoute === '/results') {
+      sendJson(res, 200, printMonitor.getResults());
+      return;
+    }
+    // GET /api/print-monitor/results/:printerId
+    const resultMatch = pmRoute.match(/^\/results\/(\d+)$/);
+    if (req.method === 'GET' && resultMatch) {
+      const result = printMonitor.getResult(parseInt(resultMatch[1]));
+      sendJson(res, 200, result || { analysis: null });
+      return;
+    }
+    // POST /api/print-monitor/analyze/:printerId — manual trigger
+    const analyzeMatch = pmRoute.match(/^\/analyze\/(\d+)$/);
+    if (req.method === 'POST' && analyzeMatch) {
+      try {
+        const result = await printMonitor.analyzeNow(parseInt(analyzeMatch[1]));
+        sendJson(res, 200, result || { error: 'No result — vision model may be unavailable' });
+      } catch (err) {
+        sendJson(res, 400, { error: err.message });
+      }
+      return;
+    }
+    // GET /api/print-monitor/history/:printerId
+    const historyMatch = pmRoute.match(/^\/history\/(\d+)$/);
+    if (req.method === 'GET' && historyMatch) {
+      const limit = parseInt(parsedUrl.query.limit) || 20;
+      sendJson(res, 200, { items: printMonitor.getHistory(parseInt(historyMatch[1]), limit) });
+      return;
+    }
+    // POST /api/print-monitor/enable
+    if (req.method === 'POST' && pmRoute === '/enable') {
+      printMonitor.setEnabled(true);
+      sendJson(res, 200, { ok: true, enabled: true });
+      return;
+    }
+    // POST /api/print-monitor/disable
+    if (req.method === 'POST' && pmRoute === '/disable') {
+      printMonitor.setEnabled(false);
+      sendJson(res, 200, { ok: true, enabled: false });
+      return;
+    }
+    sendJson(res, 404, { error: 'Not found' });
+    return;
+  }
+
   // Print Server Proxy — forwards to Pi print server (pi4server001)
   if (parsedUrl.pathname.startsWith('/api/print-server/')) {
     const PRINT_SERVER_URL = process.env.PRINT_SERVER_URL || 'http://100.64.0.7:5000';
@@ -4371,7 +4430,7 @@ const requestHandler = async (req, res) => {
   // Files should be placed in: server/updates/print-station/
   // Required files after build: latest.yml, Vinyl Print Station Setup X.X.X.exe
   if (parsedUrl.pathname.startsWith('/updates/print-station/')) {
-    const fileName = parsedUrl.pathname.replace('/updates/print-station/', '');
+    const fileName = decodeURIComponent(parsedUrl.pathname.replace('/updates/print-station/', ''));
     const updateDir = path.resolve(__dirname, 'updates', 'print-station');
     const filePath = path.join(updateDir, fileName);
 
@@ -9651,6 +9710,28 @@ Keep it concise and actionable.`;
     if (!requireInternalKey(req, res)) return;
     handleQuoteRoute(parsedUrl.pathname, req, res, db).catch(err => {
       console.error('[Quotes API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Finance Manager API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/finance')) {
+    if (!requireInternalKey(req, res)) return;
+    handleFinanceRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Finance API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Footage Library API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/footage')) {
+    // Allow unauthenticated access to file/thumb serving (key checked via query param)
+    const isFileServe = parsedUrl.pathname.startsWith('/api/footage/file/') || parsedUrl.pathname.startsWith('/api/footage/thumb/');
+    if (!isFileServe && !requireInternalKey(req, res)) return;
+    handleFootageRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Footage API Error]', err);
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;
@@ -17796,6 +17877,48 @@ Keep it concise and actionable.`;
     return;
   }
 
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    (parsedUrl.pathname === '/hub' || parsedUrl.pathname === '/hub.html')
+  ) {
+    const qk = parsedUrl.query && parsedUrl.query.key;
+    const hk = req.headers['x-api-key'];
+    if (INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    serveWebAsset(req, res, 'hub.html');
+    return;
+  }
+
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    (parsedUrl.pathname === '/finance' || parsedUrl.pathname === '/finance.html')
+  ) {
+    const qk = parsedUrl.query && parsedUrl.query.key;
+    const hk = req.headers['x-api-key'];
+    if (INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    serveWebAsset(req, res, 'finance.html');
+    return;
+  }
+
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    (parsedUrl.pathname === '/footage' || parsedUrl.pathname === '/footage.html')
+  ) {
+    const qk = parsedUrl.query && parsedUrl.query.key;
+    const hk = req.headers['x-api-key'];
+    if (INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    serveWebAsset(req, res, 'footage.html');
+    return;
+  }
+
   // Serve product catalog photos
   if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname.startsWith('/product-photos/')) {
     const fileName = decodeURIComponent(parsedUrl.pathname.replace('/product-photos/', ''));
@@ -21206,6 +21329,25 @@ if (require.main === module) {
 
     // Telegram printer bot polling disabled — conflicts with main Telegram bot service
     // telegramPrinterBot.startPolling();
+
+    // AI Print Monitor — analyzes webcam snapshots for failures every 45s
+    try {
+      const telegram = require('./lib/telegram-notifier');
+      printMonitor.init({
+        getCache: () => telegramPrinterBot.getCache(),
+        notify: async (text, photoBuffer) => {
+          if (photoBuffer) {
+            await telegram.sendPhoto(photoBuffer, text);
+          } else {
+            await telegram.send(text);
+          }
+        },
+        db
+      });
+      console.log('[Server] AI Print Monitor started');
+    } catch (err) {
+      console.error('[Server] Failed to start print monitor:', err.message);
+    }
 
     // Start abandoned cart recovery processor (runs every 15 minutes)
     try {

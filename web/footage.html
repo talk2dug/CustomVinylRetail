@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Footage Library — Blue Ridge Custom Co</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&display=swap">
+  <style>
+:root {
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --muted: #4b5563;
+  --border: #d1d5db;
+  --accent: #2563eb;
+  --accent-dark: #1d4ed8;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  font-family: "Barlow", system-ui, sans-serif;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+
+/* Topbar */
+.topbar {
+  padding: 1rem 1.25rem; background: var(--surface);
+  border-bottom: 1px solid var(--border); box-shadow: 0 4px 12px rgba(15,23,42,0.06);
+}
+.topbar-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+.topbar h1 { margin: 0; font-size: 1.3rem; }
+.topbar p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.85rem; }
+.topbar a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 0.85rem; }
+
+/* Tabs */
+.tab-bar { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-top: 0.75rem; }
+.tab-btn {
+  padding: 0.5rem 1rem; border: none; background: none; cursor: pointer;
+  font: inherit; font-weight: 600; font-size: 0.9rem; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s;
+}
+.tab-btn:hover { color: var(--accent); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Main */
+main { flex: 1; padding: 1rem 1.25rem; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed var(--accent); border-radius: 1rem; padding: 2rem 1rem;
+  text-align: center; background: #eff6ff; cursor: pointer; transition: all 0.2s;
+  margin-bottom: 1.25rem;
+}
+.upload-zone:hover, .upload-zone.dragover { background: #dbeafe; border-color: var(--accent-dark); }
+.upload-zone.has-file { border-style: solid; background: #ecfdf5; border-color: var(--success); }
+.upload-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.upload-zone p { margin: 0; color: var(--muted); }
+.upload-zone .filename { font-weight: 600; color: #0f172a; margin-top: 0.5rem; }
+.upload-preview { max-width: 100%; max-height: 200px; border-radius: 0.5rem; margin-top: 0.75rem; }
+
+/* Quick tag buttons */
+.tag-section { margin-bottom: 1rem; }
+.tag-section label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.tag-grid { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.tag-pill {
+  padding: 0.4rem 0.85rem; border-radius: 999px; border: 1.5px solid var(--border);
+  background: var(--surface); font: inherit; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; color: var(--muted);
+}
+.tag-pill:hover { border-color: var(--accent); color: var(--accent); }
+.tag-pill.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Form */
+.form-group { margin-bottom: 0.85rem; }
+.form-group label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.form-group select, .form-group input, .form-group textarea {
+  width: 100%; font: inherit; padding: 0.55rem 0.75rem; border-radius: 0.65rem;
+  border: 1px solid var(--border); background: var(--surface); font-size: 0.95rem;
+}
+.form-group textarea { resize: vertical; min-height: 50px; }
+
+/* Buttons */
+.btn {
+  font: inherit; font-weight: 600; padding: 0.6rem 1.25rem; border-radius: 0.65rem;
+  cursor: pointer; border: none; transition: all 0.15s; display: inline-flex;
+  align-items: center; justify-content: center; gap: 0.4rem; width: 100%;
+}
+.btn-primary { background: var(--accent); color: #fff; font-size: 1.05rem; }
+.btn-primary:hover { background: var(--accent-dark); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary { background: var(--surface); color: #0f172a; border: 1px solid var(--border); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-sm { padding: 0.35rem 0.65rem; font-size: 0.8rem; width: auto; }
+
+/* Progress */
+.upload-progress { display: none; margin-bottom: 1rem; }
+.upload-progress.active { display: block; }
+.progress-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); border-radius: 4px; transition: width 0.3s; width: 0%; }
+.progress-text { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; text-align: center; }
+
+/* Stat cards */
+.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 1rem; }
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem;
+  padding: 0.6rem; text-align: center;
+}
+.stat-card .val { font-size: 1.3rem; font-weight: 700; }
+.stat-card .lbl { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
+
+/* Clip grid */
+.clip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; }
+.clip-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem;
+  overflow: hidden; cursor: pointer; transition: border-color 0.15s;
+}
+.clip-card:hover { border-color: var(--accent); }
+.clip-thumb {
+  width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #1e293b;
+  display: flex; align-items: center; justify-content: center;
+}
+.clip-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.clip-thumb .no-thumb { color: #64748b; font-size: 2rem; }
+.clip-info { padding: 0.5rem 0.6rem; }
+.clip-info .clip-name { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clip-info .clip-meta { font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+.clip-badge {
+  display: inline-block; padding: 0.1rem 0.4rem; border-radius: 999px;
+  font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+}
+.clip-badge.raw { background: #fffbeb; color: #b45309; }
+.clip-badge.ready { background: #ecfdf5; color: var(--success); }
+.clip-badge.used { background: #eff6ff; color: var(--accent); }
+
+/* Filter bar */
+.filter-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.filter-row select, .filter-row input {
+  font: inherit; padding: 0.4rem 0.6rem; border-radius: 0.5rem;
+  border: 1px solid var(--border); background: var(--surface); font-size: 0.85rem;
+  flex: 1; min-width: 100px;
+}
+
+/* Detail modal */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 100;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.modal-overlay[hidden] { display: none; }
+.modal {
+  background: var(--surface); border-radius: 1rem 1rem 0 0; padding: 1.25rem;
+  width: 100%; max-width: 500px; max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 -10px 40px rgba(15,23,42,0.2);
+  animation: slideUp 0.2s ease;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal h3 { margin: 0 0 1rem; }
+.modal video { width: 100%; border-radius: 0.5rem; max-height: 250px; background: #000; }
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 2rem 1rem; color: var(--muted);
+  border: 1px dashed var(--border); border-radius: 0.75rem;
+}
+
+/* Success toast */
+.toast {
+  position: fixed; top: 1rem; left: 50%; transform: translateX(-50%);
+  background: var(--success); color: #fff; padding: 0.6rem 1.25rem;
+  border-radius: 0.65rem; font-weight: 600; z-index: 200;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2); animation: fadeIn 0.2s;
+  display: none;
+}
+.toast.show { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+/* Desktop tweaks */
+@media (min-width: 768px) {
+  .topbar { padding: 1.25rem 2rem; }
+  main { padding: 1.5rem 2rem; }
+  .upload-zone { padding: 3rem 2rem; }
+  .clip-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .modal { border-radius: 1rem; align-self: center; }
+  .stat-row { grid-template-columns: repeat(4, 1fr); }
+}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+      <div>
+        <h1>Footage Library</h1>
+        <p>Upload clips from your phone, tag them, build TikTok content.</p>
+      </div>
+      <a id="hubLink" href="/hub">&larr; Hub</a>
+    </div>
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="upload">Upload</button>
+      <button class="tab-btn" data-tab="library">Library</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ==================== UPLOAD TAB ==================== -->
+    <section id="tab-upload" class="tab-panel active">
+
+      <!-- File picker / drop zone -->
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+        <div class="upload-icon">&#127909;</div>
+        <p><strong>Tap to record or choose video</strong></p>
+        <p style="font-size:0.8rem">Or drag & drop a file here</p>
+        <div id="fileInfo" style="display:none">
+          <p class="filename" id="fileName"></p>
+          <video id="uploadPreview" class="upload-preview" controls playsinline style="display:none"></video>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept="video/*" capture="environment" style="display:none">
+
+      <!-- Progress -->
+      <div class="upload-progress" id="uploadProgress">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-text" id="progressText">Uploading...</div>
+      </div>
+
+      <!-- Category quick-tags -->
+      <div class="tag-section">
+        <label>Clip Type</label>
+        <div class="tag-grid" id="categoryTags">
+          <button class="tag-pill" data-value="close-up">Close-up</button>
+          <button class="tag-pill" data-value="reveal">Reveal</button>
+          <button class="tag-pill" data-value="process">Process</button>
+          <button class="tag-pill" data-value="timelapse">Timelapse</button>
+          <button class="tag-pill" data-value="b-roll">B-Roll</button>
+          <button class="tag-pill" data-value="product-shot">Product Shot</button>
+          <button class="tag-pill" data-value="packing">Packing</button>
+          <button class="tag-pill" data-value="workshop">Workshop</button>
+        </div>
+      </div>
+
+      <!-- Subcategory tags -->
+      <div class="tag-section">
+        <label>What's Shown</label>
+        <div class="tag-grid" id="subcategoryTags">
+          <button class="tag-pill" data-value="transfer-paper">Transfer Paper</button>
+          <button class="tag-pill" data-value="heat-press">Heat Press</button>
+          <button class="tag-pill" data-value="finished-print">Finished Print</button>
+          <button class="tag-pill" data-value="blank-metal">Blank Metal</button>
+          <button class="tag-pill" data-value="hanging">Hanging/Display</button>
+          <button class="tag-pill" data-value="comparison">Comparison</button>
+        </div>
+      </div>
+
+      <!-- Product -->
+      <div class="form-group">
+        <label>Product (optional)</label>
+        <select id="uploadProduct">
+          <option value="">-- No specific product --</option>
+        </select>
+      </div>
+
+      <!-- Notes -->
+      <div class="form-group">
+        <label>Notes (optional)</label>
+        <textarea id="uploadNotes" rows="2" placeholder="Quick note about this clip..."></textarea>
+      </div>
+
+      <!-- Submit -->
+      <button class="btn btn-primary" id="uploadBtn" disabled onclick="uploadClip()">
+        Upload Clip
+      </button>
+    </section>
+
+    <!-- ==================== LIBRARY TAB ==================== -->
+    <section id="tab-library" class="tab-panel">
+      <div class="stat-row" id="statsRow">
+        <div class="stat-card"><div class="val" id="statTotal">0</div><div class="lbl">Clips</div></div>
+        <div class="stat-card"><div class="val" id="statSize">0</div><div class="lbl">Storage</div></div>
+        <div class="stat-card"><div class="val" id="statRaw">0</div><div class="lbl">Raw</div></div>
+      </div>
+
+      <div class="filter-row">
+        <select id="libFilterCategory" onchange="loadLibrary()">
+          <option value="">All types</option>
+          <option value="close-up">Close-up</option>
+          <option value="reveal">Reveal</option>
+          <option value="process">Process</option>
+          <option value="timelapse">Timelapse</option>
+          <option value="b-roll">B-Roll</option>
+          <option value="product-shot">Product Shot</option>
+          <option value="packing">Packing</option>
+          <option value="workshop">Workshop</option>
+        </select>
+        <select id="libFilterStatus" onchange="loadLibrary()">
+          <option value="">All status</option>
+          <option value="raw">Raw</option>
+          <option value="ready">Ready</option>
+          <option value="used">Used</option>
+        </select>
+        <input type="search" id="libSearch" placeholder="Search..." onchange="loadLibrary()">
+      </div>
+
+      <div class="clip-grid" id="clipGrid">
+        <div class="empty-state"><p>No clips uploaded yet.</p></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Detail Modal -->
+  <div class="modal-overlay" id="detailModal" hidden>
+    <div class="modal" id="detailContent"></div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+<script>
+const API = '/api/footage';
+const urlKey = new URLSearchParams(window.location.search).get('key');
+const API_KEY = urlKey || localStorage.getItem('apiKey') || '';
+if (urlKey) localStorage.setItem('apiKey', urlKey);
+if (API_KEY) document.getElementById('hubLink').href = '/hub?key=' + encodeURIComponent(API_KEY);
+
+// ============================================================================
+// TAB SWITCHING
+// ============================================================================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'library') loadLibrary();
+  });
+});
+
+// ============================================================================
+// TAG PILLS (toggle selection)
+// ============================================================================
+document.querySelectorAll('.tag-grid').forEach(grid => {
+  grid.addEventListener('click', e => {
+    const pill = e.target.closest('.tag-pill');
+    if (!pill) return;
+    // Single select within each group
+    grid.querySelectorAll('.tag-pill').forEach(p => p.classList.remove('selected'));
+    pill.classList.add('selected');
+  });
+});
+
+function getSelectedTag(groupId) {
+  const sel = document.querySelector('#' + groupId + ' .tag-pill.selected');
+  return sel ? sel.dataset.value : '';
+}
+
+// ============================================================================
+// FILE INPUT
+// ============================================================================
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+const uploadBtn = document.getElementById('uploadBtn');
+let selectedFile = null;
+
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  selectFile(file);
+});
+
+// Drag & drop
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) selectFile(file);
+});
+
+function selectFile(file) {
+  selectedFile = file;
+  uploadZone.classList.add('has-file');
+  document.getElementById('fileInfo').style.display = '';
+  document.getElementById('fileName').textContent = file.name + ' (' + formatBytes(file.size) + ')';
+
+  const preview = document.getElementById('uploadPreview');
+  if (file.type.startsWith('video/')) {
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = '';
+  } else {
+    preview.style.display = 'none';
+  }
+  uploadBtn.disabled = false;
+}
+
+// ============================================================================
+// UPLOAD
+// ============================================================================
+async function uploadClip() {
+  if (!selectedFile) return;
+
+  const formData = new FormData();
+  formData.append('file', selectedFile);
+  formData.append('category', getSelectedTag('categoryTags'));
+  formData.append('subcategory', getSelectedTag('subcategoryTags'));
+  formData.append('source', 'mobile-upload');
+
+  const productSel = document.getElementById('uploadProduct');
+  if (productSel.value) {
+    formData.append('product_id', productSel.value);
+    formData.append('product_name', productSel.options[productSel.selectedIndex].text);
+  }
+
+  const notes = document.getElementById('uploadNotes').value.trim();
+  if (notes) formData.append('notes', notes);
+
+  // Build tags from both tag groups
+  const tags = [getSelectedTag('categoryTags'), getSelectedTag('subcategoryTags')].filter(Boolean).join(',');
+  if (tags) formData.append('tags', tags);
+
+  uploadBtn.disabled = true;
+  const progress = document.getElementById('uploadProgress');
+  const progressFill = document.getElementById('progressFill');
+  const progressText = document.getElementById('progressText');
+  progress.classList.add('active');
+
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', API + '/upload');
+    xhr.setRequestHeader('X-API-Key', API_KEY);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        progressFill.style.width = pct + '%';
+        progressText.textContent = pct + '% — ' + formatBytes(e.loaded) + ' / ' + formatBytes(e.total);
+      }
+    };
+
+    const result = await new Promise((resolve, reject) => {
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+        else reject(new Error(JSON.parse(xhr.responseText).error || 'Upload failed'));
+      };
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.send(formData);
+    });
+
+    showToast('Clip uploaded! ' + (result.duration_seconds ? Math.round(result.duration_seconds) + 's' : ''));
+    resetUploadForm();
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  } finally {
+    progress.classList.remove('active');
+    progressFill.style.width = '0%';
+    uploadBtn.disabled = false;
+  }
+}
+
+function resetUploadForm() {
+  selectedFile = null;
+  fileInput.value = '';
+  uploadZone.classList.remove('has-file');
+  document.getElementById('fileInfo').style.display = 'none';
+  document.getElementById('uploadPreview').style.display = 'none';
+  document.getElementById('uploadNotes').value = '';
+  document.querySelectorAll('.tag-pill').forEach(p => p.classList.remove('selected'));
+  document.getElementById('uploadProduct').value = '';
+  uploadBtn.disabled = true;
+}
+
+// ============================================================================
+// LIBRARY
+// ============================================================================
+async function loadLibrary() {
+  const params = new URLSearchParams();
+  const cat = document.getElementById('libFilterCategory').value;
+  const status = document.getElementById('libFilterStatus').value;
+  const search = document.getElementById('libSearch').value;
+  if (cat) params.set('category', cat);
+  if (status) params.set('status', status);
+  if (search) params.set('search', search);
+  params.set('limit', '100');
+
+  try {
+    const [clipsRes, statsRes] = await Promise.all([
+      apiFetch('/clips?' + params),
+      apiFetch('/stats')
+    ]);
+
+    // Stats
+    document.getElementById('statTotal').textContent = statsRes.total_clips || 0;
+    document.getElementById('statSize').textContent = formatBytes(statsRes.total_bytes || 0);
+    const rawCount = (statsRes.by_status || []).find(s => s.status === 'raw');
+    document.getElementById('statRaw').textContent = rawCount ? rawCount.count : 0;
+
+    // Clips
+    const grid = document.getElementById('clipGrid');
+    const items = clipsRes.items || [];
+    if (!items.length) {
+      grid.innerHTML = '<div class="empty-state"><p>No clips found.</p></div>';
+      return;
+    }
+    grid.innerHTML = items.map(c => {
+      const thumbUrl = c.thumbnail_path ? API + '/thumb/' + c.filename.replace(/\.[^.]+$/, '.jpg') : '';
+      const dur = c.duration_seconds ? formatDuration(c.duration_seconds) : '';
+      return `
+        <div class="clip-card" onclick="viewClip('${c.id}')">
+          <div class="clip-thumb">
+            ${thumbUrl ? `<img src="${thumbUrl}" alt="" loading="lazy">` : '<div class="no-thumb">&#127909;</div>'}
+          </div>
+          <div class="clip-info">
+            <div class="clip-name">${c.original_name || c.filename}</div>
+            <div class="clip-meta">
+              ${c.category ? `<span class="clip-badge ${c.status || 'raw'}">${c.category}</span> ` : ''}
+              ${dur} ${formatBytes(c.file_size || 0)}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Library error:', err);
+  }
+}
+
+async function viewClip(id) {
+  try {
+    const c = await apiFetch('/clips/' + id);
+    const videoUrl = API + '/file/' + c.filename + '?key=' + encodeURIComponent(API_KEY);
+    const modal = document.getElementById('detailContent');
+    modal.innerHTML = `
+      <h3>${c.original_name || c.filename}</h3>
+      <video src="${videoUrl}" controls playsinline style="width:100%;border-radius:0.5rem;max-height:250px;background:#000"></video>
+      <div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.85rem">
+        <div><span style="color:var(--muted)">Category:</span> ${c.category || '--'}</div>
+        <div><span style="color:var(--muted)">Status:</span> <span class="clip-badge ${c.status}">${c.status}</span></div>
+        <div><span style="color:var(--muted)">Duration:</span> ${c.duration_seconds ? formatDuration(c.duration_seconds) : '--'}</div>
+        <div><span style="color:var(--muted)">Size:</span> ${formatBytes(c.file_size || 0)}</div>
+        <div><span style="color:var(--muted)">Resolution:</span> ${c.width && c.height ? c.width + 'x' + c.height : '--'}</div>
+        <div><span style="color:var(--muted)">Product:</span> ${c.product_name || '--'}</div>
+      </div>
+      ${c.notes ? `<p style="margin:0.75rem 0 0;color:var(--muted);font-size:0.85rem">${c.notes}</p>` : ''}
+      <div style="margin-top:1rem">
+        <div class="form-group">
+          <label>Status</label>
+          <select id="detailStatus" style="width:100%">
+            <option value="raw" ${c.status === 'raw' ? 'selected' : ''}>Raw</option>
+            <option value="ready" ${c.status === 'ready' ? 'selected' : ''}>Ready</option>
+            <option value="used" ${c.status === 'used' ? 'selected' : ''}>Used</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="detailNotes" rows="2" style="width:100%">${c.notes || ''}</textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
+        <button class="btn btn-primary btn-sm" style="flex:1" onclick="saveClipDetail('${c.id}')">Save</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteClip('${c.id}')">Delete</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('detailModal').hidden=true">Close</button>
+      </div>
+    `;
+    document.getElementById('detailModal').hidden = false;
+  } catch (err) { alert(err.message); }
+}
+
+async function saveClipDetail(id) {
+  try {
+    await apiFetch('/clips/' + id, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: document.getElementById('detailStatus').value,
+        notes: document.getElementById('detailNotes').value || null
+      })
+    });
+    document.getElementById('detailModal').hidden = true;
+    showToast('Clip updated');
+    loadLibrary();
+  } catch (err) { alert(err.message); }
+}
+
+async function deleteClip(id) {
+  if (!confirm('Delete this clip? This removes the file from disk.')) return;
+  try {
+    await apiFetch('/clips/' + id, { method: 'DELETE' });
+    document.getElementById('detailModal').hidden = true;
+    showToast('Clip deleted');
+    loadLibrary();
+  } catch (err) { alert(err.message); }
+}
+
+// Close modal on backdrop click
+document.getElementById('detailModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('detailModal')) {
+    document.getElementById('detailModal').hidden = true;
+  }
+});
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY, ...(opts.headers || {}) }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Request failed');
+  }
+  return res.json();
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  let val = bytes;
+  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+  return val.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+function formatDuration(sec) {
+  if (!sec) return '';
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return m > 0 ? m + 'm ' + s + 's' : s + 's';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// Load products for the dropdown
+async function loadProducts() {
+  try {
+    const d = await apiFetch('/products');
+    const sel = document.getElementById('uploadProduct');
+    (d.products || []).forEach(p => {
+      sel.add(new Option(p.title, p.id));
+    });
+  } catch (_) {}
+}
+
+loadProducts();
+</script>
+</body>
+</html>

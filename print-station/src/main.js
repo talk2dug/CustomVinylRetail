@@ -6664,6 +6664,12 @@ Return ONLY valid JSON, nothing else:
     return resp;
   }
 
+  // Generic server API fetch (for print monitor, etc.)
+  ipcMain.handle('server:apiFetch', async (_event, endpoint, options = {}) => {
+    const resp = await slicerFetch(endpoint, { ...options, timeout: options.timeout || 60000 });
+    return resp.json();
+  });
+
   // Presets
   ipcMain.handle('slicer:presets', async () => {
     const resp = await slicerFetch('/api/slicer/presets');

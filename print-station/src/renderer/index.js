@@ -1843,6 +1843,9 @@ function switchView(viewId) {
   if (viewId === 'printerFleetView') {
     if (typeof window.initPrinterFleetView === 'function') window.initPrinterFleetView();
   }
+  if (viewId === 'inkjetFleetView') {
+    if (typeof window.initInkjetFleetView === 'function') window.initInkjetFleetView();
+  }
   if (viewId === 'skuCatalogView') {
     if (typeof window.initSkuCatalogView === 'function') window.initSkuCatalogView();
   }

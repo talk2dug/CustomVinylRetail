@@ -550,7 +550,7 @@
   async function loadApparelProducts() {
     if (state.apparelLoaded) return state.apparelProducts;
     try {
-      const res = await fetch('/api/apparel/products', { cache: 'no-store' });
+      const res = await fetch(buildServerEndpoint('/api/apparel/products'), buildFetchOptions({ cache: 'no-store' }));
       const data = await res.json().catch(() => ({}));
       const products = Array.isArray(data?.products) ? data.products : [];
       // Reduce to one preview image per product (first variant with image)
@@ -1570,8 +1570,8 @@
 
     humanModelEls.empty.style.display = 'none';
     humanModelEls.grid.innerHTML = filtered.map(model => {
-      const thumbUrl = model.thumbnail_path || model.optimized_path || model.file_path || '';
-      const fullUrl = thumbUrl.startsWith('http') ? thumbUrl : buildServerEndpoint(thumbUrl);
+      const thumbUrl = model.thumbnailPath || model.thumbnail_path || model.optimizedPath || model.optimized_path || model.filePath || model.file_path || '';
+      const fullUrl = thumbUrl.startsWith('http') ? thumbUrl : buildServerEndpoint(thumbUrl.startsWith('/library/') ? '/api' + thumbUrl : thumbUrl.startsWith('library/') ? '/api/' + thumbUrl : thumbUrl);
       const isSelected = humanModelState.selectedModel?.id === model.id;
       return `
         <div class="human-model-card ${isSelected ? 'selected' : ''}" data-model-id="${model.id}" style="
@@ -1587,7 +1587,7 @@
           </div>
           <div style="padding:8px;">
             <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${model.title || 'Untitled'}</div>
-            <div style="font-size:11px;color:#64748b;">${model.category || ''} ${model.pose_type ? '· ' + model.pose_type : ''}</div>
+            <div style="font-size:11px;color:#64748b;">${model.category || ''} ${(model.poseType || model.pose_type) ? '· ' + (model.poseType || model.pose_type) : ''}</div>
           </div>
         </div>
       `;
@@ -1682,8 +1682,8 @@
     if (!humanModelState.selectedModel) return;
 
     const model = humanModelState.selectedModel;
-    const imageUrl = model.optimized_path || model.file_path || '';
-    const fullUrl = imageUrl.startsWith('http') ? imageUrl : buildServerEndpoint(imageUrl);
+    const imageUrl = model.optimizedPath || model.optimized_path || model.filePath || model.file_path || '';
+    const fullUrl = imageUrl.startsWith('http') ? imageUrl : buildServerEndpoint(imageUrl.startsWith('/library/') ? '/api' + imageUrl : imageUrl.startsWith('library/') ? '/api/' + imageUrl : imageUrl);
 
     try {
       // Apply clothing color tint

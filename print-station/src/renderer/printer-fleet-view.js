@@ -327,6 +327,7 @@ function renderPrinterCard(printer) {
         <!-- Quick Actions -->
         <div data-fleet-el="actions" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           ${actionsHtml}
+          <button class="secondary fleet-action" data-action="ai-monitor" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;">AI Monitor</button>
           <button class="secondary fleet-action" data-action="detail" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;margin-left:auto;">Details</button>
           <button class="secondary fleet-action" data-action="estop" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;color:var(--danger);">E-STOP</button>
         </div>
@@ -528,10 +529,157 @@ async function handlePrinterGridClick(e) {
       case 'detail':
         showPrinterDetailModal(printerId);
         break;
+      case 'ai-monitor':
+        showAiMonitorModal(printerId);
+        break;
     }
   } catch (err) {
     console.error('[Fleet] Action error:', err);
     showToast('Error: ' + err.message, 'error');
+  }
+}
+
+// =============== AI PRINT MONITOR MODAL ===============
+
+async function showAiMonitorModal(printerId) {
+  const printer = fleetState.printers.find(p => p.id === printerId);
+  const printerName = printer ? printer.name : 'Printer #' + printerId;
+
+  const existing = document.getElementById('fleetAiMonitorModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'fleetAiMonitorModal';
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-dialog" style="width:min(600px,94vw);">
+      <div class="modal-header">
+        <h3 style="margin:0;">AI Print Monitor — ${fleetEscapeHtml(printerName)}</h3>
+        <button class="secondary fleet-modal-close" style="padding:4px 10px;font-size:0.9rem;">&times;</button>
+      </div>
+      <div class="modal-body" id="aiMonitorBody" style="max-height:70vh;overflow-y:auto;">
+        <div style="text-align:center;padding:20px;color:var(--muted);">Loading analysis results...</div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  modal.querySelector('.fleet-modal-close').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  await loadAiMonitorData(printerId, printerName);
+}
+
+async function loadAiMonitorData(printerId, printerName) {
+  const body = document.getElementById('aiMonitorBody');
+  if (!body) return;
+
+  try {
+    // Fetch latest result + history via IPC (which calls the server API)
+    const [resultRes, historyRes, statusRes] = await Promise.all([
+      printStation.slicer.fetch('/api/print-monitor/results/' + printerId),
+      printStation.slicer.fetch('/api/print-monitor/history/' + printerId + '?limit=10'),
+      printStation.slicer.fetch('/api/print-monitor/status')
+    ]);
+
+    const result = resultRes;
+    const history = historyRes.items || [];
+    const status = statusRes;
+
+    let html = '';
+
+    // Monitor status bar
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;font-size:0.8rem;">
+      <span>Monitor: <strong style="color:${status.enabled ? 'var(--success)' : 'var(--danger)'};">${status.enabled ? 'Active' : 'Disabled'}</strong>
+        &nbsp;|&nbsp; Checks: ${status.stats?.totalAnalyses || 0} &nbsp;|&nbsp; Alerts: ${status.stats?.issuesDetected || 0}</span>
+      <button id="aiMonitorAnalyzeBtn" class="primary" style="padding:4px 12px;font-size:0.8rem;">Analyze Now</button>
+    </div>`;
+
+    // Latest result
+    if (result && result.analysis) {
+      const a = result.analysis;
+      const qualityPct = Math.round((a.overall_quality || 0) * 100);
+      const qualityColor = qualityPct >= 80 ? 'var(--success)' : qualityPct >= 50 ? 'var(--warning)' : 'var(--danger)';
+
+      html += `<div style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+          <div style="font-size:2rem;font-weight:700;color:${qualityColor};">${qualityPct}%</div>
+          <div>
+            <div style="font-weight:600;">Print Quality</div>
+            <div style="font-size:0.8rem;color:var(--muted);">${result.timestamp ? new Date(result.timestamp).toLocaleString() : ''}</div>
+          </div>
+          ${a.needs_attention ? '<div style="background:var(--danger);color:#fff;padding:3px 10px;border-radius:99px;font-size:0.75rem;font-weight:600;">NEEDS ATTENTION</div>' : '<div style="background:var(--success);color:#fff;padding:3px 10px;border-radius:99px;font-size:0.75rem;font-weight:600;">OK</div>'}
+        </div>
+        <div style="font-size:0.85rem;color:var(--muted);margin-bottom:10px;">${fleetEscapeHtml(a.summary || '')}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;">`;
+
+      const issues = [
+        ['Spaghetti', a.spaghetti],
+        ['Layer Shift', a.layer_shift],
+        ['Warping', a.warping],
+        ['Stringing', a.stringing],
+        ['Under-extrusion', a.under_extrusion],
+        ['Bed Adhesion', a.bed_adhesion_failure],
+        ['Blob/Zit', a.blob]
+      ];
+
+      for (const [label, val] of issues) {
+        const pct = Math.round((val || 0) * 100);
+        const barColor = pct >= 70 ? 'var(--danger)' : pct >= 30 ? 'var(--warning)' : 'var(--success)';
+        html += `<div style="background:var(--bg-secondary);border-radius:6px;padding:6px 8px;">
+          <div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:3px;">
+            <span>${label}</span><span style="font-weight:600;color:${barColor};">${pct}%</span>
+          </div>
+          <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;"></div>
+          </div>
+        </div>`;
+      }
+      html += '</div></div>';
+    } else {
+      html += `<div style="text-align:center;padding:20px;color:var(--muted);background:var(--bg-secondary);border-radius:8px;margin-bottom:16px;">
+        <div style="font-size:1.5rem;margin-bottom:6px;">&#128269;</div>
+        No analysis yet. Click "Analyze Now" to run the first check.
+      </div>`;
+    }
+
+    // History
+    if (history.length) {
+      html += `<h4 style="margin:0 0 8px;font-size:0.9rem;">Recent Analysis History</h4>
+        <div style="display:flex;flex-direction:column;gap:4px;">`;
+      for (const h of history) {
+        const qPct = Math.round((h.overall_quality || 0) * 100);
+        const qColor = qPct >= 80 ? 'var(--success)' : qPct >= 50 ? 'var(--warning)' : 'var(--danger)';
+        const time = h.created_at ? new Date(h.created_at + 'Z').toLocaleTimeString() : '';
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:0.8rem;background:var(--bg-secondary);border-radius:4px;">
+          <strong style="color:${qColor};min-width:32px;">${qPct}%</strong>
+          <span style="flex:1;color:var(--muted);">${fleetEscapeHtml(h.summary || '--')}</span>
+          ${h.needs_attention ? '<span style="color:var(--danger);font-weight:600;">&#9888;</span>' : ''}
+          <span style="color:var(--muted);font-size:0.7rem;white-space:nowrap;">${time}</span>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    body.innerHTML = html;
+
+    // Wire up analyze button
+    document.getElementById('aiMonitorAnalyzeBtn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('aiMonitorAnalyzeBtn');
+      btn.disabled = true;
+      btn.textContent = 'Analyzing...';
+      try {
+        await printStation.slicer.fetch('/api/print-monitor/analyze/' + printerId, { method: 'POST' });
+        showToast('Analysis complete', 'success');
+        await loadAiMonitorData(printerId, printerName);
+      } catch (err) {
+        showToast('Analysis failed: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Analyze Now';
+      }
+    });
+
+  } catch (err) {
+    body.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;">Error loading monitor data: ${fleetEscapeHtml(err.message)}</div>`;
   }
 }
 
