@@ -328,7 +328,8 @@ function renderPrinterCard(printer) {
         <div data-fleet-el="actions" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           ${actionsHtml}
           <button class="secondary fleet-action" data-action="ai-monitor" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;">AI Monitor</button>
-          <button class="secondary fleet-action" data-action="detail" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;margin-left:auto;">Details</button>
+          <button class="secondary fleet-action" data-action="webui" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;margin-left:auto;">Web UI</button>
+          <button class="secondary fleet-action" data-action="detail" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;">Details</button>
           <button class="secondary fleet-action" data-action="estop" data-printer="${printer.id}" style="padding:4px 10px;font-size:0.8rem;color:var(--danger);">E-STOP</button>
         </div>
       </div>
@@ -401,10 +402,11 @@ function updatePrinterCardStatus(data) {
   const actionsEl = card.querySelector('[data-fleet-el="actions"]');
   if (actionsEl) {
     const actionsHtml = fleetBuildActionsHtml(status, data.printerId);
-    // Preserve the Details and E-STOP buttons (they don't change)
+    // Preserve the Web UI, Details and E-STOP buttons (they don't change)
     actionsEl.innerHTML = `
       ${actionsHtml}
-      <button class="secondary fleet-action" data-action="detail" data-printer="${data.printerId}" style="padding:4px 10px;font-size:0.8rem;margin-left:auto;">Details</button>
+      <button class="secondary fleet-action" data-action="webui" data-printer="${data.printerId}" style="padding:4px 10px;font-size:0.8rem;margin-left:auto;">Web UI</button>
+      <button class="secondary fleet-action" data-action="detail" data-printer="${data.printerId}" style="padding:4px 10px;font-size:0.8rem;">Details</button>
       <button class="secondary fleet-action" data-action="estop" data-printer="${data.printerId}" style="padding:4px 10px;font-size:0.8rem;color:var(--danger);">E-STOP</button>
     `;
   }
@@ -529,6 +531,14 @@ async function handlePrinterGridClick(e) {
       case 'detail':
         showPrinterDetailModal(printerId);
         break;
+      case 'webui': {
+        const p = fleetState.printers.find(pr => pr.id === printerId);
+        if (p && p.api_url) {
+          const webUrl = p.api_url.replace(/:\d+$/, ':7125');
+          showKlipperWebUIModal(p.name, webUrl);
+        }
+        break;
+      }
       case 'ai-monitor':
         showAiMonitorModal(printerId);
         break;
@@ -858,22 +868,27 @@ async function showPrinterDetailModal(printerId) {
     ]);
   } catch (_) {}
 
+  // Build the Klipper Web UI URL from the printer's api_url (same host, port 7125)
+  const klipperWebUrl = printer.api_url ? printer.api_url.replace(/:\d+$/, ':7125') : '';
+
   const modal = document.createElement('div');
   modal.id = 'fleetDetailModal';
-  modal.className = 'fleet-detail-modal';
+  modal.className = 'modal';
   modal.innerHTML = `
-    <div class="fleet-detail-content">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+    <div class="modal-dialog" style="width:min(750px,94vw);max-height:90vh;display:flex;flex-direction:column;">
+      <div class="modal-header">
         <div>
-          <h2 style="margin:0;">${fleetEscapeHtml(printer.name)}</h2>
-          <span class="muted">${fleetEscapeHtml(printer.model || '')} &middot; ${fleetEscapeHtml(printer.api_url)}</span>
+          <h3 style="margin:0;">${fleetEscapeHtml(printer.name)}</h3>
+          <span class="muted" style="font-size:0.8rem;">${fleetEscapeHtml(printer.model || '')} &middot; ${fleetEscapeHtml(printer.api_url)}</span>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;align-items:center;">
+          ${klipperWebUrl ? `<button class="secondary" id="fleetDetailWebUI" style="padding:6px 12px;font-size:0.85rem;">Web UI</button>` : ''}
           <button class="secondary" id="fleetDetailEdit" style="padding:6px 12px;">Edit</button>
           <button class="secondary" id="fleetDetailDelete" style="padding:6px 12px;color:var(--danger);">Delete</button>
           <button class="secondary fleet-detail-close" style="padding:6px 12px;font-size:1.1rem;">&times;</button>
         </div>
       </div>
+      <div class="modal-body" style="overflow-y:auto;flex:1;">
 
       <!-- Live Camera View -->
       <div id="fleetDetailCamContainer" style="margin-bottom:16px;border-radius:8px;overflow:hidden;background:var(--bg-secondary);text-align:center;display:none;">
@@ -960,6 +975,7 @@ async function showPrinterDetailModal(printerId) {
           ` : '<div class="muted" style="padding:10px;text-align:center;">No print history</div>'}
         </div>
       </div>
+      </div>
     </div>`;
 
   document.body.appendChild(modal);
@@ -998,6 +1014,14 @@ async function showPrinterDetailModal(printerId) {
       modal.remove();
     }
   });
+
+  // Web UI button — opens Klipper web interface in a modal iframe
+  const webUIBtn = document.getElementById('fleetDetailWebUI');
+  if (webUIBtn) {
+    webUIBtn.addEventListener('click', () => {
+      showKlipperWebUIModal(printer.name, klipperWebUrl);
+    });
+  }
 
   // Edit
   document.getElementById('fleetDetailEdit').addEventListener('click', () => {
@@ -1103,6 +1127,35 @@ async function showPrinterDetailModal(printerId) {
   modal.querySelectorAll('.fleet-gcode-quick').forEach(btn => {
     btn.addEventListener('click', () => sendGcodeCommand(btn.dataset.cmd));
   });
+}
+
+// =============== KLIPPER WEB UI MODAL ===============
+
+function showKlipperWebUIModal(printerName, webUrl) {
+  const existing = document.getElementById('fleetWebUIModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'fleetWebUIModal';
+  modal.className = 'modal';
+  modal.style.zIndex = '2100';
+  modal.innerHTML = `
+    <div class="modal-dialog" style="width:min(1100px,96vw);height:min(85vh,900px);display:flex;flex-direction:column;">
+      <div class="modal-header">
+        <h3 style="margin:0;">Klipper Web UI — ${fleetEscapeHtml(printerName)}</h3>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <a href="${fleetEscapeHtml(webUrl)}" target="_blank" class="secondary" style="padding:6px 12px;font-size:0.85rem;text-decoration:none;display:inline-block;">Open in Browser</a>
+          <button class="secondary fleet-webui-close" style="padding:4px 10px;font-size:0.9rem;">&times;</button>
+        </div>
+      </div>
+      <div style="flex:1;overflow:hidden;">
+        <iframe src="${fleetEscapeHtml(webUrl)}" style="width:100%;height:100%;border:none;border-radius:0 0 16px 16px;background:var(--bg-secondary);"></iframe>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  modal.querySelector('.fleet-webui-close').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 
 // =============== HELPERS ===============
