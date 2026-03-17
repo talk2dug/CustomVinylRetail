@@ -11,7 +11,7 @@ const { LocalCatalogDB } = require('./local-db');
 const { PrinterFleetDB } = require('./printer-fleet-db');
 const { PrinterService } = require('./printer-service');
 const chokidar = require('chokidar');
-const { generateDogTag } = require('./generate_dog_tag');
+const { generateDogTag, getShapeGeometry, getAllShapeGeometry, DEFAULTS: DOG_TAG_DEFAULTS } = require('./generate_dog_tag');
 let autoUpdater = null;
 let tesseractWorker = null;
 
@@ -7506,15 +7506,35 @@ Return ONLY valid JSON, nothing else:
 
   const DOG_TAG_VALID_SHAPES = ['bone', 'shield', 'heart', 'paw', 'hydrant', 'star'];
   const DOG_TAG_MAX_NAME_LEN = 12;
+  const dogTagBatchFile = () => path.join(app.getPath('userData'), 'dog-tags', 'batch-queue.json');
 
-  // Directory for generated SCAD/STL files
   function getDogTagDir(subdir) {
     const base = path.join(app.getPath('userData'), 'dog-tags', subdir);
     fs.mkdirSync(base, { recursive: true });
     return base;
   }
 
-  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {} }) => {
+  // Helper: try to render SCAD to STL via openscad CLI
+  function renderScadToStl(scadPath, stlPath) {
+    try {
+      cp.execSync(`openscad -o "${stlPath}" "${scadPath}"`, { timeout: 120000, stdio: 'pipe' });
+      return fs.existsSync(stlPath);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isOpenscadAvailable() {
+    try {
+      cp.execSync('openscad --version', { timeout: 5000, stdio: 'pipe' });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Generate SCAD files (+ STL if openscad available)
+  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz }) => {
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       throw new Error('Pet name is required');
     }
@@ -7530,33 +7550,35 @@ Return ONLY valid JSON, nothing else:
     const jobId = `dogtag_${safeShape}_${cleanName}_${Date.now()}`;
     const outputDir = getDogTagDir(path.join('scad', jobId));
 
+    const options = {};
+    if (textCx !== undefined && textCx !== null) options.textCx = textCx;
+    if (textCy !== undefined && textCy !== null) options.textCy = textCy;
+    if (textSz !== undefined && textSz !== null) options.textSz = textSz;
+
     const result = await generateDogTag({
       name: cleanName,
       shape: safeShape,
       outputDir,
+      options,
     });
 
-    // Try to render STLs via openscad CLI if available
+    // Try to render STLs via openscad CLI
     let stlResults = { rendered: false, baseStl: null, textStl: null };
-    try {
-      const openscadCheck = cp.execSync('openscad --version 2>&1', { timeout: 5000, encoding: 'utf8' });
-      if (openscadCheck) {
-        const stlDir = getDogTagDir('stl-queue');
-        const baseStl = result.baseSCAD.replace('.scad', '.stl');
-        const textStl = result.textSCAD.replace('.scad', '.stl');
+    if (isOpenscadAvailable()) {
+      const stlDir = getDogTagDir('stl-queue');
+      const baseStl = result.baseSCAD.replace('.scad', '.stl');
+      const textStl = result.textSCAD.replace('.scad', '.stl');
 
-        cp.execSync(`openscad -o "${baseStl}" "${result.baseSCAD}"`, { timeout: 60000 });
-        cp.execSync(`openscad -o "${textStl}" "${result.textSCAD}"`, { timeout: 60000 });
+      const baseOk = renderScadToStl(result.baseSCAD, baseStl);
+      const textOk = renderScadToStl(result.textSCAD, textStl);
 
+      if (baseOk && textOk) {
         const qBase = path.join(stlDir, path.basename(baseStl));
         const qText = path.join(stlDir, path.basename(textStl));
         fs.copyFileSync(baseStl, qBase);
         fs.copyFileSync(textStl, qText);
-
         stlResults = { rendered: true, baseStl: qBase, textStl: qText };
       }
-    } catch (_) {
-      // openscad not available — SCAD-only mode
     }
 
     return {
@@ -7564,6 +7586,7 @@ Return ONLY valid JSON, nothing else:
       petName: cleanName,
       shape: safeShape,
       colors,
+      textPosition: { textCx: options.textCx ?? null, textCy: options.textCy ?? null, textSz: options.textSz ?? null },
       files: {
         baseScad: result.baseSCAD,
         textScad: result.textSCAD,
@@ -7576,27 +7599,32 @@ Return ONLY valid JSON, nothing else:
         printer: 'Any Kobra 3',
         layerHeight: 0.15,
         filament: { base: colors.base || 'white', insert: colors.insert || 'black' },
-        printOrder: [
-          'Print base tag first',
-          'Swap filament color',
-          'Print text insert',
-          'Press insert into pocket'
-        ],
+        printOrder: ['Print base tag first', 'Swap filament color', 'Print text insert', 'Press insert into pocket'],
       }
     };
   });
 
+  // Shape metadata including geometry for canvas rendering
   ipcMain.handle('dog-tag:shapes', () => {
-    return {
-      shapes: [
-        { id: 'bone',    label: 'Classic Bone',   desc: 'Traditional double-knob bone — universal recognition' },
-        { id: 'shield',  label: 'Shield / Badge', desc: 'Bold angular badge with paw icon emboss' },
-        { id: 'heart',   label: 'Heart',           desc: 'Clean heart silhouette — strong female dog buyer appeal' },
-        { id: 'paw',     label: 'Paw Print',       desc: 'Round tag with raised paw emboss and decorative groove' },
-        { id: 'hydrant', label: 'Fire Hydrant',    desc: 'Novelty hydrant shape — kids love it, drives gifting' },
-        { id: 'star',    label: 'Sheriff Star',    desc: '5-point star with inset detail — western / country vibe' },
-      ]
-    };
+    const shapes = DOG_TAG_VALID_SHAPES.map(id => {
+      const geo = getShapeGeometry(id);
+      const labels = {
+        bone: 'Classic Bone', shield: 'Shield / Badge', heart: 'Heart',
+        paw: 'Paw Print', hydrant: 'Fire Hydrant', star: 'Sheriff Star'
+      };
+      const descs = {
+        bone: 'Traditional double-knob bone', shield: 'Bold angular badge',
+        heart: 'Clean heart silhouette', paw: 'Round tag with paw emboss',
+        hydrant: 'Novelty hydrant shape', star: '5-point star with inset detail'
+      };
+      return { id, label: labels[id], desc: descs[id], geometry: geo };
+    });
+    return { shapes, defaults: DOG_TAG_DEFAULTS };
+  });
+
+  // Check if openscad is available
+  ipcMain.handle('dog-tag:openscad-check', () => {
+    return { available: isOpenscadAvailable() };
   });
 
   ipcMain.handle('dog-tag:queue', () => {
@@ -7623,6 +7651,130 @@ Return ONLY valid JSON, nothing else:
       return { opened: true };
     }
     return { opened: false, error: 'Job directory not found' };
+  });
+
+  // ── Batch queue: hold multiple tags for batch printing ──
+  function loadBatchQueue() {
+    try {
+      const f = dogTagBatchFile();
+      if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf8'));
+    } catch (_) {}
+    return [];
+  }
+
+  function saveBatchQueue(queue) {
+    const dir = path.dirname(dogTagBatchFile());
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(dogTagBatchFile(), JSON.stringify(queue, null, 2));
+  }
+
+  ipcMain.handle('dog-tag:batch:list', () => loadBatchQueue());
+
+  ipcMain.handle('dog-tag:batch:add', (_event, item) => {
+    const queue = loadBatchQueue();
+    const entry = {
+      id: `dt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: (item.name || '').trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, DOG_TAG_MAX_NAME_LEN),
+      shape: item.shape || 'bone',
+      colors: item.colors || {},
+      textCx: item.textCx ?? null,
+      textCy: item.textCy ?? null,
+      textSz: item.textSz ?? null,
+      addedAt: Date.now(),
+    };
+    queue.push(entry);
+    saveBatchQueue(queue);
+    return { queue, added: entry };
+  });
+
+  ipcMain.handle('dog-tag:batch:remove', (_event, id) => {
+    let queue = loadBatchQueue();
+    queue = queue.filter(e => e.id !== id);
+    saveBatchQueue(queue);
+    return { queue };
+  });
+
+  ipcMain.handle('dog-tag:batch:clear', () => {
+    saveBatchQueue([]);
+    return { queue: [] };
+  });
+
+  // Generate all batch items, render STLs, upload to slicer catalog
+  ipcMain.handle('dog-tag:batch:generate-all', async (_event) => {
+    const queue = loadBatchQueue();
+    if (!queue.length) throw new Error('Batch queue is empty');
+    if (!isOpenscadAvailable()) throw new Error('OpenSCAD is required for STL generation. Install it and add to PATH.');
+
+    const results = [];
+    const stlDir = getDogTagDir('stl-queue');
+
+    for (const item of queue) {
+      const jobId = `dogtag_${item.shape}_${item.name}_${Date.now()}`;
+      const outputDir = getDogTagDir(path.join('scad', jobId));
+      const options = {};
+      if (item.textCx !== null) options.textCx = item.textCx;
+      if (item.textCy !== null) options.textCy = item.textCy;
+      if (item.textSz !== null) options.textSz = item.textSz;
+
+      const result = await generateDogTag({ name: item.name, shape: item.shape, outputDir, options });
+
+      // Render STLs
+      const baseStl = result.baseSCAD.replace('.scad', '.stl');
+      const textStl = result.textSCAD.replace('.scad', '.stl');
+      renderScadToStl(result.baseSCAD, baseStl);
+      renderScadToStl(result.textSCAD, textStl);
+
+      const qBase = path.join(stlDir, path.basename(baseStl));
+      const qText = path.join(stlDir, path.basename(textStl));
+      if (fs.existsSync(baseStl)) fs.copyFileSync(baseStl, qBase);
+      if (fs.existsSync(textStl)) fs.copyFileSync(textStl, qText);
+
+      results.push({
+        batchId: item.id,
+        jobId,
+        name: item.name,
+        shape: item.shape,
+        baseStl: fs.existsSync(qBase) ? qBase : null,
+        textStl: fs.existsSync(qText) ? qText : null,
+      });
+    }
+
+    // Clear batch after generation
+    saveBatchQueue([]);
+    return { results, count: results.length };
+  });
+
+  // Send a single generated STL to the slicer catalog
+  ipcMain.handle('dog-tag:send-to-slicer', async (_event, { stlPath, name, category }) => {
+    if (!stlPath || !fs.existsSync(stlPath)) {
+      throw new Error('STL file not found: ' + (stlPath || 'none'));
+    }
+    // Use the same upload mechanism as slicer:catalog:create
+    const { fetch: fetchFn } = await ensureFetch();
+    const settings = getSettings();
+    const serverUrl = settings.serverUrl || 'https://store.swayzecustomvinyl.com';
+    const apiKey = settings.slicerApiKey || '';
+
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(stlPath));
+    formData.append('name', name || path.basename(stlPath, '.stl'));
+    formData.append('category', category || 'Dog Tags');
+
+    const headers = formData.getHeaders();
+    if (apiKey) headers['x-api-key'] = apiKey;
+
+    const resp = await fetchFn(`${serverUrl}/api/slicer/catalog`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`Slicer upload failed (${resp.status}): ${txt}`);
+    }
+
+    return resp.json();
   });
 }
 

@@ -31,6 +31,9 @@ const DEFAULTS = {
   textHeight:      1.5,   // height of the text insert block (mm)
   textSize:        7.5,   // font size (mm) – auto-scaled per shape
   ringHoleDia:     4.6,
+  textCx:          null,  // override text X position (null = use shape default)
+  textCy:          null,  // override text Y position (null = use shape default)
+  textSz:          null,  // override text size (null = use shape default)
 };
 
 // ──────────────────────────────────────────────
@@ -174,6 +177,11 @@ module ring_tab() {
 
 ${shapeLib.trim()}
 
+// Text position overrides (last assignment wins in OpenSCAD)
+${cfg.textCx !== null ? `text_cx = ${cfg.textCx};` : '// text_cx: using shape default'}
+${cfg.textCy !== null ? `text_cy = ${cfg.textCy};` : '// text_cy: using shape default'}
+${cfg.textSz !== null ? `text_sz = ${cfg.textSz};` : '// text_sz: using shape default'}
+
 thickness        = ${cfg.thickness};
 pocket_depth     = ${cfg.pocketDepth};
 pocket_clearance = ${cfg.pocketClearance};
@@ -248,6 +256,11 @@ function buildTextInsert(petName, shape, cfg) {
 // ============================================================
 
 ${shapeLib.trim()}
+
+// Text position overrides (last assignment wins in OpenSCAD)
+${cfg.textCx !== null ? `text_cx = ${cfg.textCx};` : '// text_cx: using shape default'}
+${cfg.textCy !== null ? `text_cy = ${cfg.textCy};` : '// text_cy: using shape default'}
+${cfg.textSz !== null ? `text_sz = ${cfg.textSz};` : '// text_sz: using shape default'}
 
 font      = "${cfg.font}";
 pet_name  = "${sanitized}";
@@ -357,4 +370,62 @@ Output:
     });
 }
 
-module.exports = { generateDogTag };
+// ──────────────────────────────────────────────
+// SHAPE GEOMETRY DATA (for frontend canvas rendering)
+// Returns drawable path data matching the OpenSCAD shapes
+// ──────────────────────────────────────────────
+const SHAPE_GEOMETRY = {
+  bone: {
+    type: 'bone',
+    width: 64, height: 30,
+    textCx: 0, textCy: -2, textSz: 7,
+    ringX: -32, ringY: 0,
+    // shaft + end knobs
+    draw: 'bone',
+  },
+  shield: {
+    type: 'shield',
+    width: 40, height: 50,
+    textCx: 0, textCy: -6, textSz: 8,
+    ringX: 0, ringY: 20,
+    draw: 'shield',
+  },
+  heart: {
+    type: 'heart',
+    width: 46, height: 44,
+    textCx: 0, textCy: -8, textSz: 7.5,
+    ringX: 0, ringY: 10,
+    draw: 'heart',
+  },
+  paw: {
+    type: 'paw',
+    width: 44, height: 44,
+    textCx: 0, textCy: -13, textSz: 6.5,
+    ringX: 0, ringY: 24,
+    draw: 'paw',
+  },
+  hydrant: {
+    type: 'hydrant',
+    width: 40, height: 50,
+    textCx: 0, textCy: -13, textSz: 6,
+    ringX: 0, ringY: 22,
+    draw: 'hydrant',
+  },
+  star: {
+    type: 'star',
+    width: 50, height: 50,
+    textCx: 0, textCy: -2, textSz: 6.5,
+    ringX: 0, ringY: 27,
+    draw: 'star',
+  },
+};
+
+function getShapeGeometry(shapeId) {
+  return SHAPE_GEOMETRY[shapeId] || null;
+}
+
+function getAllShapeGeometry() {
+  return { ...SHAPE_GEOMETRY };
+}
+
+module.exports = { generateDogTag, getShapeGeometry, getAllShapeGeometry, DEFAULTS };

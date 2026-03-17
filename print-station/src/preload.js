@@ -689,6 +689,14 @@ contextBridge.exposeInMainWorld('printStation', {
     getQueue: () => ipcRenderer.invoke('dog-tag:queue'),
     getHistory: () => ipcRenderer.invoke('dog-tag:history'),
     openOutput: (jobId) => ipcRenderer.invoke('dog-tag:openOutput', jobId),
+    checkOpenscad: () => ipcRenderer.invoke('dog-tag:openscad-check'),
+    sendToSlicer: (payload) => ipcRenderer.invoke('dog-tag:send-to-slicer', payload || {}),
+    // Batch queue
+    batchList: () => ipcRenderer.invoke('dog-tag:batch:list'),
+    batchAdd: (item) => ipcRenderer.invoke('dog-tag:batch:add', item || {}),
+    batchRemove: (id) => ipcRenderer.invoke('dog-tag:batch:remove', id),
+    batchClear: () => ipcRenderer.invoke('dog-tag:batch:clear'),
+    batchGenerateAll: () => ipcRenderer.invoke('dog-tag:batch:generate-all'),
   },
 
   printQuotes: {

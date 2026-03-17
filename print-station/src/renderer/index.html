@@ -7387,31 +7387,29 @@
         <div class="view-toolbar">
           <h2 style="margin:0;">Dog Tag Generator</h2>
           <div style="display:flex;gap:8px;align-items:center;">
-            <span id="dtQueueCount" style="font-size:0.85rem;color:#888;"></span>
-            <button id="dtRefreshBtn" class="secondary" style="padding:4px 12px;">Refresh</button>
+            <span id="dtPosReadout" style="font-size:0.8rem;color:#888;font-family:monospace;"></span>
           </div>
         </div>
-        <div class="view-content" style="display:flex;gap:24px;height:calc(100vh - 140px);padding:16px;">
+        <div class="view-content" style="display:flex;gap:0;height:calc(100vh - 140px);">
 
-          <!-- Left: Generator Form -->
-          <div style="flex:1;max-width:480px;overflow-y:auto;">
-            <div style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:16px;">
-              <h3 style="margin:0 0 4px;">BRCC Custom Pet Dog Tags</h3>
-              <p style="margin:0;color:#666;font-size:0.85rem;">Two-color press-fit system &mdash; tag body + name insert. Made in Asheville.</p>
+          <!-- LEFT PANEL: Controls -->
+          <div class="dt-panel dt-panel-left">
+            <!-- OpenSCAD warning -->
+            <div id="dtOpenscadNote" class="dt-status warning" style="margin-bottom:12px;display:none;">
+              OpenSCAD not found. Install it and add to PATH for STL generation &amp; slicer integration.
             </div>
 
             <!-- Pet Name -->
-            <label style="display:block;margin-bottom:4px;font-weight:600;">Pet Name</label>
-            <input type="text" id="dtPetName" placeholder="e.g. BUDDY" maxlength="12"
-                   style="width:100%;padding:10px 14px;font-size:1.1rem;border:2px solid #ddd;border-radius:6px;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px;font-weight:600;box-sizing:border-box;" />
+            <label class="dt-label">Pet Name</label>
+            <input type="text" id="dtPetName" placeholder="e.g. BUDDY" maxlength="12" class="dt-input" />
 
             <!-- Shape Picker -->
-            <label style="display:block;margin-bottom:8px;font-weight:600;">Tag Shape</label>
-            <div id="dtShapeGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;"></div>
+            <label class="dt-label">Tag Shape</label>
+            <div id="dtShapeGrid" class="dt-shape-grid"></div>
 
             <!-- Color Preset -->
-            <label style="display:block;margin-bottom:4px;font-weight:600;">Color Combo</label>
-            <select id="dtColorPreset" style="width:100%;padding:8px 12px;border:2px solid #ddd;border-radius:6px;margin-bottom:20px;font-size:0.95rem;box-sizing:border-box;">
+            <label class="dt-label">Color Combo</label>
+            <select id="dtColorPreset" class="dt-select">
               <option>White + Black</option>
               <option>Black + White</option>
               <option>Navy + Gold</option>
@@ -7420,41 +7418,52 @@
               <option>Blue + White</option>
             </select>
 
-            <!-- Generate Button -->
-            <button id="dtGenerateBtn" class="primary"
-                    style="width:100%;padding:12px;font-size:1.05rem;font-weight:600;border-radius:6px;cursor:pointer;">
-              Generate Tag
-            </button>
+            <!-- Text Position -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <label class="dt-label" style="margin:0;flex:1;">Text Position</label>
+              <button id="dtResetPosBtn" class="dt-btn-small">Reset to Default</button>
+            </div>
+            <p style="margin:0 0 12px;font-size:0.8rem;color:#888;">Drag the text on the canvas to reposition.</p>
+
+            <!-- Action Buttons -->
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+              <button id="dtGenerateBtn" class="primary dt-action-btn" style="flex:1;">Generate Tag</button>
+              <button id="dtSendToSlicerBtn" class="dt-action-btn" style="flex:1;" disabled title="Generate first">Send to Slicer</button>
+            </div>
+            <button id="dtAddBatchBtn" class="dt-action-btn secondary" style="width:100%;">+ Add to Batch Queue</button>
 
             <!-- Status -->
             <div id="dtStatus" class="dt-status" style="margin-top:12px;"></div>
           </div>
 
-          <!-- Center: Preview -->
-          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-            <div id="dtPreviewTag" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
-              <div class="dt-preview-body" style="background:#fff;color:#222;">
-                <div class="dt-preview-name" style="color:#222;font-size:1.4rem;font-weight:700;letter-spacing:2px;">NAME</div>
-              </div>
-              <div class="dt-preview-caption" style="color:#888;font-size:0.85rem;">Select a shape to preview</div>
-            </div>
-            <div style="margin-top:24px;padding:16px;background:#f0f7ff;border-radius:8px;max-width:320px;">
-              <h4 style="margin:0 0 8px;">Print Instructions</h4>
-              <ol style="margin:0;padding-left:18px;font-size:0.85rem;color:#555;line-height:1.6;">
-                <li>Print base tag in <strong>Color A</strong></li>
-                <li>Print text insert in <strong>Color B</strong></li>
-                <li>Press insert into pocket</li>
-                <li>Optional: drop of CA glue</li>
-              </ol>
-              <p style="margin:8px 0 0;font-size:0.8rem;color:#888;">Layer height: 0.15mm &middot; No supports needed</p>
-            </div>
+          <!-- CENTER: Canvas Preview -->
+          <div class="dt-panel dt-panel-center">
+            <canvas id="dtCanvas" style="width:100%;height:100%;display:block;border-radius:4px;"></canvas>
           </div>
 
-          <!-- Right: History -->
-          <div style="flex:0.8;overflow-y:auto;border-left:1px solid #e0e0e0;padding-left:16px;">
-            <h3 style="margin:0 0 12px;">Recent Tags</h3>
-            <div id="dtHistoryList">
-              <div class="dt-empty" style="color:#aaa;font-size:0.9rem;">No tags generated yet.</div>
+          <!-- RIGHT PANEL: Batch Queue + History -->
+          <div class="dt-panel dt-panel-right">
+            <!-- Batch Queue -->
+            <div style="margin-bottom:20px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <h3 style="margin:0;flex:1;">Batch Queue <span id="dtBatchCount" style="font-size:0.8rem;color:#888;"></span></h3>
+                <button id="dtBatchClearBtn" class="dt-btn-small">Clear</button>
+              </div>
+              <div id="dtBatchList">
+                <div class="dt-empty">Queue empty. Add tags with "+ Add to Batch".</div>
+              </div>
+              <button id="dtBatchGenerateBtn" class="primary dt-action-btn" style="width:100%;margin-top:8px;">
+                Generate All &amp; Export STLs
+              </button>
+            </div>
+
+            <!-- Divider -->
+            <hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;" />
+
+            <!-- History -->
+            <h3 style="margin:0 0 8px;">Recent Tags</h3>
+            <div id="dtHistoryList" style="overflow-y:auto;flex:1;">
+              <div class="dt-empty">No tags generated yet.</div>
             </div>
           </div>
 
