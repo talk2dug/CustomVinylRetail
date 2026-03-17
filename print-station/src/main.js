@@ -11,6 +11,7 @@ const { LocalCatalogDB } = require('./local-db');
 const { PrinterFleetDB } = require('./printer-fleet-db');
 const { PrinterService } = require('./printer-service');
 const chokidar = require('chokidar');
+const { generateDogTag } = require('./generate_dog_tag');
 let autoUpdater = null;
 let tesseractWorker = null;
 
@@ -7497,6 +7498,131 @@ Return ONLY valid JSON, nothing else:
       body: JSON.stringify(updates)
     });
     return resp.json();
+  });
+
+  // ============================================================================
+  // DOG TAG GENERATOR API (BRCC Custom Pet Dog Tags)
+  // ============================================================================
+
+  const DOG_TAG_VALID_SHAPES = ['bone', 'shield', 'heart', 'paw', 'hydrant', 'star'];
+  const DOG_TAG_MAX_NAME_LEN = 12;
+
+  // Directory for generated SCAD/STL files
+  function getDogTagDir(subdir) {
+    const base = path.join(app.getPath('userData'), 'dog-tags', subdir);
+    fs.mkdirSync(base, { recursive: true });
+    return base;
+  }
+
+  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {} }) => {
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      throw new Error('Pet name is required');
+    }
+
+    const cleanName = name.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, DOG_TAG_MAX_NAME_LEN);
+    if (cleanName.length === 0) throw new Error('Name must contain alphanumeric characters');
+
+    const safeShape = shape.toLowerCase().trim();
+    if (!DOG_TAG_VALID_SHAPES.includes(safeShape)) {
+      throw new Error(`Invalid shape. Valid: ${DOG_TAG_VALID_SHAPES.join(', ')}`);
+    }
+
+    const jobId = `dogtag_${safeShape}_${cleanName}_${Date.now()}`;
+    const outputDir = getDogTagDir(path.join('scad', jobId));
+
+    const result = await generateDogTag({
+      name: cleanName,
+      shape: safeShape,
+      outputDir,
+    });
+
+    // Try to render STLs via openscad CLI if available
+    let stlResults = { rendered: false, baseStl: null, textStl: null };
+    try {
+      const openscadCheck = cp.execSync('openscad --version 2>&1', { timeout: 5000, encoding: 'utf8' });
+      if (openscadCheck) {
+        const stlDir = getDogTagDir('stl-queue');
+        const baseStl = result.baseSCAD.replace('.scad', '.stl');
+        const textStl = result.textSCAD.replace('.scad', '.stl');
+
+        cp.execSync(`openscad -o "${baseStl}" "${result.baseSCAD}"`, { timeout: 60000 });
+        cp.execSync(`openscad -o "${textStl}" "${result.textSCAD}"`, { timeout: 60000 });
+
+        const qBase = path.join(stlDir, path.basename(baseStl));
+        const qText = path.join(stlDir, path.basename(textStl));
+        fs.copyFileSync(baseStl, qBase);
+        fs.copyFileSync(textStl, qText);
+
+        stlResults = { rendered: true, baseStl: qBase, textStl: qText };
+      }
+    } catch (_) {
+      // openscad not available — SCAD-only mode
+    }
+
+    return {
+      jobId,
+      petName: cleanName,
+      shape: safeShape,
+      colors,
+      files: {
+        baseScad: result.baseSCAD,
+        textScad: result.textSCAD,
+        baseStl: stlResults.baseStl,
+        textStl: stlResults.textStl,
+      },
+      status: stlResults.rendered ? 'ready_to_print' : 'scad_generated',
+      printNotes: result.printNotes,
+      queueHint: {
+        printer: 'Any Kobra 3',
+        layerHeight: 0.15,
+        filament: { base: colors.base || 'white', insert: colors.insert || 'black' },
+        printOrder: [
+          'Print base tag first',
+          'Swap filament color',
+          'Print text insert',
+          'Press insert into pocket'
+        ],
+      }
+    };
+  });
+
+  ipcMain.handle('dog-tag:shapes', () => {
+    return {
+      shapes: [
+        { id: 'bone',    label: 'Classic Bone',   desc: 'Traditional double-knob bone — universal recognition' },
+        { id: 'shield',  label: 'Shield / Badge', desc: 'Bold angular badge with paw icon emboss' },
+        { id: 'heart',   label: 'Heart',           desc: 'Clean heart silhouette — strong female dog buyer appeal' },
+        { id: 'paw',     label: 'Paw Print',       desc: 'Round tag with raised paw emboss and decorative groove' },
+        { id: 'hydrant', label: 'Fire Hydrant',    desc: 'Novelty hydrant shape — kids love it, drives gifting' },
+        { id: 'star',    label: 'Sheriff Star',    desc: '5-point star with inset detail — western / country vibe' },
+      ]
+    };
+  });
+
+  ipcMain.handle('dog-tag:queue', () => {
+    const stlDir = getDogTagDir('stl-queue');
+    const files = fs.readdirSync(stlDir).filter(f => f.endsWith('.stl') || f.endsWith('.scad'));
+    return { count: files.length, files };
+  });
+
+  ipcMain.handle('dog-tag:history', () => {
+    const scadDir = getDogTagDir('scad');
+    if (!fs.existsSync(scadDir)) return { jobs: [] };
+    const dirs = fs.readdirSync(scadDir).filter(d => d.startsWith('dogtag_'));
+    const jobs = dirs.map(d => {
+      const parts = d.split('_');
+      return { jobId: d, shape: parts[1], name: parts[2], timestamp: parseInt(parts[3]) || 0 };
+    }).sort((a, b) => b.timestamp - a.timestamp);
+    return { jobs };
+  });
+
+  ipcMain.handle('dog-tag:openOutput', async (_event, jobId) => {
+    const dir = path.join(getDogTagDir('scad'), jobId);
+    if (fs.existsSync(dir)) {
+      shell.openPath(dir);
+      return { opened: true };
+    }
+    return { opened: false, error: 'Job directory not found' };
   });
 }
 

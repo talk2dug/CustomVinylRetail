@@ -680,6 +680,17 @@ contextBridge.exposeInMainWorld('printStation', {
     thangsMatch: (modelId, catalogId) => ipcRenderer.invoke('slicer:thangs-sync:match', { modelId, catalogId })
   },
 
+  // ============================================================================
+  // DOG TAG GENERATOR API (BRCC Custom Pet Dog Tags)
+  // ============================================================================
+  dogTag: {
+    generate: (payload) => ipcRenderer.invoke('dog-tag:generate', payload || {}),
+    getShapes: () => ipcRenderer.invoke('dog-tag:shapes'),
+    getQueue: () => ipcRenderer.invoke('dog-tag:queue'),
+    getHistory: () => ipcRenderer.invoke('dog-tag:history'),
+    openOutput: (jobId) => ipcRenderer.invoke('dog-tag:openOutput', jobId),
+  },
+
   printQuotes: {
     list:         (query)                         => ipcRenderer.invoke('pq:list', query),
     get:          (id)                            => ipcRenderer.invoke('pq:get', id),
