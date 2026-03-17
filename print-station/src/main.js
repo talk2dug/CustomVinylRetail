@@ -7514,10 +7514,38 @@ Return ONLY valid JSON, nothing else:
     return base;
   }
 
+  // Helper: find openscad executable (check PATH, then common install locations)
+  function findOpenscadPath() {
+    // Try PATH first
+    try {
+      cp.execSync('openscad --version', { timeout: 5000, stdio: 'pipe' });
+      return 'openscad';
+    } catch (_) {}
+    // Common Windows install locations
+    const candidates = [
+      'C:\\Program Files\\OpenSCAD\\openscad.com',
+      'C:\\Program Files\\OpenSCAD\\openscad.exe',
+      'C:\\Program Files (x86)\\OpenSCAD\\openscad.com',
+      'C:\\Program Files (x86)\\OpenSCAD\\openscad.exe',
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) return p;
+    }
+    return null;
+  }
+
+  let _openscadPath = undefined; // cache
+  function getOpenscadPath() {
+    if (_openscadPath === undefined) _openscadPath = findOpenscadPath();
+    return _openscadPath;
+  }
+
   // Helper: try to render SCAD to STL via openscad CLI
   function renderScadToStl(scadPath, stlPath) {
+    const oscad = getOpenscadPath();
+    if (!oscad) return false;
     try {
-      cp.execSync(`openscad -o "${stlPath}" "${scadPath}"`, { timeout: 120000, stdio: 'pipe' });
+      cp.execSync(`"${oscad}" -o "${stlPath}" "${scadPath}"`, { timeout: 120000, stdio: 'pipe' });
       return fs.existsSync(stlPath);
     } catch (_) {
       return false;
@@ -7525,12 +7553,7 @@ Return ONLY valid JSON, nothing else:
   }
 
   function isOpenscadAvailable() {
-    try {
-      cp.execSync('openscad --version', { timeout: 5000, stdio: 'pipe' });
-      return true;
-    } catch (_) {
-      return false;
-    }
+    return !!getOpenscadPath();
   }
 
   // Generate SCAD files (+ STL if openscad available)
