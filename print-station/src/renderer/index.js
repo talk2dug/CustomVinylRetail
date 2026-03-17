@@ -29392,13 +29392,26 @@ async function initAutoUpdateUI() {
   const checkUpdatesBtn = document.getElementById('checkForUpdatesBtn');
   if (checkUpdatesBtn && printStation.update) {
     checkUpdatesBtn.addEventListener('click', async () => {
+      // If update already downloaded, just install
+      try {
+        const currentStatus = await printStation.update.getStatus();
+        if (currentStatus && currentStatus.downloaded) {
+          showToast(`Update v${currentStatus.version} already downloaded. Restarting...`, 'success');
+          setTimeout(() => printStation.update.install(), 1000);
+          return;
+        }
+      } catch (e) { /* continue with check */ }
+
       checkUpdatesBtn.textContent = 'Checking...';
       checkUpdatesBtn.disabled = true;
 
       try {
         const result = await printStation.update.check();
         if (result.success && result.updateInfo) {
-          showToast(`Update available: v${result.updateInfo.version}`, 'success');
+          showToast(`Update v${result.updateInfo.version} found. Downloading...`, 'success');
+          checkUpdatesBtn.textContent = 'Downloading...';
+          // Don't re-enable button — download in progress, status listener will update UI
+          return;
         } else if (result.success) {
           showToast('You have the latest version', 'info');
         } else {
@@ -29417,14 +29430,17 @@ async function initAutoUpdateUI() {
   if (printStation.update?.onStatusChange) {
     printStation.update.onStatusChange((status) => {
       console.log('[Update] Status changed:', status);
+      const btn = document.getElementById('checkForUpdatesBtn');
 
-      if (status.downloading && status.progress) {
+      if (status.error) {
+        showToast(`Update error: ${status.error}`, 'error');
+        if (btn) { btn.textContent = 'Check for Updates'; btn.disabled = false; }
+      } else if (status.downloading && status.progress) {
         const percent = status.progress.percent?.toFixed(0) || 0;
-        showToast(`Downloading update: ${percent}%`, 'info');
+        if (btn) { btn.textContent = `Downloading ${percent}%`; btn.disabled = true; }
       } else if (status.downloaded && status.version) {
         showToast(`Update v${status.version} ready. Restart to install.`, 'success');
-      } else if (status.error) {
-        console.warn('[Update] Error:', status.error);
+        if (btn) { btn.textContent = 'Restart to Update'; btn.disabled = false; }
       }
     });
   }

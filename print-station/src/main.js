@@ -23,6 +23,7 @@ sharp.concurrency(2);
 let updateState = {
   checking: false,
   available: false,
+  downloading: false,
   downloaded: false,
   error: null,
   progress: null,
@@ -43,6 +44,8 @@ function initAutoUpdater(win) {
     autoUpdater = require('electron-updater').autoUpdater;
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
+    // Skip code signature verification — builds are unsigned
+    autoUpdater.verifyUpdateCodeSignature = false;
   } catch (err) {
     console.error('[AutoUpdater] Failed to initialize:', err.message);
     return; // Don't set up events if module failed to load
@@ -56,13 +59,13 @@ function initAutoUpdater(win) {
 
   autoUpdater.on('update-available', (info) => {
     console.log('[AutoUpdater] Update available:', info.version);
-    updateState = { ...updateState, checking: false, available: true, version: info.version };
+    updateState = { ...updateState, checking: false, available: true, downloading: true, version: info.version };
     sendUpdateStatus(win);
   });
 
   autoUpdater.on('update-not-available', (info) => {
     console.log('[AutoUpdater] No update available. Current:', info.version);
-    updateState = { ...updateState, checking: false, available: false };
+    updateState = { ...updateState, checking: false, available: false, downloading: false };
     sendUpdateStatus(win);
   });
 
@@ -74,7 +77,7 @@ function initAutoUpdater(win) {
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[AutoUpdater] Update downloaded:', info.version);
-    updateState = { ...updateState, downloaded: true, progress: null, version: info.version };
+    updateState = { ...updateState, downloading: false, downloaded: true, progress: null, version: info.version };
     sendUpdateStatus(win);
 
     // Notify user
@@ -95,7 +98,7 @@ function initAutoUpdater(win) {
 
   autoUpdater.on('error', (err) => {
     console.error('[AutoUpdater] Error:', err.message);
-    updateState = { ...updateState, checking: false, error: err.message };
+    updateState = { ...updateState, checking: false, downloading: false, error: err.message };
     sendUpdateStatus(win);
   });
 
