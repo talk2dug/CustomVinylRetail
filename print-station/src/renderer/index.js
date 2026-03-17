@@ -1864,6 +1864,9 @@ function switchView(viewId) {
   if (viewId === 'etsyListingsView') {
     if (typeof window.initEtsyListingsView === 'function') window.initEtsyListingsView();
   }
+  if (viewId === 'dogTagsView') {
+    if (typeof window.initDogTagsView === 'function') window.initDogTagsView();
+  }
 }
 
 // =============== Dashboard ===============

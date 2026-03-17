@@ -100,6 +100,7 @@
           <button class="dropdown-item" data-view="slicerView">Slice &amp; Print</button>
           <button class="dropdown-item" data-view="printQuotesView">Print Quotes</button>
           <button class="dropdown-item" data-view="buildPlatesView">Build Plates</button>
+          <button class="dropdown-item" data-view="dogTagsView">Dog Tags</button>
         </div>
       </div>
 
@@ -7379,6 +7380,87 @@
         </div>
       </section>
 
+      <!-- ================================================================== -->
+      <!-- DOG TAG GENERATOR                                                 -->
+      <!-- ================================================================== -->
+      <section id="dogTagsView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Dog Tag Generator</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span id="dtQueueCount" style="font-size:0.85rem;color:#888;"></span>
+            <button id="dtRefreshBtn" class="secondary" style="padding:4px 12px;">Refresh</button>
+          </div>
+        </div>
+        <div class="view-content" style="display:flex;gap:24px;height:calc(100vh - 140px);padding:16px;">
+
+          <!-- Left: Generator Form -->
+          <div style="flex:1;max-width:480px;overflow-y:auto;">
+            <div style="background:#f8f9fa;border-radius:8px;padding:20px;margin-bottom:16px;">
+              <h3 style="margin:0 0 4px;">BRCC Custom Pet Dog Tags</h3>
+              <p style="margin:0;color:#666;font-size:0.85rem;">Two-color press-fit system &mdash; tag body + name insert. Made in Asheville.</p>
+            </div>
+
+            <!-- Pet Name -->
+            <label style="display:block;margin-bottom:4px;font-weight:600;">Pet Name</label>
+            <input type="text" id="dtPetName" placeholder="e.g. BUDDY" maxlength="12"
+                   style="width:100%;padding:10px 14px;font-size:1.1rem;border:2px solid #ddd;border-radius:6px;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px;font-weight:600;box-sizing:border-box;" />
+
+            <!-- Shape Picker -->
+            <label style="display:block;margin-bottom:8px;font-weight:600;">Tag Shape</label>
+            <div id="dtShapeGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;"></div>
+
+            <!-- Color Preset -->
+            <label style="display:block;margin-bottom:4px;font-weight:600;">Color Combo</label>
+            <select id="dtColorPreset" style="width:100%;padding:8px 12px;border:2px solid #ddd;border-radius:6px;margin-bottom:20px;font-size:0.95rem;box-sizing:border-box;">
+              <option>White + Black</option>
+              <option>Black + White</option>
+              <option>Navy + Gold</option>
+              <option>Red + White</option>
+              <option>Green + Cream</option>
+              <option>Blue + White</option>
+            </select>
+
+            <!-- Generate Button -->
+            <button id="dtGenerateBtn" class="primary"
+                    style="width:100%;padding:12px;font-size:1.05rem;font-weight:600;border-radius:6px;cursor:pointer;">
+              Generate Tag
+            </button>
+
+            <!-- Status -->
+            <div id="dtStatus" class="dt-status" style="margin-top:12px;"></div>
+          </div>
+
+          <!-- Center: Preview -->
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <div id="dtPreviewTag" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+              <div class="dt-preview-body" style="background:#fff;color:#222;">
+                <div class="dt-preview-name" style="color:#222;font-size:1.4rem;font-weight:700;letter-spacing:2px;">NAME</div>
+              </div>
+              <div class="dt-preview-caption" style="color:#888;font-size:0.85rem;">Select a shape to preview</div>
+            </div>
+            <div style="margin-top:24px;padding:16px;background:#f0f7ff;border-radius:8px;max-width:320px;">
+              <h4 style="margin:0 0 8px;">Print Instructions</h4>
+              <ol style="margin:0;padding-left:18px;font-size:0.85rem;color:#555;line-height:1.6;">
+                <li>Print base tag in <strong>Color A</strong></li>
+                <li>Print text insert in <strong>Color B</strong></li>
+                <li>Press insert into pocket</li>
+                <li>Optional: drop of CA glue</li>
+              </ol>
+              <p style="margin:8px 0 0;font-size:0.8rem;color:#888;">Layer height: 0.15mm &middot; No supports needed</p>
+            </div>
+          </div>
+
+          <!-- Right: History -->
+          <div style="flex:0.8;overflow-y:auto;border-left:1px solid #e0e0e0;padding-left:16px;">
+            <h3 style="margin:0 0 12px;">Recent Tags</h3>
+            <div id="dtHistoryList">
+              <div class="dt-empty" style="color:#aaa;font-size:0.9rem;">No tags generated yet.</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
     </main>
 
     <!-- STL 3D Preview Modal -->
@@ -7982,6 +8064,7 @@
     <script src="./apparel-mockup-view.js"></script>
     <script src="./build-plate-view.js"></script>
     <script src="./etsy-listings-view.js"></script>
+    <script src="./dog-tag-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>
