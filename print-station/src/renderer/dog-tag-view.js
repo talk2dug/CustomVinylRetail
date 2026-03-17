@@ -79,131 +79,76 @@ function dtCreateShapeProfile(shapeId) {
 }
 
 function dtBoneProfile() {
-  // Bone: elongated capsule with knob bumps at each end
-  const shape = new THREE.Shape();
+  // Bone: rounded-rect shaft + 8 knob circles at ends (matching OpenSCAD)
+  // We trace the outer boundary by sampling the union of all circles
   const sl = 32, sw = 10, knobR = 5, knobDist = 6;
-  // Sample the outline of the union of shaft + knobs
-  const points = [];
-  const N = 120;
-  for (let i = 0; i < N; i++) {
-    const angle = (i / N) * Math.PI * 2;
-    // Find max distance from center at this angle
-    let maxR = 0;
-    // Shaft (rounded rect via 4 circles at corners)
-    for (const cx of [-sl / 2 + sw / 2, sl / 2 - sw / 2]) {
-      for (const cy of [0]) {
-        const dx = Math.cos(angle) * 100 - cx;
-        const dy = Math.sin(angle) * 100 - cy;
-        // not simple, let's use a different approach
-      }
+
+  // All circles that define the bone shape
+  const circles = [];
+  // Shaft: hull of 2 circles = rounded rectangle
+  circles.push({ x: -sl / 2 + 2, y: 0, r: sw / 2 });
+  circles.push({ x: sl / 2 - 2, y: 0, r: sw / 2 });
+  // End knobs: 4 per end at 45/135/225/315 degrees
+  for (const ex of [-sl / 2, sl / 2]) {
+    for (const angle of [45, 135, 225, 315]) {
+      const rad = angle * Math.PI / 180;
+      circles.push({ x: ex + Math.cos(rad) * knobDist, y: Math.sin(rad) * knobDist, r: knobR });
     }
   }
-  // Simpler approach: trace the bone shape explicitly
-  // Right end knobs
-  const rEnd = sl / 2;
-  const lEnd = -sl / 2;
 
-  // Start at top of shaft, go right
-  shape.moveTo(lEnd + sw / 2, sw / 2);
-  shape.lineTo(rEnd - sw / 2, sw / 2);
-  // Right end upper knob
-  shape.arc(knobDist * Math.cos(Math.PI / 4), knobDist * Math.sin(Math.PI / 4) - sw / 2, knobR, -Math.PI / 4, Math.PI / 2, false);
-  // Back to shaft right
-  shape.lineTo(rEnd + sw / 2, sw / 2);
-  shape.arc(-sw / 2, -sw / 2, sw / 2, Math.PI / 2, -Math.PI / 2, false);
-  // Right end lower knob... this gets complex
-
-  // Let's use polygon sampling instead
-  return dtSampleShapeOutline(shapeId);
-}
-
-// Generic outline sampler — creates a smooth outline from circle-union shapes
-function dtSampleShapeOutline(shapeId) {
+  // March around the union boundary using angular sampling from center
+  const pts = dtUnionOutline(circles, 360);
   const shape = new THREE.Shape();
-  let pts;
-
-  switch (shapeId) {
-    case 'bone': {
-      // Circles that make up the bone
-      const sl = 32, sw = 10, kr = 5, kd = 6;
-      const circles = [];
-      // Shaft circles (hull = rounded rect)
-      for (let x = -sl / 2 + sw / 2; x <= sl / 2 - sw / 2; x += 1) {
-        circles.push({ x, y: 0, r: sw / 2 });
-      }
-      // End knobs
-      for (const ex of [-sl / 2, sl / 2]) {
-        for (const a of [45, 135, 225, 315]) {
-          const rad = a * Math.PI / 180;
-          circles.push({ x: ex + Math.cos(rad) * kd, y: Math.sin(rad) * kd, r: kr });
-        }
-      }
-      pts = dtConvexHullOfCircles(circles, 200);
-      break;
-    }
-    default:
-      pts = [{ x: 0, y: 0 }];
-  }
-
   if (pts.length > 0) {
     shape.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) {
-      shape.lineTo(pts[i].x, pts[i].y);
-    }
+    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].y);
     shape.closePath();
   }
   return shape;
 }
 
-function dtConvexHullOfCircles(circles, samples) {
-  // Sample boundary points from all circles, then compute convex hull
+// Trace the outer boundary of a union of circles by raycasting from center
+function dtUnionOutline(circles, numSamples) {
   const pts = [];
-  for (const c of circles) {
-    for (let i = 0; i < 32; i++) {
-      const a = (i / 32) * Math.PI * 2;
-      pts.push({ x: c.x + Math.cos(a) * c.r, y: c.y + Math.sin(a) * c.r });
+  for (let i = 0; i < numSamples; i++) {
+    const angle = (i / numSamples) * Math.PI * 2;
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    // Find the farthest point on any circle boundary in this direction
+    let maxDist = 0;
+    for (const c of circles) {
+      // Project circle center onto ray direction
+      const proj = c.x * dx + c.y * dy;
+      const perpSq = c.x * c.x + c.y * c.y - proj * proj;
+      if (perpSq < c.r * c.r) {
+        const d = proj + Math.sqrt(c.r * c.r - perpSq);
+        if (d > maxDist) maxDist = d;
+      }
+    }
+    if (maxDist > 0) {
+      pts.push({ x: dx * maxDist, y: dy * maxDist });
     }
   }
-  return dtConvexHull(pts);
-}
-
-function dtConvexHull(points) {
-  // Andrew's monotone chain
-  const sorted = points.slice().sort((a, b) => a.x - b.x || a.y - b.y);
-  if (sorted.length <= 1) return sorted;
-  const cross = (O, A, B) => (A.x - O.x) * (B.y - O.y) - (A.y - O.y) * (B.x - O.x);
-  const lower = [];
-  for (const p of sorted) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-    lower.push(p);
-  }
-  const upper = [];
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const p = sorted[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
-    upper.push(p);
-  }
-  upper.pop();
-  lower.pop();
-  return lower.concat(upper);
+  return pts;
 }
 
 function dtShieldProfile() {
-  const shape = new THREE.Shape();
-  const w = 40, h = 50, tr = 5;
   // Shield: wide top with rounded corners, tapers to a point at bottom
-  shape.moveTo(0, -h / 2 + 3); // bottom point
-  // Right side up
+  // Matches OpenSCAD hull of 3 circles
+  const w = 40, h = 50, tr = 5;
+  const shape = new THREE.Shape();
+  // Bottom point (small rounding)
+  shape.moveTo(0, -h / 2 + 3 + 3); // start just above bottom tip
+  // Right side going up
   shape.lineTo(w / 2 - tr, h / 2 - tr);
-  // Top right corner
-  shape.quadraticCurveTo(w / 2, h / 2 - tr, w / 2, h / 2);
-  shape.quadraticCurveTo(w / 2, h / 2 + tr / 2, w / 2 - tr, h / 2);
-  // Across top — actually simpler
-  shape.moveTo(0, -h / 2 + 3);
-  shape.lineTo(w / 2 - tr, h / 2 - tr);
-  shape.absarc(w / 2 - tr, h / 2 - tr, tr, -Math.PI / 6, Math.PI / 2, false);
+  // Top right rounded corner
+  shape.absarc(w / 2 - tr, h / 2 - tr, tr, 0, Math.PI / 2, false);
+  // Top edge
   shape.lineTo(-w / 2 + tr, h / 2);
-  shape.absarc(-w / 2 + tr, h / 2 - tr, tr, Math.PI / 2, Math.PI + Math.PI / 6, false);
+  // Top left rounded corner
+  shape.absarc(-w / 2 + tr, h / 2 - tr, tr, Math.PI / 2, Math.PI, false);
+  // Left side going down
+  shape.lineTo(0, -h / 2 + 3);
   shape.closePath();
   return shape;
 }
@@ -225,9 +170,42 @@ function dtHeartProfile() {
 }
 
 function dtPawProfile() {
+  // Paw tag is a circle (matches OpenSCAD: circle(d=44))
   const shape = new THREE.Shape();
   shape.absarc(0, 0, 22, 0, Math.PI * 2, false);
   return shape;
+}
+
+// Add decorative paw print engravings on top of the paw tag
+function dtAddPawDecoration(group, baseColor) {
+  const darkColor = baseColor.clone().multiplyScalar(0.7);
+  const mat = new THREE.MeshPhysicalMaterial({ color: darkColor, roughness: 0.5 });
+  const depth = 0.3;
+  const z = TAG_THICKNESS + BEVEL_SIZE - depth / 2 + 0.01;
+
+  // Main pad (large ellipse)
+  const padGeo = new THREE.CylinderGeometry(6, 6, depth, 24);
+  padGeo.rotateX(Math.PI / 2);
+  const padScale = new THREE.Mesh(padGeo, mat);
+  padScale.scale.set(1.3, 1, 1);
+  padScale.position.set(0, -5, z);
+  group.add(padScale);
+
+  // Four toe pads
+  const toePositions = [
+    { x: -8, y: 5 },
+    { x: -3, y: 9 },
+    { x: 3, y: 9 },
+    { x: 8, y: 5 },
+  ];
+  const toeGeo = new THREE.CylinderGeometry(3, 3, depth, 16);
+  toeGeo.rotateX(Math.PI / 2);
+  for (const tp of toePositions) {
+    const toe = new THREE.Mesh(toeGeo, mat);
+    toe.position.set(tp.x, tp.y, z);
+    toe.scale.set(1, 1.3, 1);
+    group.add(toe);
+  }
 }
 
 function dtHydrantProfile() {
@@ -537,8 +515,10 @@ function dtBuildTag() {
   ringMesh.name = 'splitRing';
   DT.tagGroup.add(ringMesh);
 
-  // ── Chamfer groove (decorative line) ──
-  // Thin groove near the edge on the top face — skip for now, bevel handles it
+  // ── Paw print decoration ──
+  if (DT.selectedShape === 'paw') {
+    dtAddPawDecoration(DT.tagGroup, baseColor);
+  }
 
   // ── Text pocket + insert ──
   dtBuildTextInsert(geo, insertColor);
