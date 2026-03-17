@@ -1,10 +1,17 @@
 /**
- * BRCC Dog Tag Generator View — v2
+ * BRCC Dog Tag Generator View — v3 (Three.js 3D Render)
  * ============================================================
- * Canvas-based tag designer with draggable text positioning,
- * real-time preview, batch queue, and slicer integration.
+ * Real 3D preview of dog tags using Three.js with:
+ *   - Extruded shape geometry with bevel
+ *   - Recessed text pocket + raised insert
+ *   - Ring hole + tab
+ *   - Orbit controls for inspection
+ *   - Raycasted text dragging on tag surface
+ *   - Batch queue + slicer integration
  * ============================================================
  */
+
+/* global THREE */
 
 const DT = {
   initialized: false,
@@ -14,25 +21,28 @@ const DT = {
   selectedShape: 'bone',
   petName: '',
   colorIdx: 0,
-  // Text position in mm (null = use shape default)
   textCx: null,
   textCy: null,
   textSz: null,
-  // Drag state
   dragging: false,
-  dragStartMm: null,
-  // Canvas
-  canvas: null,
-  ctx: null,
-  scale: 6, // px per mm
-  // Slicer
+  dragOffset: null,
   openscadAvailable: false,
   generating: false,
-  // Batch
   batchQueue: [],
-  // History
   history: [],
   lastGenResult: null,
+  // Three.js
+  scene: null,
+  camera: null,
+  renderer: null,
+  controls: null,
+  animId: null,
+  tagGroup: null,
+  textMesh: null,
+  raycaster: null,
+  mouse: new (typeof THREE !== 'undefined' ? THREE.Vector2 : Object)(),
+  tagTopPlane: null,
+  container: null,
 };
 
 const COLOR_PRESETS = [
@@ -44,344 +54,649 @@ const COLOR_PRESETS = [
   { base: '#4a90d9', insert: '#ffffff', label: 'Blue + White', baseLabel: 'Blue', insertLabel: 'White' },
 ];
 
+// Tag dimensions (mm)
+const TAG_THICKNESS = 3.2;
+const POCKET_DEPTH = 1.4;
+const INSERT_HEIGHT = 1.35;
+const RING_HOLE_DIA = 4.6;
+const BEVEL_SIZE = 0.4;
+const BEVEL_SEGMENTS = 3;
+
 // ═══════════════════════════════════════════════════════════════
-// SHAPE DRAWING — Canvas 2D paths matching OpenSCAD geometry
+// THREE.JS SHAPE PROFILES — matches OpenSCAD geometry
 // ═══════════════════════════════════════════════════════════════
 
-function dtDrawShapePath(ctx, shape, scale) {
-  ctx.beginPath();
-  switch (shape) {
-    case 'bone': {
-      // Shaft: rounded rect + knobs at each end
-      const sl = 32, sw = 10, er = 5;
-      // Main shaft (rounded rect)
-      const hr = sw / 2;
-      ctx.moveTo(-sl/2 + hr, -hr);
-      ctx.lineTo(sl/2 - hr, -hr);
-      ctx.arc(sl/2 - hr, 0, hr, -Math.PI/2, Math.PI/2);
-      ctx.lineTo(-sl/2 + hr, hr);
-      ctx.arc(-sl/2 + hr, 0, hr, Math.PI/2, -Math.PI/2);
-      ctx.closePath();
-      // Knobs at each end
-      const knobAngles = [45, 135, 225, 315];
-      for (const ex of [-sl/2, sl/2]) {
-        for (const angle of knobAngles) {
-          const rad = angle * Math.PI / 180;
-          const cx = ex + Math.cos(rad) * 6;
-          const cy = Math.sin(rad) * 6;
-          ctx.moveTo(cx + er, cy);
-          ctx.arc(cx, cy, er, 0, Math.PI * 2);
-        }
-      }
-      break;
-    }
-    case 'shield': {
-      const w = 40, h = 50, tr = 5;
-      ctx.moveTo(0, -h/2 + 3);
-      ctx.lineTo(w/2 - tr, h/2 - tr);
-      ctx.arc(w/2 - tr, h/2 - tr, tr, 0, Math.PI/2);
-      ctx.lineTo(-w/2 + tr, h/2);
-      ctx.arc(-w/2 + tr, h/2 - tr, tr, Math.PI/2, Math.PI);
-      ctx.closePath();
-      break;
-    }
-    case 'heart': {
-      const s = 1.15;
-      ctx.save();
-      ctx.scale(s, s);
-      // Two lobes + bottom point
-      ctx.arc(-10, 0, 10, Math.PI, 0);
-      ctx.arc(10, 0, 10, Math.PI, 0);
-      ctx.lineTo(20, 0);
-      ctx.lineTo(0, -22);
-      ctx.lineTo(-20, 0);
-      ctx.closePath();
-      ctx.restore();
-      break;
-    }
-    case 'paw': {
-      ctx.arc(0, 0, 22, 0, Math.PI * 2);
-      ctx.closePath();
-      break;
-    }
-    case 'hydrant': {
-      // Simplified hydrant outline
-      const pts = [
-        [-15, -22], [15, -22], [15, -14], // base
-        [12, -14], [12, -4], [18, -4], [18, 2], [12, 2], // right nozzle area
-        [10, 2], [10, 8], [9, 12], // body
-        [9, 15], // top cylinder
-      ];
-      // Draw as rounded rect stack
-      // Base plate
-      dtRoundRect(ctx, -15, -22, 30, 8, 2);
-      ctx.closePath();
-      ctx.moveTo(0, 0);
-      // Body
-      dtRoundRect(ctx, -12, -14, 24, 12, 2);
-      ctx.closePath();
-      ctx.moveTo(0, 0);
-      // Upper body
-      dtRoundRect(ctx, -10, -4, 20, 12, 2);
-      ctx.closePath();
-      ctx.moveTo(0, 0);
-      // Top
-      dtRoundRect(ctx, -9, 8, 18, 4, 1);
-      ctx.closePath();
-      ctx.moveTo(0, 0);
-      // Dome
-      ctx.arc(0, 15, 7, 0, Math.PI * 2);
-      ctx.closePath();
-      // Side nozzles
-      ctx.moveTo(0, 0);
-      ctx.arc(-14, -0, 4, 0, Math.PI * 2);
-      ctx.closePath();
-      ctx.moveTo(0, 0);
-      ctx.arc(14, -0, 4, 0, Math.PI * 2);
-      ctx.closePath();
-      break;
-    }
-    case 'star': {
-      const points = 5, outerR = 24, innerR = 11;
-      for (let i = 0; i < points * 2; i++) {
-        const angle = (Math.PI * 2 / (points * 2)) * i - Math.PI / 2;
-        const r = i % 2 === 0 ? outerR : innerR;
-        const x = Math.cos(angle) * r;
-        const y = Math.sin(angle) * r;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-      break;
-    }
+function dtCreateShapeProfile(shapeId) {
+  switch (shapeId) {
+    case 'bone': return dtBoneProfile();
+    case 'shield': return dtShieldProfile();
+    case 'heart': return dtHeartProfile();
+    case 'paw': return dtPawProfile();
+    case 'hydrant': return dtHydrantProfile();
+    case 'star': return dtStarProfile();
+    default: return dtBoneProfile();
   }
 }
 
-function dtRoundRect(ctx, x, y, w, h, r) {
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arc(x + w - r, y + r, r, -Math.PI/2, 0);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arc(x + w - r, y + h - r, r, 0, Math.PI/2);
-  ctx.lineTo(x + r, y + h);
-  ctx.arc(x + r, y + h - r, r, Math.PI/2, Math.PI);
-  ctx.lineTo(x, y + r);
-  ctx.arc(x + r, y + r, r, Math.PI, -Math.PI/2);
+function dtBoneProfile() {
+  // Bone: elongated capsule with knob bumps at each end
+  const shape = new THREE.Shape();
+  const sl = 32, sw = 10, knobR = 5, knobDist = 6;
+  // Sample the outline of the union of shaft + knobs
+  const points = [];
+  const N = 120;
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2;
+    // Find max distance from center at this angle
+    let maxR = 0;
+    // Shaft (rounded rect via 4 circles at corners)
+    for (const cx of [-sl / 2 + sw / 2, sl / 2 - sw / 2]) {
+      for (const cy of [0]) {
+        const dx = Math.cos(angle) * 100 - cx;
+        const dy = Math.sin(angle) * 100 - cy;
+        // not simple, let's use a different approach
+      }
+    }
+  }
+  // Simpler approach: trace the bone shape explicitly
+  // Right end knobs
+  const rEnd = sl / 2;
+  const lEnd = -sl / 2;
+
+  // Start at top of shaft, go right
+  shape.moveTo(lEnd + sw / 2, sw / 2);
+  shape.lineTo(rEnd - sw / 2, sw / 2);
+  // Right end upper knob
+  shape.arc(knobDist * Math.cos(Math.PI / 4), knobDist * Math.sin(Math.PI / 4) - sw / 2, knobR, -Math.PI / 4, Math.PI / 2, false);
+  // Back to shaft right
+  shape.lineTo(rEnd + sw / 2, sw / 2);
+  shape.arc(-sw / 2, -sw / 2, sw / 2, Math.PI / 2, -Math.PI / 2, false);
+  // Right end lower knob... this gets complex
+
+  // Let's use polygon sampling instead
+  return dtSampleShapeOutline(shapeId);
+}
+
+// Generic outline sampler — creates a smooth outline from circle-union shapes
+function dtSampleShapeOutline(shapeId) {
+  const shape = new THREE.Shape();
+  let pts;
+
+  switch (shapeId) {
+    case 'bone': {
+      // Circles that make up the bone
+      const sl = 32, sw = 10, kr = 5, kd = 6;
+      const circles = [];
+      // Shaft circles (hull = rounded rect)
+      for (let x = -sl / 2 + sw / 2; x <= sl / 2 - sw / 2; x += 1) {
+        circles.push({ x, y: 0, r: sw / 2 });
+      }
+      // End knobs
+      for (const ex of [-sl / 2, sl / 2]) {
+        for (const a of [45, 135, 225, 315]) {
+          const rad = a * Math.PI / 180;
+          circles.push({ x: ex + Math.cos(rad) * kd, y: Math.sin(rad) * kd, r: kr });
+        }
+      }
+      pts = dtConvexHullOfCircles(circles, 200);
+      break;
+    }
+    default:
+      pts = [{ x: 0, y: 0 }];
+  }
+
+  if (pts.length > 0) {
+    shape.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      shape.lineTo(pts[i].x, pts[i].y);
+    }
+    shape.closePath();
+  }
+  return shape;
+}
+
+function dtConvexHullOfCircles(circles, samples) {
+  // Sample boundary points from all circles, then compute convex hull
+  const pts = [];
+  for (const c of circles) {
+    for (let i = 0; i < 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      pts.push({ x: c.x + Math.cos(a) * c.r, y: c.y + Math.sin(a) * c.r });
+    }
+  }
+  return dtConvexHull(pts);
+}
+
+function dtConvexHull(points) {
+  // Andrew's monotone chain
+  const sorted = points.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+  if (sorted.length <= 1) return sorted;
+  const cross = (O, A, B) => (A.x - O.x) * (B.y - O.y) - (A.y - O.y) * (B.x - O.x);
+  const lower = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop();
+  lower.pop();
+  return lower.concat(upper);
+}
+
+function dtShieldProfile() {
+  const shape = new THREE.Shape();
+  const w = 40, h = 50, tr = 5;
+  // Shield: wide top with rounded corners, tapers to a point at bottom
+  shape.moveTo(0, -h / 2 + 3); // bottom point
+  // Right side up
+  shape.lineTo(w / 2 - tr, h / 2 - tr);
+  // Top right corner
+  shape.quadraticCurveTo(w / 2, h / 2 - tr, w / 2, h / 2);
+  shape.quadraticCurveTo(w / 2, h / 2 + tr / 2, w / 2 - tr, h / 2);
+  // Across top — actually simpler
+  shape.moveTo(0, -h / 2 + 3);
+  shape.lineTo(w / 2 - tr, h / 2 - tr);
+  shape.absarc(w / 2 - tr, h / 2 - tr, tr, -Math.PI / 6, Math.PI / 2, false);
+  shape.lineTo(-w / 2 + tr, h / 2);
+  shape.absarc(-w / 2 + tr, h / 2 - tr, tr, Math.PI / 2, Math.PI + Math.PI / 6, false);
+  shape.closePath();
+  return shape;
+}
+
+function dtHeartProfile() {
+  const shape = new THREE.Shape();
+  const s = 1.15;
+  // Heart from two arcs and a point
+  // Using bezier curves for smooth heart
+  const x = 0, y = 0;
+  shape.moveTo(x, y - 22 * s); // bottom point
+  // Right lobe
+  shape.bezierCurveTo(x + 10 * s, y - 22 * s, x + 22 * s, y - 10 * s, x + 20 * s, y + 2 * s);
+  shape.bezierCurveTo(x + 18 * s, y + 10 * s, x + 5 * s, y + 12 * s, x, y + 8 * s);
+  // Left lobe
+  shape.bezierCurveTo(x - 5 * s, y + 12 * s, x - 18 * s, y + 10 * s, x - 20 * s, y + 2 * s);
+  shape.bezierCurveTo(x - 22 * s, y - 10 * s, x - 10 * s, y - 22 * s, x, y - 22 * s);
+  return shape;
+}
+
+function dtPawProfile() {
+  const shape = new THREE.Shape();
+  shape.absarc(0, 0, 22, 0, Math.PI * 2, false);
+  return shape;
+}
+
+function dtHydrantProfile() {
+  const shape = new THREE.Shape();
+  // Simplified hydrant: wide base, narrow body, dome top
+  // Base
+  shape.moveTo(-15, -22);
+  shape.lineTo(15, -22);
+  shape.lineTo(15, -14);
+  // Right nozzle bump
+  shape.lineTo(18, -8);
+  shape.absarc(14, -4, 4, -Math.PI / 2, Math.PI / 2, false);
+  shape.lineTo(12, 0);
+  shape.lineTo(10, 2);
+  shape.lineTo(10, 8);
+  shape.lineTo(9, 12);
+  // Top dome
+  shape.absarc(0, 15, 8, 0.1, Math.PI - 0.1, false);
+  shape.lineTo(-9, 12);
+  shape.lineTo(-10, 8);
+  shape.lineTo(-10, 2);
+  shape.lineTo(-12, 0);
+  // Left nozzle bump
+  shape.absarc(-14, -4, 4, Math.PI / 2, -Math.PI / 2, true);
+  shape.lineTo(-15, -14);
+  shape.closePath();
+  return shape;
+}
+
+function dtStarProfile() {
+  const shape = new THREE.Shape();
+  const points = 5, outerR = 24, innerR = 11;
+  for (let i = 0; i < points * 2; i++) {
+    const angle = (Math.PI * 2 / (points * 2)) * i - Math.PI / 2;
+    const r = i % 2 === 0 ? outerR : innerR;
+    const x = Math.cos(angle) * r;
+    const y = Math.sin(angle) * r;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  return shape;
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CANVAS RENDERING
+// TEXT TEXTURE — render pet name to a canvas, use as texture
 // ═══════════════════════════════════════════════════════════════
 
-function dtRender() {
-  const { canvas, ctx, scale } = DT;
-  if (!canvas || !ctx) return;
+function dtCreateTextTexture(text, fontSize, color) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const font = `bold ${fontSize * 10}px "Arial", "Helvetica", sans-serif`;
+  ctx.font = font;
+  const metrics = ctx.measureText(text);
+  const pad = fontSize * 3;
+  canvas.width = Math.ceil(metrics.width + pad * 2);
+  canvas.height = Math.ceil(fontSize * 14 + pad * 2);
 
-  const w = canvas.width;
-  const h = canvas.height;
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+
+  // Return texture and dimensions in mm
+  const mmWidth = canvas.width / 10;
+  const mmHeight = canvas.height / 10;
+  return { texture, width: mmWidth, height: mmHeight, canvas };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3D SCENE SETUP
+// ═══════════════════════════════════════════════════════════════
+
+function dtSetupScene() {
+  const container = document.getElementById('dt3DContainer');
+  if (!container || typeof THREE === 'undefined') return;
+  DT.container = container;
+
+  // Clean up existing
+  dtCleanupScene();
+
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+
+  // Scene
+  DT.scene = new THREE.Scene();
+  DT.scene.background = new THREE.Color(0xf0f0f0);
+
+  // Camera — angled view from above
+  DT.camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 1000);
+  DT.camera.position.set(0, -50, 60);
+  DT.camera.lookAt(0, 0, 0);
+
+  // Renderer
+  DT.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  DT.renderer.setSize(w, h);
+  DT.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  DT.renderer.shadowMap.enabled = true;
+  DT.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.innerHTML = '';
+  container.appendChild(DT.renderer.domElement);
+
+  // Lights
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  DT.scene.add(ambientLight);
+
+  const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  mainLight.position.set(20, -20, 50);
+  mainLight.castShadow = true;
+  mainLight.shadow.mapSize.set(1024, 1024);
+  mainLight.shadow.camera.near = 1;
+  mainLight.shadow.camera.far = 200;
+  mainLight.shadow.camera.left = -50;
+  mainLight.shadow.camera.right = 50;
+  mainLight.shadow.camera.top = 50;
+  mainLight.shadow.camera.bottom = -50;
+  DT.scene.add(mainLight);
+
+  const fillLight = new THREE.DirectionalLight(0xaaccff, 0.3);
+  fillLight.position.set(-30, 10, 30);
+  DT.scene.add(fillLight);
+
+  const rimLight = new THREE.DirectionalLight(0xffeedd, 0.2);
+  rimLight.position.set(0, 40, 10);
+  DT.scene.add(rimLight);
+
+  // Ground plane (shadow receiver)
+  const groundGeo = new THREE.PlaneGeometry(200, 200);
+  const groundMat = new THREE.ShadowMaterial({ opacity: 0.15 });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.position.z = -0.5;
+  ground.receiveShadow = true;
+  DT.scene.add(ground);
+
+  // Subtle grid
+  const gridHelper = new THREE.GridHelper(100, 20, 0xdddddd, 0xeeeeee);
+  gridHelper.rotation.x = Math.PI / 2;
+  gridHelper.position.z = -0.3;
+  DT.scene.add(gridHelper);
+
+  // Orbit Controls
+  if (typeof THREE.OrbitControls !== 'undefined') {
+    DT.controls = new THREE.OrbitControls(DT.camera, DT.renderer.domElement);
+    DT.controls.enableDamping = true;
+    DT.controls.dampingFactor = 0.08;
+    DT.controls.minDistance = 20;
+    DT.controls.maxDistance = 200;
+    DT.controls.target.set(0, 0, TAG_THICKNESS / 2);
+    DT.controls.update();
+  }
+
+  // Raycaster for text dragging
+  DT.raycaster = new THREE.Raycaster();
+  DT.tagTopPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -TAG_THICKNESS);
+
+  // Tag group
+  DT.tagGroup = new THREE.Group();
+  DT.scene.add(DT.tagGroup);
+
+  // Mouse events
+  DT.renderer.domElement.addEventListener('mousedown', dtOnMouseDown3D);
+  DT.renderer.domElement.addEventListener('mousemove', dtOnMouseMove3D);
+  DT.renderer.domElement.addEventListener('mouseup', dtOnMouseUp3D);
+  DT.renderer.domElement.addEventListener('mouseleave', dtOnMouseUp3D);
+
+  // Resize observer
+  DT._resizeObs = new ResizeObserver(() => {
+    const nw = container.clientWidth;
+    const nh = container.clientHeight;
+    if (nw > 0 && nh > 0) {
+      DT.camera.aspect = nw / nh;
+      DT.camera.updateProjectionMatrix();
+      DT.renderer.setSize(nw, nh);
+    }
+  });
+  DT._resizeObs.observe(container);
+
+  // Start render loop
+  dtAnimate();
+
+  // Build initial tag
+  dtBuildTag();
+}
+
+function dtCleanupScene() {
+  if (DT.animId) cancelAnimationFrame(DT.animId);
+  DT.animId = null;
+  if (DT._resizeObs) DT._resizeObs.disconnect();
+  if (DT.renderer) {
+    DT.renderer.domElement.removeEventListener('mousedown', dtOnMouseDown3D);
+    DT.renderer.domElement.removeEventListener('mousemove', dtOnMouseMove3D);
+    DT.renderer.domElement.removeEventListener('mouseup', dtOnMouseUp3D);
+    DT.renderer.domElement.removeEventListener('mouseleave', dtOnMouseUp3D);
+    DT.renderer.dispose();
+  }
+  if (DT.controls) DT.controls.dispose();
+  DT.scene = null;
+  DT.camera = null;
+  DT.renderer = null;
+  DT.controls = null;
+}
+
+function dtAnimate() {
+  DT.animId = requestAnimationFrame(dtAnimate);
+  if (DT.controls) DT.controls.update();
+  if (DT.renderer && DT.scene && DT.camera) {
+    DT.renderer.render(DT.scene, DT.camera);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD TAG 3D MODEL
+// ═══════════════════════════════════════════════════════════════
+
+function dtBuildTag() {
+  if (!DT.tagGroup || !DT.scene) return;
+
+  // Clear existing
+  while (DT.tagGroup.children.length > 0) {
+    const child = DT.tagGroup.children[0];
+    DT.tagGroup.remove(child);
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (child.material.map) child.material.map.dispose();
+      child.material.dispose();
+    }
+  }
+  DT.textMesh = null;
+
   const colors = COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0];
   const geo = DT.shapeGeo[DT.selectedShape];
   if (!geo) return;
 
-  // Get effective text position
+  const baseColor = new THREE.Color(colors.base);
+  const insertColor = new THREE.Color(colors.insert);
+
+  // ── Tag body ──
+  const profile = dtCreateShapeProfile(DT.selectedShape);
+
+  // Add ring hole as a hole in the shape
+  const ringX = geo.ringX;
+  const ringY = geo.ringY;
+  const holePath = new THREE.Path();
+  holePath.absarc(ringX, ringY, RING_HOLE_DIA / 2, 0, Math.PI * 2, true);
+  profile.holes.push(holePath);
+
+  const extrudeSettings = {
+    depth: TAG_THICKNESS,
+    bevelEnabled: true,
+    bevelThickness: BEVEL_SIZE,
+    bevelSize: BEVEL_SIZE,
+    bevelSegments: BEVEL_SEGMENTS,
+    curveSegments: 32,
+  };
+
+  const bodyGeo = new THREE.ExtrudeGeometry(profile, extrudeSettings);
+  const bodyMat = new THREE.MeshPhysicalMaterial({
+    color: baseColor,
+    roughness: 0.35,
+    metalness: 0.0,
+    clearcoat: 0.2,
+    clearcoatRoughness: 0.4,
+  });
+  const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+  bodyMesh.castShadow = true;
+  bodyMesh.receiveShadow = true;
+  bodyMesh.name = 'tagBody';
+  DT.tagGroup.add(bodyMesh);
+
+  // ── Ring tab (extra circle for shapes that need it) ──
+  if (['paw', 'star', 'hydrant', 'shield'].includes(DT.selectedShape)) {
+    const tabProfile = new THREE.Shape();
+    tabProfile.absarc(0, 0, 5, 0, Math.PI * 2, false);
+    const tabHole = new THREE.Path();
+    tabHole.absarc(0, 0, RING_HOLE_DIA / 2, 0, Math.PI * 2, true);
+    tabProfile.holes.push(tabHole);
+    const tabGeo = new THREE.ExtrudeGeometry(tabProfile, {
+      depth: TAG_THICKNESS,
+      bevelEnabled: true,
+      bevelThickness: BEVEL_SIZE * 0.7,
+      bevelSize: BEVEL_SIZE * 0.7,
+      bevelSegments: 2,
+      curveSegments: 24,
+    });
+    const tabMesh = new THREE.Mesh(tabGeo, bodyMat.clone());
+    tabMesh.position.set(ringX, ringY, 0);
+    tabMesh.castShadow = true;
+    tabMesh.name = 'ringTab';
+    DT.tagGroup.add(tabMesh);
+  }
+
+  // ── Split ring (decorative) ──
+  const ringGeo = new THREE.TorusGeometry(4, 0.6, 8, 32);
+  const ringMat = new THREE.MeshPhysicalMaterial({
+    color: 0xcccccc,
+    roughness: 0.2,
+    metalness: 0.8,
+  });
+  const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  ringMesh.position.set(ringX, ringY, TAG_THICKNESS / 2);
+  ringMesh.rotation.x = Math.PI / 2;
+  ringMesh.castShadow = true;
+  ringMesh.name = 'splitRing';
+  DT.tagGroup.add(ringMesh);
+
+  // ── Chamfer groove (decorative line) ──
+  // Thin groove near the edge on the top face — skip for now, bevel handles it
+
+  // ── Text pocket + insert ──
+  dtBuildTextInsert(geo, insertColor);
+
+  // ── Position readout ──
+  dtUpdatePosReadout();
+}
+
+function dtBuildTextInsert(geo, insertColor) {
+  const name = DT.petName || '';
+  if (!name) return;
+
   const tcx = DT.textCx !== null ? DT.textCx : geo.textCx;
   const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
   const tsz = DT.textSz !== null ? DT.textSz : geo.textSz;
 
-  ctx.clearRect(0, 0, w, h);
+  // Render text to texture
+  const textData = dtCreateTextTexture(name, tsz, '#ffffff');
+  const { texture, width: tw, height: th } = textData;
 
-  // Background
-  ctx.fillStyle = '#f0f0f0';
-  ctx.fillRect(0, 0, w, h);
+  // Pocket: slightly recessed darker area on tag top
+  const pocketPad = 1.5;
+  const pocketW = tw + pocketPad * 2;
+  const pocketH = th + pocketPad * 2;
+  const pocketGeo = new THREE.BoxGeometry(pocketW, pocketH, POCKET_DEPTH);
+  const colors = COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0];
+  const pocketMat = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(colors.base).multiplyScalar(0.85),
+    roughness: 0.5,
+    metalness: 0,
+  });
+  const pocketMesh = new THREE.Mesh(pocketGeo, pocketMat);
+  pocketMesh.position.set(tcx, tcy, TAG_THICKNESS - POCKET_DEPTH / 2 + 0.01);
+  pocketMesh.name = 'pocket';
+  DT.tagGroup.add(pocketMesh);
 
-  // Draw grid
-  ctx.strokeStyle = '#e0e0e0';
-  ctx.lineWidth = 0.5;
-  const gridMm = 5;
-  for (let gx = -40; gx <= 40; gx += gridMm) {
-    const px = w/2 + gx * scale;
-    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
-  }
-  for (let gy = -40; gy <= 40; gy += gridMm) {
-    const py = h/2 - gy * scale;
-    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
-  }
+  // Insert slab: colored block that sits in the pocket
+  const insertGeo = new THREE.BoxGeometry(tw + 0.5, th + 0.5, INSERT_HEIGHT);
+  const insertMat = new THREE.MeshPhysicalMaterial({
+    color: insertColor,
+    roughness: 0.3,
+    metalness: 0,
+    clearcoat: 0.15,
+  });
+  const insertMesh = new THREE.Mesh(insertGeo, insertMat);
+  insertMesh.position.set(tcx, tcy, TAG_THICKNESS - POCKET_DEPTH + INSERT_HEIGHT / 2 + 0.01);
+  insertMesh.name = 'insert';
+  DT.tagGroup.add(insertMesh);
 
-  ctx.save();
-  ctx.translate(w / 2, h / 2);
-  // Flip Y so positive Y is up (like OpenSCAD)
-  ctx.scale(scale, -scale);
+  // Text label on top of insert
+  const labelGeo = new THREE.PlaneGeometry(tw, th);
+  const labelMat = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
+  });
+  const labelMesh = new THREE.Mesh(labelGeo, labelMat);
+  labelMesh.position.set(tcx, tcy, TAG_THICKNESS - POCKET_DEPTH + INSERT_HEIGHT + 0.05);
+  labelMesh.name = 'textLabel';
+  DT.tagGroup.add(labelMesh);
 
-  // ── Shadow ──
-  ctx.save();
-  ctx.translate(0.5, -0.8);
-  dtDrawShapePath(ctx, DT.selectedShape, scale);
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  ctx.fill();
-  ctx.restore();
-
-  // ── Tag body ──
-  dtDrawShapePath(ctx, DT.selectedShape, scale);
-  ctx.fillStyle = colors.base;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-  ctx.lineWidth = 0.3;
-  ctx.stroke();
-
-  // ── Ring hole ──
-  const ringX = geo.ringX;
-  const ringY = geo.ringY;
-  ctx.beginPath();
-  ctx.arc(ringX, ringY, 2.3, 0, Math.PI * 2);
-  ctx.fillStyle = '#f0f0f0';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-  ctx.lineWidth = 0.2;
-  ctx.stroke();
-
-  // ── Ring tab (for shapes that need it) ──
-  if (['paw', 'star', 'hydrant', 'shield'].includes(DT.selectedShape)) {
-    ctx.beginPath();
-    ctx.arc(ringX, ringY, 5, 0, Math.PI * 2);
-    ctx.fillStyle = colors.base;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-    ctx.lineWidth = 0.2;
-    ctx.stroke();
-    // Re-draw ring hole on top
-    ctx.beginPath();
-    ctx.arc(ringX, ringY, 2.3, 0, Math.PI * 2);
-    ctx.fillStyle = '#f0f0f0';
-    ctx.fill();
-  }
-
-  // ── Text pocket (slightly darker than base) ──
-  if (DT.petName) {
-    ctx.save();
-    ctx.translate(tcx, tcy);
-    ctx.scale(1, -1); // Flip text back to readable
-    const fontSizePx = tsz;
-    ctx.font = `bold ${fontSizePx}px "Arial", "Liberation Sans", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const textW = ctx.measureText(DT.petName.toUpperCase()).width;
-
-    // Pocket background (recessed area)
-    const pocketPad = 1.5;
-    ctx.fillStyle = dtDarken(colors.base, 0.08);
-    dtRoundRect(ctx, -textW/2 - pocketPad, -fontSizePx/2 - pocketPad,
-                textW + pocketPad * 2, fontSizePx + pocketPad * 2, 1);
-    ctx.fill();
-
-    // Text in insert color
-    ctx.fillStyle = colors.insert;
-    ctx.fillText(DT.petName.toUpperCase(), 0, 0);
-
-    ctx.restore();
-  }
-
-  // ── Drag indicator ──
-  if (DT.petName) {
-    ctx.save();
-    ctx.translate(tcx, tcy);
-    ctx.scale(1, -1);
-    const fontSizePx = tsz;
-    ctx.font = `bold ${fontSizePx}px "Arial", "Liberation Sans", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const textW = ctx.measureText(DT.petName.toUpperCase()).width;
-    const pad = 2;
-
-    if (DT.dragging) {
-      ctx.setLineDash([1, 1]);
-      ctx.strokeStyle = '#ff6600';
-      ctx.lineWidth = 0.3;
-      ctx.strokeRect(-textW/2 - pad, -fontSizePx/2 - pad, textW + pad*2, fontSizePx + pad*2);
-      ctx.setLineDash([]);
-    }
-    ctx.restore();
-  }
-
-  ctx.restore();
-
-  // ── Position readout ──
-  const posLabel = document.getElementById('dtPosReadout');
-  if (posLabel) {
-    const cx = DT.textCx !== null ? DT.textCx.toFixed(1) : geo.textCx.toFixed(1);
-    const cy = DT.textCy !== null ? DT.textCy.toFixed(1) : geo.textCy.toFixed(1);
-    const isCustom = DT.textCx !== null || DT.textCy !== null;
-    posLabel.textContent = `Text: (${cx}, ${cy}) mm${isCustom ? ' [custom]' : ' [default]'}`;
-  }
-}
-
-function dtDarken(hex, amount) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const f = 1 - amount;
-  return `rgb(${Math.round(r * f)}, ${Math.round(g * f)}, ${Math.round(b * f)})`;
+  // Store reference for dragging
+  DT.textMesh = { pocket: pocketMesh, insert: insertMesh, label: labelMesh, width: tw, height: th };
 }
 
 // ═══════════════════════════════════════════════════════════════
-// MOUSE / DRAG HANDLING
+// MOUSE / DRAG HANDLING (3D raycasting)
 // ═══════════════════════════════════════════════════════════════
 
-function dtCanvasToMm(e) {
-  const rect = DT.canvas.getBoundingClientRect();
-  const px = (e.clientX - rect.left) * (DT.canvas.width / rect.width);
-  const py = (e.clientY - rect.top) * (DT.canvas.height / rect.height);
-  // Convert pixel to mm (center origin, Y flipped)
-  const mmX = (px - DT.canvas.width / 2) / DT.scale;
-  const mmY = -(py - DT.canvas.height / 2) / DT.scale;
-  return { x: mmX, y: mmY };
+function dtGetMouseMm(e) {
+  if (!DT.renderer || !DT.camera) return null;
+  const rect = DT.renderer.domElement.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1
+  );
+
+  DT.raycaster.setFromCamera(mouse, DT.camera);
+  const intersection = new THREE.Vector3();
+  if (DT.raycaster.ray.intersectPlane(DT.tagTopPlane, intersection)) {
+    return { x: intersection.x, y: intersection.y };
+  }
+  return null;
 }
 
-function dtIsOverText(mmPos) {
-  if (!DT.petName) return false;
+function dtIsOverText3D(mm) {
+  if (!DT.textMesh || !DT.petName || !mm) return false;
   const geo = DT.shapeGeo[DT.selectedShape];
   if (!geo) return false;
   const tcx = DT.textCx !== null ? DT.textCx : geo.textCx;
   const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
-  const tsz = DT.textSz !== null ? DT.textSz : geo.textSz;
-
-  // Approximate text bounding box in mm
-  const textW = DT.petName.length * tsz * 0.65;
-  const textH = tsz * 1.2;
-
-  return Math.abs(mmPos.x - tcx) < textW / 2 + 2 &&
-         Math.abs(mmPos.y - tcy) < textH / 2 + 2;
+  const tw = DT.textMesh.width;
+  const th = DT.textMesh.height;
+  return Math.abs(mm.x - tcx) < tw / 2 + 3 && Math.abs(mm.y - tcy) < th / 2 + 3;
 }
 
-function dtOnMouseDown(e) {
-  const mm = dtCanvasToMm(e);
-  if (dtIsOverText(mm)) {
-    DT.dragging = true;
+function dtOnMouseDown3D(e) {
+  const mm = dtGetMouseMm(e);
+  if (dtIsOverText3D(mm)) {
     const geo = DT.shapeGeo[DT.selectedShape];
     const tcx = DT.textCx !== null ? DT.textCx : geo.textCx;
     const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
-    DT.dragStartMm = { offX: mm.x - tcx, offY: mm.y - tcy };
-    DT.canvas.style.cursor = 'grabbing';
-    dtRender();
+    DT.dragging = true;
+    DT.dragOffset = { x: mm.x - tcx, y: mm.y - tcy };
+    if (DT.controls) DT.controls.enabled = false; // disable orbit while dragging
+    DT.renderer.domElement.style.cursor = 'grabbing';
   }
 }
 
-function dtOnMouseMove(e) {
-  const mm = dtCanvasToMm(e);
-  if (DT.dragging && DT.dragStartMm) {
-    DT.textCx = parseFloat((mm.x - DT.dragStartMm.offX).toFixed(1));
-    DT.textCy = parseFloat((mm.y - DT.dragStartMm.offY).toFixed(1));
-    dtRender();
+function dtOnMouseMove3D(e) {
+  const mm = dtGetMouseMm(e);
+  if (!mm) return;
+
+  if (DT.dragging && DT.dragOffset) {
+    DT.textCx = parseFloat((mm.x - DT.dragOffset.x).toFixed(1));
+    DT.textCy = parseFloat((mm.y - DT.dragOffset.y).toFixed(1));
+    // Update text position without full rebuild
+    dtUpdateTextPosition();
+    dtUpdatePosReadout();
   } else {
-    DT.canvas.style.cursor = dtIsOverText(mm) ? 'grab' : 'default';
+    DT.renderer.domElement.style.cursor = dtIsOverText3D(mm) ? 'grab' : 'default';
   }
 }
 
-function dtOnMouseUp() {
+function dtOnMouseUp3D() {
   if (DT.dragging) {
     DT.dragging = false;
-    DT.canvas.style.cursor = 'default';
-    dtRender();
+    DT.dragOffset = null;
+    if (DT.controls) DT.controls.enabled = true;
+    if (DT.renderer) DT.renderer.domElement.style.cursor = 'default';
   }
+}
+
+function dtUpdateTextPosition() {
+  if (!DT.textMesh) return;
+  const geo = DT.shapeGeo[DT.selectedShape];
+  if (!geo) return;
+  const tcx = DT.textCx !== null ? DT.textCx : geo.textCx;
+  const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
+
+  DT.textMesh.pocket.position.x = tcx;
+  DT.textMesh.pocket.position.y = tcy;
+  DT.textMesh.insert.position.x = tcx;
+  DT.textMesh.insert.position.y = tcy;
+  DT.textMesh.label.position.x = tcx;
+  DT.textMesh.label.position.y = tcy;
+}
+
+function dtUpdatePosReadout() {
+  const posLabel = document.getElementById('dtPosReadout');
+  if (!posLabel) return;
+  const geo = DT.shapeGeo[DT.selectedShape];
+  if (!geo) return;
+  const cx = (DT.textCx !== null ? DT.textCx : geo.textCx).toFixed(1);
+  const cy = (DT.textCy !== null ? DT.textCy : geo.textCy).toFixed(1);
+  const isCustom = DT.textCx !== null || DT.textCy !== null;
+  posLabel.textContent = `Text: (${cx}, ${cy})mm${isCustom ? ' [custom]' : ''}`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -402,18 +717,17 @@ function dtRenderShapePicker() {
   container.querySelectorAll('.dt-shape-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       DT.selectedShape = btn.dataset.shape;
-      // Reset text position to shape default when switching shapes
       DT.textCx = null;
       DT.textCy = null;
       DT.textSz = null;
       dtRenderShapePicker();
-      dtRender();
+      dtBuildTag();
     });
   });
 }
 
 // ═══════════════════════════════════════════════════════════════
-// GENERATE / SLICER / BATCH
+// GENERATE / SLICER / BATCH (unchanged logic)
 // ═══════════════════════════════════════════════════════════════
 
 async function dtGenerate() {
@@ -422,11 +736,9 @@ async function dtGenerate() {
     document.getElementById('dtPetName')?.focus();
     return;
   }
-
   DT.generating = true;
   dtSetStatus('Generating tag files...', 'info');
   dtUpdateButtons();
-
   try {
     const colors = COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0];
     const result = await window.printStation.dogTag.generate({
@@ -437,17 +749,13 @@ async function dtGenerate() {
       textCy: DT.textCy,
       textSz: DT.textSz,
     });
-
     DT.lastGenResult = result;
     const stlReady = result.status === 'ready_to_print';
-
     dtSetStatus(
       `Generated <strong>${result.petName}</strong> (${result.shape}). ` +
       (stlReady ? 'STLs ready.' : 'SCAD files created (install OpenSCAD for STL).'),
       stlReady ? 'success' : 'warning'
     );
-
-    // Enable send-to-slicer if STLs exist
     dtUpdateButtons();
     dtLoadHistory();
   } catch (e) {
@@ -463,24 +771,20 @@ async function dtSendToSlicer() {
     dtSetStatus('No STL available. Generate first (requires OpenSCAD).', 'error');
     return;
   }
-
   dtSetStatus('Uploading to slicer catalog...', 'info');
   try {
     const r = DT.lastGenResult;
-    // Upload base tag
     await window.printStation.dogTag.sendToSlicer({
       stlPath: r.files.baseStl,
       name: `Dog Tag Base - ${r.shape} - ${r.petName}`,
       category: 'Dog Tags',
     });
-    // Upload text insert
     await window.printStation.dogTag.sendToSlicer({
       stlPath: r.files.textStl,
       name: `Dog Tag Text - ${r.shape} - ${r.petName}`,
       category: 'Dog Tags',
     });
-
-    dtSetStatus(`Uploaded to slicer: base + text for <strong>${r.petName}</strong>. Switch to Slice & Print to print.`, 'success');
+    dtSetStatus(`Uploaded to slicer: <strong>${r.petName}</strong> base + text. Go to Slice & Print to print.`, 'success');
   } catch (e) {
     dtSetStatus(`Slicer upload error: ${e.message || e}`, 'error');
   }
@@ -511,8 +815,7 @@ async function dtAddToBatch() {
 
 async function dtBatchGenerateAll() {
   if (!DT.batchQueue.length) return;
-
-  dtSetStatus(`Generating ${DT.batchQueue.length} tags... this may take a moment.`, 'info');
+  dtSetStatus(`Generating ${DT.batchQueue.length} tags...`, 'info');
   try {
     const result = await window.printStation.dogTag.batchGenerateAll();
     DT.batchQueue = [];
@@ -541,21 +844,18 @@ async function dtBatchClear() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// BATCH PANEL RENDER
+// BATCH / HISTORY PANELS
 // ═══════════════════════════════════════════════════════════════
 
 function dtRenderBatch() {
   const container = document.getElementById('dtBatchList');
   const countEl = document.getElementById('dtBatchCount');
   if (!container) return;
-
   if (countEl) countEl.textContent = DT.batchQueue.length || '';
-
   if (!DT.batchQueue.length) {
-    container.innerHTML = '<div class="dt-empty">Queue empty. Add tags with "+ Add to Batch".</div>';
+    container.innerHTML = '<div class="dt-empty">Queue empty. Use "+ Add to Batch".</div>';
     return;
   }
-
   container.innerHTML = DT.batchQueue.map(item => `
     <div class="dt-batch-item">
       <div class="dt-batch-info">
@@ -565,15 +865,10 @@ function dtRenderBatch() {
       <button class="dt-batch-remove" data-id="${item.id}" title="Remove">&times;</button>
     </div>
   `).join('');
-
   container.querySelectorAll('.dt-batch-remove').forEach(btn => {
     btn.addEventListener('click', () => dtBatchRemove(btn.dataset.id));
   });
 }
-
-// ═══════════════════════════════════════════════════════════════
-// HISTORY PANEL
-// ═══════════════════════════════════════════════════════════════
 
 async function dtLoadHistory() {
   try {
@@ -586,12 +881,10 @@ async function dtLoadHistory() {
 function dtRenderHistory() {
   const container = document.getElementById('dtHistoryList');
   if (!container) return;
-
   if (!DT.history.length) {
     container.innerHTML = '<div class="dt-empty">No tags generated yet.</div>';
     return;
   }
-
   container.innerHTML = DT.history.map(job => {
     const date = job.timestamp ? new Date(job.timestamp).toLocaleDateString() : '';
     return `
@@ -604,7 +897,6 @@ function dtRenderHistory() {
       </div>
     `;
   }).join('');
-
   container.querySelectorAll('.dt-history-open').forEach(btn => {
     btn.addEventListener('click', () => window.printStation.dogTag.openOutput(btn.dataset.job));
   });
@@ -624,12 +916,10 @@ function dtSetStatus(html, type) {
 function dtUpdateButtons() {
   const genBtn = document.getElementById('dtGenerateBtn');
   const slicerBtn = document.getElementById('dtSendToSlicerBtn');
-
   if (genBtn) {
     genBtn.disabled = DT.generating;
     genBtn.textContent = DT.generating ? 'Generating...' : 'Generate Tag';
   }
-
   if (slicerBtn) {
     const hasStl = DT.lastGenResult?.files?.baseStl;
     slicerBtn.disabled = !hasStl;
@@ -641,7 +931,7 @@ function dtResetTextPos() {
   DT.textCx = null;
   DT.textCy = null;
   DT.textSz = null;
-  dtRender();
+  dtBuildTag();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -652,7 +942,10 @@ async function initDogTagsView() {
   if (DT.initialized) {
     dtLoadHistory();
     dtLoadBatch();
-    dtRender();
+    // Re-setup scene if container was detached
+    if (!DT.renderer || !DT.container?.isConnected) {
+      dtSetupScene();
+    }
     return;
   }
 
@@ -675,37 +968,14 @@ async function initDogTagsView() {
   } catch (_) {}
 
   const oscadNote = document.getElementById('dtOpenscadNote');
-  if (oscadNote) {
-    oscadNote.style.display = DT.openscadAvailable ? 'none' : 'block';
-  }
-
-  // Canvas setup
-  DT.canvas = document.getElementById('dtCanvas');
-  if (DT.canvas) {
-    DT.ctx = DT.canvas.getContext('2d');
-    // High-DPI support
-    const dpr = window.devicePixelRatio || 1;
-    const rect = DT.canvas.getBoundingClientRect();
-    DT.canvas.width = rect.width * dpr;
-    DT.canvas.height = rect.height * dpr;
-    DT.ctx.scale(dpr, dpr);
-    DT.canvas.width = rect.width;
-    DT.canvas.height = rect.height;
-    DT.scale = Math.min(rect.width, rect.height) / 70; // ~70mm viewport
-
-    // Mouse events
-    DT.canvas.addEventListener('mousedown', dtOnMouseDown);
-    DT.canvas.addEventListener('mousemove', dtOnMouseMove);
-    DT.canvas.addEventListener('mouseup', dtOnMouseUp);
-    DT.canvas.addEventListener('mouseleave', dtOnMouseUp);
-  }
+  if (oscadNote) oscadNote.style.display = DT.openscadAvailable ? 'none' : 'block';
 
   // Name input
   const nameInput = document.getElementById('dtPetName');
   if (nameInput) {
     nameInput.addEventListener('input', () => {
       DT.petName = nameInput.value.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, 12);
-      dtRender();
+      dtBuildTag();
     });
     nameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') dtGenerate();
@@ -717,7 +987,7 @@ async function initDogTagsView() {
   if (colorSelect) {
     colorSelect.addEventListener('change', () => {
       DT.colorIdx = colorSelect.selectedIndex;
-      dtRender();
+      dtBuildTag();
     });
   }
 
@@ -731,9 +1001,11 @@ async function initDogTagsView() {
 
   // Render
   dtRenderShapePicker();
-  dtRender();
   dtLoadHistory();
   dtLoadBatch();
+
+  // Setup Three.js scene (slight delay to ensure container has dimensions)
+  setTimeout(() => dtSetupScene(), 50);
 
   DT.initialized = true;
 }
