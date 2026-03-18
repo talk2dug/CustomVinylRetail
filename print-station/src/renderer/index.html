@@ -100,6 +100,7 @@
           <button class="dropdown-item" data-view="slicerView">Slice &amp; Print</button>
           <button class="dropdown-item" data-view="printQuotesView">Print Quotes</button>
           <button class="dropdown-item" data-view="buildPlatesView">Build Plates</button>
+          <button class="dropdown-item" data-view="dogTagsView">Dog Tags</button>
         </div>
       </div>
 
@@ -7379,6 +7380,100 @@
         </div>
       </section>
 
+      <!-- ================================================================== -->
+      <!-- DOG TAG GENERATOR                                                 -->
+      <!-- ================================================================== -->
+      <section id="dogTagsView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Dog Tag Generator</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span id="dtPosReadout" style="font-size:0.8rem;color:#888;font-family:monospace;"></span>
+          </div>
+        </div>
+        <div class="view-content" style="display:flex;gap:0;height:calc(100vh - 140px);">
+
+          <!-- LEFT PANEL: Controls -->
+          <div class="dt-panel dt-panel-left">
+            <!-- OpenSCAD warning -->
+            <div id="dtOpenscadNote" class="dt-status warning" style="margin-bottom:12px;display:none;">
+              OpenSCAD not found. Install it and add to PATH for STL generation &amp; slicer integration.
+            </div>
+
+            <!-- Pet Name -->
+            <label class="dt-label">Pet Name</label>
+            <input type="text" id="dtPetName" placeholder="e.g. BUDDY" maxlength="12" class="dt-input" />
+
+            <!-- Shape Picker -->
+            <label class="dt-label">Tag Shape</label>
+            <div id="dtShapeGrid" class="dt-shape-grid"></div>
+            <div style="display:flex;gap:6px;margin-bottom:12px;">
+              <button id="dtImportBlankBtn" class="dt-btn-small" style="flex:1;" title="Import a blank STL from Tinkercad for the selected shape">Import Blank STL</button>
+              <button id="dtOpenTagsFolderBtn" class="dt-btn-small" style="flex:1;" title="Open the tags folder to manage blank STLs">Open Tags Folder</button>
+            </div>
+
+            <!-- Color Preset -->
+            <label class="dt-label">Color Combo</label>
+            <select id="dtColorPreset" class="dt-select">
+              <option>White + Black</option>
+              <option>Black + White</option>
+              <option>Navy + Gold</option>
+              <option>Red + White</option>
+              <option>Green + Cream</option>
+              <option>Blue + White</option>
+            </select>
+
+            <!-- Text Position -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+              <label class="dt-label" style="margin:0;flex:1;">Text Position</label>
+              <button id="dtResetPosBtn" class="dt-btn-small">Reset to Default</button>
+            </div>
+            <p style="margin:0 0 12px;font-size:0.8rem;color:#888;">Drag the text on the canvas to reposition.</p>
+
+            <!-- Action Buttons -->
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+              <button id="dtGenerateBtn" class="primary dt-action-btn" style="flex:1;">Generate Tag</button>
+              <button id="dtSendToSlicerBtn" class="dt-action-btn" style="flex:1;" disabled title="Generate first">Send to Slicer</button>
+            </div>
+            <button id="dtAddBatchBtn" class="dt-action-btn secondary" style="width:100%;">+ Add to Batch Queue</button>
+
+            <!-- Status -->
+            <div id="dtStatus" class="dt-status" style="margin-top:12px;"></div>
+          </div>
+
+          <!-- CENTER: Canvas Preview -->
+          <div class="dt-panel dt-panel-center">
+            <div id="dt3DContainer" style="width:100%;height:100%;border-radius:4px;overflow:hidden;"></div>
+          </div>
+
+          <!-- RIGHT PANEL: Batch Queue + History -->
+          <div class="dt-panel dt-panel-right">
+            <!-- Batch Queue -->
+            <div style="margin-bottom:20px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <h3 style="margin:0;flex:1;">Batch Queue <span id="dtBatchCount" style="font-size:0.8rem;color:#888;"></span></h3>
+                <button id="dtBatchClearBtn" class="dt-btn-small">Clear</button>
+              </div>
+              <div id="dtBatchList">
+                <div class="dt-empty">Queue empty. Add tags with "+ Add to Batch".</div>
+              </div>
+              <button id="dtBatchGenerateBtn" class="primary dt-action-btn" style="width:100%;margin-top:8px;">
+                Generate All &amp; Export STLs
+              </button>
+            </div>
+
+            <!-- Divider -->
+            <hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;" />
+
+            <!-- History -->
+            <h3 style="margin:0 0 8px;">Recent Tags</h3>
+            <div id="dtHistoryList" style="overflow-y:auto;flex:1;">
+              <div class="dt-empty">No tags generated yet.</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
     </main>
 
     <!-- STL 3D Preview Modal -->
@@ -7982,6 +8077,7 @@
     <script src="./apparel-mockup-view.js"></script>
     <script src="./build-plate-view.js"></script>
     <script src="./etsy-listings-view.js"></script>
+    <script src="./dog-tag-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>

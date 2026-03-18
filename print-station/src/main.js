@@ -11,6 +11,7 @@ const { LocalCatalogDB } = require('./local-db');
 const { PrinterFleetDB } = require('./printer-fleet-db');
 const { PrinterService } = require('./printer-service');
 const chokidar = require('chokidar');
+const { generateDogTag, getShapeGeometry, getAllShapeGeometry, loadShapesConfig, saveShapesConfig, autoFontSize, DEFAULTS: DOG_TAG_DEFAULTS, SHAPE_DEFAULTS } = require('./generate_dog_tag_v2');
 let autoUpdater = null;
 let tesseractWorker = null;
 
@@ -23,6 +24,7 @@ sharp.concurrency(2);
 let updateState = {
   checking: false,
   available: false,
+  downloading: false,
   downloaded: false,
   error: null,
   progress: null,
@@ -43,6 +45,8 @@ function initAutoUpdater(win) {
     autoUpdater = require('electron-updater').autoUpdater;
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
+    // Skip code signature verification — builds are unsigned
+    autoUpdater.verifyUpdateCodeSignature = false;
   } catch (err) {
     console.error('[AutoUpdater] Failed to initialize:', err.message);
     return; // Don't set up events if module failed to load
@@ -56,13 +60,13 @@ function initAutoUpdater(win) {
 
   autoUpdater.on('update-available', (info) => {
     console.log('[AutoUpdater] Update available:', info.version);
-    updateState = { ...updateState, checking: false, available: true, version: info.version };
+    updateState = { ...updateState, checking: false, available: true, downloading: true, version: info.version };
     sendUpdateStatus(win);
   });
 
   autoUpdater.on('update-not-available', (info) => {
     console.log('[AutoUpdater] No update available. Current:', info.version);
-    updateState = { ...updateState, checking: false, available: false };
+    updateState = { ...updateState, checking: false, available: false, downloading: false };
     sendUpdateStatus(win);
   });
 
@@ -74,7 +78,7 @@ function initAutoUpdater(win) {
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[AutoUpdater] Update downloaded:', info.version);
-    updateState = { ...updateState, downloaded: true, progress: null, version: info.version };
+    updateState = { ...updateState, downloading: false, downloaded: true, progress: null, version: info.version };
     sendUpdateStatus(win);
 
     // Notify user
@@ -95,7 +99,7 @@ function initAutoUpdater(win) {
 
   autoUpdater.on('error', (err) => {
     console.error('[AutoUpdater] Error:', err.message);
-    updateState = { ...updateState, checking: false, error: err.message };
+    updateState = { ...updateState, checking: false, downloading: false, error: err.message };
     sendUpdateStatus(win);
   });
 
@@ -7493,6 +7497,400 @@ Return ONLY valid JSON, nothing else:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates)
     });
+    return resp.json();
+  });
+
+  // ============================================================================
+  // DOG TAG GENERATOR API (BRCC Custom Pet Dog Tags)
+  // ============================================================================
+
+  const DOG_TAG_MAX_NAME_LEN = 12;
+  const dogTagBaseDir = () => path.join(app.getPath('userData'), 'dog-tags');
+  const dogTagBatchFile = () => path.join(dogTagBaseDir(), 'batch-queue.json');
+  const dogTagConfigFile = () => path.join(dogTagBaseDir(), 'tag_shapes.json');
+  const dogTagTagsDir = () => { const d = path.join(dogTagBaseDir(), 'tags'); fs.mkdirSync(d, { recursive: true }); return d; };
+
+  // Load/cache shapes config (merges user config with built-in defaults)
+  let _shapesConfigCache = null;
+  function getDogTagShapesConfig(reload = false) {
+    if (!_shapesConfigCache || reload) {
+      _shapesConfigCache = loadShapesConfig(dogTagConfigFile());
+    }
+    return _shapesConfigCache;
+  }
+
+  // Resolve the blank STL path for a shape (if it exists)
+  function resolveBlankStl(shapeId) {
+    const cfg = getDogTagShapesConfig();
+    const shapeCfg = cfg[shapeId];
+    if (!shapeCfg || !shapeCfg.stlFile) return null;
+    const stlPath = path.isAbsolute(shapeCfg.stlFile)
+      ? shapeCfg.stlFile
+      : path.join(dogTagTagsDir(), shapeCfg.stlFile);
+    return fs.existsSync(stlPath) ? stlPath : null;
+  }
+
+  function getDogTagDir(subdir) {
+    const base = path.join(app.getPath('userData'), 'dog-tags', subdir);
+    fs.mkdirSync(base, { recursive: true });
+    return base;
+  }
+
+  // Helper: find openscad executable (check PATH, then common install locations)
+  function findOpenscadPath() {
+    // Try PATH first
+    try {
+      cp.execSync('openscad --version', { timeout: 5000, stdio: 'pipe' });
+      return 'openscad';
+    } catch (_) {}
+    // Common Windows install locations
+    const candidates = [
+      'C:\\Program Files\\OpenSCAD\\openscad.com',
+      'C:\\Program Files\\OpenSCAD\\openscad.exe',
+      'C:\\Program Files (x86)\\OpenSCAD\\openscad.com',
+      'C:\\Program Files (x86)\\OpenSCAD\\openscad.exe',
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) return p;
+    }
+    return null;
+  }
+
+  let _openscadPath = undefined; // cache
+  function getOpenscadPath() {
+    if (_openscadPath === undefined) _openscadPath = findOpenscadPath();
+    return _openscadPath;
+  }
+
+  // Helper: try to render SCAD to STL via openscad CLI
+  function renderScadToStl(scadPath, stlPath) {
+    const oscad = getOpenscadPath();
+    if (!oscad) return false;
+    try {
+      cp.execSync(`"${oscad}" -o "${stlPath}" "${scadPath}"`, { timeout: 120000, stdio: 'pipe' });
+      return fs.existsSync(stlPath);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isOpenscadAvailable() {
+    return !!getOpenscadPath();
+  }
+
+  // Generate SCAD files (+ STL if openscad available)
+  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz }) => {
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      throw new Error('Pet name is required');
+    }
+
+    const cleanName = name.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, DOG_TAG_MAX_NAME_LEN);
+    if (cleanName.length === 0) throw new Error('Name must contain alphanumeric characters');
+
+    const safeShape = shape.toLowerCase().trim();
+    const shapesConfig = getDogTagShapesConfig();
+    if (!shapesConfig[safeShape] && !SHAPE_DEFAULTS[safeShape]) {
+      throw new Error(`Invalid shape: "${safeShape}"`);
+    }
+
+    const jobId = `dogtag_${safeShape}_${cleanName}_${Date.now()}`;
+    const outputDir = getDogTagDir(path.join('scad', jobId));
+
+    const shapeCfg = shapesConfig[safeShape] || {};
+    const baseStlPath = resolveBlankStl(safeShape);
+
+    const options = {};
+    if (textCx !== undefined && textCx !== null) options.textCx = textCx;
+    if (textCy !== undefined && textCy !== null) options.textCy = textCy;
+    if (textSz !== undefined && textSz !== null) options.textSz = textSz;
+
+    const result = await generateDogTag({
+      name: cleanName,
+      shape: safeShape,
+      baseStlPath,
+      outputDir,
+      shapeCfg,
+      options,
+    });
+
+    // Try to render STLs via openscad CLI
+    let stlResults = { rendered: false, baseStl: null, textStl: null };
+    if (isOpenscadAvailable()) {
+      const stlDir = getDogTagDir('stl-queue');
+      const baseStl = result.baseSCAD.replace('.scad', '.stl');
+      const textStl = result.textSCAD.replace('.scad', '.stl');
+
+      const baseOk = renderScadToStl(result.baseSCAD, baseStl);
+      const textOk = renderScadToStl(result.textSCAD, textStl);
+
+      if (baseOk && textOk) {
+        const qBase = path.join(stlDir, path.basename(baseStl));
+        const qText = path.join(stlDir, path.basename(textStl));
+        fs.copyFileSync(baseStl, qBase);
+        fs.copyFileSync(textStl, qText);
+        stlResults = { rendered: true, baseStl: qBase, textStl: qText };
+      }
+    }
+
+    return {
+      jobId,
+      petName: cleanName,
+      shape: safeShape,
+      mode: result.mode,
+      colors,
+      textPosition: { textCx: options.textCx ?? null, textCy: options.textCy ?? null, textSz: options.textSz ?? null },
+      files: {
+        baseScad: result.baseSCAD,
+        textScad: result.textSCAD,
+        baseStl: stlResults.baseStl,
+        textStl: stlResults.textStl,
+      },
+      status: stlResults.rendered ? 'ready_to_print' : 'scad_generated',
+      printNotes: result.printNotes,
+      queueHint: {
+        printer: 'Any Kobra 3',
+        layerHeight: 0.15,
+        filament: { base: colors.base || 'white', insert: colors.insert || 'black' },
+        printOrder: ['Print base tag first', 'Swap filament color', 'Print text insert', 'Press insert into pocket'],
+      }
+    };
+  });
+
+  // Shape metadata including geometry for canvas rendering
+  ipcMain.handle('dog-tag:shapes', () => {
+    const shapesConfig = getDogTagShapesConfig();
+    const descs = {
+      bone: 'Traditional double-knob bone', shield: 'Bold angular badge',
+      heart: 'Clean heart silhouette', paw: 'Round tag with paw emboss',
+      hydrant: 'Novelty hydrant shape', star: '5-point star with inset detail'
+    };
+    const shapes = Object.keys(shapesConfig).map(id => {
+      const cfg = shapesConfig[id];
+      const geo = getShapeGeometry(id);
+      // Override geometry with config values if present
+      if (geo && cfg) {
+        if (cfg.textXOffset !== undefined) geo.textCx = cfg.textXOffset;
+        if (cfg.textYOffset !== undefined) geo.textCy = cfg.textYOffset;
+        if (cfg.fontSize !== undefined && cfg.fontSize !== null) geo.textSz = cfg.fontSize;
+        if (cfg.thickness !== undefined) geo.thickness = cfg.thickness;
+        if (cfg.pocketDepth !== undefined) geo.pocketDepth = cfg.pocketDepth;
+      }
+      const hasBlankStl = !!resolveBlankStl(id);
+      return {
+        id,
+        label: cfg.label || id.charAt(0).toUpperCase() + id.slice(1),
+        desc: cfg.notes || descs[id] || '',
+        geometry: geo,
+        hasBlankStl,
+      };
+    });
+    return { shapes, defaults: DOG_TAG_DEFAULTS, tagsDir: dogTagTagsDir() };
+  });
+
+  // Check if openscad is available
+  ipcMain.handle('dog-tag:openscad-check', () => {
+    return { available: isOpenscadAvailable() };
+  });
+
+  ipcMain.handle('dog-tag:queue', () => {
+    const stlDir = getDogTagDir('stl-queue');
+    const files = fs.readdirSync(stlDir).filter(f => f.endsWith('.stl') || f.endsWith('.scad'));
+    return { count: files.length, files };
+  });
+
+  ipcMain.handle('dog-tag:history', () => {
+    const scadDir = getDogTagDir('scad');
+    if (!fs.existsSync(scadDir)) return { jobs: [] };
+    const dirs = fs.readdirSync(scadDir).filter(d => d.startsWith('dogtag_'));
+    const jobs = dirs.map(d => {
+      const parts = d.split('_');
+      return { jobId: d, shape: parts[1], name: parts[2], timestamp: parseInt(parts[3]) || 0 };
+    }).sort((a, b) => b.timestamp - a.timestamp);
+    return { jobs };
+  });
+
+  ipcMain.handle('dog-tag:openOutput', async (_event, jobId) => {
+    const dir = path.join(getDogTagDir('scad'), jobId);
+    if (fs.existsSync(dir)) {
+      shell.openPath(dir);
+      return { opened: true };
+    }
+    return { opened: false, error: 'Job directory not found' };
+  });
+
+  // ── Batch queue: hold multiple tags for batch printing ──
+  function loadBatchQueue() {
+    try {
+      const f = dogTagBatchFile();
+      if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf8'));
+    } catch (_) {}
+    return [];
+  }
+
+  function saveBatchQueue(queue) {
+    const dir = path.dirname(dogTagBatchFile());
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(dogTagBatchFile(), JSON.stringify(queue, null, 2));
+  }
+
+  ipcMain.handle('dog-tag:batch:list', () => loadBatchQueue());
+
+  ipcMain.handle('dog-tag:batch:add', (_event, item) => {
+    const queue = loadBatchQueue();
+    const entry = {
+      id: `dt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: (item.name || '').trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, DOG_TAG_MAX_NAME_LEN),
+      shape: item.shape || 'bone',
+      colors: item.colors || {},
+      textCx: item.textCx ?? null,
+      textCy: item.textCy ?? null,
+      textSz: item.textSz ?? null,
+      addedAt: Date.now(),
+    };
+    queue.push(entry);
+    saveBatchQueue(queue);
+    return { queue, added: entry };
+  });
+
+  ipcMain.handle('dog-tag:batch:remove', (_event, id) => {
+    let queue = loadBatchQueue();
+    queue = queue.filter(e => e.id !== id);
+    saveBatchQueue(queue);
+    return { queue };
+  });
+
+  ipcMain.handle('dog-tag:batch:clear', () => {
+    saveBatchQueue([]);
+    return { queue: [] };
+  });
+
+  // Generate all batch items, render STLs, upload to slicer catalog
+  ipcMain.handle('dog-tag:batch:generate-all', async (_event) => {
+    const queue = loadBatchQueue();
+    if (!queue.length) throw new Error('Batch queue is empty');
+    if (!isOpenscadAvailable()) throw new Error('OpenSCAD is required for STL generation. Install it and add to PATH.');
+
+    const shapesConfig = getDogTagShapesConfig();
+    const results = [];
+    const stlDir = getDogTagDir('stl-queue');
+
+    for (const item of queue) {
+      const jobId = `dogtag_${item.shape}_${item.name}_${Date.now()}`;
+      const outputDir = getDogTagDir(path.join('scad', jobId));
+      const shapeCfg = shapesConfig[item.shape] || {};
+      const baseStlPath = resolveBlankStl(item.shape);
+      const options = {};
+      if (item.textCx !== null) options.textCx = item.textCx;
+      if (item.textCy !== null) options.textCy = item.textCy;
+      if (item.textSz !== null) options.textSz = item.textSz;
+
+      const result = await generateDogTag({
+        name: item.name,
+        shape: item.shape,
+        baseStlPath,
+        outputDir,
+        shapeCfg,
+        options,
+      });
+
+      // Render STLs
+      const baseStl = result.baseSCAD.replace('.scad', '.stl');
+      const textStl = result.textSCAD.replace('.scad', '.stl');
+      renderScadToStl(result.baseSCAD, baseStl);
+      renderScadToStl(result.textSCAD, textStl);
+
+      const qBase = path.join(stlDir, path.basename(baseStl));
+      const qText = path.join(stlDir, path.basename(textStl));
+      if (fs.existsSync(baseStl)) fs.copyFileSync(baseStl, qBase);
+      if (fs.existsSync(textStl)) fs.copyFileSync(textStl, qText);
+
+      results.push({
+        batchId: item.id,
+        jobId,
+        name: item.name,
+        shape: item.shape,
+        baseStl: fs.existsSync(qBase) ? qBase : null,
+        textStl: fs.existsSync(qText) ? qText : null,
+      });
+    }
+
+    // Clear batch after generation
+    saveBatchQueue([]);
+    return { results, count: results.length };
+  });
+
+  // Open the tags folder in file explorer (for dropping in blank STLs)
+  ipcMain.handle('dog-tag:open-tags-folder', async () => {
+    const dir = dogTagTagsDir();
+    shell.openPath(dir);
+    return { opened: true, path: dir };
+  });
+
+  // Import a blank STL via file dialog
+  ipcMain.handle('dog-tag:import-blank', async (_event, shapeId) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Select Blank STL for ' + (shapeId || 'tag shape'),
+      filters: [{ name: 'STL Files', extensions: ['stl'] }],
+      properties: ['openFile'],
+    });
+    if (canceled || !filePaths.length) return { imported: false };
+
+    const srcPath = filePaths[0];
+    const destName = (shapeId || path.basename(srcPath, '.stl')) + '_blank.stl';
+    const destPath = path.join(dogTagTagsDir(), destName);
+    fs.copyFileSync(srcPath, destPath);
+
+    // Update shapes config
+    const shapesConfig = getDogTagShapesConfig(true);
+    if (!shapesConfig[shapeId]) {
+      shapesConfig[shapeId] = { label: shapeId.charAt(0).toUpperCase() + shapeId.slice(1) };
+    }
+    shapesConfig[shapeId].stlFile = destName;
+    shapesConfig[shapeId].hasBlankStl = true;
+    saveShapesConfig(dogTagConfigFile(), shapesConfig);
+    _shapesConfigCache = null; // invalidate cache
+
+    return { imported: true, stlFile: destName, path: destPath };
+  });
+
+  // Load a blank STL file as base64 for Three.js preview
+  ipcMain.handle('dog-tag:load-blank-stl', async (_event, shapeId) => {
+    const stlPath = resolveBlankStl(shapeId);
+    if (!stlPath) return { found: false };
+    const data = fs.readFileSync(stlPath);
+    return { found: true, base64: data.toString('base64'), path: stlPath };
+  });
+
+  // Send a single generated STL to the slicer catalog
+  ipcMain.handle('dog-tag:send-to-slicer', async (_event, { stlPath, name, category }) => {
+    if (!stlPath || !fs.existsSync(stlPath)) {
+      throw new Error('STL file not found: ' + (stlPath || 'none'));
+    }
+    // Use the same upload mechanism as slicer:catalog:create
+    const { fetch: fetchFn } = await ensureFetch();
+    const settings = getSettings();
+    const serverUrl = settings.serverUrl || 'https://store.swayzecustomvinyl.com';
+    const apiKey = settings.slicerApiKey || '';
+
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(stlPath));
+    formData.append('name', name || path.basename(stlPath, '.stl'));
+    formData.append('category', category || 'Dog Tags');
+
+    const headers = formData.getHeaders();
+    if (apiKey) headers['x-api-key'] = apiKey;
+
+    const resp = await fetchFn(`${serverUrl}/api/slicer/catalog`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`Slicer upload failed (${resp.status}): ${txt}`);
+    }
+
     return resp.json();
   });
 }
