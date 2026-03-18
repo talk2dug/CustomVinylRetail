@@ -90,6 +90,7 @@ const { handleSlicerRoute } = require('./slicer-server');
 const { handleQuoteRoute } = require('./quote-server');
 const { handleFinanceRoute } = require('./finance-server');
 const { handleFootageRoute } = require('./footage-server');
+const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
@@ -110,6 +111,7 @@ const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
 const aiSalesAgent = require('./modules/ai-sales-agent');
 const telegramPrinterBot = require('./modules/telegram-printer-bot');
 const printMonitor = require('./modules/print-monitor');
+const diskWatcher = require('./modules/disk-watcher');
 const marketingTeam = require('./modules/marketing-team');
 const shopifyOrderSync = require('./modules/shopify-order-sync');
 const salesTeam = require('./modules/sales-team');
@@ -3908,11 +3910,44 @@ const requestHandler = async (req, res) => {
       const headers = { 'Content-Type': req.headers['content-type'] || 'application/json' };
       if (process.env.INTERNAL_API_KEY) headers['X-API-Key'] = process.env.INTERNAL_API_KEY;
 
-      const fetchOpts = { method: req.method, headers, signal: AbortSignal.timeout(120000) };
+      // Longer timeout for print start (leveling can take minutes)
+      const timeout = targetPath.includes('/3d/print/start') ? 600000 : 120000;
+      const fetchOpts = { method: req.method, headers, signal: AbortSignal.timeout(timeout) };
 
       if (req.method === 'POST' || req.method === 'PUT') {
         const { parseBody: parseB } = require('./utils/http');
         const body = await parseB(req);
+
+        // For print start: inject gcode as base64 so Pi has a local copy for re-upload after leveling
+        if (targetPath === '/api/3d/print/start' && body.filename && !body.gcode_base64) {
+          try {
+            // Try file_path first (if it's a VPS path)
+            if (body.file_path && fs.existsSync(body.file_path)) {
+              body.gcode_base64 = fs.readFileSync(body.file_path).toString('base64');
+              console.log(`[PrintServerProxy] Injected gcode_base64 (${Math.round(body.gcode_base64.length / 1024)}KB) from file_path`);
+            } else {
+              // Fallback: search gcode cache directories for the filename
+              const gcodeBaseDir = path.join(__dirname, '..', 'data', 'gcode-cache');
+              const modelDirs = fs.existsSync(gcodeBaseDir) ? fs.readdirSync(gcodeBaseDir).filter(d => fs.statSync(path.join(gcodeBaseDir, d)).isDirectory()) : [];
+              let found = false;
+              for (const modelDir of modelDirs) {
+                const gcodeFile = path.join(gcodeBaseDir, modelDir, body.filename);
+                if (fs.existsSync(gcodeFile)) {
+                  body.gcode_base64 = fs.readFileSync(gcodeFile).toString('base64');
+                  console.log(`[PrintServerProxy] Injected gcode_base64 (${Math.round(body.gcode_base64.length / 1024)}KB) from cache ${modelDir}/${body.filename}`);
+                  found = true;
+                  break;
+                }
+              }
+            }
+            if (!body.gcode_base64 && !found) {
+              console.warn(`[PrintServerProxy] Could not find gcode for ${body.filename} — Pi will rely on previously uploaded file`);
+            }
+          } catch (e) {
+            console.warn('[PrintServerProxy] Gcode injection failed:', e.message);
+          }
+        }
+
         fetchOpts.body = JSON.stringify(body);
       }
 
@@ -9732,6 +9767,17 @@ Keep it concise and actionable.`;
     if (!isFileServe && !requireInternalKey(req, res)) return;
     handleFootageRoute(parsedUrl.pathname, req, res, db).catch(err => {
       console.error('[Footage API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // TikTok Video Assembler API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/tiktok-videos')) {
+    const isServe = parsedUrl.pathname.match(/\/api\/tiktok-videos\/[^/]+\.mp4$/);
+    if (!isServe && !requireInternalKey(req, res)) return;
+    handleTikTokVideoRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[TikTok Video API Error]', err);
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;
@@ -21347,6 +21393,17 @@ if (require.main === module) {
       console.log('[Server] AI Print Monitor started');
     } catch (err) {
       console.error('[Server] Failed to start print monitor:', err.message);
+    }
+
+    // Disk watcher — auto-clean root partition when usage gets high
+    try {
+      const telegram = require('./lib/telegram-notifier');
+      diskWatcher.init({
+        notify: (text) => telegram.sendMessage(text)
+      });
+      console.log('[Server] Disk watcher started');
+    } catch (err) {
+      console.error('[Server] Failed to start disk watcher:', err.message);
     }
 
     // Start abandoned cart recovery processor (runs every 15 minutes)

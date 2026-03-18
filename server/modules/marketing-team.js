@@ -17,6 +17,7 @@ const https = require('https');
 const Database = require('better-sqlite3');
 const shopifyAnalytics = require('./shopify-analytics');
 const ollamaClient = require('../lib/ollama-client');
+const tiktokAssembler = require('./tiktok-video-assembler');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const DATA_DIR = path.join(APP_ROOT, 'data');
@@ -1062,6 +1063,8 @@ function startScheduler(db = _db) {
                   )
                 );
               }
+              // Generate daily TikTok after weekly meeting too
+              await generateDailyTikTok(db);
             }
           } else {
             // Tue-Fri: daily standup
@@ -1074,6 +1077,8 @@ function startScheduler(db = _db) {
                 )
               );
             }
+            // Generate daily TikTok after standup
+            await generateDailyTikTok(db);
           }
         }
       }
@@ -1089,6 +1094,126 @@ function startScheduler(db = _db) {
 
   // Prevent timer from blocking process exit
   if (_schedulerTimer.unref) _schedulerTimer.unref();
+}
+
+// ============================================================================
+// TIKTOK VIDEO GENERATION
+// ============================================================================
+
+const TIKTOK_TEMPLATES_ROTATION = ['product-reveal', 'behind-the-scenes', 'quick-showcase'];
+let _lastTikTokDate = null;
+
+/**
+ * Generate a daily TikTok video from footage library clips.
+ * Rotates through templates, auto-selects a product, and sends
+ * a notification via Telegram with a link to the video.
+ */
+async function generateDailyTikTok(db) {
+  try {
+    // Check if we already generated one today
+    const today = todayEasternStr();
+    if (_lastTikTokDate === today) {
+      console.log('[MarketingTeam] TikTok already generated today, skipping');
+      return null;
+    }
+
+    // Check footage library has clips
+    const clipCount = db.prepare('SELECT COUNT(*) as cnt FROM footage_library').get().cnt;
+    if (clipCount < 2) {
+      console.log('[MarketingTeam] Not enough footage clips for TikTok generation');
+      return null;
+    }
+
+    // Rotate through templates based on day
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+    const templateKey = TIKTOK_TEMPLATES_ROTATION[dayOfYear % TIKTOK_TEMPLATES_ROTATION.length];
+
+    // Hook/CTA text variations
+    const hooks = [
+      'Watch this transform...',
+      'How we make custom prints',
+      'From blank to beautiful',
+      'The process is satisfying',
+      'Handmade in Asheville, NC',
+      'Small batch. Big quality.',
+      'See how it\'s made'
+    ];
+    const ctas = [
+      'BlueRidgeCustomCo.com',
+      'Link in bio!',
+      'Shop the collection',
+      'Order yours today',
+      'Made in Asheville, NC'
+    ];
+
+    const hookText = hooks[dayOfYear % hooks.length];
+    const ctaText = ctas[dayOfYear % ctas.length];
+
+    console.log(`[MarketingTeam] Generating daily TikTok — template: ${templateKey}`);
+
+    const result = tiktokAssembler.assembleVideo(db, {
+      template: templateKey,
+      texts: {
+        hook: hookText,
+        cta: ctaText
+      }
+    });
+
+    _lastTikTokDate = today;
+
+    // Update content creator status
+    state.teamMembers.contentCreator.lastPost = new Date().toISOString();
+    state.teamMembers.contentCreator.lastVideo = result.outputUrl;
+    state.teamMembers.contentCreator.lastProduct = result.product;
+    saveState();
+
+    // Journal entry
+    addJournalEntry({
+      type: 'action',
+      category: 'content',
+      action: `Generated TikTok video: ${result.templateName} for "${result.product || 'auto'}" (${result.duration}s, ${result.segments.length} segments)`,
+      context: `Template: ${templateKey}, URL: ${result.outputUrl}`,
+      tags: ['tiktok', 'video', 'content']
+    });
+
+    // Build Telegram notification
+    const videoUrl = `https://blueridgecustomco.com${result.outputUrl}`;
+    const segList = result.segments.map(s =>
+      `  • ${s.role}: ${s.clipName} (${s.duration}s)${s.text ? ' — "' + s.text + '"' : ''}`
+    ).join('\n');
+
+    const notification = [
+      `🎬 <b>Daily TikTok Generated</b>`,
+      ``,
+      `<b>Template:</b> ${result.templateName}`,
+      `<b>Product:</b> ${result.product || 'Auto-selected'}`,
+      `<b>Duration:</b> ${result.duration}s`,
+      ``,
+      `<b>Segments:</b>`,
+      segList,
+      ``,
+      `<b>Review:</b> ${videoUrl}`,
+      ``,
+      `<i>Ready for posting — approve or regenerate via /code</i>`
+    ].join('\n');
+
+    await sendTelegram(notification, 'HTML').catch(e =>
+      console.error('[MarketingTeam] Failed to send TikTok notification:', e.message)
+    );
+
+    console.log(`[MarketingTeam] TikTok generated: ${result.outputUrl} (${result.duration}s)`);
+    return result;
+  } catch (err) {
+    console.error('[MarketingTeam] TikTok generation error:', err.message);
+    addJournalEntry({
+      type: 'observation',
+      category: 'content',
+      action: `TikTok generation failed: ${err.message}`,
+      context: 'Daily auto-generation',
+      tags: ['tiktok', 'error']
+    });
+    return null;
+  }
 }
 
 // ============================================================================
@@ -1256,6 +1381,7 @@ module.exports = {
   init,
   generateStandup,
   generateWeeklyMeeting,
+  generateDailyTikTok,
   addJournalEntry,
   reviewJournalOutcomes,
   getTeamStatus,
