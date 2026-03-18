@@ -4834,6 +4834,13 @@ textarea:focus {
 }
 .dt-shape-btn-label { font-size: 0.7rem; font-weight: 600; color: #555; }
 .dt-shape-btn.selected .dt-shape-btn-label { color: var(--accent, #2563eb); }
+.dt-shape-btn { position: relative; }
+.dt-stl-badge {
+  position: absolute; top: 2px; right: 2px;
+  font-size: 0.5rem; font-weight: 700; color: #fff;
+  background: #22c55e; padding: 1px 3px; border-radius: 3px;
+  line-height: 1;
+}
 
 /* Action buttons */
 .dt-action-btn {

@@ -43,6 +43,9 @@ const DT = {
   mouse: new (typeof THREE !== 'undefined' ? THREE.Vector2 : Object)(),
   tagTopPlane: null,
   container: null,
+  // v2: STL blank geometry cache { shapeId: THREE.BufferGeometry }
+  stlCache: {},
+  tagsDir: null,
 };
 
 const COLOR_PRESETS = [
@@ -63,7 +66,51 @@ const BEVEL_SIZE = 0.4;
 const BEVEL_SEGMENTS = 3;
 
 // ═══════════════════════════════════════════════════════════════
-// THREE.JS SHAPE PROFILES — matches OpenSCAD geometry
+// STL BLANK LOADING (v2 — loads actual Tinkercad blanks)
+// ═══════════════════════════════════════════════════════════════
+
+async function dtLoadBlankStl(shapeId) {
+  if (DT.stlCache[shapeId]) return DT.stlCache[shapeId]; // already cached
+  if (typeof THREE === 'undefined' || typeof THREE.STLLoader === 'undefined') return null;
+
+  try {
+    const result = await window.printStation.dogTag.loadBlankStl(shapeId);
+    if (!result || !result.found) return null;
+
+    const binaryStr = atob(result.base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+    const loader = new THREE.STLLoader();
+    const geometry = loader.parse(bytes.buffer);
+    geometry.computeVertexNormals();
+    // Center the geometry horizontally but keep Z base at 0
+    geometry.computeBoundingBox();
+    const bb = geometry.boundingBox;
+    const cx = (bb.max.x + bb.min.x) / 2;
+    const cy = (bb.max.y + bb.min.y) / 2;
+    const zMin = bb.min.z;
+    geometry.translate(-cx, -cy, -zMin);
+
+    DT.stlCache[shapeId] = geometry;
+    return geometry;
+  } catch (e) {
+    console.warn('[DogTag] Failed to load blank STL for', shapeId, e);
+    return null;
+  }
+}
+
+// Preload all available blank STLs
+async function dtPreloadBlanks() {
+  for (const shape of DT.shapes) {
+    if (shape.hasBlankStl) {
+      dtLoadBlankStl(shape.id); // fire and forget, will cache
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// THREE.JS SHAPE PROFILES — fallback when no blank STL exists
 // ═══════════════════════════════════════════════════════════════
 
 function dtCreateShapeProfile(shapeId) {
@@ -446,26 +493,10 @@ function dtBuildTag() {
   const baseColor = new THREE.Color(colors.base);
   const insertColor = new THREE.Color(colors.insert);
 
-  // ── Tag body ──
-  const profile = dtCreateShapeProfile(DT.selectedShape);
-
-  // Add ring hole as a hole in the shape
   const ringX = geo.ringX;
   const ringY = geo.ringY;
-  const holePath = new THREE.Path();
-  holePath.absarc(ringX, ringY, RING_HOLE_DIA / 2, 0, Math.PI * 2, true);
-  profile.holes.push(holePath);
+  const thickness = geo.thickness || TAG_THICKNESS;
 
-  const extrudeSettings = {
-    depth: TAG_THICKNESS,
-    bevelEnabled: true,
-    bevelThickness: BEVEL_SIZE,
-    bevelSize: BEVEL_SIZE,
-    bevelSegments: BEVEL_SEGMENTS,
-    curveSegments: 32,
-  };
-
-  const bodyGeo = new THREE.ExtrudeGeometry(profile, extrudeSettings);
   const bodyMat = new THREE.MeshPhysicalMaterial({
     color: baseColor,
     roughness: 0.35,
@@ -473,32 +504,61 @@ function dtBuildTag() {
     clearcoat: 0.2,
     clearcoatRoughness: 0.4,
   });
-  const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-  bodyMesh.castShadow = true;
-  bodyMesh.receiveShadow = true;
-  bodyMesh.name = 'tagBody';
-  DT.tagGroup.add(bodyMesh);
 
-  // ── Ring tab (extra circle for shapes that need it) ──
-  if (['paw', 'star', 'hydrant', 'shield'].includes(DT.selectedShape)) {
-    const tabProfile = new THREE.Shape();
-    tabProfile.absarc(0, 0, 5, 0, Math.PI * 2, false);
-    const tabHole = new THREE.Path();
-    tabHole.absarc(0, 0, RING_HOLE_DIA / 2, 0, Math.PI * 2, true);
-    tabProfile.holes.push(tabHole);
-    const tabGeo = new THREE.ExtrudeGeometry(tabProfile, {
-      depth: TAG_THICKNESS,
+  // ── Tag body: use STL blank if cached, otherwise fallback to shape profile ──
+  const stlGeo = DT.stlCache[DT.selectedShape];
+  if (stlGeo) {
+    // Use the actual blank STL geometry
+    const bodyMesh = new THREE.Mesh(stlGeo.clone(), bodyMat);
+    bodyMesh.castShadow = true;
+    bodyMesh.receiveShadow = true;
+    bodyMesh.name = 'tagBody';
+    DT.tagGroup.add(bodyMesh);
+  } else {
+    // Fallback: extruded 2D profile
+    const profile = dtCreateShapeProfile(DT.selectedShape);
+    const holePath = new THREE.Path();
+    holePath.absarc(ringX, ringY, RING_HOLE_DIA / 2, 0, Math.PI * 2, true);
+    profile.holes.push(holePath);
+
+    const extrudeSettings = {
+      depth: thickness,
       bevelEnabled: true,
-      bevelThickness: BEVEL_SIZE * 0.7,
-      bevelSize: BEVEL_SIZE * 0.7,
-      bevelSegments: 2,
-      curveSegments: 24,
-    });
-    const tabMesh = new THREE.Mesh(tabGeo, bodyMat.clone());
-    tabMesh.position.set(ringX, ringY, 0);
-    tabMesh.castShadow = true;
-    tabMesh.name = 'ringTab';
-    DT.tagGroup.add(tabMesh);
+      bevelThickness: BEVEL_SIZE,
+      bevelSize: BEVEL_SIZE,
+      bevelSegments: BEVEL_SEGMENTS,
+      curveSegments: 32,
+    };
+
+    const bodyGeo = new THREE.ExtrudeGeometry(profile, extrudeSettings);
+    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+    bodyMesh.castShadow = true;
+    bodyMesh.receiveShadow = true;
+    bodyMesh.name = 'tagBody';
+    DT.tagGroup.add(bodyMesh);
+
+    // Ring tab (only for fallback mode — STL blanks include tabs already)
+    const needsTab = geo.needsTab || ['paw', 'star', 'hydrant', 'shield'].includes(DT.selectedShape);
+    if (needsTab) {
+      const tabProfile = new THREE.Shape();
+      tabProfile.absarc(0, 0, 5, 0, Math.PI * 2, false);
+      const tabHole = new THREE.Path();
+      tabHole.absarc(0, 0, RING_HOLE_DIA / 2, 0, Math.PI * 2, true);
+      tabProfile.holes.push(tabHole);
+      const tabGeo = new THREE.ExtrudeGeometry(tabProfile, {
+        depth: thickness,
+        bevelEnabled: true,
+        bevelThickness: BEVEL_SIZE * 0.7,
+        bevelSize: BEVEL_SIZE * 0.7,
+        bevelSegments: 2,
+        curveSegments: 24,
+      });
+      const tabMesh = new THREE.Mesh(tabGeo, bodyMat.clone());
+      tabMesh.position.set(ringX, ringY, 0);
+      tabMesh.castShadow = true;
+      tabMesh.name = 'ringTab';
+      DT.tagGroup.add(tabMesh);
+    }
   }
 
   // ── Split ring (decorative) ──
@@ -509,7 +569,7 @@ function dtBuildTag() {
     metalness: 0.8,
   });
   const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-  ringMesh.position.set(ringX, ringY, TAG_THICKNESS / 2);
+  ringMesh.position.set(ringX, ringY, thickness / 2);
   ringMesh.rotation.x = Math.PI / 2;
   ringMesh.castShadow = true;
   ringMesh.name = 'splitRing';
@@ -689,18 +749,24 @@ function dtRenderShapePicker() {
 
   container.innerHTML = DT.shapes.map(s => `
     <button class="dt-shape-btn ${s.id === DT.selectedShape ? 'selected' : ''}"
-            data-shape="${s.id}" title="${s.desc}">
+            data-shape="${s.id}" title="${s.desc}${s.hasBlankStl ? ' (Custom STL)' : ' (Built-in)'}">
       <span class="dt-shape-btn-label">${s.label}</span>
+      ${s.hasBlankStl ? '<span class="dt-stl-badge">STL</span>' : ''}
     </button>
   `).join('');
 
   container.querySelectorAll('.dt-shape-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       DT.selectedShape = btn.dataset.shape;
       DT.textCx = null;
       DT.textCy = null;
       DT.textSz = null;
       dtRenderShapePicker();
+      // Load blank STL if not cached yet
+      const shapeInfo = DT.shapes.find(s => s.id === btn.dataset.shape);
+      if (shapeInfo && shapeInfo.hasBlankStl && !DT.stlCache[btn.dataset.shape]) {
+        await dtLoadBlankStl(btn.dataset.shape);
+      }
       dtBuildTag();
     });
   });
@@ -934,9 +1000,12 @@ async function initDogTagsView() {
     const data = await window.printStation.dogTag.getShapes();
     DT.shapes = data.shapes || [];
     DT.defaults = data.defaults || {};
+    DT.tagsDir = data.tagsDir || null;
     DT.shapes.forEach(s => {
       if (s.geometry) DT.shapeGeo[s.id] = s.geometry;
     });
+    // Preload blank STLs for shapes that have them
+    dtPreloadBlanks();
   } catch (e) {
     console.error('[DogTag] Failed to load shapes:', e);
   }
@@ -978,6 +1047,23 @@ async function initDogTagsView() {
   document.getElementById('dtBatchGenerateBtn')?.addEventListener('click', dtBatchGenerateAll);
   document.getElementById('dtBatchClearBtn')?.addEventListener('click', dtBatchClear);
   document.getElementById('dtResetPosBtn')?.addEventListener('click', dtResetTextPos);
+  document.getElementById('dtOpenTagsFolderBtn')?.addEventListener('click', () => {
+    window.printStation.dogTag.openTagsFolder();
+  });
+  document.getElementById('dtImportBlankBtn')?.addEventListener('click', async () => {
+    const result = await window.printStation.dogTag.importBlank(DT.selectedShape);
+    if (result && result.imported) {
+      dtSetStatus(`Imported blank STL for "${DT.selectedShape}". Reloading shapes...`, 'success');
+      // Invalidate cache and reload
+      delete DT.stlCache[DT.selectedShape];
+      const data = await window.printStation.dogTag.getShapes();
+      DT.shapes = data.shapes || [];
+      DT.shapes.forEach(s => { if (s.geometry) DT.shapeGeo[s.id] = s.geometry; });
+      await dtLoadBlankStl(DT.selectedShape);
+      dtRenderShapePicker();
+      dtBuildTag();
+    }
+  });
 
   // Render
   dtRenderShapePicker();

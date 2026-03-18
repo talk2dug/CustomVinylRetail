@@ -11,7 +11,7 @@ const { LocalCatalogDB } = require('./local-db');
 const { PrinterFleetDB } = require('./printer-fleet-db');
 const { PrinterService } = require('./printer-service');
 const chokidar = require('chokidar');
-const { generateDogTag, getShapeGeometry, getAllShapeGeometry, DEFAULTS: DOG_TAG_DEFAULTS } = require('./generate_dog_tag');
+const { generateDogTag, getShapeGeometry, getAllShapeGeometry, loadShapesConfig, saveShapesConfig, autoFontSize, DEFAULTS: DOG_TAG_DEFAULTS, SHAPE_DEFAULTS } = require('./generate_dog_tag_v2');
 let autoUpdater = null;
 let tesseractWorker = null;
 
@@ -7504,9 +7504,31 @@ Return ONLY valid JSON, nothing else:
   // DOG TAG GENERATOR API (BRCC Custom Pet Dog Tags)
   // ============================================================================
 
-  const DOG_TAG_VALID_SHAPES = ['bone', 'shield', 'heart', 'paw', 'hydrant', 'star'];
   const DOG_TAG_MAX_NAME_LEN = 12;
-  const dogTagBatchFile = () => path.join(app.getPath('userData'), 'dog-tags', 'batch-queue.json');
+  const dogTagBaseDir = () => path.join(app.getPath('userData'), 'dog-tags');
+  const dogTagBatchFile = () => path.join(dogTagBaseDir(), 'batch-queue.json');
+  const dogTagConfigFile = () => path.join(dogTagBaseDir(), 'tag_shapes.json');
+  const dogTagTagsDir = () => { const d = path.join(dogTagBaseDir(), 'tags'); fs.mkdirSync(d, { recursive: true }); return d; };
+
+  // Load/cache shapes config (merges user config with built-in defaults)
+  let _shapesConfigCache = null;
+  function getDogTagShapesConfig(reload = false) {
+    if (!_shapesConfigCache || reload) {
+      _shapesConfigCache = loadShapesConfig(dogTagConfigFile());
+    }
+    return _shapesConfigCache;
+  }
+
+  // Resolve the blank STL path for a shape (if it exists)
+  function resolveBlankStl(shapeId) {
+    const cfg = getDogTagShapesConfig();
+    const shapeCfg = cfg[shapeId];
+    if (!shapeCfg || !shapeCfg.stlFile) return null;
+    const stlPath = path.isAbsolute(shapeCfg.stlFile)
+      ? shapeCfg.stlFile
+      : path.join(dogTagTagsDir(), shapeCfg.stlFile);
+    return fs.existsSync(stlPath) ? stlPath : null;
+  }
 
   function getDogTagDir(subdir) {
     const base = path.join(app.getPath('userData'), 'dog-tags', subdir);
@@ -7566,12 +7588,16 @@ Return ONLY valid JSON, nothing else:
     if (cleanName.length === 0) throw new Error('Name must contain alphanumeric characters');
 
     const safeShape = shape.toLowerCase().trim();
-    if (!DOG_TAG_VALID_SHAPES.includes(safeShape)) {
-      throw new Error(`Invalid shape. Valid: ${DOG_TAG_VALID_SHAPES.join(', ')}`);
+    const shapesConfig = getDogTagShapesConfig();
+    if (!shapesConfig[safeShape] && !SHAPE_DEFAULTS[safeShape]) {
+      throw new Error(`Invalid shape: "${safeShape}"`);
     }
 
     const jobId = `dogtag_${safeShape}_${cleanName}_${Date.now()}`;
     const outputDir = getDogTagDir(path.join('scad', jobId));
+
+    const shapeCfg = shapesConfig[safeShape] || {};
+    const baseStlPath = resolveBlankStl(safeShape);
 
     const options = {};
     if (textCx !== undefined && textCx !== null) options.textCx = textCx;
@@ -7581,7 +7607,9 @@ Return ONLY valid JSON, nothing else:
     const result = await generateDogTag({
       name: cleanName,
       shape: safeShape,
+      baseStlPath,
       outputDir,
+      shapeCfg,
       options,
     });
 
@@ -7608,6 +7636,7 @@ Return ONLY valid JSON, nothing else:
       jobId,
       petName: cleanName,
       shape: safeShape,
+      mode: result.mode,
       colors,
       textPosition: { textCx: options.textCx ?? null, textCy: options.textCy ?? null, textSz: options.textSz ?? null },
       files: {
@@ -7629,20 +7658,33 @@ Return ONLY valid JSON, nothing else:
 
   // Shape metadata including geometry for canvas rendering
   ipcMain.handle('dog-tag:shapes', () => {
-    const shapes = DOG_TAG_VALID_SHAPES.map(id => {
+    const shapesConfig = getDogTagShapesConfig();
+    const descs = {
+      bone: 'Traditional double-knob bone', shield: 'Bold angular badge',
+      heart: 'Clean heart silhouette', paw: 'Round tag with paw emboss',
+      hydrant: 'Novelty hydrant shape', star: '5-point star with inset detail'
+    };
+    const shapes = Object.keys(shapesConfig).map(id => {
+      const cfg = shapesConfig[id];
       const geo = getShapeGeometry(id);
-      const labels = {
-        bone: 'Classic Bone', shield: 'Shield / Badge', heart: 'Heart',
-        paw: 'Paw Print', hydrant: 'Fire Hydrant', star: 'Sheriff Star'
+      // Override geometry with config values if present
+      if (geo && cfg) {
+        if (cfg.textXOffset !== undefined) geo.textCx = cfg.textXOffset;
+        if (cfg.textYOffset !== undefined) geo.textCy = cfg.textYOffset;
+        if (cfg.fontSize !== undefined && cfg.fontSize !== null) geo.textSz = cfg.fontSize;
+        if (cfg.thickness !== undefined) geo.thickness = cfg.thickness;
+        if (cfg.pocketDepth !== undefined) geo.pocketDepth = cfg.pocketDepth;
+      }
+      const hasBlankStl = !!resolveBlankStl(id);
+      return {
+        id,
+        label: cfg.label || id.charAt(0).toUpperCase() + id.slice(1),
+        desc: cfg.notes || descs[id] || '',
+        geometry: geo,
+        hasBlankStl,
       };
-      const descs = {
-        bone: 'Traditional double-knob bone', shield: 'Bold angular badge',
-        heart: 'Clean heart silhouette', paw: 'Round tag with paw emboss',
-        hydrant: 'Novelty hydrant shape', star: '5-point star with inset detail'
-      };
-      return { id, label: labels[id], desc: descs[id], geometry: geo };
     });
-    return { shapes, defaults: DOG_TAG_DEFAULTS };
+    return { shapes, defaults: DOG_TAG_DEFAULTS, tagsDir: dogTagTagsDir() };
   });
 
   // Check if openscad is available
@@ -7728,18 +7770,28 @@ Return ONLY valid JSON, nothing else:
     if (!queue.length) throw new Error('Batch queue is empty');
     if (!isOpenscadAvailable()) throw new Error('OpenSCAD is required for STL generation. Install it and add to PATH.');
 
+    const shapesConfig = getDogTagShapesConfig();
     const results = [];
     const stlDir = getDogTagDir('stl-queue');
 
     for (const item of queue) {
       const jobId = `dogtag_${item.shape}_${item.name}_${Date.now()}`;
       const outputDir = getDogTagDir(path.join('scad', jobId));
+      const shapeCfg = shapesConfig[item.shape] || {};
+      const baseStlPath = resolveBlankStl(item.shape);
       const options = {};
       if (item.textCx !== null) options.textCx = item.textCx;
       if (item.textCy !== null) options.textCy = item.textCy;
       if (item.textSz !== null) options.textSz = item.textSz;
 
-      const result = await generateDogTag({ name: item.name, shape: item.shape, outputDir, options });
+      const result = await generateDogTag({
+        name: item.name,
+        shape: item.shape,
+        baseStlPath,
+        outputDir,
+        shapeCfg,
+        options,
+      });
 
       // Render STLs
       const baseStl = result.baseSCAD.replace('.scad', '.stl');
@@ -7765,6 +7817,48 @@ Return ONLY valid JSON, nothing else:
     // Clear batch after generation
     saveBatchQueue([]);
     return { results, count: results.length };
+  });
+
+  // Open the tags folder in file explorer (for dropping in blank STLs)
+  ipcMain.handle('dog-tag:open-tags-folder', async () => {
+    const dir = dogTagTagsDir();
+    shell.openPath(dir);
+    return { opened: true, path: dir };
+  });
+
+  // Import a blank STL via file dialog
+  ipcMain.handle('dog-tag:import-blank', async (_event, shapeId) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Select Blank STL for ' + (shapeId || 'tag shape'),
+      filters: [{ name: 'STL Files', extensions: ['stl'] }],
+      properties: ['openFile'],
+    });
+    if (canceled || !filePaths.length) return { imported: false };
+
+    const srcPath = filePaths[0];
+    const destName = (shapeId || path.basename(srcPath, '.stl')) + '_blank.stl';
+    const destPath = path.join(dogTagTagsDir(), destName);
+    fs.copyFileSync(srcPath, destPath);
+
+    // Update shapes config
+    const shapesConfig = getDogTagShapesConfig(true);
+    if (!shapesConfig[shapeId]) {
+      shapesConfig[shapeId] = { label: shapeId.charAt(0).toUpperCase() + shapeId.slice(1) };
+    }
+    shapesConfig[shapeId].stlFile = destName;
+    shapesConfig[shapeId].hasBlankStl = true;
+    saveShapesConfig(dogTagConfigFile(), shapesConfig);
+    _shapesConfigCache = null; // invalidate cache
+
+    return { imported: true, stlFile: destName, path: destPath };
+  });
+
+  // Load a blank STL file as base64 for Three.js preview
+  ipcMain.handle('dog-tag:load-blank-stl', async (_event, shapeId) => {
+    const stlPath = resolveBlankStl(shapeId);
+    if (!stlPath) return { found: false };
+    const data = fs.readFileSync(stlPath);
+    return { found: true, base64: data.toString('base64'), path: stlPath };
   });
 
   // Send a single generated STL to the slicer catalog

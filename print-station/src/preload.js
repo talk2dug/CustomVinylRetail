@@ -697,6 +697,10 @@ contextBridge.exposeInMainWorld('printStation', {
     batchRemove: (id) => ipcRenderer.invoke('dog-tag:batch:remove', id),
     batchClear: () => ipcRenderer.invoke('dog-tag:batch:clear'),
     batchGenerateAll: () => ipcRenderer.invoke('dog-tag:batch:generate-all'),
+    // v2: Blank STL management
+    openTagsFolder: () => ipcRenderer.invoke('dog-tag:open-tags-folder'),
+    importBlank: (shapeId) => ipcRenderer.invoke('dog-tag:import-blank', shapeId),
+    loadBlankStl: (shapeId) => ipcRenderer.invoke('dog-tag:load-blank-stl', shapeId),
   },
 
   printQuotes: {
