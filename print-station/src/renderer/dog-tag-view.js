@@ -614,7 +614,8 @@ function dtBuildTextInsert(geo, insertColor, tagThickness) {
   const tsz = DT.textSz !== null ? DT.textSz : geo.textSz;
 
   // Render text to texture
-  const textData = dtCreateTextTexture(name, tsz, '#ffffff');
+  const insertHex = '#' + insertColor.getHexString();
+  const textData = dtCreateTextTexture(name, tsz, insertHex);
   const { texture, width: tw, height: th } = textData;
 
   // Pocket: slightly recessed darker area on tag top
