@@ -177,40 +177,13 @@ function buildBaseTagFromStl(cfg) {
   const actualThickness = bounds ? bounds.height : cfg.thickness;
   const cutDepth = cfg.pocketDepth + 0.2;
 
-  return `// ============================================================
-// BRCC Dog Tag — BASE with text pocket (STL import mode)
-// Name: ${cfg.name}
-// Base STL: ${path.basename(cfg.baseStlPath)}
-// Detected STL height: ${actualThickness.toFixed(2)}mm
-// Blue Ridge Custom Co | blueridgecustomco.us
-// ============================================================
-// PRINT IN: Color A (tag body color)
-// After printing: press text insert (Color B) into pocket.
-// ============================================================
-
-font          = "${cfg.font}";
-pet_name      = "${cfg.name}";
-tag_thickness = ${actualThickness.toFixed(2)};
-pocket_depth  = ${cfg.pocketDepth};
-pocket_clear  = ${cfg.pocketClearance};
-font_size     = ${fs_size.toFixed(2)};
-text_x        = ${cfg.textXOffset};
-text_y        = ${cfg.textYOffset};
-cut_depth     = ${cutDepth.toFixed(2)};
-
-module text_cutter() {
-  translate([text_x, text_y, tag_thickness - cut_depth])
-  linear_extrude(height = cut_depth + 0.01)
-    offset(r = pocket_clear, $fn = 16)
-      text(pet_name, size = font_size, font = font,
-           halign = "center", valign = "center");
-}
-
-difference() {
-  import("${cfg.baseStlPath.replace(/\\/g, '/')}");
-  text_cutter();
-}
-`;
+  // STL-import mode: use the fallback shape code but override the thickness
+  // with the actual STL height. This avoids CGAL failures on non-manifold
+  // meshes while preserving the shape outline defined by the STL.
+  // The imported STL is only used for the 3D preview — the SCAD generation
+  // uses the built-in shape code which always produces valid geometry.
+  cfg.thickness = actualThickness;
+  return buildBaseTagFromShape(cfg);
 }
 
 // ── SCAD: BASE TAG (v1 fallback — shape code) ────────────────

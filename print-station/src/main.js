@@ -7569,7 +7569,8 @@ Return ONLY valid JSON, nothing else:
     try {
       cp.execSync(`"${oscad}" -o "${stlPath}" "${scadPath}"`, { timeout: 120000, stdio: 'pipe' });
       return fs.existsSync(stlPath);
-    } catch (_) {
+    } catch (err) {
+      console.error(`[DogTag] OpenSCAD failed for ${path.basename(scadPath)}:`, err.stderr ? err.stderr.toString().slice(0, 500) : err.message);
       return false;
     }
   }
