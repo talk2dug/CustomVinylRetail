@@ -613,55 +613,28 @@ function dtBuildTextInsert(geo, insertColor, tagThickness) {
   const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
   const tsz = DT.textSz !== null ? DT.textSz : geo.textSz;
 
-  // Render text to texture
+  // Render text to canvas texture
   const insertHex = '#' + insertColor.getHexString();
   const textData = dtCreateTextTexture(name, tsz, insertHex);
   const { texture, width: tw, height: th } = textData;
 
-  // Pocket: slightly recessed darker area on tag top
-  const pocketPad = 1.5;
-  const pocketW = tw + pocketPad * 2;
-  const pocketH = th + pocketPad * 2;
-  const pocketGeo = new THREE.BoxGeometry(pocketW, pocketH, POCKET_DEPTH);
-  const colors = COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0];
-  const pocketMat = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(colors.base).multiplyScalar(0.85),
-    roughness: 0.5,
-    metalness: 0,
-  });
-  const pocketMesh = new THREE.Mesh(pocketGeo, pocketMat);
-  pocketMesh.position.set(tcx, tcy, tagThickness - POCKET_DEPTH / 2 + 0.01);
-  pocketMesh.name = 'pocket';
-  DT.tagGroup.add(pocketMesh);
-
-  // Insert slab: colored block that sits in the pocket
-  const insertGeo = new THREE.BoxGeometry(tw + 0.5, th + 0.5, INSERT_HEIGHT);
-  const insertMat = new THREE.MeshPhysicalMaterial({
-    color: insertColor,
-    roughness: 0.3,
-    metalness: 0,
-    clearcoat: 0.15,
-  });
-  const insertMesh = new THREE.Mesh(insertGeo, insertMat);
-  insertMesh.position.set(tcx, tcy, tagThickness - POCKET_DEPTH + INSERT_HEIGHT / 2 + 0.01);
-  insertMesh.name = 'insert';
-  DT.tagGroup.add(insertMesh);
-
-  // Text label on top of insert
+  // Single clean text plane — sits flush on the tag top surface
   const labelGeo = new THREE.PlaneGeometry(tw, th);
   const labelMat = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
     depthWrite: false,
-    side: THREE.FrontSide,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
   });
   const labelMesh = new THREE.Mesh(labelGeo, labelMat);
-  labelMesh.position.set(tcx, tcy, tagThickness - POCKET_DEPTH + INSERT_HEIGHT + 0.05);
+  labelMesh.position.set(tcx, tcy, tagThickness + 0.05);
   labelMesh.name = 'textLabel';
   DT.tagGroup.add(labelMesh);
 
   // Store reference for dragging
-  DT.textMesh = { pocket: pocketMesh, insert: insertMesh, label: labelMesh, width: tw, height: th };
+  DT.textMesh = { label: labelMesh, width: tw, height: th };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -740,10 +713,6 @@ function dtUpdateTextPosition() {
   const tcx = DT.textCx !== null ? DT.textCx : geo.textCx;
   const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
 
-  DT.textMesh.pocket.position.x = tcx;
-  DT.textMesh.pocket.position.y = tcy;
-  DT.textMesh.insert.position.x = tcx;
-  DT.textMesh.insert.position.y = tcy;
   DT.textMesh.label.position.x = tcx;
   DT.textMesh.label.position.y = tcy;
 }
