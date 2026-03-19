@@ -152,17 +152,28 @@ function readStlBounds(stlPath) {
     const buf = fs.readFileSync(stlPath);
     // Binary STL: 80-byte header, 4-byte triangle count, then 50 bytes per triangle
     const triCount = buf.readUInt32LE(80);
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
     for (let i = 0; i < triCount; i++) {
       const offset = 84 + i * 50;
-      // 3 vertices at offset+12, +24, +36 (each vertex = 3 floats = 12 bytes)
       for (let v = 0; v < 3; v++) {
+        const x = buf.readFloatLE(offset + 12 + v * 12);
+        const y = buf.readFloatLE(offset + 12 + v * 12 + 4);
         const z = buf.readFloatLE(offset + 12 + v * 12 + 8);
-        if (z < minZ) minZ = z;
-        if (z > maxZ) maxZ = z;
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
       }
     }
-    return { minZ, maxZ, height: maxZ - minZ };
+    return {
+      minX, maxX, minY, maxY, minZ, maxZ,
+      width: maxX - minX,
+      depth: maxY - minY,
+      height: maxZ - minZ,
+      centerX: (maxX + minX) / 2,
+      centerY: (maxY + minY) / 2,
+    };
   } catch (e) {
     return null;
   }
@@ -172,18 +183,110 @@ function readStlBounds(stlPath) {
 function buildBaseTagFromStl(cfg) {
   const fs_size = cfg.fontSize || autoFontSize(cfg.name, DEFAULTS.fontSize);
 
-  // Auto-detect actual STL height instead of trusting config
+  // Auto-detect actual STL dimensions
   const bounds = readStlBounds(cfg.baseStlPath);
-  const actualThickness = bounds ? bounds.height : cfg.thickness;
+  if (!bounds) {
+    // Can't read STL, fall back to shape code as-is
+    return buildBaseTagFromShape(cfg);
+  }
+
+  const actualThickness = bounds.height;
+  const sd = SHAPE_DEFAULTS[cfg.shape] || {};
+
+  // Calculate scale factors: how much bigger is the STL vs the code shape
+  const codeWidth = sd.width || 64;
+  const codeHeight = sd.height || 30;
+  const scaleX = bounds.width / codeWidth;
+  const scaleY = bounds.depth / codeHeight;
+
+  // Scale the text position to match the larger shape
+  const scaledTextX = cfg.textXOffset * scaleX;
+  const scaledTextY = cfg.textYOffset * scaleY;
+
+  // Scale ring position too
+  const scaledRingX = (sd.ringX || 0) * scaleX;
+  const scaledRingY = (sd.ringY || 0) * scaleY;
+
+  // Offset to match STL center (STL may not be centered at origin)
+  const offsetX = bounds.centerX;
+  const offsetY = bounds.centerY;
+
+  const shapeCode = SHAPE_OPENSCAD[cfg.shape];
+  if (!shapeCode) {
+    cfg.thickness = actualThickness;
+    return buildBaseTagFromShape(cfg);
+  }
+
+  const needsTab = sd.needsTab || false;
+  const tabModule = needsTab ? `
+module ring_tab() {
+  translate([ring_x, ring_y, 0]) cylinder(d=${(10 * Math.max(scaleX, scaleY)).toFixed(1)}, h=thickness, $fn=32);
+}` : `module ring_tab() { /* no tab needed */ }`;
+
   const cutDepth = cfg.pocketDepth + 0.2;
 
-  // STL-import mode: use the fallback shape code but override the thickness
-  // with the actual STL height. This avoids CGAL failures on non-manifold
-  // meshes while preserving the shape outline defined by the STL.
-  // The imported STL is only used for the 3D preview — the SCAD generation
-  // uses the built-in shape code which always produces valid geometry.
-  cfg.thickness = actualThickness;
-  return buildBaseTagFromShape(cfg);
+  return `// ============================================================
+// BRCC Dog Tag — BASE (${cfg.shape.toUpperCase()}) - STL-matched
+// Pet name: ${cfg.name}
+// STL dimensions: ${bounds.width.toFixed(1)} x ${bounds.depth.toFixed(1)} x ${bounds.height.toFixed(1)} mm
+// Scale: ${scaleX.toFixed(2)}x × ${scaleY.toFixed(2)}y from code shape
+// Blue Ridge Custom Co | blueridgecustomco.us
+// ============================================================
+
+${shapeCode.trim()}
+
+// Scale shape to match imported STL dimensions
+ring_x = ${(scaledRingX + offsetX).toFixed(2)};
+ring_y = ${(scaledRingY + offsetY).toFixed(2)};
+text_cx = ${(scaledTextX + offsetX).toFixed(2)};
+text_cy = ${(scaledTextY + offsetY).toFixed(2)};
+text_sz = ${fs_size.toFixed(2)};
+
+thickness        = ${actualThickness.toFixed(2)};
+pocket_depth     = ${cfg.pocketDepth};
+pocket_clearance = ${cfg.pocketClearance};
+ring_hole_dia    = ${cfg.ringHoleDia};
+font             = "${cfg.font}";
+pet_name         = "${cfg.name}";
+
+${tabModule}
+
+module ring_hole() {
+  translate([ring_x, ring_y, -1])
+    cylinder(d=ring_hole_dia, h=thickness+2, $fn=28);
+}
+
+module text_pocket() {
+  translate([text_cx, text_cy, thickness - ${cutDepth.toFixed(2)}])
+  linear_extrude(height=${cutDepth.toFixed(2)} + 0.01)
+    offset(r=pocket_clearance, $fn=16)
+      text(pet_name, size=text_sz, font=font,
+           halign="center", valign="center");
+}
+
+module chamfer_groove() {
+  translate([0, 0, thickness - 0.4])
+  linear_extrude(height=0.41)
+  difference() {
+    offset(r=-1.5) scale([${scaleX.toFixed(3)}, ${scaleY.toFixed(3)}]) shape_2d();
+    offset(r=-3.0) scale([${scaleX.toFixed(3)}, ${scaleY.toFixed(3)}]) shape_2d();
+  }
+}
+
+difference() {
+  union() {
+    // Scale the 2D shape to match STL, then extrude to STL height
+    translate([${offsetX.toFixed(2)}, ${offsetY.toFixed(2)}, 0])
+    linear_extrude(height=thickness)
+      scale([${scaleX.toFixed(3)}, ${scaleY.toFixed(3)}]) shape_2d();
+    ring_tab();
+  }
+  ring_hole();
+  text_pocket();
+}
+translate([${offsetX.toFixed(2)}, ${offsetY.toFixed(2)}, 0])
+chamfer_groove();
+`;
 }
 
 // ── SCAD: BASE TAG (v1 fallback — shape code) ────────────────
