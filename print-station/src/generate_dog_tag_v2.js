@@ -146,15 +146,42 @@ function saveShapesConfig(configPath, shapesObj) {
   fs.writeFileSync(configPath, JSON.stringify(out, null, 2));
 }
 
+// ── Read STL bounding box (binary STL) ───────────────────────
+function readStlBounds(stlPath) {
+  try {
+    const buf = fs.readFileSync(stlPath);
+    // Binary STL: 80-byte header, 4-byte triangle count, then 50 bytes per triangle
+    const triCount = buf.readUInt32LE(80);
+    let minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < triCount; i++) {
+      const offset = 84 + i * 50;
+      // 3 vertices at offset+12, +24, +36 (each vertex = 3 floats = 12 bytes)
+      for (let v = 0; v < 3; v++) {
+        const z = buf.readFloatLE(offset + 12 + v * 12 + 8);
+        if (z < minZ) minZ = z;
+        if (z > maxZ) maxZ = z;
+      }
+    }
+    return { minZ, maxZ, height: maxZ - minZ };
+  } catch (e) {
+    return null;
+  }
+}
+
 // ── SCAD: BASE TAG (STL-import mode) ─────────────────────────
 function buildBaseTagFromStl(cfg) {
   const fs_size = cfg.fontSize || autoFontSize(cfg.name, DEFAULTS.fontSize);
+
+  // Auto-detect actual STL height instead of trusting config
+  const bounds = readStlBounds(cfg.baseStlPath);
+  const actualThickness = bounds ? bounds.height : cfg.thickness;
   const cutDepth = cfg.pocketDepth + 0.2;
 
   return `// ============================================================
 // BRCC Dog Tag — BASE with text pocket (STL import mode)
 // Name: ${cfg.name}
 // Base STL: ${path.basename(cfg.baseStlPath)}
+// Detected STL height: ${actualThickness.toFixed(2)}mm
 // Blue Ridge Custom Co | blueridgecustomco.us
 // ============================================================
 // PRINT IN: Color A (tag body color)
@@ -163,7 +190,7 @@ function buildBaseTagFromStl(cfg) {
 
 font          = "${cfg.font}";
 pet_name      = "${cfg.name}";
-tag_thickness = ${cfg.thickness};
+tag_thickness = ${actualThickness.toFixed(2)};
 pocket_depth  = ${cfg.pocketDepth};
 pocket_clear  = ${cfg.pocketClearance};
 font_size     = ${fs_size.toFixed(2)};
