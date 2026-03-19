@@ -7422,12 +7422,34 @@
               <option>Blue + White</option>
             </select>
 
-            <!-- Text Position -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-              <label class="dt-label" style="margin:0;flex:1;">Text Position</label>
-              <button id="dtResetPosBtn" class="dt-btn-small">Reset to Default</button>
+            <!-- Text Controls -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <label class="dt-label" style="margin:0;flex:1;">Text Controls</label>
+              <button id="dtResetPosBtn" class="dt-btn-small">Reset All</button>
             </div>
-            <p style="margin:0 0 12px;font-size:0.8rem;color:#888;">Drag the text on the canvas to reposition.</p>
+
+            <!-- Font Size -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <label style="font-size:0.75rem;color:#888;min-width:50px;">Size</label>
+              <input type="range" id="dtFontSizeSlider" min="2" max="20" step="0.5" style="flex:1;" />
+              <span id="dtFontSizeValue" style="font-size:0.75rem;color:#aaa;min-width:36px;text-align:right;">auto</span>
+            </div>
+
+            <!-- X Offset -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <label style="font-size:0.75rem;color:#888;min-width:50px;">X Offset</label>
+              <input type="range" id="dtTextXSlider" min="-30" max="30" step="0.5" value="0" style="flex:1;" />
+              <span id="dtTextXValue" style="font-size:0.75rem;color:#aaa;min-width:36px;text-align:right;">0</span>
+            </div>
+
+            <!-- Y Offset -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <label style="font-size:0.75rem;color:#888;min-width:50px;">Y Offset</label>
+              <input type="range" id="dtTextYSlider" min="-30" max="30" step="0.5" value="0" style="flex:1;" />
+              <span id="dtTextYValue" style="font-size:0.75rem;color:#aaa;min-width:36px;text-align:right;">0</span>
+            </div>
+
+            <p style="margin:0 0 12px;font-size:0.75rem;color:#666;">Use sliders or drag text on the 3D preview to position.</p>
 
             <!-- Action Buttons -->
             <div style="display:flex;gap:8px;margin-bottom:8px;">

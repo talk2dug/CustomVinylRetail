@@ -717,6 +717,7 @@ function dtOnMouseMove3D(e) {
     // Update text position without full rebuild
     dtUpdateTextPosition();
     dtUpdatePosReadout();
+    dtSyncSliders();
   } else {
     DT.renderer.domElement.style.cursor = dtIsOverText3D(mm) ? 'grab' : 'default';
   }
@@ -780,6 +781,7 @@ function dtRenderShapePicker() {
       DT.textCy = null;
       DT.textSz = null;
       dtRenderShapePicker();
+      dtSyncSliders();
       // Load blank STL if not cached yet
       const shapeInfo = DT.shapes.find(s => s.id === btn.dataset.shape);
       if (shapeInfo && shapeInfo.hasBlankStl && !DT.stlCache[btn.dataset.shape]) {
@@ -995,7 +997,37 @@ function dtResetTextPos() {
   DT.textCx = null;
   DT.textCy = null;
   DT.textSz = null;
+  dtSyncSliders();
   dtBuildTag();
+}
+
+// Sync slider UI with current DT state
+function dtSyncSliders() {
+  const geo = DT.shapeGeo[DT.selectedShape] || {};
+
+  const sizeSlider = document.getElementById('dtFontSizeSlider');
+  const sizeVal = document.getElementById('dtFontSizeValue');
+  if (sizeSlider && sizeVal) {
+    const sz = DT.textSz !== null ? DT.textSz : (geo.textSz || 7);
+    sizeSlider.value = sz;
+    sizeVal.textContent = DT.textSz !== null ? sz.toFixed(1) : sz.toFixed(1) + ' (auto)';
+  }
+
+  const xSlider = document.getElementById('dtTextXSlider');
+  const xVal = document.getElementById('dtTextXValue');
+  if (xSlider && xVal) {
+    const cx = DT.textCx !== null ? DT.textCx : (geo.textCx || 0);
+    xSlider.value = cx;
+    xVal.textContent = cx.toFixed(1);
+  }
+
+  const ySlider = document.getElementById('dtTextYSlider');
+  const yVal = document.getElementById('dtTextYValue');
+  if (ySlider && yVal) {
+    const cy = DT.textCy !== null ? DT.textCy : (geo.textCy || 0);
+    ySlider.value = cy;
+    yVal.textContent = cy.toFixed(1);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1083,8 +1115,40 @@ async function initDogTagsView() {
     }
   });
 
+  // Text control sliders
+  const fontSizeSlider = document.getElementById('dtFontSizeSlider');
+  if (fontSizeSlider) {
+    fontSizeSlider.addEventListener('input', () => {
+      DT.textSz = parseFloat(fontSizeSlider.value);
+      const sizeVal = document.getElementById('dtFontSizeValue');
+      if (sizeVal) sizeVal.textContent = DT.textSz.toFixed(1);
+      dtBuildTag();
+    });
+  }
+
+  const textXSlider = document.getElementById('dtTextXSlider');
+  if (textXSlider) {
+    textXSlider.addEventListener('input', () => {
+      DT.textCx = parseFloat(textXSlider.value);
+      const xVal = document.getElementById('dtTextXValue');
+      if (xVal) xVal.textContent = DT.textCx.toFixed(1);
+      dtBuildTag();
+    });
+  }
+
+  const textYSlider = document.getElementById('dtTextYSlider');
+  if (textYSlider) {
+    textYSlider.addEventListener('input', () => {
+      DT.textCy = parseFloat(textYSlider.value);
+      const yVal = document.getElementById('dtTextYValue');
+      if (yVal) yVal.textContent = DT.textCy.toFixed(1);
+      dtBuildTag();
+    });
+  }
+
   // Render
   dtRenderShapePicker();
+  dtSyncSliders();
   dtLoadHistory();
   dtLoadBatch();
 
