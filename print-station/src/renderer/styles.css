@@ -4846,16 +4846,16 @@ textarea:focus {
 .dt-action-btn {
   padding: 8px 12px; font-size: 0.9rem; font-weight: 600;
   border-radius: 6px; cursor: pointer; border: 1px solid #ddd;
-  background: #fff; transition: all 0.15s;
+  background: #fff; color: #333; transition: all 0.15s;
 }
 .dt-action-btn.primary { background: var(--accent, #2563eb); color: #fff; border-color: var(--accent, #2563eb); }
 .dt-action-btn.primary:hover { opacity: 0.9; }
-.dt-action-btn.secondary { background: #f8f9fa; }
+.dt-action-btn.secondary { background: #f8f9fa; color: #333; }
 .dt-action-btn.secondary:hover { background: #e9ecef; }
 .dt-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .dt-btn-small {
   padding: 3px 8px; font-size: 0.75rem; border: 1px solid #ddd;
-  border-radius: 4px; background: #fff; cursor: pointer;
+  border-radius: 4px; background: #fff; color: #333; cursor: pointer;
 }
 .dt-btn-small:hover { background: #f5f5f5; }
 
