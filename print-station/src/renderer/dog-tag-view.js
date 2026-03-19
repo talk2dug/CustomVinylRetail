@@ -495,7 +495,23 @@ function dtBuildTag() {
 
   const ringX = geo.ringX;
   const ringY = geo.ringY;
-  const thickness = geo.thickness || TAG_THICKNESS;
+
+  // Use actual STL height when available, otherwise config/default
+  const stlGeoCheck = DT.stlCache[DT.selectedShape];
+  let thickness = geo.thickness || TAG_THICKNESS;
+  if (stlGeoCheck) {
+    stlGeoCheck.computeBoundingBox();
+    thickness = stlGeoCheck.boundingBox.max.z - stlGeoCheck.boundingBox.min.z;
+  }
+
+  // Update camera target and drag plane for actual thickness
+  if (DT.controls) {
+    DT.controls.target.set(0, 0, thickness / 2);
+    DT.controls.update();
+  }
+  if (DT.tagTopPlane) {
+    DT.tagTopPlane.set(new THREE.Vector3(0, 0, 1), -thickness);
+  }
 
   const bodyMat = new THREE.MeshPhysicalMaterial({
     color: baseColor,
@@ -582,13 +598,14 @@ function dtBuildTag() {
   }
 
   // ── Text pocket + insert ──
-  dtBuildTextInsert(geo, insertColor);
+  dtBuildTextInsert(geo, insertColor, thickness);
 
   // ── Position readout ──
   dtUpdatePosReadout();
 }
 
-function dtBuildTextInsert(geo, insertColor) {
+function dtBuildTextInsert(geo, insertColor, tagThickness) {
+  tagThickness = tagThickness || TAG_THICKNESS;
   const name = DT.petName || '';
   if (!name) return;
 
@@ -612,7 +629,7 @@ function dtBuildTextInsert(geo, insertColor) {
     metalness: 0,
   });
   const pocketMesh = new THREE.Mesh(pocketGeo, pocketMat);
-  pocketMesh.position.set(tcx, tcy, TAG_THICKNESS - POCKET_DEPTH / 2 + 0.01);
+  pocketMesh.position.set(tcx, tcy, tagThickness - POCKET_DEPTH / 2 + 0.01);
   pocketMesh.name = 'pocket';
   DT.tagGroup.add(pocketMesh);
 
@@ -625,7 +642,7 @@ function dtBuildTextInsert(geo, insertColor) {
     clearcoat: 0.15,
   });
   const insertMesh = new THREE.Mesh(insertGeo, insertMat);
-  insertMesh.position.set(tcx, tcy, TAG_THICKNESS - POCKET_DEPTH + INSERT_HEIGHT / 2 + 0.01);
+  insertMesh.position.set(tcx, tcy, tagThickness - POCKET_DEPTH + INSERT_HEIGHT / 2 + 0.01);
   insertMesh.name = 'insert';
   DT.tagGroup.add(insertMesh);
 
@@ -638,7 +655,7 @@ function dtBuildTextInsert(geo, insertColor) {
     side: THREE.FrontSide,
   });
   const labelMesh = new THREE.Mesh(labelGeo, labelMat);
-  labelMesh.position.set(tcx, tcy, TAG_THICKNESS - POCKET_DEPTH + INSERT_HEIGHT + 0.05);
+  labelMesh.position.set(tcx, tcy, tagThickness - POCKET_DEPTH + INSERT_HEIGHT + 0.05);
   labelMesh.name = 'textLabel';
   DT.tagGroup.add(labelMesh);
 
