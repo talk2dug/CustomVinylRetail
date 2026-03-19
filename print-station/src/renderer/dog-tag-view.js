@@ -561,23 +561,24 @@ function dtBuildTag() {
     }
   }
 
-  // ── Split ring (decorative) ──
-  const ringGeo = new THREE.TorusGeometry(4, 0.6, 8, 32);
-  const ringMat = new THREE.MeshPhysicalMaterial({
-    color: 0xcccccc,
-    roughness: 0.2,
-    metalness: 0.8,
-  });
-  const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-  ringMesh.position.set(ringX, ringY, thickness / 2);
-  ringMesh.rotation.x = Math.PI / 2;
-  ringMesh.castShadow = true;
-  ringMesh.name = 'splitRing';
-  DT.tagGroup.add(ringMesh);
+  // ── Split ring + paw decoration — only for fallback mode (STL blanks have their own) ──
+  if (!stlGeo) {
+    const ringGeo = new THREE.TorusGeometry(4, 0.6, 8, 32);
+    const ringMat = new THREE.MeshPhysicalMaterial({
+      color: 0xcccccc,
+      roughness: 0.2,
+      metalness: 0.8,
+    });
+    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+    ringMesh.position.set(ringX, ringY, thickness / 2);
+    ringMesh.rotation.x = Math.PI / 2;
+    ringMesh.castShadow = true;
+    ringMesh.name = 'splitRing';
+    DT.tagGroup.add(ringMesh);
 
-  // ── Paw print decoration ──
-  if (DT.selectedShape === 'paw') {
-    dtAddPawDecoration(DT.tagGroup, baseColor);
+    if (DT.selectedShape === 'paw') {
+      dtAddPawDecoration(DT.tagGroup, baseColor);
+    }
   }
 
   // ── Text pocket + insert ──
