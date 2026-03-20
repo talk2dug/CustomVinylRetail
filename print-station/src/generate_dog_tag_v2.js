@@ -356,7 +356,7 @@ function buildTextCutterScad(cfg) {
   const charWidthRatio = 0.62; // Liberation Sans Bold uppercase average
 
   // Calculate font sizes that fit within bounds
-  lines.forEach(line => {
+  lines.forEach((line, i) => {
     let fs = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
     // Clamp to fit width
     const estWidth = line.text.length * charWidthRatio * fs;
