@@ -7804,15 +7804,36 @@ Return ONLY valid JSON, nothing else:
       options,
     });
 
-    // Try to render STLs via openscad CLI
+    // Try to render STLs via openscad CLI + manifold-3d boolean
     let stlResults = { rendered: false, baseStl: null, textStl: null };
     if (isOpenscadAvailable()) {
       const stlDir = getDogTagDir('stl-queue');
-      const baseStl = result.baseSCAD.replace('.scad', '.stl');
       const textStl = result.textSCAD.replace('.scad', '.stl');
+      const baseStl = result.baseSCAD.replace('.scad', '.stl');
 
-      const baseOk = renderScadToStl(result.baseSCAD, baseStl);
+      // 1. Render the text/insert STL
       const textOk = renderScadToStl(result.textSCAD, textStl);
+
+      // 2. Render the cutter STL (pocket shape to subtract from blank)
+      let baseOk = false;
+      if (result.cutterSCAD && baseStlPath) {
+        const cutterStl = result.cutterSCAD.replace('.scad', '.stl');
+        const cutterOk = renderScadToStl(result.cutterSCAD, cutterStl);
+        if (cutterOk) {
+          // 3. Boolean subtract: blank - cutter = base with pocket
+          try {
+            const { manifoldSubtract } = require('./generate_dog_tag_v2');
+            await manifoldSubtract(baseStlPath, cutterStl, baseStl);
+            baseOk = fs.existsSync(baseStl);
+            if (baseOk) console.log(`[DogTag] Manifold subtraction succeeded: ${path.basename(baseStl)}`);
+          } catch (e) {
+            console.error(`[DogTag] Manifold subtraction failed:`, e.message);
+          }
+        }
+      } else {
+        // No cutter (e.g. standalone mode) — try direct OpenSCAD render
+        baseOk = renderScadToStl(result.baseSCAD, baseStl);
+      }
 
       if (baseOk && textOk) {
         const qBase = path.join(stlDir, path.basename(baseStl));
