@@ -7770,7 +7770,7 @@ Return ONLY valid JSON, nothing else:
   }
 
   // Generate SCAD files (+ STL if openscad available)
-  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz, lines, lineCount, textBox }) => {
+  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz, lines, lineCount, textBox, lineBoxes }) => {
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       throw new Error('Pet name is required');
     }
@@ -7795,9 +7795,9 @@ Return ONLY valid JSON, nothing else:
     if (textCy !== undefined && textCy !== null) options.textCy = textCy;
     if (textSz !== undefined && textSz !== null) options.textSz = textSz;
 
-    // Pass text bounding box if provided
-    if (textBox && textBox.w && textBox.h) {
-      options.textBox = textBox;
+    // Pass per-line text placement boxes
+    if (lineBoxes && Array.isArray(lineBoxes) && lineBoxes.length > 0) {
+      options.lineBoxes = lineBoxes;
     }
 
     // Pass multi-line text with per-line positions from the 3D preview
@@ -7919,6 +7919,7 @@ Return ONLY valid JSON, nothing else:
         if (cfg.thickness !== undefined) geo.thickness = cfg.thickness;
         if (cfg.pocketDepth !== undefined) geo.pocketDepth = cfg.pocketDepth;
         if (cfg.textBox) geo.textBox = cfg.textBox;
+        if (cfg.lineBoxes) geo.lineBoxes = cfg.lineBoxes;
       }
       const hasBlankStl = !!resolveBlankStl(id);
       return {

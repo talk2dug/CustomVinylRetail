@@ -59,10 +59,12 @@ const DT = {
   // Standalone mode
   standaloneThickness: 3.0,
   standaloneConnectExpand: 0.3,
-  // Text bounding box (per shape, persisted)
-  textBox: { x: 0, y: 0, w: 60, h: 20 },
+  // Per-line text placement boxes (persisted per shape)
+  lineBoxes: [
+    { x: 0, y: 4, w: 60, h: 10 },   // Line 1 default
+    { x: 0, y: -6, w: 50, h: 8 },    // Line 2 default
+  ],
   showTextBox: true,
-  textBoxMesh: null, // THREE.LineSegments for preview rectangle
 };
 
 const COLOR_PRESETS = [
@@ -591,26 +593,29 @@ function dtBuildTag() {
   // ── Text lines ──
   dtBuildTextLines(geo, insertColor, thickness);
 
-  // ── Text bounding box rectangle ──
+  // ── Per-line text placement box rectangles ──
   if (DT.showTextBox) {
-    const tb = DT.textBox;
     const z = thickness + 0.1;
-    const hw = tb.w / 2, hh = tb.h / 2;
-    const cx = tb.x, cy = tb.y;
-    const pts = [
-      new THREE.Vector3(cx - hw, cy - hh, z),
-      new THREE.Vector3(cx + hw, cy - hh, z),
-      new THREE.Vector3(cx + hw, cy + hh, z),
-      new THREE.Vector3(cx - hw, cy + hh, z),
-      new THREE.Vector3(cx - hw, cy - hh, z), // close the loop
-    ];
-    const boxGeo = new THREE.BufferGeometry().setFromPoints(pts);
-    const boxMat = new THREE.LineDashedMaterial({ color: 0xff4444, dashSize: 2, gapSize: 1, linewidth: 1 });
-    const boxLine = new THREE.Line(boxGeo, boxMat);
-    boxLine.computeLineDistances();
-    boxLine.name = 'textBoxOutline';
-    DT.tagGroup.add(boxLine);
-    DT.textBoxMesh = boxLine;
+    const colors = [0xff4444, 0x4488ff]; // red for line 1, blue for line 2
+    const count = DT.mode === 'basePlate' ? DT.lineCount : 1;
+    for (let li = 0; li < count; li++) {
+      const tb = DT.lineBoxes[li];
+      if (!tb) continue;
+      const hw = tb.w / 2, hh = tb.h / 2;
+      const pts = [
+        new THREE.Vector3(tb.x - hw, tb.y - hh, z),
+        new THREE.Vector3(tb.x + hw, tb.y - hh, z),
+        new THREE.Vector3(tb.x + hw, tb.y + hh, z),
+        new THREE.Vector3(tb.x - hw, tb.y + hh, z),
+        new THREE.Vector3(tb.x - hw, tb.y - hh, z),
+      ];
+      const boxGeo = new THREE.BufferGeometry().setFromPoints(pts);
+      const boxMat = new THREE.LineDashedMaterial({ color: colors[li] || 0xff4444, dashSize: 2, gapSize: 1 });
+      const boxLine = new THREE.Line(boxGeo, boxMat);
+      boxLine.computeLineDistances();
+      boxLine.name = `textBox_${li}`;
+      DT.tagGroup.add(boxLine);
+    }
   }
 
   // ── Position readout ──
@@ -918,7 +923,7 @@ async function dtGenerate() {
       textSz: DT.textSz,
       lines,
       lineCount: DT.lineCount,
-      textBox: { ...DT.textBox },
+      lineBoxes: DT.lineBoxes.map(b => ({ ...b })),
     });
     DT.lastGenResult = result;
     const stlReady = result.status === 'ready_to_print';
@@ -1210,33 +1215,35 @@ function dtResetTextPos() {
 // Load text box from shape geometry/config, or derive defaults from STL bounds
 function dtLoadTextBox(shapeId) {
   const shape = DT.shapes.find(s => s.id === shapeId);
-  if (shape?.geometry?.textBox) {
-    DT.textBox = { ...shape.geometry.textBox };
+  if (shape?.geometry?.lineBoxes && Array.isArray(shape.geometry.lineBoxes)) {
+    DT.lineBoxes = shape.geometry.lineBoxes.map(b => ({ ...b }));
   } else {
     // Derive defaults from STL bounding box
     const geo = DT.shapeGeo[shapeId];
-    if (geo) {
-      DT.textBox = { x: 0, y: 0, w: Math.round(geo.width * 0.65), h: Math.round(geo.height * 0.50) };
-    } else {
-      DT.textBox = { x: 0, y: 0, w: 60, h: 20 };
-    }
+    const w = geo ? Math.round(geo.width * 0.60) : 60;
+    const h = geo ? Math.round(geo.height * 0.25) : 10;
+    DT.lineBoxes = [
+      { x: 0, y: Math.round(h * 0.4), w, h },           // Line 1: slightly above center
+      { x: 0, y: -Math.round(h * 0.6), w: Math.round(w * 0.85), h: Math.round(h * 0.8) }, // Line 2: below center, narrower
+    ];
   }
+  // Ensure we always have 2 entries
+  while (DT.lineBoxes.length < 2) DT.lineBoxes.push({ x: 0, y: 0, w: 50, h: 8 });
   dtSyncTextBoxSliders();
 }
 
 function dtSyncTextBoxSliders() {
-  const setSlider = (id, val) => {
-    const el = document.getElementById(id);
-    if (el) el.value = val;
-  };
-  const setVal = (id, val) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = val.toFixed(0);
-  };
-  setSlider('dtTextBoxX', DT.textBox.x); setVal('dtTextBoxXVal', DT.textBox.x);
-  setSlider('dtTextBoxY', DT.textBox.y); setVal('dtTextBoxYVal', DT.textBox.y);
-  setSlider('dtTextBoxW', DT.textBox.w); setVal('dtTextBoxWVal', DT.textBox.w);
-  setSlider('dtTextBoxH', DT.textBox.h); setVal('dtTextBoxHVal', DT.textBox.h);
+  for (let li = 0; li < 2; li++) {
+    const n = li + 1;
+    const b = DT.lineBoxes[li];
+    const set = (suffix, val) => {
+      const slider = document.getElementById(`dtBox${n}${suffix}`);
+      const label = document.getElementById(`dtBox${n}${suffix}Val`);
+      if (slider) slider.value = val;
+      if (label) label.textContent = val.toFixed(0);
+    };
+    set('X', b.x); set('Y', b.y); set('W', b.w); set('H', b.h);
+  }
 }
 
 // Sync slider UI with current DT state
@@ -1334,6 +1341,8 @@ async function initDogTagsView() {
     document.getElementById('dtLineCount2')?.classList.toggle('active', n === 2);
     const l2 = document.getElementById('dtLine2Controls');
     if (l2) l2.style.display = n === 2 ? '' : 'none';
+    const b2 = document.getElementById('dtBox2Controls');
+    if (b2) b2.style.display = n === 2 ? '' : 'none';
     dtBuildTag();
   }
   document.getElementById('dtLineCount1')?.addEventListener('click', () => dtSetLineCount(1));
@@ -1430,23 +1439,29 @@ async function initDogTagsView() {
     });
   }
 
-  // ── Text Box sliders ──
-  function dtTextBoxSliderHandler(prop, valId) {
+  // ── Per-line text box sliders ──
+  function dtLineBoxHandler(lineIdx, prop) {
+    const valId = `dtBox${lineIdx + 1}${prop.toUpperCase()}Val`;
     return function() {
-      DT.textBox[prop] = parseFloat(this.value);
+      DT.lineBoxes[lineIdx][prop] = parseFloat(this.value);
       const valEl = document.getElementById(valId);
-      if (valEl) valEl.textContent = DT.textBox[prop].toFixed(0);
+      if (valEl) valEl.textContent = DT.lineBoxes[lineIdx][prop].toFixed(0);
       dtBuildTag();
       // Auto-save to shape config
       if (DT.selectedShape && window.printStation.dogTag.updateShape) {
-        window.printStation.dogTag.updateShape(DT.selectedShape, { textBox: { ...DT.textBox } });
+        window.printStation.dogTag.updateShape(DT.selectedShape, {
+          lineBoxes: DT.lineBoxes.map(b => ({ ...b })),
+        });
       }
     };
   }
-  document.getElementById('dtTextBoxX')?.addEventListener('input', dtTextBoxSliderHandler('x', 'dtTextBoxXVal'));
-  document.getElementById('dtTextBoxY')?.addEventListener('input', dtTextBoxSliderHandler('y', 'dtTextBoxYVal'));
-  document.getElementById('dtTextBoxW')?.addEventListener('input', dtTextBoxSliderHandler('w', 'dtTextBoxWVal'));
-  document.getElementById('dtTextBoxH')?.addEventListener('input', dtTextBoxSliderHandler('h', 'dtTextBoxHVal'));
+  for (let li = 0; li < 2; li++) {
+    const n = li + 1;
+    document.getElementById(`dtBox${n}X`)?.addEventListener('input', dtLineBoxHandler(li, 'x'));
+    document.getElementById(`dtBox${n}Y`)?.addEventListener('input', dtLineBoxHandler(li, 'y'));
+    document.getElementById(`dtBox${n}W`)?.addEventListener('input', dtLineBoxHandler(li, 'w'));
+    document.getElementById(`dtBox${n}H`)?.addEventListener('input', dtLineBoxHandler(li, 'h'));
+  }
   document.getElementById('dtShowTextBox')?.addEventListener('change', function() {
     DT.showTextBox = this.checked;
     dtBuildTag();

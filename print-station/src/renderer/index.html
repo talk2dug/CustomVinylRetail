@@ -7667,33 +7667,61 @@
               </div>
             </div>
 
-            <!-- ===== TEXT AREA BOX ===== -->
+            <!-- ===== TEXT PLACEMENT BOXES (per line) ===== -->
             <div id="dtTextBoxControls" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                <label class="dt-label" style="margin:0;">Text Area</label>
+                <label class="dt-label" style="margin:0;">Text Placement</label>
                 <label style="font-size:0.7rem;color:var(--muted);cursor:pointer;">
-                  <input type="checkbox" id="dtShowTextBox" checked style="vertical-align:middle;" /> Show box
+                  <input type="checkbox" id="dtShowTextBox" checked style="vertical-align:middle;" /> Show boxes
                 </label>
               </div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                <label style="font-size:0.7rem;color:var(--muted);min-width:45px;">X</label>
-                <input type="range" id="dtTextBoxX" min="-50" max="50" step="1" value="0" style="flex:1;" />
-                <span id="dtTextBoxXVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">0</span>
+              <!-- Line 1 Box -->
+              <div style="margin-bottom:6px;">
+                <label style="font-size:0.7rem;color:var(--accent);font-weight:bold;">Line 1 Area</label>
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+                  <label style="font-size:0.65rem;color:var(--muted);min-width:28px;">X</label>
+                  <input type="range" id="dtBox1X" min="-50" max="50" step="1" value="0" style="flex:1;" />
+                  <span id="dtBox1XVal" style="font-size:0.65rem;color:var(--muted);min-width:24px;text-align:right;">0</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+                  <label style="font-size:0.65rem;color:var(--muted);min-width:28px;">Y</label>
+                  <input type="range" id="dtBox1Y" min="-25" max="25" step="1" value="4" style="flex:1;" />
+                  <span id="dtBox1YVal" style="font-size:0.65rem;color:var(--muted);min-width:24px;text-align:right;">4</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+                  <label style="font-size:0.65rem;color:var(--muted);min-width:28px;">W</label>
+                  <input type="range" id="dtBox1W" min="10" max="120" step="1" value="60" style="flex:1;" />
+                  <span id="dtBox1WVal" style="font-size:0.65rem;color:var(--muted);min-width:24px;text-align:right;">60</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;">
+                  <label style="font-size:0.65rem;color:var(--muted);min-width:28px;">H</label>
+                  <input type="range" id="dtBox1H" min="3" max="30" step="1" value="10" style="flex:1;" />
+                  <span id="dtBox1HVal" style="font-size:0.65rem;color:var(--muted);min-width:24px;text-align:right;">10</span>
+                </div>
               </div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                <label style="font-size:0.7rem;color:var(--muted);min-width:45px;">Y</label>
-                <input type="range" id="dtTextBoxY" min="-25" max="25" step="1" value="0" style="flex:1;" />
-                <span id="dtTextBoxYVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">0</span>
-              </div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                <label style="font-size:0.7rem;color:var(--muted);min-width:45px;">Width</label>
-                <input type="range" id="dtTextBoxW" min="10" max="120" step="1" value="60" style="flex:1;" />
-                <span id="dtTextBoxWVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">60</span>
-              </div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                <label style="font-size:0.7rem;color:var(--muted);min-width:45px;">Height</label>
-                <input type="range" id="dtTextBoxH" min="5" max="60" step="1" value="20" style="flex:1;" />
-                <span id="dtTextBoxHVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">20</span>
+              <!-- Line 2 Box -->
+              <div id="dtBox2Controls" style="margin-bottom:4px;">
+                <label style="font-size:0.7rem;color:var(--accent);font-weight:bold;">Line 2 Area</label>
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+                  <label style="font-size:0.65rem;color:var(--muted);min-width:28px;">X</label>
+                  <input type="range" id="dtBox2X" min="-50" max="50" step="1" value="0" style="flex:1;" />
+                  <span id="dtBox2XVal" style="font-size:0.65rem;color:var(--muted);min-width:24px;text-align:right;">0</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+                  <label style="font-size:0.65rem;color:var(--muted);min-width:28px;">Y</label>
+                  <input type="range" id="dtBox2Y" min="-25" max="25" step="1" value="-6" style="flex:1;" />
+                  <span id="dtBox2YVal" style="font-size:0.65rem;color:var(--muted);min-width:24px;text-align:right;">-6</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+                  <label style="font-size:0.65rem;color:var(--muted);min-width:28px;">W</label>
+                  <input type="range" id="dtBox2W" min="10" max="120" step="1" value="50" style="flex:1;" />
+                  <span id="dtBox2WVal" style="font-size:0.65rem;color:var(--muted);min-width:24px;text-align:right;">50</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;">
+                  <label style="font-size:0.65rem;color:var(--muted);min-width:28px;">H</label>
+                  <input type="range" id="dtBox2H" min="3" max="30" step="1" value="8" style="flex:1;" />
+                  <span id="dtBox2HVal" style="font-size:0.65rem;color:var(--muted);min-width:24px;text-align:right;">8</span>
+                </div>
               </div>
             </div>
 
