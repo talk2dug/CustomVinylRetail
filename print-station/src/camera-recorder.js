@@ -240,12 +240,9 @@ async function getRtspUrl(cam) {
 async function discoverCamera(config) {
   if (!config.onvifHost) throw new Error('No ONVIF host provided');
 
-  const pyPath = pythonPath || 'python';
-  const script = path.join(__dirname, 'scripts', 'get_rtsp_url.py');
-
   return new Promise((resolve, reject) => {
     const args = [
-      script,
+      PYTHON_SCRIPT,
       '--host', config.onvifHost,
       '--port', String(config.onvifPort || 8000),
       '--user', config.onvifUser || 'admin',
@@ -254,7 +251,7 @@ async function discoverCamera(config) {
     ];
 
     log(`Discovering camera at ${config.onvifHost}:${config.onvifPort || 8000}...`);
-    const proc = spawn(pyPath, args, { windowsHide: true });
+    const proc = spawn('python', args, { windowsHide: true });
 
     let stdout = '', stderr = '';
     proc.stdout.on('data', d => { stdout += d; });
