@@ -59,6 +59,10 @@ const DT = {
   // Standalone mode
   standaloneThickness: 3.0,
   standaloneConnectExpand: 0.3,
+  // Text bounding box (per shape, persisted)
+  textBox: { x: 0, y: 0, w: 60, h: 20 },
+  showTextBox: true,
+  textBoxMesh: null, // THREE.LineSegments for preview rectangle
 };
 
 const COLOR_PRESETS = [
@@ -587,6 +591,28 @@ function dtBuildTag() {
   // ── Text lines ──
   dtBuildTextLines(geo, insertColor, thickness);
 
+  // ── Text bounding box rectangle ──
+  if (DT.showTextBox) {
+    const tb = DT.textBox;
+    const z = thickness + 0.1;
+    const hw = tb.w / 2, hh = tb.h / 2;
+    const cx = tb.x, cy = tb.y;
+    const pts = [
+      new THREE.Vector3(cx - hw, cy - hh, z),
+      new THREE.Vector3(cx + hw, cy - hh, z),
+      new THREE.Vector3(cx + hw, cy + hh, z),
+      new THREE.Vector3(cx - hw, cy + hh, z),
+      new THREE.Vector3(cx - hw, cy - hh, z), // close the loop
+    ];
+    const boxGeo = new THREE.BufferGeometry().setFromPoints(pts);
+    const boxMat = new THREE.LineDashedMaterial({ color: 0xff4444, dashSize: 2, gapSize: 1, linewidth: 1 });
+    const boxLine = new THREE.Line(boxGeo, boxMat);
+    boxLine.computeLineDistances();
+    boxLine.name = 'textBoxOutline';
+    DT.tagGroup.add(boxLine);
+    DT.textBoxMesh = boxLine;
+  }
+
   // ── Position readout ──
   dtUpdatePosReadout();
 }
@@ -804,6 +830,8 @@ function dtRenderShapePicker() {
       DT.textSz = null;
       // Reset line positions
       DT.lines.forEach(l => { l.cx = null; l.cy = null; });
+      // Load text box from shape config
+      dtLoadTextBox(btn.dataset.shape);
       dtRenderShapePicker();
       dtSyncSliders();
       if (!DT.stlCache[btn.dataset.shape]) {
@@ -890,6 +918,7 @@ async function dtGenerate() {
       textSz: DT.textSz,
       lines,
       lineCount: DT.lineCount,
+      textBox: { ...DT.textBox },
     });
     DT.lastGenResult = result;
     const stlReady = result.status === 'ready_to_print';
@@ -1178,6 +1207,38 @@ function dtResetTextPos() {
   dtBuildTag();
 }
 
+// Load text box from shape geometry/config, or derive defaults from STL bounds
+function dtLoadTextBox(shapeId) {
+  const shape = DT.shapes.find(s => s.id === shapeId);
+  if (shape?.geometry?.textBox) {
+    DT.textBox = { ...shape.geometry.textBox };
+  } else {
+    // Derive defaults from STL bounding box
+    const geo = DT.shapeGeo[shapeId];
+    if (geo) {
+      DT.textBox = { x: 0, y: 0, w: Math.round(geo.width * 0.65), h: Math.round(geo.height * 0.50) };
+    } else {
+      DT.textBox = { x: 0, y: 0, w: 60, h: 20 };
+    }
+  }
+  dtSyncTextBoxSliders();
+}
+
+function dtSyncTextBoxSliders() {
+  const setSlider = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  };
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val.toFixed(0);
+  };
+  setSlider('dtTextBoxX', DT.textBox.x); setVal('dtTextBoxXVal', DT.textBox.x);
+  setSlider('dtTextBoxY', DT.textBox.y); setVal('dtTextBoxYVal', DT.textBox.y);
+  setSlider('dtTextBoxW', DT.textBox.w); setVal('dtTextBoxWVal', DT.textBox.w);
+  setSlider('dtTextBoxH', DT.textBox.h); setVal('dtTextBoxHVal', DT.textBox.h);
+}
+
 // Sync slider UI with current DT state
 function dtSyncSliders() {
   // Sync per-line size sliders
@@ -1221,6 +1282,8 @@ async function initDogTagsView() {
     });
     // Preload blank STLs for shapes that have them
     dtPreloadBlanks();
+    // Load text box for selected shape
+    dtLoadTextBox(DT.selectedShape);
   } catch (e) {
     console.error('[DogTag] Failed to load shapes:', e);
   }
@@ -1366,6 +1429,28 @@ async function initDogTagsView() {
       dtBuildTag();
     });
   }
+
+  // ── Text Box sliders ──
+  function dtTextBoxSliderHandler(prop, valId) {
+    return function() {
+      DT.textBox[prop] = parseFloat(this.value);
+      const valEl = document.getElementById(valId);
+      if (valEl) valEl.textContent = DT.textBox[prop].toFixed(0);
+      dtBuildTag();
+      // Auto-save to shape config
+      if (DT.selectedShape && window.printStation.dogTag.updateShape) {
+        window.printStation.dogTag.updateShape(DT.selectedShape, { textBox: { ...DT.textBox } });
+      }
+    };
+  }
+  document.getElementById('dtTextBoxX')?.addEventListener('input', dtTextBoxSliderHandler('x', 'dtTextBoxXVal'));
+  document.getElementById('dtTextBoxY')?.addEventListener('input', dtTextBoxSliderHandler('y', 'dtTextBoxYVal'));
+  document.getElementById('dtTextBoxW')?.addEventListener('input', dtTextBoxSliderHandler('w', 'dtTextBoxWVal'));
+  document.getElementById('dtTextBoxH')?.addEventListener('input', dtTextBoxSliderHandler('h', 'dtTextBoxHVal'));
+  document.getElementById('dtShowTextBox')?.addEventListener('change', function() {
+    DT.showTextBox = this.checked;
+    dtBuildTag();
+  });
 
   // Color select
   const colorSelect = document.getElementById('dtColorPreset');

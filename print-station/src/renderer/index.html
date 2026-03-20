@@ -7667,6 +7667,36 @@
               </div>
             </div>
 
+            <!-- ===== TEXT AREA BOX ===== -->
+            <div id="dtTextBoxControls" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <label class="dt-label" style="margin:0;">Text Area</label>
+                <label style="font-size:0.7rem;color:var(--muted);cursor:pointer;">
+                  <input type="checkbox" id="dtShowTextBox" checked style="vertical-align:middle;" /> Show box
+                </label>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <label style="font-size:0.7rem;color:var(--muted);min-width:45px;">X</label>
+                <input type="range" id="dtTextBoxX" min="-50" max="50" step="1" value="0" style="flex:1;" />
+                <span id="dtTextBoxXVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">0</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <label style="font-size:0.7rem;color:var(--muted);min-width:45px;">Y</label>
+                <input type="range" id="dtTextBoxY" min="-25" max="25" step="1" value="0" style="flex:1;" />
+                <span id="dtTextBoxYVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">0</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <label style="font-size:0.7rem;color:var(--muted);min-width:45px;">Width</label>
+                <input type="range" id="dtTextBoxW" min="10" max="120" step="1" value="60" style="flex:1;" />
+                <span id="dtTextBoxWVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">60</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <label style="font-size:0.7rem;color:var(--muted);min-width:45px;">Height</label>
+                <input type="range" id="dtTextBoxH" min="5" max="60" step="1" value="20" style="flex:1;" />
+                <span id="dtTextBoxHVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">20</span>
+              </div>
+            </div>
+
             <!-- ===== STANDALONE NAME MODE CONTROLS ===== -->
             <div id="dtStandaloneControls" style="display:none;">
               <label class="dt-label">Name Text</label>

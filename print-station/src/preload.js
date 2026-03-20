@@ -702,6 +702,7 @@ contextBridge.exposeInMainWorld('printStation', {
     importBlank: (shapeId) => ipcRenderer.invoke('dog-tag:import-blank', shapeId),
     loadBlankStl: (shapeId) => ipcRenderer.invoke('dog-tag:load-blank-stl', shapeId),
     deleteShape: (shapeId) => ipcRenderer.invoke('dog-tag:shapes:delete', shapeId),
+    updateShape: (shapeId, updates) => ipcRenderer.invoke('dog-tag:shapes:update', { shapeId, updates }),
   },
 
   // ============================================================================

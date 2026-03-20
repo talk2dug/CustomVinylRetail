@@ -7770,7 +7770,7 @@ Return ONLY valid JSON, nothing else:
   }
 
   // Generate SCAD files (+ STL if openscad available)
-  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz, lines, lineCount }) => {
+  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz, lines, lineCount, textBox }) => {
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       throw new Error('Pet name is required');
     }
@@ -7794,6 +7794,11 @@ Return ONLY valid JSON, nothing else:
     if (textCx !== undefined && textCx !== null) options.textCx = textCx;
     if (textCy !== undefined && textCy !== null) options.textCy = textCy;
     if (textSz !== undefined && textSz !== null) options.textSz = textSz;
+
+    // Pass text bounding box if provided
+    if (textBox && textBox.w && textBox.h) {
+      options.textBox = textBox;
+    }
 
     // Pass multi-line text with per-line positions from the 3D preview
     if (lines && Array.isArray(lines) && lines.length > 0) {
@@ -7913,6 +7918,7 @@ Return ONLY valid JSON, nothing else:
         if (cfg.fontSize !== undefined && cfg.fontSize !== null) geo.textSz = cfg.fontSize;
         if (cfg.thickness !== undefined) geo.thickness = cfg.thickness;
         if (cfg.pocketDepth !== undefined) geo.pocketDepth = cfg.pocketDepth;
+        if (cfg.textBox) geo.textBox = cfg.textBox;
       }
       const hasBlankStl = !!resolveBlankStl(id);
       return {
@@ -7938,6 +7944,17 @@ Return ONLY valid JSON, nothing else:
       const stlPath = path.join(dogTagTagsDir(), `${shapeId}.stl`);
       try { if (fs.existsSync(stlPath)) fs.unlinkSync(stlPath); } catch (_) {}
     }
+    return { ok: true };
+  });
+
+  // Update shape config (e.g. textBox)
+  ipcMain.handle('dog-tag:shapes:update', (_event, { shapeId, updates }) => {
+    if (!shapeId || !updates) return { ok: false };
+    const config = getDogTagShapesConfig(true);
+    if (!config[shapeId]) config[shapeId] = {};
+    Object.assign(config[shapeId], updates);
+    saveShapesConfig(dogTagConfigFile(), config);
+    _shapesConfigCache = null;
     return { ok: true };
   });
 

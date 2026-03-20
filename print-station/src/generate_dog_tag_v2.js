@@ -407,59 +407,62 @@ function buildTextCutterScad(cfg) {
   const cutDepth = cfg.pocketDepth + 0.2;
   const lines = cfg.lines || [{ text: cfg.name, font: cfg.font, fontSize: cfg.fontSize, textXOffset: cfg.textXOffset, textYOffset: cfg.textYOffset }];
   const charWidthRatio = 0.62; // Liberation Sans Bold uppercase average
+  const tb = cfg.textBox; // user-defined text bounding box (or null)
 
-  // Step 1: Compute initial font sizes based on vertical space
-  const maxTotalHeight = bounds.depth * 0.55;
+  // Determine the text area dimensions
+  // If textBox is set, use it. Otherwise fall back to shape profile.
+  let boxW, boxH, boxCenterX, boxCenterY;
+  if (tb && tb.w > 0 && tb.h > 0) {
+    // textBox x,y are offsets from STL center (same as Three.js preview coords)
+    boxW = tb.w;
+    boxH = tb.h;
+    boxCenterX = bounds.centerX + (tb.x || 0);
+    boxCenterY = bounds.centerY + (tb.y || 0);
+    console.log(`[DogTag] Using text box: ${boxW}×${boxH}mm at STL(${boxCenterX.toFixed(1)}, ${boxCenterY.toFixed(1)})`);
+  } else {
+    // Auto: use shape profile width at center, 55% of depth
+    boxW = getWidthAtY(bounds, bounds.centerY) * 0.75;
+    boxH = bounds.depth * 0.55;
+    boxCenterX = bounds.centerX;
+    boxCenterY = bounds.centerY;
+    console.log(`[DogTag] Auto text area: ${boxW.toFixed(0)}×${boxH.toFixed(0)}mm`);
+  }
+
+  // Step 1: Compute font sizes to fit within the text box
   lines.forEach((line, i) => {
     let fs = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
-    // Clamp to share vertical space
-    const maxPerLine = maxTotalHeight / (lines.length * 1.4);
+    // Clamp to share vertical space within box
+    const maxPerLine = boxH / (lines.length * 1.4);
     if (fs > maxPerLine) fs = maxPerLine;
+    // Clamp to fit box width
+    const estWidth = line.text.length * charWidthRatio * fs;
+    if (estWidth > boxW * 0.95) {
+      fs = (boxW * 0.95) / (line.text.length * charWidthRatio);
+    }
     // Line 2+ is smaller (subtitle style)
     if (i > 0 && lines.length > 1) {
       const line1Size = lines[0].fontSize || fs;
       fs = Math.min(fs, line1Size * 0.7);
+      // Re-check width for smaller subtitle
+      const estW2 = line.text.length * charWidthRatio * fs;
+      if (estW2 > boxW * 0.95) {
+        fs = (boxW * 0.95) / (line.text.length * charWidthRatio);
+      }
     }
     line.fontSize = fs;
   });
 
-  // Step 2: Compute Y positions (center text group vertically)
+  // Step 2: Compute Y positions — center text group within the box
   const totalTextHeight = lines.reduce((sum, l, i) => {
     const spacing = i > 0 ? l.fontSize * 0.5 : 0;
     return sum + l.fontSize + spacing;
   }, 0);
 
-  let currentY = bounds.centerY + totalTextHeight / 2;
+  let currentY = boxCenterY + totalTextHeight / 2;
   const linePositions = [];
   lines.forEach((line, i) => {
     currentY -= line.fontSize / 2;
-    linePositions.push({ tx: bounds.centerX, ty: currentY });
-    currentY -= line.fontSize / 2;
-    if (i < lines.length - 1) currentY -= line.fontSize * 0.5;
-  });
-
-  // Step 3: Clamp font sizes to fit ACTUAL shape width at each line's Y position
-  lines.forEach((line, i) => {
-    const pos = linePositions[i];
-    const shapeWidth = getWidthAtY(bounds, pos.ty);
-    const maxTextWidth = shapeWidth * 0.75; // 75% of actual width at this Y
-    const estWidth = line.text.length * charWidthRatio * line.fontSize;
-    if (estWidth > maxTextWidth) {
-      const newFs = maxTextWidth / (line.text.length * charWidthRatio);
-      console.log(`[DogTag] Line ${i+1} "${line.text}": clamped ${line.fontSize.toFixed(1)}→${newFs.toFixed(1)}mm to fit ${shapeWidth.toFixed(0)}mm width at Y=${pos.ty.toFixed(1)}`);
-      line.fontSize = newFs;
-    }
-  });
-
-  // Step 4: Recalculate Y positions with final font sizes
-  const finalTotalHeight = lines.reduce((sum, l, i) => {
-    const spacing = i > 0 ? l.fontSize * 0.5 : 0;
-    return sum + l.fontSize + spacing;
-  }, 0);
-  currentY = bounds.centerY + finalTotalHeight / 2;
-  lines.forEach((line, i) => {
-    currentY -= line.fontSize / 2;
-    linePositions[i].ty = currentY;
+    linePositions.push({ tx: boxCenterX, ty: currentY });
     currentY -= line.fontSize / 2;
     if (i < lines.length - 1) currentY -= line.fontSize * 0.5;
   });
@@ -467,8 +470,8 @@ function buildTextCutterScad(cfg) {
   let scad = `// ============================================================
 // BRCC Keychain — TEXT CUTTER (for boolean subtraction)
 // Lines: ${lines.map(l => l.text).join(', ')}
+// Text box: ${boxW.toFixed(0)}×${boxH.toFixed(0)}mm at (${boxCenterX.toFixed(1)}, ${boxCenterY.toFixed(1)})${tb ? ' [user-defined]' : ' [auto]'}
 // STL bounds: X[${bounds.minX.toFixed(1)}..${bounds.maxX.toFixed(1)}] Y[${bounds.minY.toFixed(1)}..${bounds.maxY.toFixed(1)}]
-// STL center: (${bounds.centerX.toFixed(2)}, ${bounds.centerY.toFixed(2)})
 // ============================================================
 
 tag_thickness = ${actualThickness.toFixed(2)};
@@ -670,6 +673,7 @@ async function generateDogTag({
     textXOffset:     options.textCx         ?? options.textXOffset     ?? shapeCfg.textXOffset ?? sd.textXOffset ?? 0,
     textYOffset:     options.textCy         ?? options.textYOffset     ?? shapeCfg.textYOffset ?? sd.textYOffset ?? 0,
     baseStlPath:     baseStlPath,
+    textBox:         options.textBox        || shapeCfg.textBox        || null,
   };
 
   // Auto-scale font if not set
