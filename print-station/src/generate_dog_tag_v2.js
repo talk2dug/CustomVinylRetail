@@ -349,9 +349,44 @@ function buildTextCutterScad(cfg) {
   const cutDepth = cfg.pocketDepth + 0.2;
   const lines = cfg.lines || [{ text: cfg.name, font: cfg.font, fontSize: cfg.fontSize, textXOffset: cfg.textXOffset, textYOffset: cfg.textYOffset }];
 
+  // Auto-fit font sizes to the STL dimensions
+  // Max text width should be ~70% of STL width, max total text height ~60% of STL depth
+  const maxTextWidth = bounds.width * 0.70;
+  const maxTotalHeight = bounds.depth * 0.60;
+  const charWidthRatio = 0.62; // Liberation Sans Bold uppercase average
+
+  // Calculate font sizes that fit within bounds
+  lines.forEach(line => {
+    let fs = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
+    // Clamp to fit width
+    const estWidth = line.text.length * charWidthRatio * fs;
+    if (estWidth > maxTextWidth) {
+      fs = maxTextWidth / (line.text.length * charWidthRatio);
+    }
+    // Clamp to fit height (share vertical space among lines)
+    const maxPerLine = maxTotalHeight / (lines.length * 1.4); // 1.4 = line spacing factor
+    if (fs > maxPerLine) {
+      fs = maxPerLine;
+    }
+    line.fontSize = fs;
+  });
+
+  // Auto-center text group on the STL, ignoring drag positions
+  // The drag positions from the Three.js preview have been unreliable
+  // due to camera perspective issues, so we compute ideal positions here
+  const totalTextHeight = lines.reduce((sum, l, i) => {
+    const spacing = i > 0 ? l.fontSize * 0.4 : 0; // gap between lines
+    return sum + l.fontSize + spacing;
+  }, 0);
+
+  // Start Y: center the text block vertically on the STL
+  let currentY = bounds.centerY + totalTextHeight / 2;
+
   let scad = `// ============================================================
 // BRCC Keychain — TEXT CUTTER (for boolean subtraction)
 // Lines: ${lines.map(l => l.text).join(', ')}
+// STL bounds: X[${bounds.minX.toFixed(1)}..${bounds.maxX.toFixed(1)}] Y[${bounds.minY.toFixed(1)}..${bounds.maxY.toFixed(1)}]
+// STL center: (${bounds.centerX.toFixed(2)}, ${bounds.centerY.toFixed(2)})
 // ============================================================
 
 tag_thickness = ${actualThickness.toFixed(2)};
@@ -360,16 +395,25 @@ cut_depth     = ${cutDepth.toFixed(2)};
 
 `;
 
-  // Generate a cutter module for each line
   lines.forEach((line, i) => {
-    const fs_size = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
+    const fs_size = line.fontSize;
     const font = line.font || cfg.font || DEFAULTS.font;
-    const tx = (bounds.centerX + (line.textXOffset || 0)).toFixed(2);
-    const ty = (bounds.centerY + (line.textYOffset || 0)).toFixed(2);
-    console.log(`[DogTag] Line ${i+1} "${line.text}": drag=(${(line.textXOffset||0).toFixed(2)}, ${(line.textYOffset||0).toFixed(2)}) + center=(${bounds.centerX.toFixed(2)}, ${bounds.centerY.toFixed(2)}) => SCAD=(${tx}, ${ty})`);
 
-    scad += `// Line ${i + 1}: "${line.text}"
-translate([${tx}, ${ty}, tag_thickness - cut_depth])
+    // Position each line: centered X, stacked Y from top
+    currentY -= fs_size / 2; // move down to line center
+    const tx = bounds.centerX; // always horizontally centered
+    const ty = currentY;
+    currentY -= fs_size / 2; // move past this line
+    if (i < lines.length - 1) currentY -= fs_size * 0.4; // gap before next line
+
+    // Clamp Y to stay within STL bounds with margin
+    const margin = fs_size * 0.6;
+    const clampedTy = Math.max(bounds.minY + margin, Math.min(bounds.maxY - margin, ty));
+
+    console.log(`[DogTag] Line ${i+1} "${line.text}": fontSize=${fs_size.toFixed(1)} pos=(${tx.toFixed(2)}, ${clampedTy.toFixed(2)}) [bounds Y: ${bounds.minY.toFixed(1)}..${bounds.maxY.toFixed(1)}]`);
+
+    scad += `// Line ${i + 1}: "${line.text}" (size=${fs_size.toFixed(1)}mm)
+translate([${tx.toFixed(2)}, ${clampedTy.toFixed(2)}, tag_thickness - cut_depth])
 linear_extrude(height = cut_depth + 0.01)
   offset(r = pocket_clear, $fn = 16)
     text("${line.text}", size = ${fs_size.toFixed(2)}, font = "${font}",
