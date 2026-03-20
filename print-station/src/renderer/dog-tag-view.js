@@ -359,9 +359,15 @@ function dtSetupScene() {
   DT.scene = new THREE.Scene();
   DT.scene.background = new THREE.Color(0xf0f0f0);
 
-  // Camera — angled view from above
-  DT.camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 1000);
-  DT.camera.position.set(0, -50, 60);
+  // Camera — top-down orthographic so drag positions match physical output exactly
+  const aspect = w / h;
+  const viewSize = 70; // mm visible vertically
+  DT.camera = new THREE.OrthographicCamera(
+    -viewSize * aspect / 2, viewSize * aspect / 2,
+    viewSize / 2, -viewSize / 2,
+    0.1, 500
+  );
+  DT.camera.position.set(0, 0, 100);
   DT.camera.lookAt(0, 0, 0);
 
   // Renderer
@@ -441,7 +447,12 @@ function dtSetupScene() {
     const nw = container.clientWidth;
     const nh = container.clientHeight;
     if (nw > 0 && nh > 0) {
-      DT.camera.aspect = nw / nh;
+      const newAspect = nw / nh;
+      const vs = 70;
+      DT.camera.left = -vs * newAspect / 2;
+      DT.camera.right = vs * newAspect / 2;
+      DT.camera.top = vs / 2;
+      DT.camera.bottom = -vs / 2;
       DT.camera.updateProjectionMatrix();
       DT.renderer.setSize(nw, nh);
     }
@@ -857,15 +868,18 @@ async function dtGenerate() {
         const rcy = ln.cy !== null ? ln.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : (geo.textCy || 0)) : (geo.textCy || 0) - (geo.textSz || 7) * 1.5);
         const rsz = ln.fontSize !== null ? ln.fontSize : (i === 0 ? (DT.textSz !== null ? DT.textSz : (geo.textSz || 7)) : (geo.textSz || 7) * 0.7);
 
-        lines.push({
+        const entry = {
           text: ln.text || (i === 0 ? DT.petName : ''),
           font: ln.font || 'Liberation Sans:style=Bold',
           fontSize: rsz,
           textXOffset: rcx,
           textYOffset: rcy,
-        });
+        };
+        console.log(`[DogTag Generate] Line ${i+1}: text="${entry.text}" pos=(${rcx.toFixed(2)}, ${rcy.toFixed(2)}) fontSize=${rsz} dragged=${ln.cx !== null}/${ln.cy !== null}`);
+        lines.push(entry);
       }
     }
+    console.log('[DogTag Generate] Lines payload:', JSON.stringify(lines, null, 2));
 
     const result = await window.printStation.dogTag.generate({
       name: lines[0]?.text || DT.petName,
