@@ -100,7 +100,7 @@
           <button class="dropdown-item" data-view="slicerView">Slice &amp; Print</button>
           <button class="dropdown-item" data-view="printQuotesView">Print Quotes</button>
           <button class="dropdown-item" data-view="buildPlatesView">Build Plates</button>
-          <button class="dropdown-item" data-view="dogTagsView">Dog Tags</button>
+          <button class="dropdown-item" data-view="dogTagsView">Keychains</button>
         </div>
       </div>
 
@@ -115,6 +115,7 @@
           <button class="dropdown-item" data-view="fbScheduleManagerView">Schedule Manager</button>
           <button class="dropdown-item" data-view="aiAgentView">AI Sales Agent</button>
           <button class="dropdown-item" data-view="trendMonitorView">Trend Monitor</button>
+          <button class="dropdown-item" data-view="footageLibraryView">Footage Library</button>
         </div>
       </div>
 
@@ -4781,6 +4782,210 @@
       </section>
 
       <!-- ================================================================== -->
+      <!-- FOOTAGE LIBRARY & CAMERA RECORDING                                -->
+      <!-- ================================================================== -->
+      <section id="footageLibraryView" class="view">
+        <div class="view-toolbar">
+          <div class="catalog-toolbar-group">
+            <h3 style="margin:0;">Footage Library</h3>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="tab-pill active" data-footagetab="record">Record</button>
+            <button class="tab-pill" data-footagetab="upload">Upload</button>
+            <button class="tab-pill" data-footagetab="library">Library</button>
+            <button class="tab-pill" data-footagetab="cameras">Cameras</button>
+          </div>
+        </div>
+
+        <!-- ===== RECORD TAB ===== -->
+        <div class="footage-tab-panel active" data-footagepanel="record">
+          <div class="footage-record-layout">
+            <!-- Preview panel -->
+            <div class="footage-preview-panel">
+              <div class="footage-preview-header">
+                <select id="footageCameraSelect" class="select-input">
+                  <option value="">Select camera...</option>
+                </select>
+                <div id="footageRecordingIndicator" class="footage-rec-indicator hidden">
+                  <span class="rec-dot"></span>
+                  <span id="footageRecordingTimer">00:00</span>
+                  <span id="footageSegmentInfo" class="muted" style="font-size:0.75rem;margin-left:8px;"></span>
+                </div>
+              </div>
+              <div class="footage-preview-container">
+                <img id="footagePreviewImg" class="footage-preview-img" alt="Camera preview" />
+                <div id="footagePreviewPlaceholder" class="footage-preview-placeholder">
+                  <span>Select a camera to see live preview</span>
+                </div>
+              </div>
+              <div class="footage-record-controls">
+                <button id="footageStartRecBtn" class="primary" disabled>Start Recording</button>
+                <button id="footageStopRecBtn" class="danger" disabled style="display:none;">Stop Recording</button>
+              </div>
+            </div>
+
+            <!-- Tag form (shown after stopping) -->
+            <div id="footageRecordTagForm" class="footage-tag-form hidden">
+              <h4>Tag This Recording</h4>
+              <div id="footageRecordPreview" class="footage-record-preview"></div>
+
+              <label class="footage-label">Clip Type</label>
+              <div class="footage-pill-grid" data-pillgroup="rec-category">
+                <button class="tag-pill" data-value="close-up">close-up</button>
+                <button class="tag-pill" data-value="reveal">reveal</button>
+                <button class="tag-pill" data-value="process">process</button>
+                <button class="tag-pill" data-value="timelapse">timelapse</button>
+                <button class="tag-pill" data-value="b-roll">b-roll</button>
+                <button class="tag-pill" data-value="product-shot">product-shot</button>
+                <button class="tag-pill" data-value="packing">packing</button>
+                <button class="tag-pill" data-value="workshop">workshop</button>
+              </div>
+
+              <label class="footage-label">What's Shown</label>
+              <div class="footage-pill-grid" data-pillgroup="rec-subcategory">
+                <button class="tag-pill" data-value="transfer-paper">transfer-paper</button>
+                <button class="tag-pill" data-value="heat-press">heat-press</button>
+                <button class="tag-pill" data-value="finished-print">finished-print</button>
+                <button class="tag-pill" data-value="blank-metal">blank-metal</button>
+                <button class="tag-pill" data-value="hanging">hanging</button>
+                <button class="tag-pill" data-value="comparison">comparison</button>
+              </div>
+
+              <label class="footage-label">Product (optional)</label>
+              <input type="text" id="footageRecProductInput" class="text-input" placeholder="Type product name or select..." list="footageRecProductList" />
+              <datalist id="footageRecProductList"></datalist>
+
+              <label class="footage-label">Notes (optional)</label>
+              <textarea id="footageRecNotes" class="text-input" rows="2" placeholder="Quick notes about the clip..."></textarea>
+
+              <div class="footage-form-actions">
+                <button id="footageUploadRecBtn" class="primary">Upload & Save</button>
+                <button id="footageDiscardRecBtn" class="secondary">Discard</button>
+              </div>
+              <div id="footageRecUploadProgress" class="footage-upload-progress hidden">
+                <div class="footage-progress-bar"><div class="footage-progress-fill"></div></div>
+                <span class="footage-progress-text">Uploading...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== UPLOAD TAB ===== -->
+        <div class="footage-tab-panel" data-footagepanel="upload">
+          <div class="footage-upload-layout">
+            <div class="footage-upload-zone" id="footageUploadZone">
+              <input type="file" id="footageFileInput" accept="video/*" hidden />
+              <div class="footage-upload-zone-content">
+                <span style="font-size:2em;">🎬</span>
+                <p>Drag & drop a video file or <strong>click to browse</strong></p>
+                <span id="footageSelectedFileName" class="muted"></span>
+              </div>
+            </div>
+
+            <div id="footageUploadPreview" class="footage-upload-preview hidden">
+              <video id="footageUploadVideoPreview" controls style="max-width:100%;max-height:200px;border-radius:6px;"></video>
+            </div>
+
+            <label class="footage-label">Clip Type</label>
+            <div class="footage-pill-grid" data-pillgroup="upload-category">
+              <button class="tag-pill" data-value="close-up">close-up</button>
+              <button class="tag-pill" data-value="reveal">reveal</button>
+              <button class="tag-pill" data-value="process">process</button>
+              <button class="tag-pill" data-value="timelapse">timelapse</button>
+              <button class="tag-pill" data-value="b-roll">b-roll</button>
+              <button class="tag-pill" data-value="product-shot">product-shot</button>
+              <button class="tag-pill" data-value="packing">packing</button>
+              <button class="tag-pill" data-value="workshop">workshop</button>
+            </div>
+
+            <label class="footage-label">What's Shown</label>
+            <div class="footage-pill-grid" data-pillgroup="upload-subcategory">
+              <button class="tag-pill" data-value="transfer-paper">transfer-paper</button>
+              <button class="tag-pill" data-value="heat-press">heat-press</button>
+              <button class="tag-pill" data-value="finished-print">finished-print</button>
+              <button class="tag-pill" data-value="blank-metal">blank-metal</button>
+              <button class="tag-pill" data-value="hanging">hanging</button>
+              <button class="tag-pill" data-value="comparison">comparison</button>
+            </div>
+
+            <label class="footage-label">Product (optional)</label>
+            <input type="text" id="footageUploadProductInput" class="text-input" placeholder="Type product name or select..." list="footageUploadProductList" />
+            <datalist id="footageUploadProductList"></datalist>
+
+            <label class="footage-label">Notes (optional)</label>
+            <textarea id="footageUploadNotes" class="text-input" rows="2" placeholder="Quick notes about the clip..."></textarea>
+
+            <div class="footage-form-actions">
+              <button id="footageUploadBtn" class="primary" disabled>Upload Clip</button>
+            </div>
+            <div id="footageUploadProgress" class="footage-upload-progress hidden">
+              <div class="footage-progress-bar"><div class="footage-progress-fill"></div></div>
+              <span class="footage-progress-text">Uploading...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== LIBRARY TAB ===== -->
+        <div class="footage-tab-panel" data-footagepanel="library">
+          <!-- Filters -->
+          <div class="footage-filter-row">
+            <select id="footageFilterCategory" class="select-input">
+              <option value="">All Types</option>
+              <option value="close-up">close-up</option>
+              <option value="reveal">reveal</option>
+              <option value="process">process</option>
+              <option value="timelapse">timelapse</option>
+              <option value="b-roll">b-roll</option>
+              <option value="product-shot">product-shot</option>
+              <option value="packing">packing</option>
+              <option value="workshop">workshop</option>
+            </select>
+            <select id="footageFilterStatus" class="select-input">
+              <option value="">All Status</option>
+              <option value="raw">Raw</option>
+              <option value="ready">Ready</option>
+              <option value="used">Used</option>
+            </select>
+            <input type="search" id="footageSearchInput" class="text-input" placeholder="Search clips..." />
+            <button id="footageRefreshBtn" class="secondary small">Refresh</button>
+          </div>
+
+          <!-- Stats -->
+          <div class="footage-stats-row">
+            <div class="footage-stat"><span id="footageStatTotal">0</span><small>Total Clips</small></div>
+            <div class="footage-stat"><span id="footageStatStorage">0 B</span><small>Storage</small></div>
+            <div class="footage-stat"><span id="footageStatRaw">0</span><small>Raw</small></div>
+          </div>
+
+          <!-- Grid -->
+          <div id="footageClipGrid" class="footage-clip-grid"></div>
+        </div>
+
+        <!-- ===== CAMERAS TAB ===== -->
+        <div class="footage-tab-panel" data-footagepanel="cameras">
+          <div class="footage-cameras-layout">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h4 style="margin:0;">Camera Configuration</h4>
+              <button id="footageAddCameraBtn" class="primary small">Add Camera</button>
+            </div>
+            <div id="footageCameraList" class="footage-camera-list"></div>
+            <div id="footageFfmpegStatus" class="footage-ffmpeg-status"></div>
+          </div>
+        </div>
+
+        <!-- Detail Modal -->
+        <div id="footageDetailModal" class="footage-modal-overlay hidden">
+          <div class="footage-modal">
+            <div class="footage-modal-header">
+              <h3 id="footageModalTitle">Clip Details</h3>
+              <button id="footageModalCloseBtn" class="footage-modal-close">&times;</button>
+            </div>
+            <div id="footageModalBody" class="footage-modal-body"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
       <!-- FACEBOOK SCHEDULE MANAGER                                          -->
       <!-- ================================================================== -->
       <section id="fbScheduleManagerView" class="view">
@@ -7385,9 +7590,9 @@
       <!-- ================================================================== -->
       <section id="dogTagsView" class="view">
         <div class="view-toolbar">
-          <h2 style="margin:0;">Dog Tag Generator</h2>
+          <h2 style="margin:0;">Keychain Generator</h2>
           <div style="display:flex;gap:8px;align-items:center;">
-            <span id="dtPosReadout" style="font-size:0.8rem;color:#888;font-family:monospace;"></span>
+            <span id="dtPosReadout" style="font-size:0.8rem;color:var(--muted);font-family:monospace;"></span>
           </div>
         </div>
         <div class="view-content" style="display:flex;gap:0;height:calc(100vh - 140px);">
@@ -7399,16 +7604,19 @@
               OpenSCAD not found. Install it and add to PATH for STL generation &amp; slicer integration.
             </div>
 
-            <!-- Pet Name -->
-            <label class="dt-label">Pet Name</label>
-            <input type="text" id="dtPetName" placeholder="e.g. BUDDY" maxlength="12" class="dt-input" />
+            <!-- Mode Toggle: Base Plate vs Standalone -->
+            <label class="dt-label">Mode</label>
+            <div style="display:flex;gap:4px;margin-bottom:12px;">
+              <button id="dtModeBasePlate" class="tab-pill active" style="flex:1;">Base Plate</button>
+              <button id="dtModeStandalone" class="tab-pill" style="flex:1;">Standalone Name</button>
+            </div>
 
             <!-- Shape Picker -->
-            <label class="dt-label">Tag Shape</label>
+            <label class="dt-label">Keychain Shape</label>
             <div id="dtShapeGrid" class="dt-shape-grid"></div>
             <div style="display:flex;gap:6px;margin-bottom:12px;">
-              <button id="dtImportBlankBtn" class="dt-btn-small" style="flex:1;" title="Import a blank STL from Tinkercad for the selected shape">Import Blank STL</button>
-              <button id="dtOpenTagsFolderBtn" class="dt-btn-small" style="flex:1;" title="Open the tags folder to manage blank STLs">Open Tags Folder</button>
+              <button id="dtImportBlankBtn" class="dt-btn-small" style="flex:1;" title="Import a blank STL for the selected shape">Import Blank STL</button>
+              <button id="dtOpenTagsFolderBtn" class="dt-btn-small" style="flex:1;" title="Open the keychains folder">Open Tags Folder</button>
             </div>
 
             <!-- Color Preset -->
@@ -7422,38 +7630,70 @@
               <option>Blue + White</option>
             </select>
 
-            <!-- Text Controls -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <label class="dt-label" style="margin:0;flex:1;">Text Controls</label>
-              <button id="dtResetPosBtn" class="dt-btn-small">Reset All</button>
+            <!-- ===== BASE PLATE MODE CONTROLS ===== -->
+            <div id="dtBasePlateControls">
+              <!-- Line Count Toggle -->
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <label class="dt-label" style="margin:0;flex:1;">Text Lines</label>
+                <div style="display:flex;gap:4px;">
+                  <button id="dtLineCount1" class="tab-pill active" style="padding:2px 10px;font-size:0.75rem;">1 Line</button>
+                  <button id="dtLineCount2" class="tab-pill" style="padding:2px 10px;font-size:0.75rem;">2 Lines</button>
+                </div>
+                <button id="dtResetPosBtn" class="dt-btn-small">Reset All</button>
+              </div>
+
+              <!-- Line 1 -->
+              <label class="dt-label">Line 1</label>
+              <input type="text" id="dtLine1Text" placeholder="e.g. BUDDY" maxlength="20" class="dt-input" />
+              <div style="display:flex;gap:8px;margin-bottom:6px;">
+                <select id="dtLine1Font" class="dt-select" style="flex:1;"></select>
+                <div style="display:flex;align-items:center;gap:4px;flex:1;">
+                  <input type="range" id="dtLine1Size" min="2" max="20" step="0.5" style="flex:1;" />
+                  <span id="dtLine1SizeVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">auto</span>
+                </div>
+              </div>
+
+              <!-- Line 2 (hidden when 1-line mode) -->
+              <div id="dtLine2Controls">
+                <label class="dt-label">Line 2</label>
+                <input type="text" id="dtLine2Text" placeholder="e.g. 555-0123" maxlength="20" class="dt-input" />
+                <div style="display:flex;gap:8px;margin-bottom:6px;">
+                  <select id="dtLine2Font" class="dt-select" style="flex:1;"></select>
+                  <div style="display:flex;align-items:center;gap:4px;flex:1;">
+                    <input type="range" id="dtLine2Size" min="2" max="20" step="0.5" style="flex:1;" />
+                    <span id="dtLine2SizeVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">auto</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <!-- Font Size -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <label style="font-size:0.75rem;color:#888;min-width:50px;">Size</label>
-              <input type="range" id="dtFontSizeSlider" min="2" max="20" step="0.5" style="flex:1;" />
-              <span id="dtFontSizeValue" style="font-size:0.75rem;color:#aaa;min-width:36px;text-align:right;">auto</span>
+            <!-- ===== STANDALONE NAME MODE CONTROLS ===== -->
+            <div id="dtStandaloneControls" style="display:none;">
+              <label class="dt-label">Name Text</label>
+              <input type="text" id="dtStandaloneText" placeholder="e.g. SARAH" maxlength="20" class="dt-input" />
+              <div style="display:flex;gap:8px;margin-bottom:6px;">
+                <select id="dtStandaloneFont" class="dt-select" style="flex:1;"></select>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <label style="font-size:0.75rem;color:var(--muted);min-width:60px;">Size</label>
+                <input type="range" id="dtStandaloneSize" min="4" max="30" step="0.5" style="flex:1;" />
+                <span id="dtStandaloneSizeVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">auto</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <label style="font-size:0.75rem;color:var(--muted);min-width:60px;">Thickness</label>
+                <input type="range" id="dtStandaloneThickness" min="1" max="8" step="0.5" value="3" style="flex:1;" />
+                <span id="dtStandaloneThicknessVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">3</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <label style="font-size:0.75rem;color:var(--muted);min-width:60px;">Connect</label>
+                <input type="range" id="dtStandaloneConnect" min="0" max="5" step="0.5" value="1" style="flex:1;" />
+                <span id="dtStandaloneConnectVal" style="font-size:0.7rem;color:var(--muted);min-width:30px;text-align:right;">1</span>
+              </div>
             </div>
-
-            <!-- X Offset -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <label style="font-size:0.75rem;color:#888;min-width:50px;">X Offset</label>
-              <input type="range" id="dtTextXSlider" min="-30" max="30" step="0.5" value="0" style="flex:1;" />
-              <span id="dtTextXValue" style="font-size:0.75rem;color:#aaa;min-width:36px;text-align:right;">0</span>
-            </div>
-
-            <!-- Y Offset -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <label style="font-size:0.75rem;color:#888;min-width:50px;">Y Offset</label>
-              <input type="range" id="dtTextYSlider" min="-30" max="30" step="0.5" value="0" style="flex:1;" />
-              <span id="dtTextYValue" style="font-size:0.75rem;color:#aaa;min-width:36px;text-align:right;">0</span>
-            </div>
-
-            <p style="margin:0 0 12px;font-size:0.75rem;color:#666;">Use sliders or drag text on the 3D preview to position.</p>
 
             <!-- Action Buttons -->
-            <div style="display:flex;gap:8px;margin-bottom:8px;">
-              <button id="dtGenerateBtn" class="primary dt-action-btn" style="flex:1;">Generate Tag</button>
+            <div style="display:flex;gap:8px;margin-bottom:8px;margin-top:12px;">
+              <button id="dtGenerateBtn" class="primary dt-action-btn" style="flex:1;">Generate Keychain</button>
               <button id="dtSendToSlicerBtn" class="dt-action-btn" style="flex:1;" disabled title="Generate first">Send to Slicer</button>
             </div>
             <button id="dtAddBatchBtn" class="dt-action-btn secondary" style="width:100%;">+ Add to Batch Queue</button>
@@ -7472,11 +7712,11 @@
             <!-- Batch Queue -->
             <div style="margin-bottom:20px;">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                <h3 style="margin:0;flex:1;">Batch Queue <span id="dtBatchCount" style="font-size:0.8rem;color:#888;"></span></h3>
+                <h3 style="margin:0;flex:1;">Batch Queue <span id="dtBatchCount" style="font-size:0.8rem;color:var(--muted);"></span></h3>
                 <button id="dtBatchClearBtn" class="dt-btn-small">Clear</button>
               </div>
               <div id="dtBatchList">
-                <div class="dt-empty">Queue empty. Add tags with "+ Add to Batch".</div>
+                <div class="dt-empty">Queue empty. Add keychains with "+ Add to Batch".</div>
               </div>
               <button id="dtBatchGenerateBtn" class="primary dt-action-btn" style="width:100%;margin-top:8px;">
                 Generate All &amp; Export STLs
@@ -7484,12 +7724,12 @@
             </div>
 
             <!-- Divider -->
-            <hr style="border:none;border-top:1px solid #e0e0e0;margin:12px 0;" />
+            <hr style="border:none;border-top:1px solid var(--border);margin:12px 0;" />
 
             <!-- History -->
-            <h3 style="margin:0 0 8px;">Recent Tags</h3>
+            <h3 style="margin:0 0 8px;">Recent Keychains</h3>
             <div id="dtHistoryList" style="overflow-y:auto;flex:1;">
-              <div class="dt-empty">No tags generated yet.</div>
+              <div class="dt-empty">No keychains generated yet.</div>
             </div>
           </div>
 
@@ -8093,6 +8333,7 @@
     <script src="./b2b-management-view.js"></script>
     <!-- Trend Monitor View -->
     <script src="./trend-monitor-view.js"></script>
+    <script src="./footage-library-view.js"></script>
     <!-- Print Quotes View -->
     <script src="./parts-finder-drawer.js"></script>
     <script src="./quotes-view.js"></script>
