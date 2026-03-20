@@ -427,9 +427,11 @@ async function handleSlicerRoute(pathname, req, res, db) {
         modelInfo = await slicer.getModelInfo(finalPath);
       } catch {}
 
+      const folderVal = fieldVal('folder') || null;
       const catalogItem = db.createStlCatalogItem({
         name: fieldVal('name') || path.basename(safeName, path.extname(safeName)),
         category: fieldVal('category') || null,
+        folder: folderVal,
         stl_path: stlRelPath,
         thumbnail_path: null,
         default_quality: fieldVal('default_quality') || 'standard',

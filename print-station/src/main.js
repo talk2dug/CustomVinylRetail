@@ -7888,6 +7888,7 @@ Return ONLY valid JSON, nothing else:
         textScad: result.textSCAD,
         baseStl: stlResults.baseStl,
         textStl: stlResults.textStl,
+        textStls: stlResults.textStls || (stlResults.textStl ? [stlResults.textStl] : []),
       },
       status: stlResults.rendered ? 'ready_to_print' : 'scad_generated',
       printNotes: result.printNotes,
@@ -8144,7 +8145,8 @@ Return ONLY valid JSON, nothing else:
   });
 
   // Send a single generated STL to the slicer catalog
-  ipcMain.handle('dog-tag:send-to-slicer', async (_event, { stlPath, name, category }) => {
+  ipcMain.handle('dog-tag:send-to-slicer', async (_event, { stlPath, name, category, folder }) => {
+    console.log(`[DogTag Library] Uploading: ${stlPath} as "${name}" to ${category}/${folder || 'root'}`);
     if (!stlPath || !fs.existsSync(stlPath)) {
       throw new Error('STL file not found: ' + (stlPath || 'none'));
     }
@@ -8157,11 +8159,13 @@ Return ONLY valid JSON, nothing else:
     const formData = new FormData();
     formData.append('file', fs.createReadStream(stlPath));
     formData.append('name', name || path.basename(stlPath, '.stl'));
-    formData.append('category', category || 'Dog Tags');
+    formData.append('category', category || 'Keychains');
+    if (folder) formData.append('folder', folder);
 
     const headers = formData.getHeaders();
     if (apiKey) headers['x-api-key'] = apiKey;
 
+    console.log(`[DogTag Library] POST ${serverUrl}/api/slicer/catalog`);
     const resp = await fetchFn(`${serverUrl}/api/slicer/catalog`, {
       method: 'POST',
       headers,
@@ -8170,10 +8174,13 @@ Return ONLY valid JSON, nothing else:
 
     if (!resp.ok) {
       const txt = await resp.text();
-      throw new Error(`Slicer upload failed (${resp.status}): ${txt}`);
+      console.error(`[DogTag Library] Upload failed (${resp.status}): ${txt}`);
+      throw new Error(`Library upload failed (${resp.status}): ${txt}`);
     }
 
-    return resp.json();
+    const result = await resp.json();
+    console.log(`[DogTag Library] Upload success:`, result.id || result);
+    return result;
   });
 }
 

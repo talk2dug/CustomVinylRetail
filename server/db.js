@@ -6615,12 +6615,12 @@ function calculateB2BOrderTotals(orderId) {
 
 function createStlCatalogItem(item) {
   const ins = db.prepare(`
-    INSERT INTO stl_catalog (name, category, stl_path, thumbnail_path,
+    INSERT INTO stl_catalog (name, category, folder, stl_path, thumbnail_path,
       default_quality, default_strength, default_material, default_texture, default_supports,
       default_surface, default_speed,
       notes, file_size, triangle_count, dim_x, dim_y, dim_z, est_weight_g, est_time_min,
       description, source_url)
-    VALUES (@name, @category, @stl_path, @thumbnail_path,
+    VALUES (@name, @category, @folder, @stl_path, @thumbnail_path,
       @default_quality, @default_strength, @default_material, @default_texture, @default_supports,
       @default_surface, @default_speed,
       @notes, @file_size, @triangle_count, @dim_x, @dim_y, @dim_z, @est_weight_g, @est_time_min,
@@ -6629,6 +6629,7 @@ function createStlCatalogItem(item) {
   const info = ins.run({
     name: item.name || 'Unnamed',
     category: item.category || null,
+    folder: item.folder || null,
     stl_path: item.stl_path,
     thumbnail_path: item.thumbnail_path || null,
     default_quality: item.default_quality || 'standard',
