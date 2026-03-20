@@ -7822,8 +7822,20 @@ Return ONLY valid JSON, nothing else:
       const textStl = result.textSCAD.replace('.scad', '.stl');
       const baseStl = result.baseSCAD.replace('.scad', '.stl');
 
-      // 1. Render the text/insert STL
-      const textOk = renderScadToStl(result.textSCAD, textStl);
+      // 1. Render ALL text/insert STLs (one per line)
+      const allTextScads = result.textSCADs || [result.textSCAD];
+      const textStls = [];
+      let allTextOk = true;
+      for (const tScad of allTextScads) {
+        const tStl = tScad.replace('.scad', '.stl');
+        const ok = renderScadToStl(tScad, tStl);
+        if (ok) {
+          textStls.push(tStl);
+        } else {
+          allTextOk = false;
+          console.error(`[DogTag] Failed to render insert: ${path.basename(tScad)}`);
+        }
+      }
 
       // 2. Render the cutter STL (pocket shape to subtract from blank)
       let baseOk = false;
@@ -7846,12 +7858,16 @@ Return ONLY valid JSON, nothing else:
         baseOk = renderScadToStl(result.baseSCAD, baseStl);
       }
 
-      if (baseOk && textOk) {
+      if (baseOk && textStls.length > 0) {
         const qBase = path.join(stlDir, path.basename(baseStl));
-        const qText = path.join(stlDir, path.basename(textStl));
         fs.copyFileSync(baseStl, qBase);
-        fs.copyFileSync(textStl, qText);
-        stlResults = { rendered: true, baseStl: qBase, textStl: qText };
+        // Copy all insert STLs to queue
+        const qTextPaths = textStls.map(t => {
+          const qPath = path.join(stlDir, path.basename(t));
+          fs.copyFileSync(t, qPath);
+          return qPath;
+        });
+        stlResults = { rendered: true, baseStl: qBase, textStl: qTextPaths[0], textStls: qTextPaths };
       }
     }
 
