@@ -235,26 +235,56 @@ async function getRtspUrl(cam) {
 }
 
 // ---------------------------------------------------------------------------
-// ONVIF Discovery (for camera editor "Auto-Discover" button)
+// ONVIF Discovery — full profile + device info
 // ---------------------------------------------------------------------------
 async function discoverCamera(config) {
   if (!config.onvifHost) throw new Error('No ONVIF host provided');
 
-  try {
-    const fakeCam = { ...config, onvifProfile: config.onvifProfile || 'PROFILE_16415' };
-    const mainUrl = await fetchRtspUrl(fakeCam);
-    let subUrl = null;
-    try {
-      subUrl = await fetchRtspUrl({ ...fakeCam, onvifProfile: 'PROFILE_16417' });
-    } catch (_) { /* sub stream optional */ }
+  const pyPath = pythonPath || 'python';
+  const script = path.join(__dirname, 'scripts', 'get_rtsp_url.py');
 
-    const profiles = [{ name: 'Main Stream', url: mainUrl, profile: 'PROFILE_16415' }];
-    if (subUrl) profiles.push({ name: 'Sub Stream', url: subUrl, profile: 'PROFILE_16417' });
+  return new Promise((resolve, reject) => {
+    const args = [
+      script,
+      '--host', config.onvifHost,
+      '--port', String(config.onvifPort || 8000),
+      '--user', config.onvifUser || 'admin',
+      '--pass', config.onvifPass || '',
+      '--discover'
+    ];
 
-    return { success: true, rtspUrl: mainUrl, profiles };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
+    log(`Discovering camera at ${config.onvifHost}:${config.onvifPort || 8000}...`);
+    const proc = spawn(pyPath, args, { windowsHide: true });
+
+    let stdout = '', stderr = '';
+    proc.stdout.on('data', d => { stdout += d; });
+    proc.stderr.on('data', d => { stderr += d; });
+
+    const timer = setTimeout(() => {
+      proc.kill();
+      reject(new Error('Discovery timed out after 20 s'));
+    }, 20_000);
+
+    proc.on('close', code => {
+      clearTimeout(timer);
+      try {
+        const result = JSON.parse(stdout.trim());
+        if (result.success) {
+          log(`Discovered ${result.device?.manufacturer || 'camera'} ${result.device?.model || ''} — ${result.profiles?.length || 0} profiles`);
+        }
+        resolve(result);
+      } catch (_) {
+        const err = stderr.trim() || stdout.trim() || `Discovery failed (exit ${code})`;
+        log(`Discovery error: ${err}`);
+        resolve({ success: false, error: err });
+      }
+    });
+
+    proc.on('error', e => {
+      clearTimeout(timer);
+      resolve({ success: false, error: `Failed to run python: ${e.message}` });
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------

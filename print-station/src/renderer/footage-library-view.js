@@ -771,23 +771,83 @@ function openCameraEditor(cam) {
 
   document.getElementById('camEditorDiscoverBtn').addEventListener('click', async () => {
     const status = document.getElementById('camEditorStatus');
-    status.textContent = 'Discovering RTSP URL...';
+    status.innerHTML = '<span style="color:var(--accent);">Discovering camera...</span>';
     try {
       const result = await window.printStation.footage.discoverCamera({
         onvifHost: document.getElementById('camEditorOnvifHost').value.trim(),
         onvifPort: parseInt(document.getElementById('camEditorOnvifPort').value) || 8000,
         onvifUser: document.getElementById('camEditorOnvifUser').value.trim(),
-        onvifPass: document.getElementById('camEditorOnvifPass').value.trim(),
-        onvifProfile: document.getElementById('camEditorOnvifProfile').value.trim()
+        onvifPass: document.getElementById('camEditorOnvifPass').value.trim()
       });
       if (result.success) {
-        document.getElementById('camEditorRtsp').value = result.rtspUrl;
-        status.textContent = 'Found: ' + result.rtspUrl;
+        // Show device info
+        const dev = result.device || {};
+        let html = '';
+        if (dev.manufacturer) {
+          html += `<div style="margin-bottom:6px;"><strong>${dev.manufacturer} ${dev.model || ''}</strong>`;
+          if (dev.firmwareVersion) html += ` <span class="muted">(FW: ${dev.firmwareVersion})</span>`;
+          html += '</div>';
+          // Auto-fill camera name if empty
+          const nameField = document.getElementById('camEditorName');
+          if (!nameField.value.trim()) {
+            nameField.value = `${dev.manufacturer} ${dev.model || ''}`.trim();
+          }
+        }
+
+        // Show discovered profiles as selectable cards
+        if (result.profiles && result.profiles.length > 0) {
+          html += '<div style="margin-top:6px;"><strong>Profiles found:</strong></div>';
+          html += '<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px;">';
+          for (const p of result.profiles) {
+            const v = p.video || {};
+            const res = v.width && v.height ? `${v.width}x${v.height}` : '?';
+            const enc = v.encoding || '?';
+            const fps = v.fps ? `${v.fps}fps` : '';
+            const bitrate = v.bitrate ? `${v.bitrate}kbps` : '';
+            const label = p.name || p.token;
+            const details = [enc, res, fps, bitrate].filter(Boolean).join(' · ');
+            html += `<button class="secondary small cam-profile-pick"
+              data-token="${p.token}" data-rtsp="${p.rtspUrl || ''}"
+              style="text-align:left;padding:6px 10px;display:flex;justify-content:space-between;align-items:center;">
+              <span><strong>${label}</strong></span>
+              <span class="muted" style="font-size:0.8rem;">${details}</span>
+            </button>`;
+          }
+          html += '</div>';
+          html += '<small class="muted">Click a profile to select it</small>';
+        }
+
+        status.innerHTML = html;
+
+        // Wire up profile selection buttons
+        status.querySelectorAll('.cam-profile-pick').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const token = btn.dataset.token;
+            const rtsp = btn.dataset.rtsp;
+            document.getElementById('camEditorOnvifProfile').value = token;
+            if (rtsp) document.getElementById('camEditorRtsp').value = rtsp;
+            // Highlight selected
+            status.querySelectorAll('.cam-profile-pick').forEach(b => b.style.borderColor = '');
+            btn.style.borderColor = 'var(--accent)';
+            showFootageToast(`Selected profile: ${token}`);
+          });
+        });
+
+        // Auto-select first profile with best resolution
+        if (result.profiles.length > 0) {
+          const best = result.profiles.reduce((a, b) => {
+            const aRes = (a.video?.width || 0) * (a.video?.height || 0);
+            const bRes = (b.video?.width || 0) * (b.video?.height || 0);
+            return bRes > aRes ? b : a;
+          });
+          document.getElementById('camEditorOnvifProfile').value = best.token;
+          if (best.rtspUrl) document.getElementById('camEditorRtsp').value = best.rtspUrl;
+        }
       } else {
-        status.textContent = result.error || 'Discovery failed';
+        status.innerHTML = `<span style="color:var(--danger);">${result.error || 'Discovery failed'}</span>`;
       }
     } catch (e) {
-      status.textContent = 'Error: ' + e.message;
+      status.innerHTML = `<span style="color:var(--danger);">Error: ${e.message}</span>`;
     }
   });
 
