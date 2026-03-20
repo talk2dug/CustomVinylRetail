@@ -1626,16 +1626,18 @@ function slicerParseGcode(text) {
 
     // Only record extrusion moves (E increasing) — skip travel and retracts
     if (hasE && newE > curE && currentLayer) {
-      // Map: G-code X → Three X, G-code Y → Three Z, G-code Z → Three Y
+      // Map: G-code X → Three X, G-code Z → Three Y, G-code Y → Three -Z
+      // Negate Y so the preview matches the STL preview orientation
+      // (STL preview uses rotateX(-PI/2) which maps STL Y → -Z)
       typePoints.push(
-        curX, currentZ, curY,
-        newX, currentZ, newY
+        curX, currentZ, -curY,
+        newX, currentZ, -newY
       );
 
       if (newX < minX) minX = newX;
       if (newX > maxX) maxX = newX;
-      if (newY < minY) minY = newY;
-      if (newY > maxY) maxY = newY;
+      if (-newY < minY) minY = -newY;
+      if (-newY > maxY) maxY = -newY;
       if (currentZ < minZ) minZ = currentZ;
       if (currentZ > maxZ) maxZ = currentZ;
     }
@@ -1774,22 +1776,22 @@ function slicerShowGcodePreview({ gcodeText, gcodeId, sliceResult, printerId, pr
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
 
-    // Bed plane
+    // Bed plane — toolpath Y is negated, so bed spans Z=0 to Z=-bedDims.y
     const bedGeo = new THREE.PlaneGeometry(bedDims.x, bedDims.y);
     const bedMat = new THREE.MeshPhongMaterial({ color: 0x1a1a2e, specular: 0x111111, shininess: 5, transparent: true, opacity: 0.8 });
     const bedMesh = new THREE.Mesh(bedGeo, bedMat);
     bedMesh.rotation.x = -Math.PI / 2;
-    bedMesh.position.set(bedDims.x / 2, 0, bedDims.y / 2);
+    bedMesh.position.set(bedDims.x / 2, 0, -bedDims.y / 2);
     scene.add(bedMesh);
 
     // Grid
     const gridPts = [];
-    for (let x = 0; x <= bedDims.x; x += 10) { gridPts.push(new THREE.Vector3(x, 0.05, 0)); gridPts.push(new THREE.Vector3(x, 0.05, bedDims.y)); }
-    for (let z = 0; z <= bedDims.y; z += 10) { gridPts.push(new THREE.Vector3(0, 0.05, z)); gridPts.push(new THREE.Vector3(bedDims.x, 0.05, z)); }
+    for (let x = 0; x <= bedDims.x; x += 10) { gridPts.push(new THREE.Vector3(x, 0.05, 0)); gridPts.push(new THREE.Vector3(x, 0.05, -bedDims.y)); }
+    for (let z = 0; z <= bedDims.y; z += 10) { gridPts.push(new THREE.Vector3(0, 0.05, -z)); gridPts.push(new THREE.Vector3(bedDims.x, 0.05, -z)); }
     scene.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(gridPts), new THREE.LineBasicMaterial({ color: 0x333355, transparent: true, opacity: 0.3 })));
 
     // Border
-    const borderPts = [new THREE.Vector3(0,0.1,0), new THREE.Vector3(bedDims.x,0.1,0), new THREE.Vector3(bedDims.x,0.1,bedDims.y), new THREE.Vector3(0,0.1,bedDims.y), new THREE.Vector3(0,0.1,0)];
+    const borderPts = [new THREE.Vector3(0,0.1,0), new THREE.Vector3(bedDims.x,0.1,0), new THREE.Vector3(bedDims.x,0.1,-bedDims.y), new THREE.Vector3(0,0.1,-bedDims.y), new THREE.Vector3(0,0.1,0)];
     scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(borderPts), new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.6 })));
 
     // ---- Render G-code toolpaths ----
@@ -1812,13 +1814,12 @@ function slicerShowGcodePreview({ gcodeText, gcodeId, sliceResult, printerId, pr
       layerObjects.push(group);
     }
 
-    // Camera position — frame the toolpaths
-    const bedCenter = new THREE.Vector3(bedDims.x / 2, 0, bedDims.y / 2);
+    // Camera position — frame the toolpaths (bed at Z=0 to -bedY)
+    const bedCenter = new THREE.Vector3(bedDims.x / 2, 0, -bedDims.y / 2);
     const maxBed = Math.max(bedDims.x, bedDims.y);
     const fov = camera.fov * (Math.PI / 180);
     const dist = maxBed / (2 * Math.tan(fov / 2)) * 1.6;
-    // Camera from front of bed so text/shapes read correctly (not mirrored)
-    camera.position.set(bedDims.x / 2 + dist * 0.5, dist * 0.7, bedDims.y / 2 - dist * 0.5);
+    camera.position.set(bedDims.x / 2 + dist * 0.5, dist * 0.7, -bedDims.y / 2 + dist * 0.5);
     camera.lookAt(bedCenter);
     controls.target.copy(bedCenter);
     controls.update();
