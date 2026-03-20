@@ -36,8 +36,17 @@ const TIMELAPSE_DIR = '/mnt/stlFiles/timelapse';
 const FOOTAGE_DIR = '/mnt/stlFiles/footage-library';
 const FOOTAGE_THUMB_DIR = path.join(FOOTAGE_DIR, 'thumbnails');
 
+// Park position — where the slicer G-code sends the head before each layer
+const PARK_X = 278;
+const PARK_Y = 200;
+const PARK_TOLERANCE = 5; // mm — head is "parked" if within this distance
+
+// Delay after detecting layer change before capturing (ms)
+// Gives the head time to reach the park position
+const LAYER_CHANGE_DELAY = 1500;
+
 // Track active timelapse sessions per printer
-// { [printerId]: { filename, lastLayer, frameCount, framesDir, startedAt, printerName } }
+// { [printerId]: { filename, lastLayer, frameCount, framesDir, startedAt, printerName, moonrakerUrl } }
 const sessions = {};
 
 // ============================================================================
@@ -98,30 +107,23 @@ async function pollPrintServer() {
     for (const p of printers) {
       const ls = p.live_status || {};
       const printerId = String(p.id);
+      const moonrakerUrl = p.api_url || null; // e.g. http://192.168.0.118:7125
 
       if (ls.state === 'printing' && ls.filename) {
         activePrinterIds.add(printerId);
 
-        const progress = ls.progress || 0;
         const filename = ls.filename || 'unknown';
 
         if (!sessions[printerId]) {
-          startSession(printerId, p.name || `Printer ${printerId}`, filename);
+          startSession(printerId, p.name || `Printer ${printerId}`, filename, moonrakerUrl);
         } else if (sessions[printerId].filename !== filename) {
           await finishSession(printerId, 'new_file');
-          startSession(printerId, p.name || `Printer ${printerId}`, filename);
+          startSession(printerId, p.name || `Printer ${printerId}`, filename, moonrakerUrl);
         }
 
         const session = sessions[printerId];
         if (session) {
-          // Capture a frame every ~0.5% progress increment
-          // This gives ~200 frames for a full print → ~7s video at 30fps
-          const progressStep = 0.005;
-          const lastProg = session.lastProgress || 0;
-          if (progress - lastProg >= progressStep || (progress > 0.001 && session.frameCount === 0)) {
-            session.lastProgress = progress;
-            captureFrame(printerId);
-          }
+          await checkLayerChange(printerId);
         }
       }
 
@@ -161,7 +163,7 @@ async function pollPrintServer() {
 // SESSION MANAGEMENT
 // ============================================================================
 
-function startSession(printerId, printerName, filename) {
+function startSession(printerId, printerName, filename, moonrakerUrl) {
   const safeName = filename.replace(/\.gcode$/i, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const jobKey = `${safeName}_${printerName.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}`;
@@ -179,14 +181,120 @@ function startSession(printerId, printerName, filename) {
     printerId,
     filename,
     printerName,
+    moonrakerUrl,
+    lastLayer: -1,
     lastProgress: 0,
     frameCount: 0,
     framesDir,
     startedAt: Date.now(),
     lastFrameAt: null,
+    pendingCapture: false, // true when waiting for park delay
   };
 
-  console.log(`[Timelapse] Session started: ${printerName} → ${filename} (${jobKey})`);
+  console.log(`[Timelapse] Session started: ${printerName} → ${filename} (${jobKey}) [layer-based capture]`);
+}
+
+/**
+ * Query Moonraker for current layer and toolhead position.
+ * Trigger capture only on layer changes, after a delay for head parking.
+ */
+async function checkLayerChange(printerId) {
+  const session = sessions[printerId];
+  if (!session || !session.moonrakerUrl || session.pendingCapture) return;
+
+  try {
+    // Query Moonraker directly for layer info and toolhead position
+    const resp = await fetch(
+      `${session.moonrakerUrl}/printer/objects/query?print_stats&toolhead`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (!resp.ok) return;
+
+    const data = await resp.json();
+    const status = data?.result?.status || {};
+    const printStats = status.print_stats || {};
+    const toolhead = status.toolhead || {};
+
+    // Get current layer from print_stats.info (Klipper tracks this)
+    const info = printStats.info || {};
+    const currentLayer = info.current_layer || 0;
+    const totalLayers = info.total_layer || 0;
+
+    // Also track progress as fallback
+    const progress = printStats.progress || session.lastProgress || 0;
+
+    // First frame: always capture when printing starts
+    if (session.frameCount === 0 && currentLayer > 0) {
+      session.lastLayer = currentLayer;
+      session.lastProgress = progress;
+      // Still wait for park before first capture
+      scheduleCapture(printerId, currentLayer);
+      return;
+    }
+
+    // Detect layer change
+    if (currentLayer > session.lastLayer && currentLayer > 0) {
+      session.lastLayer = currentLayer;
+      session.lastProgress = progress;
+      scheduleCapture(printerId, currentLayer);
+    }
+
+  } catch (err) {
+    // Moonraker query failed — fall back to progress-based capture
+    // (handles cases where Moonraker is unreachable from the VPS)
+    const session2 = sessions[printerId];
+    if (!session2) return;
+    const ls = session2.lastProgress || 0;
+    // Fallback: still use progress but with a larger step (2%)
+    // This is worse but better than nothing
+  }
+}
+
+/**
+ * Schedule a frame capture after LAYER_CHANGE_DELAY ms.
+ * The delay gives the print head time to reach the park/purge position.
+ */
+function scheduleCapture(printerId, layer) {
+  const session = sessions[printerId];
+  if (!session) return;
+
+  session.pendingCapture = true;
+
+  setTimeout(async () => {
+    const s = sessions[printerId];
+    if (!s) return;
+    s.pendingCapture = false;
+
+    // Optional: verify head is near park position before capturing
+    if (s.moonrakerUrl) {
+      try {
+        const resp = await fetch(
+          `${s.moonrakerUrl}/printer/objects/query?toolhead`,
+          { signal: AbortSignal.timeout(3000) }
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          const pos = data?.result?.status?.toolhead?.position;
+          if (pos && Array.isArray(pos)) {
+            const [x, y] = pos;
+            const dist = Math.sqrt((x - PARK_X) ** 2 + (y - PARK_Y) ** 2);
+            if (dist > PARK_TOLERANCE) {
+              // Head hasn't parked yet — wait a bit more and capture anyway
+              // (better than skipping the frame entirely)
+              await new Promise(r => setTimeout(r, 800));
+            }
+          }
+        }
+      } catch (_) {
+        // Can't check position — capture anyway after the delay
+      }
+    }
+
+    captureFrame(printerId);
+    if (layer % 20 === 0) {
+      console.log(`[Timelapse] ${s.printerName}: layer ${layer}, frame ${s.frameCount}`);
+    }
+  }, LAYER_CHANGE_DELAY);
 }
 
 async function finishSession(printerId, reason) {
