@@ -433,15 +433,12 @@ cut_depth     = ${cutDepth.toFixed(2)};
       tx = bounds.bboxCenterX + (box.x || 0);
       ty = bounds.bboxCenterY + (box.y || 0);
 
-      // Auto-size font to fit the box
+      // Auto-size font: fit text within box width, then cap to box height
+      // Primary constraint is WIDTH (text must not exceed box width)
+      const maxByWidth = (box.w * 0.92) / (line.text.length * charWidthRatio);
+      const maxByHeight = box.h * 0.70; // text should be ~70% of box height max
       fs_size = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
-      // Clamp to box height
-      if (fs_size > box.h * 0.85) fs_size = box.h * 0.85;
-      // Clamp to box width
-      const estW = line.text.length * charWidthRatio * fs_size;
-      if (estW > box.w * 0.95) {
-        fs_size = (box.w * 0.95) / (line.text.length * charWidthRatio);
-      }
+      fs_size = Math.min(fs_size, maxByWidth, maxByHeight);
 
       console.log(`[DogTag] Line ${i+1} "${line.text}": box=${box.w}x${box.h} at (${box.x},${box.y}) → STL(${tx.toFixed(1)}, ${ty.toFixed(1)}) size=${fs_size.toFixed(1)}mm`);
     } else {
