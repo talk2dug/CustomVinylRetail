@@ -749,6 +749,20 @@ const PRINT_PROFILE_PRESETS = {
       ironing_type: 'top', ironing_flowrate: 15, ironing_spacing: 0.1, ironing_speed: 15
     },
     visual: { quality: 'standard', strength: 'normal', speed: 'normal', texture: 'smooth', surface: 'polished', supports: 'none' }
+  },
+  'brcc-keychain': {
+    label: 'BRCC Keychain — PETG',
+    description: '4 walls, 40% gyroid, ironing, 0.15mm layers for press-fit keychains',
+    hint: 'Optimized for PETG keychains with smooth ironed top and strong press-fit insert pockets.',
+    category: 'keychain',
+    overrides: {
+      layer_height: 0.15, perimeters: 4, top_layers: 5, bottom_layers: 4,
+      infill: 40, fill_pattern: 'gyroid',
+      seam_position: 'aligned', ironing: true, supports: false,
+      speed_multiplier: 0.7, fuzzy_skin: 'none', brim_width: 0,
+      ironing_type: 'top', ironing_flowrate: 15, ironing_spacing: 0.1, ironing_speed: 15
+    },
+    visual: { quality: 'fine', strength: 'strong', speed: 'slow', texture: 'smooth', surface: 'polished', supports: 'none' }
   }
 };
 
