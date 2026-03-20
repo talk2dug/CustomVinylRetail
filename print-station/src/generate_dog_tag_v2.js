@@ -412,7 +412,7 @@ function buildTextCutterScad(cfg) {
   let scad = `// ============================================================
 // BRCC Keychain — TEXT CUTTER (for boolean subtraction)
 // Lines: ${lines.map(l => l.text).join(', ')}
-// STL center: (${bounds.centerX.toFixed(2)}, ${bounds.centerY.toFixed(2)})
+// STL center: (${bounds.bboxCenterX.toFixed(2)}, ${bounds.bboxCenterY.toFixed(2)})
 // ============================================================
 
 tag_thickness = ${actualThickness.toFixed(2)};
@@ -430,8 +430,8 @@ cut_depth     = ${cutDepth.toFixed(2)};
     if (box && box.w > 0 && box.h > 0) {
       // ── Per-line box mode: center text in this line's box ──
       // box.x, box.y are offsets from STL center (Three.js preview coords)
-      tx = bounds.centerX + (box.x || 0);
-      ty = bounds.centerY + (box.y || 0);
+      tx = bounds.bboxCenterX + (box.x || 0);
+      ty = bounds.bboxCenterY + (box.y || 0);
 
       // Auto-size font to fit the box
       fs_size = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
@@ -446,10 +446,10 @@ cut_depth     = ${cutDepth.toFixed(2)};
       console.log(`[DogTag] Line ${i+1} "${line.text}": box=${box.w}x${box.h} at (${box.x},${box.y}) → STL(${tx.toFixed(1)}, ${ty.toFixed(1)}) size=${fs_size.toFixed(1)}mm`);
     } else {
       // ── Fallback: auto-center on shape ──
-      const autoW = getWidthAtY(bounds, bounds.centerY) * 0.75;
+      const autoW = getWidthAtY(bounds, bounds.bboxCenterY) * 0.75;
       const autoH = bounds.depth * 0.55;
-      tx = bounds.centerX;
-      ty = bounds.centerY + (lines.length > 1 ? (i === 0 ? autoH * 0.2 : -autoH * 0.2) : 0);
+      tx = bounds.bboxCenterX;
+      ty = bounds.bboxCenterY + (lines.length > 1 ? (i === 0 ? autoH * 0.2 : -autoH * 0.2) : 0);
 
       fs_size = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
       const maxPerLine = autoH / (lines.length * 1.4);
