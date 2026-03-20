@@ -18,13 +18,22 @@ const DT = {
   shapes: [],
   shapeGeo: {},
   defaults: {},
+  fonts: [],
   selectedShape: 'bone',
-  petName: '',
+  petName: '',       // backward compat: line 1 text
   colorIdx: 0,
   textCx: null,
   textCy: null,
   textSz: null,
+  // Multi-line support
+  mode: 'basePlate', // 'basePlate' | 'standaloneName'
+  lineCount: 1,      // 1 or 2
+  lines: [
+    { text: '', font: 'Liberation Sans:style=Bold', fontSize: null, cx: null, cy: null },
+    { text: '', font: 'Liberation Sans:style=Bold', fontSize: null, cx: null, cy: null },
+  ],
   dragging: false,
+  draggingLineIdx: -1,
   dragOffset: null,
   openscadAvailable: false,
   generating: false,
@@ -38,7 +47,8 @@ const DT = {
   controls: null,
   animId: null,
   tagGroup: null,
-  textMesh: null,
+  textMeshes: [],    // one per line (replaces single textMesh)
+  textMesh: null,    // backward compat alias
   raycaster: null,
   mouse: new (typeof THREE !== 'undefined' ? THREE.Vector2 : Object)(),
   tagTopPlane: null,
@@ -46,6 +56,9 @@ const DT = {
   // v2: STL blank geometry cache { shapeId: THREE.BufferGeometry }
   stlCache: {},
   tagsDir: null,
+  // Standalone mode
+  standaloneThickness: 3.0,
+  standaloneConnectExpand: 0.3,
 };
 
 const COLOR_PRESETS = [
@@ -110,24 +123,12 @@ async function dtPreloadBlanks() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// THREE.JS SHAPE PROFILES — fallback when no blank STL exists
+// (Predefined shape profiles removed — all shapes are user-uploaded STL blanks)
 // ═══════════════════════════════════════════════════════════════
 
-function dtCreateShapeProfile(shapeId) {
-  switch (shapeId) {
-    case 'bone': return dtBoneProfile();
-    case 'shield': return dtShieldProfile();
-    case 'heart': return dtHeartProfile();
-    case 'paw': return dtPawProfile();
-    case 'hydrant': return dtHydrantProfile();
-    case 'star': return dtStarProfile();
-    default: return dtBoneProfile();
-  }
-}
+// (All predefined shape profile functions removed — shapes come from uploaded STL files)
 
-function dtBoneProfile() {
-  // Bone: rounded-rect shaft + 8 knob circles at ends (matching OpenSCAD)
-  // We trace the outer boundary by sampling the union of all circles
+function _dtRemoved_placeholder() {
   const sl = 32, sw = 10, knobR = 5, knobDist = 6;
 
   // All circles that define the bone shape
@@ -298,13 +299,26 @@ function dtStarProfile() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TEXT TEXTURE — render pet name to a canvas, use as texture
+// FONT HELPERS
 // ═══════════════════════════════════════════════════════════════
 
-function dtCreateTextTexture(text, fontSize, color) {
+// DT.fonts populated from IPC during init
+// Map OpenSCAD font name to CSS font-family
+function dtMapFontToCss(oscadFont) {
+  if (!oscadFont) return 'Arial';
+  // Strip :style=... suffix
+  return oscadFont.replace(/:style=.*$/i, '').trim();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TEXT TEXTURE — render text to a canvas, use as texture
+// ═══════════════════════════════════════════════════════════════
+
+function dtCreateTextTexture(text, fontSize, color, fontFamily) {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
-  const font = `bold ${fontSize * 10}px "Arial", "Helvetica", sans-serif`;
+  const cssFamily = fontFamily ? dtMapFontToCss(fontFamily) : 'Arial';
+  const font = `bold ${fontSize * 10}px "${cssFamily}", "Arial", sans-serif`;
   ctx.font = font;
   const metrics = ctx.measureText(text);
   const pad = fontSize * 3;
@@ -485,6 +499,13 @@ function dtBuildTag() {
     }
   }
   DT.textMesh = null;
+  DT.textMeshes = [];
+
+  // Standalone mode: just show text, no base plate
+  if (DT.mode === 'standaloneName') {
+    dtBuildStandalonePreview();
+    return;
+  }
 
   const colors = COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0];
   const geo = DT.shapeGeo[DT.selectedShape];
@@ -521,104 +542,98 @@ function dtBuildTag() {
     clearcoatRoughness: 0.4,
   });
 
-  // ── Tag body: use STL blank if cached, otherwise fallback to shape profile ──
+  // ── Tag body: loaded from uploaded STL blank ──
   const stlGeo = DT.stlCache[DT.selectedShape];
   if (stlGeo) {
-    // Use the actual blank STL geometry
     const bodyMesh = new THREE.Mesh(stlGeo.clone(), bodyMat);
     bodyMesh.castShadow = true;
     bodyMesh.receiveShadow = true;
     bodyMesh.name = 'tagBody';
     DT.tagGroup.add(bodyMesh);
   } else {
-    // Fallback: extruded 2D profile
-    const profile = dtCreateShapeProfile(DT.selectedShape);
-    const holePath = new THREE.Path();
-    holePath.absarc(ringX, ringY, RING_HOLE_DIA / 2, 0, Math.PI * 2, true);
-    profile.holes.push(holePath);
-
-    const extrudeSettings = {
-      depth: thickness,
-      bevelEnabled: true,
-      bevelThickness: BEVEL_SIZE,
-      bevelSize: BEVEL_SIZE,
-      bevelSegments: BEVEL_SEGMENTS,
-      curveSegments: 32,
-    };
-
-    const bodyGeo = new THREE.ExtrudeGeometry(profile, extrudeSettings);
-    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-    bodyMesh.castShadow = true;
-    bodyMesh.receiveShadow = true;
-    bodyMesh.name = 'tagBody';
-    DT.tagGroup.add(bodyMesh);
-
-    // Ring tab (only for fallback mode — STL blanks include tabs already)
-    const needsTab = geo.needsTab || ['paw', 'star', 'hydrant', 'shield'].includes(DT.selectedShape);
-    if (needsTab) {
-      const tabProfile = new THREE.Shape();
-      tabProfile.absarc(0, 0, 5, 0, Math.PI * 2, false);
-      const tabHole = new THREE.Path();
-      tabHole.absarc(0, 0, RING_HOLE_DIA / 2, 0, Math.PI * 2, true);
-      tabProfile.holes.push(tabHole);
-      const tabGeo = new THREE.ExtrudeGeometry(tabProfile, {
-        depth: thickness,
-        bevelEnabled: true,
-        bevelThickness: BEVEL_SIZE * 0.7,
-        bevelSize: BEVEL_SIZE * 0.7,
-        bevelSegments: 2,
-        curveSegments: 24,
-      });
-      const tabMesh = new THREE.Mesh(tabGeo, bodyMat.clone());
-      tabMesh.position.set(ringX, ringY, 0);
-      tabMesh.castShadow = true;
-      tabMesh.name = 'ringTab';
-      DT.tagGroup.add(tabMesh);
-    }
+    // No STL loaded — show placeholder
+    return;
   }
 
-  // ── Split ring + paw decoration — only for fallback mode (STL blanks have their own) ──
-  if (!stlGeo) {
-    const ringGeo = new THREE.TorusGeometry(4, 0.6, 8, 32);
-    const ringMat = new THREE.MeshPhysicalMaterial({
-      color: 0xcccccc,
-      roughness: 0.2,
-      metalness: 0.8,
-    });
-    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-    ringMesh.position.set(ringX, ringY, thickness / 2);
-    ringMesh.rotation.x = Math.PI / 2;
-    ringMesh.castShadow = true;
-    ringMesh.name = 'splitRing';
-    DT.tagGroup.add(ringMesh);
-
-    if (DT.selectedShape === 'paw') {
-      dtAddPawDecoration(DT.tagGroup, baseColor);
-    }
-  }
-
-  // ── Text pocket + insert ──
-  dtBuildTextInsert(geo, insertColor, thickness);
+  // ── Text lines ──
+  dtBuildTextLines(geo, insertColor, thickness);
 
   // ── Position readout ──
   dtUpdatePosReadout();
 }
 
-function dtBuildTextInsert(geo, insertColor, tagThickness) {
+function dtBuildTextLines(geo, insertColor, tagThickness) {
   tagThickness = tagThickness || TAG_THICKNESS;
-  const name = DT.petName || '';
-  if (!name) return;
+  DT.textMeshes = [];
+  DT.textMesh = null;
 
-  const tcx = DT.textCx !== null ? DT.textCx : geo.textCx;
-  const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
-  const tsz = DT.textSz !== null ? DT.textSz : geo.textSz;
-
-  // Render text to canvas texture
   const insertHex = '#' + insertColor.getHexString();
-  const textData = dtCreateTextTexture(name, tsz, insertHex);
+  const count = DT.mode === 'basePlate' ? DT.lineCount : 1;
+
+  for (let i = 0; i < count; i++) {
+    const line = DT.lines[i];
+    const text = line.text || (i === 0 ? DT.petName : '') || '';
+    if (!text) continue;
+
+    const tcx = line.cx !== null ? line.cx : (i === 0 ? (DT.textCx !== null ? DT.textCx : geo.textCx) : 0);
+    const tcy = line.cy !== null ? line.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : geo.textCy) : (geo.textCy || 0) - (geo.textSz || 7) * 1.5);
+    const tsz = line.fontSize !== null ? line.fontSize : (i === 0 ? (DT.textSz !== null ? DT.textSz : geo.textSz) : (geo.textSz || 7) * 0.7);
+    const font = line.font || 'Liberation Sans:style=Bold';
+
+    const textData = dtCreateTextTexture(text, tsz, insertHex, font);
+    const { texture, width: tw, height: th } = textData;
+
+    const labelGeo = new THREE.PlaneGeometry(tw, th);
+    const labelMat = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -1 - i,
+    });
+    const labelMesh = new THREE.Mesh(labelGeo, labelMat);
+    labelMesh.position.set(tcx, tcy, tagThickness + 0.05);
+    labelMesh.name = `textLabel_${i}`;
+    DT.tagGroup.add(labelMesh);
+
+    const entry = { label: labelMesh, width: tw, height: th, lineIdx: i };
+    DT.textMeshes.push(entry);
+    if (i === 0) DT.textMesh = entry; // backward compat
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STANDALONE NAME PREVIEW
+// ═══════════════════════════════════════════════════════════════
+
+function dtBuildStandalonePreview() {
+  const text = DT.lines[0].text || DT.petName || '';
+  if (!text || !DT.tagGroup) return;
+
+  const font = DT.lines[0].font || 'Liberation Sans:style=Bold';
+  const fontSize = DT.lines[0].fontSize || 10;
+  const thickness = DT.standaloneThickness || 3.0;
+  const color = (COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0]).base;
+
+  // Render text to canvas to get dimensions
+  const textData = dtCreateTextTexture(text, fontSize, '#ffffff', font);
   const { texture, width: tw, height: th } = textData;
 
-  // Single clean text plane — sits flush on the tag top surface
+  // Create a box that approximates the extruded text
+  const boxGeo = new THREE.BoxGeometry(tw, th, thickness);
+  const boxMat = new THREE.MeshPhysicalMaterial({
+    color,
+    roughness: 0.4,
+    metalness: 0.1,
+  });
+  const boxMesh = new THREE.Mesh(boxGeo, boxMat);
+  boxMesh.position.set(0, 0, thickness / 2);
+  boxMesh.castShadow = true;
+  boxMesh.name = 'standaloneBody';
+  DT.tagGroup.add(boxMesh);
+
+  // Add text label on top
   const labelGeo = new THREE.PlaneGeometry(tw, th);
   const labelMat = new THREE.MeshBasicMaterial({
     map: texture,
@@ -629,12 +644,9 @@ function dtBuildTextInsert(geo, insertColor, tagThickness) {
     polygonOffsetFactor: -1,
   });
   const labelMesh = new THREE.Mesh(labelGeo, labelMat);
-  labelMesh.position.set(tcx, tcy, tagThickness + 0.05);
-  labelMesh.name = 'textLabel';
+  labelMesh.position.set(0, 0, thickness + 0.05);
+  labelMesh.name = 'standaloneLabel';
   DT.tagGroup.add(labelMesh);
-
-  // Store reference for dragging
-  DT.textMesh = { label: labelMesh, width: tw, height: th };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -657,26 +669,29 @@ function dtGetMouseMm(e) {
   return null;
 }
 
-function dtIsOverText3D(mm) {
-  if (!DT.textMesh || !DT.petName || !mm) return false;
-  const geo = DT.shapeGeo[DT.selectedShape];
-  if (!geo) return false;
-  const tcx = DT.textCx !== null ? DT.textCx : geo.textCx;
-  const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
-  const tw = DT.textMesh.width;
-  const th = DT.textMesh.height;
-  return Math.abs(mm.x - tcx) < tw / 2 + 3 && Math.abs(mm.y - tcy) < th / 2 + 3;
+// Returns line index if mouse is over any text line, or -1
+function dtFindTextLineAt(mm) {
+  if (!mm || DT.textMeshes.length === 0) return -1;
+  for (let i = DT.textMeshes.length - 1; i >= 0; i--) {
+    const tm = DT.textMeshes[i];
+    const pos = tm.label.position;
+    if (Math.abs(mm.x - pos.x) < tm.width / 2 + 3 && Math.abs(mm.y - pos.y) < tm.height / 2 + 3) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 function dtOnMouseDown3D(e) {
   const mm = dtGetMouseMm(e);
-  if (dtIsOverText3D(mm)) {
-    const geo = DT.shapeGeo[DT.selectedShape];
-    const tcx = DT.textCx !== null ? DT.textCx : geo.textCx;
-    const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
+  if (!mm) return;
+  const lineIdx = dtFindTextLineAt(mm);
+  if (lineIdx >= 0) {
+    const pos = DT.textMeshes[lineIdx].label.position;
     DT.dragging = true;
-    DT.dragOffset = { x: mm.x - tcx, y: mm.y - tcy };
-    if (DT.controls) DT.controls.enabled = false; // disable orbit while dragging
+    DT.draggingLineIdx = lineIdx;
+    DT.dragOffset = { x: mm.x - pos.x, y: mm.y - pos.y };
+    if (DT.controls) DT.controls.enabled = false;
     DT.renderer.domElement.style.cursor = 'grabbing';
   }
 }
@@ -685,36 +700,37 @@ function dtOnMouseMove3D(e) {
   const mm = dtGetMouseMm(e);
   if (!mm) return;
 
-  if (DT.dragging && DT.dragOffset) {
-    DT.textCx = parseFloat((mm.x - DT.dragOffset.x).toFixed(1));
-    DT.textCy = parseFloat((mm.y - DT.dragOffset.y).toFixed(1));
-    // Update text position without full rebuild
-    dtUpdateTextPosition();
+  if (DT.dragging && DT.dragOffset && DT.draggingLineIdx >= 0) {
+    const newX = parseFloat((mm.x - DT.dragOffset.x).toFixed(1));
+    const newY = parseFloat((mm.y - DT.dragOffset.y).toFixed(1));
+    const idx = DT.draggingLineIdx;
+
+    // Update the line's stored position
+    DT.lines[idx].cx = newX;
+    DT.lines[idx].cy = newY;
+
+    // Backward compat for line 0
+    if (idx === 0) { DT.textCx = newX; DT.textCy = newY; }
+
+    // Move the mesh directly (no full rebuild)
+    if (DT.textMeshes[idx]) {
+      DT.textMeshes[idx].label.position.x = newX;
+      DT.textMeshes[idx].label.position.y = newY;
+    }
     dtUpdatePosReadout();
-    dtSyncSliders();
   } else {
-    DT.renderer.domElement.style.cursor = dtIsOverText3D(mm) ? 'grab' : 'default';
+    DT.renderer.domElement.style.cursor = dtFindTextLineAt(mm) >= 0 ? 'grab' : 'default';
   }
 }
 
 function dtOnMouseUp3D() {
   if (DT.dragging) {
     DT.dragging = false;
+    DT.draggingLineIdx = -1;
     DT.dragOffset = null;
     if (DT.controls) DT.controls.enabled = true;
     if (DT.renderer) DT.renderer.domElement.style.cursor = 'default';
   }
-}
-
-function dtUpdateTextPosition() {
-  if (!DT.textMesh) return;
-  const geo = DT.shapeGeo[DT.selectedShape];
-  if (!geo) return;
-  const tcx = DT.textCx !== null ? DT.textCx : geo.textCx;
-  const tcy = DT.textCy !== null ? DT.textCy : geo.textCy;
-
-  DT.textMesh.label.position.x = tcx;
-  DT.textMesh.label.position.y = tcy;
 }
 
 function dtUpdatePosReadout() {
@@ -736,27 +752,55 @@ function dtRenderShapePicker() {
   const container = document.getElementById('dtShapeGrid');
   if (!container) return;
 
+  if (DT.shapes.length === 0) {
+    container.innerHTML = '<div class="dt-empty" style="font-size:0.8rem;">No base plates uploaded yet. Click "Upload Base Plate" to add one.</div>';
+    return;
+  }
+
   container.innerHTML = DT.shapes.map(s => `
-    <button class="dt-shape-btn ${s.id === DT.selectedShape ? 'selected' : ''}"
-            data-shape="${s.id}" title="${s.desc}${s.hasBlankStl ? ' (Custom STL)' : ' (Built-in)'}">
+    <div class="dt-shape-btn ${s.id === DT.selectedShape ? 'selected' : ''}"
+         data-shape="${s.id}" title="${s.label} (${s.geometry?.width || '?'}×${s.geometry?.height || '?'}mm)" style="position:relative;cursor:pointer;">
       <span class="dt-shape-btn-label">${s.label}</span>
-      ${s.hasBlankStl ? '<span class="dt-stl-badge">STL</span>' : ''}
-    </button>
+      <span class="dt-shape-delete" data-delete="${s.id}" title="Remove this shape" style="position:absolute;top:1px;right:1px;color:var(--muted);cursor:pointer;font-size:0.6rem;padding:2px;">✕</span>
+    </div>
   `).join('');
 
   container.querySelectorAll('.dt-shape-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', async (e) => {
+      // Don't select if clicking delete button
+      if (e.target.classList.contains('dt-shape-delete')) return;
       DT.selectedShape = btn.dataset.shape;
       DT.textCx = null;
       DT.textCy = null;
       DT.textSz = null;
+      // Reset line positions
+      DT.lines.forEach(l => { l.cx = null; l.cy = null; });
       dtRenderShapePicker();
       dtSyncSliders();
-      // Load blank STL if not cached yet
-      const shapeInfo = DT.shapes.find(s => s.id === btn.dataset.shape);
-      if (shapeInfo && shapeInfo.hasBlankStl && !DT.stlCache[btn.dataset.shape]) {
+      if (!DT.stlCache[btn.dataset.shape]) {
         await dtLoadBlankStl(btn.dataset.shape);
       }
+      dtBuildTag();
+    });
+  });
+
+  // Delete shape buttons
+  container.querySelectorAll('.dt-shape-delete').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.delete;
+      const confirmed = await window.printStation.showConfirm(`Remove "${id}" base plate?`, 'Remove Shape');
+      if (!confirmed) return;
+      await window.printStation.dogTag.deleteShape(id);
+      delete DT.stlCache[id];
+      // Reload shapes
+      const data = await window.printStation.dogTag.getShapes();
+      DT.shapes = data.shapes || [];
+      DT.shapes.forEach(s => { if (s.geometry) DT.shapeGeo[s.id] = s.geometry; });
+      if (DT.selectedShape === id) {
+        DT.selectedShape = DT.shapes[0]?.id || '';
+      }
+      dtRenderShapePicker();
       dtBuildTag();
     });
   });
@@ -767,23 +811,53 @@ function dtRenderShapePicker() {
 // ═══════════════════════════════════════════════════════════════
 
 async function dtGenerate() {
-  if (!DT.petName) {
-    dtSetStatus('Enter a pet name first.', 'error');
-    document.getElementById('dtPetName')?.focus();
+  // Check which mode we're in
+  if (DT.mode === 'standaloneName') {
+    return dtGenerateStandalone();
+  }
+
+  const line1 = DT.lines[0].text || DT.petName || '';
+  if (!line1) {
+    dtSetStatus('Enter a name first.', 'error');
+    document.getElementById('dtLine1Text')?.focus();
     return;
   }
   DT.generating = true;
-  dtSetStatus('Generating tag files...', 'info');
+  dtSetStatus('Generating keychain files...', 'info');
   dtUpdateButtons();
   try {
     const colors = COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0];
+
+    // Build lines array — resolve positions to match the preview exactly
+    const geo = DT.shapeGeo[DT.selectedShape] || {};
+    const lines = [];
+    for (let i = 0; i < DT.lineCount; i++) {
+      const ln = DT.lines[i];
+      if (ln.text || (i === 0 && DT.petName)) {
+        // Resolve positions same as dtBuildTextLines does
+        const rcx = ln.cx !== null ? ln.cx : (i === 0 ? (DT.textCx !== null ? DT.textCx : (geo.textCx || 0)) : 0);
+        const rcy = ln.cy !== null ? ln.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : (geo.textCy || 0)) : (geo.textCy || 0) - (geo.textSz || 7) * 1.5);
+        const rsz = ln.fontSize !== null ? ln.fontSize : (i === 0 ? (DT.textSz !== null ? DT.textSz : (geo.textSz || 7)) : (geo.textSz || 7) * 0.7);
+
+        lines.push({
+          text: ln.text || (i === 0 ? DT.petName : ''),
+          font: ln.font || 'Liberation Sans:style=Bold',
+          fontSize: rsz,
+          textXOffset: rcx,
+          textYOffset: rcy,
+        });
+      }
+    }
+
     const result = await window.printStation.dogTag.generate({
-      name: DT.petName,
+      name: lines[0]?.text || DT.petName,
       shape: DT.selectedShape,
       colors: { base: colors.baseLabel, insert: colors.insertLabel },
       textCx: DT.textCx,
       textCy: DT.textCy,
       textSz: DT.textSz,
+      lines,
+      lineCount: DT.lineCount,
     });
     DT.lastGenResult = result;
     const stlReady = result.status === 'ready_to_print';
@@ -802,48 +876,148 @@ async function dtGenerate() {
   }
 }
 
-async function dtSendToSlicer() {
-  if (!DT.lastGenResult?.files?.baseStl) {
-    dtSetStatus('No STL available. Generate first (requires OpenSCAD).', 'error');
+async function dtGenerateStandalone() {
+  const text = DT.lines[0].text || DT.petName || '';
+  if (!text) {
+    dtSetStatus('Enter a name first.', 'error');
+    document.getElementById('dtStandaloneText')?.focus();
     return;
   }
-  dtSetStatus('Uploading to slicer catalog...', 'info');
+  DT.generating = true;
+  dtSetStatus('Generating standalone name...', 'info');
+  dtUpdateButtons();
   try {
-    const r = DT.lastGenResult;
+    const result = await window.printStation.dogTag.generateStandalone({
+      text,
+      font: DT.lines[0].font || 'Liberation Sans:style=Bold',
+      fontSize: DT.lines[0].fontSize || 10,
+      thickness: DT.standaloneThickness,
+      connectExpand: DT.standaloneConnectExpand,
+    });
+    DT.lastGenResult = result;
+    const stlReady = result.status === 'ready_to_print';
+    dtSetStatus(
+      `Generated standalone <strong>${text}</strong>. ` +
+      (stlReady ? 'STL ready.' : 'SCAD created (install OpenSCAD for STL).'),
+      stlReady ? 'success' : 'warning'
+    );
+    dtUpdateButtons();
+    dtLoadHistory();
+  } catch (e) {
+    dtSetStatus(`Error: ${e.message || e}`, 'error');
+  } finally {
+    DT.generating = false;
+    dtUpdateButtons();
+  }
+}
+
+async function dtSendToSlicer() {
+  const r = DT.lastGenResult;
+  if (!r) {
+    dtSetStatus('No STL available. Generate first.', 'error');
+    return;
+  }
+
+  // Handle standalone mode
+  if (r.mode === 'standalone') {
+    if (!r.files?.stl) {
+      dtSetStatus('No STL available. Generate first.', 'error');
+      return;
+    }
+    dtSetStatus('Uploading to STL library...', 'info');
+    try {
+      await window.printStation.dogTag.sendToSlicer({
+        stlPath: r.files.stl,
+        name: `${r.petName} - Standalone Name`,
+        category: 'Keychains',
+        folder: 'Standalone Names',
+      });
+      dtSetStatus(`Uploaded <strong>${r.petName}</strong> to STL library.`, 'success');
+    } catch (e) {
+      dtSetStatus(`Upload error: ${e.message || e}`, 'error');
+    }
+    return;
+  }
+
+  // Base plate mode
+  if (!r.files?.baseStl) {
+    dtSetStatus('No STL available. Generate first.', 'error');
+    return;
+  }
+
+  dtSetStatus('Uploading to STL library...', 'info');
+  try {
+    // Build a readable shape label
+    const shapeLabel = DT.shapes.find(s => s.id === r.shape)?.label || r.shape;
+
+    // Upload base plate
     await window.printStation.dogTag.sendToSlicer({
       stlPath: r.files.baseStl,
-      name: `Dog Tag Base - ${r.shape} - ${r.petName}`,
-      category: 'Dog Tags',
+      name: `${shapeLabel} Base - ${r.petName}`,
+      category: 'Keychains',
+      folder: shapeLabel,
     });
-    await window.printStation.dogTag.sendToSlicer({
-      stlPath: r.files.textStl,
-      name: `Dog Tag Text - ${r.shape} - ${r.petName}`,
-      category: 'Dog Tags',
-    });
-    dtSetStatus(`Uploaded to slicer: <strong>${r.petName}</strong> base + text. Go to Slice & Print to print.`, 'success');
+
+    // Upload all text inserts
+    const inserts = r.files.textStls || (r.files.textStl ? [r.files.textStl] : []);
+    for (let i = 0; i < inserts.length; i++) {
+      const lineSuffix = inserts.length > 1 ? ` L${i + 1}` : '';
+      await window.printStation.dogTag.sendToSlicer({
+        stlPath: inserts[i],
+        name: `${shapeLabel} Insert${lineSuffix} - ${r.petName}`,
+        category: 'Keychains',
+        folder: shapeLabel,
+      });
+    }
+
+    const count = 1 + inserts.length;
+    dtSetStatus(`Uploaded <strong>${r.petName}</strong> (${count} files) to STL library. Go to Slice & Print.`, 'success');
   } catch (e) {
-    dtSetStatus(`Slicer upload error: ${e.message || e}`, 'error');
+    dtSetStatus(`Upload error: ${e.message || e}`, 'error');
   }
 }
 
 async function dtAddToBatch() {
-  if (!DT.petName) {
-    dtSetStatus('Enter a pet name first.', 'error');
+  const line1 = DT.lines[0].text || DT.petName || '';
+  if (!line1) {
+    dtSetStatus('Enter a name first.', 'error');
     return;
   }
   const colors = COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0];
+
+  // Build lines for batch storage — resolve positions to match preview
+  const geo = DT.shapeGeo[DT.selectedShape] || {};
+  const batchLines = [];
+  for (let i = 0; i < DT.lineCount; i++) {
+    const ln = DT.lines[i];
+    if (ln.text || (i === 0 && DT.petName)) {
+      const rcx = ln.cx !== null ? ln.cx : (i === 0 ? (DT.textCx !== null ? DT.textCx : (geo.textCx || 0)) : 0);
+      const rcy = ln.cy !== null ? ln.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : (geo.textCy || 0)) : (geo.textCy || 0) - (geo.textSz || 7) * 1.5);
+      const rsz = ln.fontSize !== null ? ln.fontSize : (i === 0 ? (DT.textSz !== null ? DT.textSz : (geo.textSz || 7)) : (geo.textSz || 7) * 0.7);
+      batchLines.push({
+        text: ln.text || (i === 0 ? DT.petName : ''),
+        font: ln.font || 'Liberation Sans:style=Bold',
+        fontSize: rsz,
+        textXOffset: rcx,
+        textYOffset: rcy,
+      });
+    }
+  }
+
   try {
     const result = await window.printStation.dogTag.batchAdd({
-      name: DT.petName,
+      name: line1,
       shape: DT.selectedShape,
       colors: { base: colors.baseLabel, insert: colors.insertLabel },
       textCx: DT.textCx,
       textCy: DT.textCy,
       textSz: DT.textSz,
+      lines: batchLines,
+      lineCount: DT.lineCount,
     });
     DT.batchQueue = result.queue;
     dtRenderBatch();
-    dtSetStatus(`Added <strong>${DT.petName}</strong> to batch (${DT.batchQueue.length} tags).`, 'success');
+    dtSetStatus(`Added <strong>${line1}</strong> to batch (${DT.batchQueue.length} items).`, 'success');
   } catch (e) {
     dtSetStatus(`Batch error: ${e.message || e}`, 'error');
   }
@@ -918,7 +1092,7 @@ function dtRenderHistory() {
   const container = document.getElementById('dtHistoryList');
   if (!container) return;
   if (!DT.history.length) {
-    container.innerHTML = '<div class="dt-empty">No tags generated yet.</div>';
+    container.innerHTML = '<div class="dt-empty">No keychains generated yet.</div>';
     return;
   }
   container.innerHTML = DT.history.map(job => {
@@ -954,7 +1128,7 @@ function dtUpdateButtons() {
   const slicerBtn = document.getElementById('dtSendToSlicerBtn');
   if (genBtn) {
     genBtn.disabled = DT.generating;
-    genBtn.textContent = DT.generating ? 'Generating...' : 'Generate Tag';
+    genBtn.textContent = DT.generating ? 'Generating...' : 'Generate Keychain';
   }
   if (slicerBtn) {
     const hasStl = DT.lastGenResult?.files?.baseStl;
@@ -973,30 +1147,17 @@ function dtResetTextPos() {
 
 // Sync slider UI with current DT state
 function dtSyncSliders() {
-  const geo = DT.shapeGeo[DT.selectedShape] || {};
-
-  const sizeSlider = document.getElementById('dtFontSizeSlider');
-  const sizeVal = document.getElementById('dtFontSizeValue');
-  if (sizeSlider && sizeVal) {
-    const sz = DT.textSz !== null ? DT.textSz : (geo.textSz || 7);
-    sizeSlider.value = sz;
-    sizeVal.textContent = DT.textSz !== null ? sz.toFixed(1) : sz.toFixed(1) + ' (auto)';
-  }
-
-  const xSlider = document.getElementById('dtTextXSlider');
-  const xVal = document.getElementById('dtTextXValue');
-  if (xSlider && xVal) {
-    const cx = DT.textCx !== null ? DT.textCx : (geo.textCx || 0);
-    xSlider.value = cx;
-    xVal.textContent = cx.toFixed(1);
-  }
-
-  const ySlider = document.getElementById('dtTextYSlider');
-  const yVal = document.getElementById('dtTextYValue');
-  if (ySlider && yVal) {
-    const cy = DT.textCy !== null ? DT.textCy : (geo.textCy || 0);
-    ySlider.value = cy;
-    yVal.textContent = cy.toFixed(1);
+  // Sync per-line size sliders
+  for (let i = 0; i < 2; i++) {
+    const n = i + 1;
+    const sizeSlider = document.getElementById(`dtLine${n}Size`);
+    const sizeVal = document.getElementById(`dtLine${n}SizeVal`);
+    if (sizeSlider && sizeVal) {
+      const geo = DT.shapeGeo[DT.selectedShape] || {};
+      const sz = DT.lines[i].fontSize !== null ? DT.lines[i].fontSize : (geo.textSz || 7);
+      sizeSlider.value = sz;
+      sizeVal.textContent = DT.lines[i].fontSize !== null ? sz.toFixed(1) : 'auto';
+    }
   }
 }
 
@@ -1021,6 +1182,7 @@ async function initDogTagsView() {
     DT.shapes = data.shapes || [];
     DT.defaults = data.defaults || {};
     DT.tagsDir = data.tagsDir || null;
+    DT.fonts = data.fonts || [];
     DT.shapes.forEach(s => {
       if (s.geometry) DT.shapeGeo[s.id] = s.geometry;
     });
@@ -1039,15 +1201,136 @@ async function initDogTagsView() {
   const oscadNote = document.getElementById('dtOpenscadNote');
   if (oscadNote) oscadNote.style.display = DT.openscadAvailable ? 'none' : 'block';
 
-  // Name input
-  const nameInput = document.getElementById('dtPetName');
-  if (nameInput) {
-    nameInput.addEventListener('input', () => {
-      DT.petName = nameInput.value.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, 12);
+  // ── Populate font dropdowns ──
+  function populateFontDropdown(selectEl) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
+    (DT.fonts || []).forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.value;
+      opt.textContent = f.label;
+      opt.dataset.category = f.category;
+      selectEl.appendChild(opt);
+    });
+  }
+  populateFontDropdown(document.getElementById('dtLine1Font'));
+  populateFontDropdown(document.getElementById('dtLine2Font'));
+  populateFontDropdown(document.getElementById('dtStandaloneFont'));
+
+  // ── Mode toggle (Base Plate / Standalone Name) ──
+  function dtSetMode(mode) {
+    DT.mode = mode;
+    document.getElementById('dtModeBasePlate')?.classList.toggle('active', mode === 'basePlate');
+    document.getElementById('dtModeStandalone')?.classList.toggle('active', mode === 'standaloneName');
+    const bp = document.getElementById('dtBasePlateControls');
+    const sa = document.getElementById('dtStandaloneControls');
+    if (bp) bp.style.display = mode === 'basePlate' ? '' : 'none';
+    if (sa) sa.style.display = mode === 'standaloneName' ? '' : 'none';
+    dtBuildTag();
+  }
+  document.getElementById('dtModeBasePlate')?.addEventListener('click', () => dtSetMode('basePlate'));
+  document.getElementById('dtModeStandalone')?.addEventListener('click', () => dtSetMode('standaloneName'));
+
+  // ── Line count toggle ──
+  function dtSetLineCount(n) {
+    DT.lineCount = n;
+    document.getElementById('dtLineCount1')?.classList.toggle('active', n === 1);
+    document.getElementById('dtLineCount2')?.classList.toggle('active', n === 2);
+    const l2 = document.getElementById('dtLine2Controls');
+    if (l2) l2.style.display = n === 2 ? '' : 'none';
+    dtBuildTag();
+  }
+  document.getElementById('dtLineCount1')?.addEventListener('click', () => dtSetLineCount(1));
+  document.getElementById('dtLineCount2')?.addEventListener('click', () => dtSetLineCount(2));
+
+  // ── Per-line text input + font + size ──
+  function setupLineControls(idx) {
+    const n = idx + 1;
+    const textInput = document.getElementById(`dtLine${n}Text`);
+    const fontSelect = document.getElementById(`dtLine${n}Font`);
+    const sizeSlider = document.getElementById(`dtLine${n}Size`);
+    const sizeVal = document.getElementById(`dtLine${n}SizeVal`);
+
+    if (textInput) {
+      textInput.addEventListener('input', () => {
+        DT.lines[idx].text = textInput.value.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, 20);
+        // Keep backward compat
+        if (idx === 0) DT.petName = DT.lines[0].text;
+        dtBuildTag();
+      });
+      textInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') dtGenerate(); });
+    }
+
+    if (fontSelect) {
+      fontSelect.addEventListener('change', () => {
+        DT.lines[idx].font = fontSelect.value;
+        dtBuildTag();
+      });
+    }
+
+    if (sizeSlider) {
+      sizeSlider.addEventListener('input', () => {
+        DT.lines[idx].fontSize = parseFloat(sizeSlider.value);
+        if (sizeVal) sizeVal.textContent = DT.lines[idx].fontSize.toFixed(1);
+        // Keep backward compat for line 1
+        if (idx === 0) DT.textSz = DT.lines[0].fontSize;
+        dtBuildTag();
+      });
+    }
+  }
+  setupLineControls(0);
+  setupLineControls(1);
+
+  // ── Standalone controls ──
+  const saText = document.getElementById('dtStandaloneText');
+  if (saText) {
+    saText.addEventListener('input', () => {
+      DT.lines[0].text = saText.value.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, 20);
+      DT.petName = DT.lines[0].text;
       dtBuildTag();
     });
-    nameInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') dtGenerate();
+  }
+  const saFont = document.getElementById('dtStandaloneFont');
+  if (saFont) {
+    saFont.addEventListener('change', () => {
+      DT.lines[0].font = saFont.value;
+      // Auto-set connect expand based on font category
+      const fontData = (DT.fonts || []).find(f => f.value === saFont.value);
+      if (fontData) {
+        DT.standaloneConnectExpand = fontData.category === 'script' ? 0 : 0.3;
+        const connSlider = document.getElementById('dtStandaloneConnect');
+        const connVal = document.getElementById('dtStandaloneConnectVal');
+        if (connSlider) connSlider.value = DT.standaloneConnectExpand;
+        if (connVal) connVal.textContent = DT.standaloneConnectExpand.toFixed(2);
+      }
+      dtBuildTag();
+    });
+  }
+  const saSize = document.getElementById('dtStandaloneSize');
+  if (saSize) {
+    saSize.addEventListener('input', () => {
+      DT.lines[0].fontSize = parseFloat(saSize.value);
+      const v = document.getElementById('dtStandaloneSizeVal');
+      if (v) v.textContent = DT.lines[0].fontSize.toFixed(1);
+      dtBuildTag();
+    });
+  }
+  const saThick = document.getElementById('dtStandaloneThickness');
+  if (saThick) {
+    saThick.addEventListener('input', () => {
+      DT.standaloneThickness = parseFloat(saThick.value);
+      const v = document.getElementById('dtStandaloneThicknessVal');
+      if (v) v.textContent = DT.standaloneThickness.toFixed(1);
+      dtBuildTag();
+    });
+  }
+  const saConn = document.getElementById('dtStandaloneConnect');
+  if (saConn) {
+    saConn.addEventListener('input', () => {
+      DT.standaloneConnectExpand = parseFloat(saConn.value);
+      const v = document.getElementById('dtStandaloneConnectVal');
+      if (v) v.textContent = DT.standaloneConnectExpand.toFixed(2);
+      dtBuildTag();
     });
   }
 
@@ -1071,50 +1354,24 @@ async function initDogTagsView() {
     window.printStation.dogTag.openTagsFolder();
   });
   document.getElementById('dtImportBlankBtn')?.addEventListener('click', async () => {
-    const result = await window.printStation.dogTag.importBlank(DT.selectedShape);
+    // Import one or more STL files as new base plate shapes (no pre-selected shape needed)
+    const result = await window.printStation.dogTag.importBlank(null);
     if (result && result.imported) {
-      dtSetStatus(`Imported blank STL for "${DT.selectedShape}". Reloading shapes...`, 'success');
-      // Invalidate cache and reload
-      delete DT.stlCache[DT.selectedShape];
+      const names = (result.shapes || []).map(s => s.label).join(', ');
+      dtSetStatus(`Imported ${result.count} base plate(s): ${names}`, 'success');
+      // Reload shapes
       const data = await window.printStation.dogTag.getShapes();
       DT.shapes = data.shapes || [];
       DT.shapes.forEach(s => { if (s.geometry) DT.shapeGeo[s.id] = s.geometry; });
-      await dtLoadBlankStl(DT.selectedShape);
+      // Select the first newly imported shape
+      if (result.shapes?.[0]) {
+        DT.selectedShape = result.shapes[0].id;
+        await dtLoadBlankStl(DT.selectedShape);
+      }
       dtRenderShapePicker();
       dtBuildTag();
     }
   });
-
-  // Text control sliders
-  const fontSizeSlider = document.getElementById('dtFontSizeSlider');
-  if (fontSizeSlider) {
-    fontSizeSlider.addEventListener('input', () => {
-      DT.textSz = parseFloat(fontSizeSlider.value);
-      const sizeVal = document.getElementById('dtFontSizeValue');
-      if (sizeVal) sizeVal.textContent = DT.textSz.toFixed(1);
-      dtBuildTag();
-    });
-  }
-
-  const textXSlider = document.getElementById('dtTextXSlider');
-  if (textXSlider) {
-    textXSlider.addEventListener('input', () => {
-      DT.textCx = parseFloat(textXSlider.value);
-      const xVal = document.getElementById('dtTextXValue');
-      if (xVal) xVal.textContent = DT.textCx.toFixed(1);
-      dtBuildTag();
-    });
-  }
-
-  const textYSlider = document.getElementById('dtTextYSlider');
-  if (textYSlider) {
-    textYSlider.addEventListener('input', () => {
-      DT.textCy = parseFloat(textYSlider.value);
-      const yVal = document.getElementById('dtTextYValue');
-      if (yVal) yVal.textContent = DT.textCy.toFixed(1);
-      dtBuildTag();
-    });
-  }
 
   // Render
   dtRenderShapePicker();

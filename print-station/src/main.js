@@ -12,6 +12,7 @@ const { PrinterFleetDB } = require('./printer-fleet-db');
 const { PrinterService } = require('./printer-service');
 const chokidar = require('chokidar');
 const { generateDogTag, getShapeGeometry, getAllShapeGeometry, loadShapesConfig, saveShapesConfig, autoFontSize, DEFAULTS: DOG_TAG_DEFAULTS, SHAPE_DEFAULTS } = require('./generate_dog_tag_v2');
+const cameraRecorder = require('./camera-recorder');
 let autoUpdater = null;
 let tesseractWorker = null;
 
@@ -7429,6 +7430,191 @@ Return ONLY valid JSON, nothing else:
     return resp;
   }
 
+  // ==========================================================================
+  // FOOTAGE LIBRARY & CAMERA RECORDING
+  // ==========================================================================
+
+  // Helper: proxy GET to server footage API
+  async function footageFetch(apiPath, method = 'GET', body = null) {
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const url = `${settings.serverBaseUrl}/api/footage${apiPath}`;
+    const headers = {};
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+    if (body && method !== 'GET') headers['Content-Type'] = 'application/json';
+    const opts = { method, headers };
+    if (body && method !== 'GET') opts.body = JSON.stringify(body);
+    const resp = await doFetch(url, opts);
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `Server returned ${resp.status}`);
+    }
+    return resp.json();
+  }
+
+  ipcMain.handle('footage:clips:list', async (_event, filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.category) params.set('category', filters.category);
+    if (filters.status) params.set('status', filters.status);
+    if (filters.search) params.set('search', filters.search);
+    if (filters.limit) params.set('limit', String(filters.limit));
+    if (filters.offset) params.set('offset', String(filters.offset));
+    const qs = params.toString();
+    return footageFetch(`/clips${qs ? '?' + qs : ''}`);
+  });
+
+  ipcMain.handle('footage:clips:get', async (_event, id) => {
+    return footageFetch(`/clips/${id}`);
+  });
+
+  ipcMain.handle('footage:clips:update', async (_event, { id, data } = {}) => {
+    return footageFetch(`/clips/${id}`, 'PATCH', data);
+  });
+
+  ipcMain.handle('footage:clips:delete', async (_event, id) => {
+    return footageFetch(`/clips/${id}`, 'DELETE');
+  });
+
+  ipcMain.handle('footage:stats', async () => {
+    return footageFetch('/stats');
+  });
+
+  ipcMain.handle('footage:categories', async () => {
+    return footageFetch('/categories');
+  });
+
+  ipcMain.handle('footage:products', async () => {
+    return footageFetch('/products');
+  });
+
+  ipcMain.handle('footage:fileUrl', async (_event, filename) => {
+    const settings = ensureServerConfigured();
+    const key = settings.apiKey ? `?key=${settings.apiKey}` : '';
+    return `${settings.serverBaseUrl}/api/footage/file/${filename}${key}`;
+  });
+
+  ipcMain.handle('footage:thumbUrl', async (_event, filename) => {
+    const settings = ensureServerConfigured();
+    const key = settings.apiKey ? `?key=${settings.apiKey}` : '';
+    return `${settings.serverBaseUrl}/api/footage/thumb/${filename}${key}`;
+  });
+
+  // Upload a video file to server footage library
+  ipcMain.handle('footage:upload', async (_event, { filePath, meta } = {}) => {
+    if (!filePath) throw new Error('No file path provided');
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePath), path.basename(filePath));
+    if (meta) {
+      if (meta.category) form.append('category', meta.category);
+      if (meta.subcategory) form.append('subcategory', meta.subcategory);
+      if (meta.product_id) form.append('product_id', meta.product_id);
+      if (meta.product_name) form.append('product_name', meta.product_name);
+      if (meta.tags) form.append('tags', meta.tags);
+      if (meta.notes) form.append('notes', meta.notes);
+      form.append('source', meta.source || 'print-station');
+    }
+    const headers = form.getHeaders();
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+    const resp = await doFetch(`${settings.serverBaseUrl}/api/footage/upload`, {
+      method: 'POST',
+      headers,
+      body: form
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `Upload failed: ${resp.status}`);
+    }
+    const result = await resp.json();
+    // Clean up temp file if it's in our temp directory
+    if (filePath.includes('print-station-recordings')) {
+      cameraRecorder.cleanupTempFile(filePath);
+    }
+    return result;
+  });
+
+  // Camera management
+  ipcMain.handle('footage:cameras:list', () => cameraRecorder.listCameras());
+  ipcMain.handle('footage:cameras:add', (_event, config) => cameraRecorder.addCamera(config));
+  ipcMain.handle('footage:cameras:update', (_event, { id, data }) => cameraRecorder.updateCamera(id, data));
+  ipcMain.handle('footage:cameras:remove', (_event, id) => cameraRecorder.removeCamera(id));
+  ipcMain.handle('footage:cameras:test', (_event, config) => cameraRecorder.testCamera(config));
+  ipcMain.handle('footage:cameras:discover', (_event, config) => cameraRecorder.discoverCamera(config));
+
+  // Recording (segmented, auto-reconnect)
+  ipcMain.handle('footage:record:start', async (_event, { cameraId, outputDir, stream } = {}) => {
+    return cameraRecorder.startRecording(cameraId, outputDir, stream);
+  });
+
+  ipcMain.handle('footage:record:stop', async (_event, cameraId) => {
+    return cameraRecorder.stopRecording(cameraId);
+  });
+
+  ipcMain.handle('footage:record:status', () => cameraRecorder.getRecordingStatus());
+  ipcMain.handle('footage:record:cameraStatus', (_event, cameraId) => cameraRecorder.getStatus(cameraId));
+
+  // Forward recorder events to renderer
+  const recorderEvents = ['recording-started', 'recording-stopped', 'reconnecting', 'error', 'segment-complete'];
+  for (const evt of recorderEvents) {
+    cameraRecorder.events.on(evt, (data) => {
+      const bw = BrowserWindow.getAllWindows()[0];
+      if (bw) bw.webContents.send(`footage:event:${evt}`, data);
+    });
+  }
+
+  // Elapsed-time tick interval for active recordings
+  setInterval(() => {
+    const statuses = cameraRecorder.getRecordingStatus();
+    const active = Object.values(statuses).filter(s => s.active);
+    if (active.length > 0) {
+      const bw = BrowserWindow.getAllWindows()[0];
+      if (bw) {
+        for (const s of active) {
+          bw.webContents.send('footage:record:tick', s);
+        }
+      }
+    }
+  }, 1000);
+
+  // Live preview
+  ipcMain.handle('footage:preview:start', (_event, cameraId) => {
+    cameraRecorder.startPreviewLoop(cameraId, (frame, error) => {
+      const bw = BrowserWindow.getAllWindows()[0];
+      if (bw) {
+        bw.webContents.send('footage:preview:frame', { cameraId, frame, error });
+      }
+    }, 750);
+    return { ok: true };
+  });
+
+  ipcMain.handle('footage:preview:stop', (_event, cameraId) => {
+    cameraRecorder.stopPreviewLoop(cameraId);
+    return { ok: true };
+  });
+
+  // ffmpeg + python check
+  ipcMain.handle('footage:ffmpeg:check', () => cameraRecorder.checkFfmpeg());
+  ipcMain.handle('footage:python:check', () => cameraRecorder.checkPython());
+
+  // Select video file dialog
+  ipcMain.handle('footage:selectVideoFile', async () => {
+    const bw = BrowserWindow.getAllWindows()[0];
+    const result = await dialog.showOpenDialog(bw, {
+      title: 'Select Video File',
+      filters: [
+        { name: 'Video Files', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] }
+      ],
+      properties: ['openFile']
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    return result.filePaths[0];
+  });
+
+  // ==========================================================================
+  // PRINT QUOTES
+  // ==========================================================================
+
   ipcMain.handle('pq:list', async (_event, query = {}) => {
     const params = new URLSearchParams();
     if (query.status) params.set('status', query.status);
@@ -7688,6 +7874,21 @@ Return ONLY valid JSON, nothing else:
     return { shapes, defaults: DOG_TAG_DEFAULTS, tagsDir: dogTagTagsDir() };
   });
 
+  // Delete a shape from config
+  ipcMain.handle('dog-tag:shapes:delete', (_event, shapeId) => {
+    if (!shapeId) return { ok: false };
+    const config = getDogTagShapesConfig(true);
+    if (config[shapeId]) {
+      delete config[shapeId];
+      saveShapesConfig(dogTagConfigFile(), config);
+      _shapesConfigCache = null; // bust cache
+      // Also try to delete the blank STL
+      const stlPath = path.join(dogTagTagsDir(), `${shapeId}.stl`);
+      try { if (fs.existsSync(stlPath)) fs.unlinkSync(stlPath); } catch (_) {}
+    }
+    return { ok: true };
+  });
+
   // Check if openscad is available
   ipcMain.handle('dog-tag:openscad-check', () => {
     return { available: isOpenscadAvailable() };
@@ -7943,6 +8144,12 @@ app.on('ready', async () => {
     applyWatchSettings(getSettings());
   } catch (err) {
     console.warn('Watch configuration failed:', err?.message || err);
+  }
+  // Initialize camera recorder for footage library
+  try {
+    cameraRecorder.init();
+  } catch (err) {
+    console.warn('Camera recorder unavailable:', err?.message || err);
   }
   const mainWindow = createWindow();
 
@@ -8249,7 +8456,9 @@ app.on('ready', async () => {
   });
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
+  // Finalize any active camera recordings
+  try { await cameraRecorder.shutdown(); } catch (_) {}
   if (printerService) {
     printerService.disconnectAll();
   }
