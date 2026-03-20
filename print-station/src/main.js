@@ -8031,28 +8031,38 @@ Return ONLY valid JSON, nothing else:
   // Import a blank STL via file dialog
   ipcMain.handle('dog-tag:import-blank', async (_event, shapeId) => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
-      title: 'Select Blank STL for ' + (shapeId || 'tag shape'),
+      title: shapeId ? `Select Blank STL for ${shapeId}` : 'Import Base Plate STL(s)',
       filters: [{ name: 'STL Files', extensions: ['stl'] }],
-      properties: ['openFile'],
+      properties: shapeId ? ['openFile'] : ['openFile', 'multiSelections'],
     });
     if (canceled || !filePaths.length) return { imported: false };
 
-    const srcPath = filePaths[0];
-    const destName = (shapeId || path.basename(srcPath, '.stl')) + '_blank.stl';
-    const destPath = path.join(dogTagTagsDir(), destName);
-    fs.copyFileSync(srcPath, destPath);
-
-    // Update shapes config
     const shapesConfig = getDogTagShapesConfig(true);
-    if (!shapesConfig[shapeId]) {
-      shapesConfig[shapeId] = { label: shapeId.charAt(0).toUpperCase() + shapeId.slice(1) };
-    }
-    shapesConfig[shapeId].stlFile = destName;
-    shapesConfig[shapeId].hasBlankStl = true;
-    saveShapesConfig(dogTagConfigFile(), shapesConfig);
-    _shapesConfigCache = null; // invalidate cache
+    const importedShapes = [];
 
-    return { imported: true, stlFile: destName, path: destPath };
+    for (const srcPath of filePaths) {
+      const baseName = path.basename(srcPath, '.stl')
+        .toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      const sid = shapeId || baseName || `shape_${Date.now()}`;
+      const destName = `${sid}_blank.stl`;
+      const destPath = path.join(dogTagTagsDir(), destName);
+      fs.copyFileSync(srcPath, destPath);
+
+      if (!shapesConfig[sid]) {
+        const label = path.basename(srcPath, '.stl')
+          .replace(/[-_]/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+        shapesConfig[sid] = { label };
+      }
+      shapesConfig[sid].stlFile = destName;
+      shapesConfig[sid].hasBlankStl = true;
+      importedShapes.push({ id: sid, label: shapesConfig[sid].label });
+    }
+
+    saveShapesConfig(dogTagConfigFile(), shapesConfig);
+    _shapesConfigCache = null;
+
+    return { imported: true, count: importedShapes.length, shapes: importedShapes };
   });
 
   // Load a blank STL file as base64 for Three.js preview
