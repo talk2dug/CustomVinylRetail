@@ -8154,7 +8154,7 @@ Return ONLY valid JSON, nothing else:
     const { fetch: fetchFn } = await ensureFetch();
     const settings = getSettings();
     const serverUrl = settings.serverUrl || 'https://store.swayzecustomvinyl.com';
-    const apiKey = settings.slicerApiKey || '';
+    const apiKey = settings.slicerApiKey || process.env.INTERNAL_API_KEY || 'laZHEthV92qDq0adO07UnqoH3O4baZmV';
 
     const formData = new FormData();
     formData.append('file', fs.createReadStream(stlPath));
@@ -8163,7 +8163,7 @@ Return ONLY valid JSON, nothing else:
     if (folder) formData.append('folder', folder);
 
     const headers = formData.getHeaders();
-    if (apiKey) headers['x-api-key'] = apiKey;
+    headers['x-api-key'] = apiKey;
 
     console.log(`[DogTag Library] POST ${serverUrl}/api/slicer/catalog`);
     const resp = await fetchFn(`${serverUrl}/api/slicer/catalog`, {
