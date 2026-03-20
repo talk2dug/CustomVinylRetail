@@ -155,6 +155,46 @@ function readStlBounds(stlPath) {
     const surfaceCenterX = topArea > 0 ? topSumX / topArea : (maxX + minX) / 2;
     const surfaceCenterY = topArea > 0 ? topSumY / topArea : (maxY + minY) / 2;
 
+    // Build Y→width profile: for each Y band, track the actual X extent
+    // This lets us know how wide the shape is at any Y position
+    const yBands = 20; // 20 horizontal bands
+    const bandHeight = (maxY - minY) / yBands;
+    const widthProfile = []; // [{y, minX, maxX, width}]
+    for (let b = 0; b < yBands; b++) {
+      const bandMinY = minY + b * bandHeight;
+      const bandMaxY = bandMinY + bandHeight;
+      const bandCenterY = bandMinY + bandHeight / 2;
+      let bMinX = Infinity, bMaxX = -Infinity;
+      // Scan top-surface triangles that overlap this Y band
+      for (let i = 0; i < triCount; i++) {
+        const off = 84 + i * 50;
+        const verts = [];
+        for (let v = 0; v < 3; v++) {
+          verts.push({
+            x: buf.readFloatLE(off + 12 + v * 12),
+            y: buf.readFloatLE(off + 12 + v * 12 + 4),
+            z: buf.readFloatLE(off + 12 + v * 12 + 8),
+          });
+        }
+        // Only top-surface triangles
+        const avgZ = (verts[0].z + verts[1].z + verts[2].z) / 3;
+        if (avgZ < topThreshold) continue;
+        // Check if any vertex is in this Y band
+        const triMinY = Math.min(verts[0].y, verts[1].y, verts[2].y);
+        const triMaxY = Math.max(verts[0].y, verts[1].y, verts[2].y);
+        if (triMaxY < bandMinY || triMinY > bandMaxY) continue;
+        for (const v of verts) {
+          if (v.y >= bandMinY && v.y <= bandMaxY) {
+            if (v.x < bMinX) bMinX = v.x;
+            if (v.x > bMaxX) bMaxX = v.x;
+          }
+        }
+      }
+      if (bMinX < Infinity) {
+        widthProfile.push({ y: bandCenterY, minX: bMinX, maxX: bMaxX, width: bMaxX - bMinX });
+      }
+    }
+
     return {
       minX, maxX, minY, maxY, minZ, maxZ,
       width: maxX - minX,
@@ -162,9 +202,9 @@ function readStlBounds(stlPath) {
       height,
       centerX: surfaceCenterX,
       centerY: surfaceCenterY,
-      // Also keep bounding box center for reference
       bboxCenterX: (maxX + minX) / 2,
       bboxCenterY: (maxY + minY) / 2,
+      widthProfile, // Y→width lookup for smart text sizing
     };
   } catch (e) {
     return null;
@@ -336,6 +376,24 @@ function repairStl(srcPath, dstPath) {
   };
 }
 
+// ── Helper: get shape width at a given Y position from width profile ──
+function getWidthAtY(bounds, targetY) {
+  if (!bounds.widthProfile || bounds.widthProfile.length === 0) {
+    return bounds.width; // fallback to full bounding box width
+  }
+  // Find the closest band
+  let closest = bounds.widthProfile[0];
+  let closestDist = Math.abs(closest.y - targetY);
+  for (const band of bounds.widthProfile) {
+    const dist = Math.abs(band.y - targetY);
+    if (dist < closestDist) {
+      closest = band;
+      closestDist = dist;
+    }
+  }
+  return closest.width;
+}
+
 // ── SCAD: TEXT CUTTER (standalone, for manifold boolean) ──────
 // Generates the text cutter solid(s) — no import().
 // OpenSCAD renders this to an STL, then manifold-3d subtracts it
@@ -348,27 +406,16 @@ function buildTextCutterScad(cfg) {
   const actualThickness = bounds.height;
   const cutDepth = cfg.pocketDepth + 0.2;
   const lines = cfg.lines || [{ text: cfg.name, font: cfg.font, fontSize: cfg.fontSize, textXOffset: cfg.textXOffset, textYOffset: cfg.textYOffset }];
-
-  // Auto-fit font sizes to the STL dimensions
-  // Max text width should be ~70% of STL width, max total text height ~60% of STL depth
-  const maxTextWidth = bounds.width * 0.70;
-  const maxTotalHeight = bounds.depth * 0.60;
   const charWidthRatio = 0.62; // Liberation Sans Bold uppercase average
 
-  // Calculate font sizes that fit within bounds
+  // Step 1: Compute initial font sizes based on vertical space
+  const maxTotalHeight = bounds.depth * 0.55;
   lines.forEach((line, i) => {
     let fs = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
-    // Clamp to fit width
-    const estWidth = line.text.length * charWidthRatio * fs;
-    if (estWidth > maxTextWidth) {
-      fs = maxTextWidth / (line.text.length * charWidthRatio);
-    }
-    // Clamp to fit height (share vertical space among lines)
-    const maxPerLine = maxTotalHeight / (lines.length * 1.4); // 1.4 = line spacing factor
-    if (fs > maxPerLine) {
-      fs = maxPerLine;
-    }
-    // Line 2+ should be smaller than line 1 (subtitle style)
+    // Clamp to share vertical space
+    const maxPerLine = maxTotalHeight / (lines.length * 1.4);
+    if (fs > maxPerLine) fs = maxPerLine;
+    // Line 2+ is smaller (subtitle style)
     if (i > 0 && lines.length > 1) {
       const line1Size = lines[0].fontSize || fs;
       fs = Math.min(fs, line1Size * 0.7);
@@ -376,16 +423,46 @@ function buildTextCutterScad(cfg) {
     line.fontSize = fs;
   });
 
-  // Auto-center text group on the STL, ignoring drag positions
-  // The drag positions from the Three.js preview have been unreliable
-  // due to camera perspective issues, so we compute ideal positions here
+  // Step 2: Compute Y positions (center text group vertically)
   const totalTextHeight = lines.reduce((sum, l, i) => {
-    const spacing = i > 0 ? l.fontSize * 0.4 : 0; // gap between lines
+    const spacing = i > 0 ? l.fontSize * 0.5 : 0;
     return sum + l.fontSize + spacing;
   }, 0);
 
-  // Start Y: center the text block vertically on the STL
   let currentY = bounds.centerY + totalTextHeight / 2;
+  const linePositions = [];
+  lines.forEach((line, i) => {
+    currentY -= line.fontSize / 2;
+    linePositions.push({ tx: bounds.centerX, ty: currentY });
+    currentY -= line.fontSize / 2;
+    if (i < lines.length - 1) currentY -= line.fontSize * 0.5;
+  });
+
+  // Step 3: Clamp font sizes to fit ACTUAL shape width at each line's Y position
+  lines.forEach((line, i) => {
+    const pos = linePositions[i];
+    const shapeWidth = getWidthAtY(bounds, pos.ty);
+    const maxTextWidth = shapeWidth * 0.75; // 75% of actual width at this Y
+    const estWidth = line.text.length * charWidthRatio * line.fontSize;
+    if (estWidth > maxTextWidth) {
+      const newFs = maxTextWidth / (line.text.length * charWidthRatio);
+      console.log(`[DogTag] Line ${i+1} "${line.text}": clamped ${line.fontSize.toFixed(1)}→${newFs.toFixed(1)}mm to fit ${shapeWidth.toFixed(0)}mm width at Y=${pos.ty.toFixed(1)}`);
+      line.fontSize = newFs;
+    }
+  });
+
+  // Step 4: Recalculate Y positions with final font sizes
+  const finalTotalHeight = lines.reduce((sum, l, i) => {
+    const spacing = i > 0 ? l.fontSize * 0.5 : 0;
+    return sum + l.fontSize + spacing;
+  }, 0);
+  currentY = bounds.centerY + finalTotalHeight / 2;
+  lines.forEach((line, i) => {
+    currentY -= line.fontSize / 2;
+    linePositions[i].ty = currentY;
+    currentY -= line.fontSize / 2;
+    if (i < lines.length - 1) currentY -= line.fontSize * 0.5;
+  });
 
   let scad = `// ============================================================
 // BRCC Keychain — TEXT CUTTER (for boolean subtraction)
@@ -403,22 +480,17 @@ cut_depth     = ${cutDepth.toFixed(2)};
   lines.forEach((line, i) => {
     const fs_size = line.fontSize;
     const font = line.font || cfg.font || DEFAULTS.font;
+    const pos = linePositions[i];
+    const shapeWidth = getWidthAtY(bounds, pos.ty);
 
-    // Position each line: centered X, stacked Y from top
-    currentY -= fs_size / 2; // move down to line center
-    const tx = bounds.centerX; // always horizontally centered
-    const ty = currentY;
-    currentY -= fs_size / 2; // move past this line
-    if (i < lines.length - 1) currentY -= fs_size * 0.4; // gap before next line
-
-    // Clamp Y to stay within STL bounds with margin
+    // Clamp Y within STL bounds
     const margin = fs_size * 0.6;
-    const clampedTy = Math.max(bounds.minY + margin, Math.min(bounds.maxY - margin, ty));
+    const ty = Math.max(bounds.minY + margin, Math.min(bounds.maxY - margin, pos.ty));
 
-    console.log(`[DogTag] Line ${i+1} "${line.text}": fontSize=${fs_size.toFixed(1)} pos=(${tx.toFixed(2)}, ${clampedTy.toFixed(2)}) [bounds Y: ${bounds.minY.toFixed(1)}..${bounds.maxY.toFixed(1)}]`);
+    console.log(`[DogTag] Line ${i+1} "${line.text}": size=${fs_size.toFixed(1)}mm pos=(${pos.tx.toFixed(1)}, ${ty.toFixed(1)}) shapeWidth=${shapeWidth.toFixed(0)}mm`);
 
-    scad += `// Line ${i + 1}: "${line.text}" (size=${fs_size.toFixed(1)}mm)
-translate([${tx.toFixed(2)}, ${clampedTy.toFixed(2)}, tag_thickness - cut_depth])
+    scad += `// Line ${i + 1}: "${line.text}" (size=${fs_size.toFixed(1)}mm, shapeWidth=${shapeWidth.toFixed(0)}mm at Y=${ty.toFixed(1)})
+translate([${pos.tx.toFixed(2)}, ${ty.toFixed(2)}, tag_thickness - cut_depth])
 linear_extrude(height = cut_depth + 0.01)
   offset(r = pocket_clear, $fn = 16)
     text("${line.text}", size = ${fs_size.toFixed(2)}, font = "${font}",
