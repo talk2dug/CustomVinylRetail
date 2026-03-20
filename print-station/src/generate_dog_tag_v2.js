@@ -406,7 +406,10 @@ function buildTextCutterScad(cfg) {
   const actualThickness = bounds.height;
   const cutDepth = cfg.pocketDepth + 0.2;
   const lines = cfg.lines || [{ text: cfg.name, font: cfg.font, fontSize: cfg.fontSize }];
-  const charWidthRatio = 0.62; // Liberation Sans Bold uppercase average
+  // Liberation Sans Bold uppercase: actual average is ~0.68 per char,
+  // plus offset(r=pocket_clearance) expands each side, plus spacing.
+  // Use 0.78 as a safe ratio to prevent text overflow.
+  const charWidthRatio = 0.78;
   const lineBoxes = cfg.lineBoxes || null;
 
   let scad = `// ============================================================
@@ -435,8 +438,8 @@ cut_depth     = ${cutDepth.toFixed(2)};
 
       // Auto-size font: fit text within box width, then cap to box height
       // Primary constraint is WIDTH (text must not exceed box width)
-      const maxByWidth = (box.w * 0.92) / (line.text.length * charWidthRatio);
-      const maxByHeight = box.h * 0.70; // text should be ~70% of box height max
+      const maxByWidth = (box.w * 0.85) / (line.text.length * charWidthRatio);
+      const maxByHeight = box.h * 0.65; // text should be ~65% of box height max
       fs_size = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
       fs_size = Math.min(fs_size, maxByWidth, maxByHeight);
 
