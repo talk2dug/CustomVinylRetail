@@ -605,7 +605,7 @@ function dtBuildTextLines(geo, insertColor, tagThickness) {
     if (!text) continue;
 
     const tcx = line.cx !== null ? line.cx : (i === 0 ? (DT.textCx !== null ? DT.textCx : geo.textCx) : 0);
-    const tcy = line.cy !== null ? line.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : geo.textCy) : (geo.textCy || 0) - (geo.textSz || 7) * 1.5);
+    const tcy = line.cy !== null ? line.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : geo.textCy) : (geo.textCy || 0) - (geo.textSz || 7) * 2.2);
     const tsz = line.fontSize !== null ? line.fontSize : (i === 0 ? (DT.textSz !== null ? DT.textSz : geo.textSz) : (geo.textSz || 7) * 0.7);
     const font = line.font || 'Liberation Sans:style=Bold';
 
@@ -865,7 +865,7 @@ async function dtGenerate() {
       if (ln.text || (i === 0 && DT.petName)) {
         // Resolve positions same as dtBuildTextLines does
         const rcx = ln.cx !== null ? ln.cx : (i === 0 ? (DT.textCx !== null ? DT.textCx : (geo.textCx || 0)) : 0);
-        const rcy = ln.cy !== null ? ln.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : (geo.textCy || 0)) : (geo.textCy || 0) - (geo.textSz || 7) * 1.5);
+        const rcy = ln.cy !== null ? ln.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : (geo.textCy || 0)) : (geo.textCy || 0) - (geo.textSz || 7) * 2.2);
         const rsz = ln.fontSize !== null ? ln.fontSize : (i === 0 ? (DT.textSz !== null ? DT.textSz : (geo.textSz || 7)) : (geo.textSz || 7) * 0.7);
 
         const entry = {
@@ -1024,7 +1024,7 @@ async function dtAddToBatch() {
     const ln = DT.lines[i];
     if (ln.text || (i === 0 && DT.petName)) {
       const rcx = ln.cx !== null ? ln.cx : (i === 0 ? (DT.textCx !== null ? DT.textCx : (geo.textCx || 0)) : 0);
-      const rcy = ln.cy !== null ? ln.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : (geo.textCy || 0)) : (geo.textCy || 0) - (geo.textSz || 7) * 1.5);
+      const rcy = ln.cy !== null ? ln.cy : (i === 0 ? (DT.textCy !== null ? DT.textCy : (geo.textCy || 0)) : (geo.textCy || 0) - (geo.textSz || 7) * 2.2);
       const rsz = ln.fontSize !== null ? ln.fontSize : (i === 0 ? (DT.textSz !== null ? DT.textSz : (geo.textSz || 7)) : (geo.textSz || 7) * 0.7);
       batchLines.push({
         text: ln.text || (i === 0 ? DT.petName : ''),
@@ -1173,6 +1173,7 @@ function dtResetTextPos() {
   DT.textCx = null;
   DT.textCy = null;
   DT.textSz = null;
+  DT.lines.forEach(l => { l.cx = null; l.cy = null; });
   dtSyncSliders();
   dtBuildTag();
 }
