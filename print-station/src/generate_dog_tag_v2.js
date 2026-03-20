@@ -368,6 +368,11 @@ function buildTextCutterScad(cfg) {
     if (fs > maxPerLine) {
       fs = maxPerLine;
     }
+    // Line 2+ should be smaller than line 1 (subtitle style)
+    if (i > 0 && lines.length > 1) {
+      const line1Size = lines[0].fontSize || fs;
+      fs = Math.min(fs, line1Size * 0.7);
+    }
     line.fontSize = fs;
   });
 
