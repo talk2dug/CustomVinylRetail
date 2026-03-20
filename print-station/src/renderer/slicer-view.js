@@ -1817,7 +1817,8 @@ function slicerShowGcodePreview({ gcodeText, gcodeId, sliceResult, printerId, pr
     const maxBed = Math.max(bedDims.x, bedDims.y);
     const fov = camera.fov * (Math.PI / 180);
     const dist = maxBed / (2 * Math.tan(fov / 2)) * 1.6;
-    camera.position.set(bedDims.x / 2 + dist * 0.5, dist * 0.7, bedDims.y / 2 + dist * 0.5);
+    // Camera from front of bed so text/shapes read correctly (not mirrored)
+    camera.position.set(bedDims.x / 2 + dist * 0.5, dist * 0.7, bedDims.y / 2 - dist * 0.5);
     camera.lookAt(bedCenter);
     controls.target.copy(bedCenter);
     controls.update();
