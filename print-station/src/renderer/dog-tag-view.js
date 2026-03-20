@@ -508,7 +508,25 @@ function dtBuildTag() {
   }
 
   const colors = COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0];
-  const geo = DT.shapeGeo[DT.selectedShape];
+  let geo = DT.shapeGeo[DT.selectedShape];
+
+  // For imported shapes without built-in geometry, derive it from the STL bounding box
+  if (!geo && DT.stlCache[DT.selectedShape]) {
+    const stl = DT.stlCache[DT.selectedShape];
+    stl.computeBoundingBox();
+    const bb = stl.boundingBox;
+    const w = bb.max.x - bb.min.x;
+    const h = bb.max.y - bb.min.y;
+    geo = {
+      type: DT.selectedShape,
+      width: w, height: h,
+      textCx: 0, textCy: 0, textSz: null,
+      ringX: 0, ringY: h / 2 + 2,
+      thickness: bb.max.z - bb.min.z,
+    };
+    DT.shapeGeo[DT.selectedShape] = geo;
+  }
+
   if (!geo) return;
 
   const baseColor = new THREE.Color(colors.base);
@@ -1373,14 +1391,26 @@ async function initDogTagsView() {
     }
   });
 
+  // Select first available shape if current selection doesn't exist
+  if (DT.shapes.length > 0 && !DT.shapes.find(s => s.id === DT.selectedShape)) {
+    DT.selectedShape = DT.shapes[0].id;
+  }
+
   // Render
   dtRenderShapePicker();
   dtSyncSliders();
   dtLoadHistory();
   dtLoadBatch();
 
-  // Setup Three.js scene (slight delay to ensure container has dimensions)
-  setTimeout(() => dtSetupScene(), 50);
+  // Setup Three.js scene, then build initial tag after blanks load
+  setTimeout(async () => {
+    dtSetupScene();
+    // Wait for selected shape's STL to load before building
+    if (DT.selectedShape && !DT.stlCache[DT.selectedShape]) {
+      await dtLoadBlankStl(DT.selectedShape);
+    }
+    dtBuildTag();
+  }, 100);
 
   DT.initialized = true;
 }
