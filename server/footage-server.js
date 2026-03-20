@@ -79,11 +79,14 @@ async function handleFootageRoute(pathname, req, res, db) {
     return true;
   }
 
-  // GET /api/footage/products — list metal print products for tagging
+  // GET /api/footage/products — list products for tagging
+  // ?all=1 returns all products, otherwise metal prints only
   if (req.method === 'GET' && route === '/products') {
     try {
-      // Query custom_art_products with material_id = 'mat_metal'
-      const products = db.db.prepare("SELECT id, title FROM custom_art_products WHERE material_id = 'mat_metal' ORDER BY title").all();
+      const sql = query.all === '1'
+        ? "SELECT id, title FROM custom_art_products ORDER BY title"
+        : "SELECT id, title FROM custom_art_products WHERE material_id = 'mat_metal' ORDER BY title";
+      const products = db.db.prepare(sql).all();
       sendJson(res, 200, { products });
     } catch (err) { sendError(res, 500, err.message); }
     return true;

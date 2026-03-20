@@ -111,6 +111,7 @@ const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
 const aiSalesAgent = require('./modules/ai-sales-agent');
 const telegramPrinterBot = require('./modules/telegram-printer-bot');
 const printMonitor = require('./modules/print-monitor');
+const timelapseCapture = require('./modules/timelapse-capture');
 const diskWatcher = require('./modules/disk-watcher');
 const marketingTeam = require('./modules/marketing-team');
 const shopifyOrderSync = require('./modules/shopify-order-sync');
@@ -3894,6 +3895,38 @@ const requestHandler = async (req, res) => {
     if (req.method === 'POST' && pmRoute === '/disable') {
       printMonitor.setEnabled(false);
       sendJson(res, 200, { ok: true, enabled: false });
+      return;
+    }
+    sendJson(res, 404, { error: 'Not found' });
+    return;
+  }
+
+  // Timelapse API
+  if (parsedUrl.pathname.startsWith('/api/timelapse')) {
+    const tlRoute = parsedUrl.pathname.replace('/api/timelapse', '') || '/';
+
+    // GET /api/timelapse/sessions — active capture sessions
+    if (req.method === 'GET' && tlRoute === '/sessions') {
+      sendJson(res, 200, { sessions: timelapseCapture.getActiveSessions() });
+      return;
+    }
+    // GET /api/timelapse/list — completed timelapses
+    if (req.method === 'GET' && (tlRoute === '/list' || tlRoute === '/')) {
+      sendJson(res, 200, { timelapses: timelapseCapture.listTimelapses() });
+      return;
+    }
+    // GET /api/timelapse/video/:jobKey — stream video file
+    const videoMatch = tlRoute.match(/^\/video\/(.+)$/);
+    if (req.method === 'GET' && videoMatch) {
+      const videoPath = timelapseCapture.getVideoPath(decodeURIComponent(videoMatch[1]));
+      if (!videoPath) { sendJson(res, 404, { error: 'Video not found' }); return; }
+      const stat = fs.statSync(videoPath);
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': stat.size,
+        'Content-Disposition': `inline; filename="${path.basename(videoPath)}"`,
+      });
+      fs.createReadStream(videoPath).pipe(res);
       return;
     }
     sendJson(res, 404, { error: 'Not found' });
@@ -21373,19 +21406,32 @@ if (require.main === module) {
       console.error('[Server] Failed to start Shopify order sync:', error.message);
     }
 
-    // Telegram printer bot polling disabled — conflicts with main Telegram bot service
-    // telegramPrinterBot.startPolling();
+    // Telegram printer bot: command polling + server-side status polling from Pi
+    try {
+      telegramPrinterBot.startPolling();
+      telegramPrinterBot.startStatusPolling();
+      console.log('[Server] Telegram printer bot started (commands + status polling)');
+    } catch (error) {
+      console.error('[Server] Failed to start printer bot:', error.message);
+    }
 
     // AI Print Monitor — analyzes webcam snapshots for failures every 45s
     try {
       const telegram = require('./lib/telegram-notifier');
       printMonitor.init({
         getCache: () => telegramPrinterBot.getCache(),
-        notify: async (text, photoBuffer) => {
-          if (photoBuffer) {
-            await telegram.sendPhoto(photoBuffer, text);
+        notify: async (text, photoData) => {
+          if (photoData) {
+            // photoData may be a Buffer or base64 string depending on source
+            const buf = Buffer.isBuffer(photoData) ? photoData
+              : (typeof photoData === 'string' ? Buffer.from(photoData, 'base64') : null);
+            if (buf && buf.length > 100) {
+              await telegram.sendPhoto(buf, text);
+            } else {
+              await telegram.sendMessage(text);
+            }
           } else {
-            await telegram.send(text);
+            await telegram.sendMessage(text);
           }
         },
         db
@@ -21393,6 +21439,14 @@ if (require.main === module) {
       console.log('[Server] AI Print Monitor started');
     } catch (err) {
       console.error('[Server] Failed to start print monitor:', err.message);
+    }
+
+    // Timelapse capture — monitors layer changes and captures webcam frames
+    try {
+      timelapseCapture.init({ db });
+      console.log('[Server] Timelapse capture service started');
+    } catch (err) {
+      console.error('[Server] Failed to start timelapse capture:', err.message);
     }
 
     // Disk watcher — auto-clean root partition when usage gets high

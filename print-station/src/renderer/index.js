@@ -1830,6 +1830,11 @@ function switchView(viewId) {
     if (typeof window.initTrendMonitorView === 'function') window.initTrendMonitorView();
   }
 
+  // Footage Library view
+  if (viewId === 'footageLibraryView') {
+    if (typeof window.initFootageLibraryView === 'function') window.initFootageLibraryView();
+  }
+
   // External view files (loaded as regular scripts, accessed via window)
   if (viewId === 'slicerView') {
     if (typeof window.initSlicerView === 'function') window.initSlicerView();

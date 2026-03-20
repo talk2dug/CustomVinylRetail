@@ -2,15 +2,16 @@
  * Telegram Printer Bot — Real-time 3D printer notifications + /printerstatus command
  *
  * Architecture:
- * - Electron app pushes printer status heartbeats (every 60s) with webcam snapshots
- * - This module caches that data in memory
- * - Polls Telegram for /printerstatus commands and responds with cached data
+ * - Server polls Pi print server every 30s for printer status + webcam snapshots
+ * - Also accepts heartbeats from Electron app (legacy, optional)
+ * - Caches data in memory for /printerstatus Telegram command
  * - Handles printer event notifications (started, paused, completed, etc.)
+ * - Detects state transitions (idle→printing, printing→complete, etc.) and sends alerts
  */
 
 const telegram = require('../lib/telegram-notifier');
 
-// In-memory cache of printer statuses (pushed by Electron app heartbeat)
+// In-memory cache of printer statuses
 let printerCache = {
   printers: [],   // [{ id, name, model, state, temps, progress, filename, printDuration, totalDuration, snapshot }]
   updatedAt: null
@@ -18,6 +19,11 @@ let printerCache = {
 
 let pollingActive = false;
 let updateOffset = 0;
+let statusPollTimer = null;
+let printServerUrl = null;
+let internalApiKey = '';
+// Track previous state per printer for transition detection
+const prevPrinterStates = {};
 
 // ============================================================================
 // CACHE
@@ -244,9 +250,129 @@ function getCache() {
   };
 }
 
+// ============================================================================
+// SERVER-SIDE STATUS POLLING (from Pi print server)
+// ============================================================================
+
+function mapTransition(prev, curr) {
+  if (prev === curr) return null;
+  if (curr === 'printing' && prev === 'paused') return 'print_resumed';
+  if (curr === 'printing' && prev !== 'printing') return 'print_started';
+  if (curr === 'complete') return 'print_completed';
+  if (curr === 'paused') return 'print_paused';
+  if (curr === 'error') return 'print_failed';
+  if (curr === 'cancelled') return 'print_cancelled';
+  if (curr === 'offline' && prev !== 'offline' && prev !== 'unknown') return 'printer_offline';
+  if (prev === 'offline' && curr !== 'offline') return 'printer_online';
+  return null;
+}
+
+async function pollPrintServer() {
+  if (!printServerUrl) return;
+
+  try {
+    const headers = {};
+    if (internalApiKey) headers['X-API-Key'] = internalApiKey;
+
+    const resp = await fetch(`${printServerUrl}/api/3d/printers?active=true`, {
+      headers, signal: AbortSignal.timeout(10000)
+    });
+    if (!resp.ok) return;
+
+    const printers = await resp.json();
+    if (!Array.isArray(printers)) return;
+
+    const statuses = [];
+    for (const p of printers) {
+      const ls = p.live_status || {};
+      const status = {
+        id: p.id,
+        name: p.name,
+        model: p.model || '',
+        state: ls.state || 'unknown',
+        progress: ls.progress || 0,
+        filename: ls.filename || '',
+        printDuration: ls.print_duration || 0,
+        totalDuration: ls.total_duration || 0,
+        temperatures: ls.temperatures || null,
+        snapshot: null
+      };
+
+      // Detect state transitions and send Telegram notifications
+      const prevState = prevPrinterStates[p.id] || 'unknown';
+      const event = mapTransition(prevState, status.state);
+      if (event) {
+        console.log(`[PrinterBot] State change: ${p.name} ${prevState} → ${status.state} (${event})`);
+        try {
+          await handlePrinterEvent({
+            event,
+            printer_name: p.name,
+            printer_model: p.model,
+            filename: status.filename,
+            progress: status.progress,
+            duration_min: status.printDuration ? Math.round(status.printDuration / 60) : 0,
+            snapshot: null // snapshot fetched below
+          });
+        } catch (err) {
+          console.warn(`[PrinterBot] Event notification failed for ${p.name}:`, err.message);
+        }
+      }
+      prevPrinterStates[p.id] = status.state;
+
+      // Fetch webcam snapshot
+      try {
+        const snapResp = await fetch(`${printServerUrl}/api/3d/printers/${p.id}/snapshot`, {
+          headers, signal: AbortSignal.timeout(5000)
+        });
+        if (snapResp.ok) {
+          const data = await snapResp.json();
+          if (data.snapshot) {
+            status.snapshot = Buffer.from(data.snapshot, 'base64');
+          }
+        }
+      } catch (_) { /* webcam optional */ }
+
+      statuses.push(status);
+    }
+
+    // Update cache
+    printerCache.printers = statuses;
+    printerCache.updatedAt = Date.now();
+
+  } catch (err) {
+    // Only log on first failure, not every 30s
+    if (!pollPrintServer._lastError || Date.now() - pollPrintServer._lastError > 300000) {
+      console.warn('[PrinterBot] Print server poll failed:', err.message);
+      pollPrintServer._lastError = Date.now();
+    }
+  }
+}
+
+function startStatusPolling(options = {}) {
+  printServerUrl = options.printServerUrl || process.env.PRINT_SERVER_URL || 'http://100.64.0.7:5000';
+  internalApiKey = options.apiKey || process.env.INTERNAL_API_KEY || '';
+
+  if (statusPollTimer) clearInterval(statusPollTimer);
+
+  // Initial poll immediately
+  pollPrintServer();
+  // Then every 30 seconds
+  statusPollTimer = setInterval(pollPrintServer, 30000);
+  console.log(`[PrinterBot] Status polling started (${printServerUrl}, every 30s)`);
+}
+
+function stopStatusPolling() {
+  if (statusPollTimer) {
+    clearInterval(statusPollTimer);
+    statusPollTimer = null;
+  }
+}
+
 module.exports = {
   startPolling,
   stopPolling,
+  startStatusPolling,
+  stopStatusPolling,
   updateCache,
   handlePrinterEvent,
   getCache
