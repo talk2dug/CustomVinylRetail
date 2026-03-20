@@ -7729,16 +7729,20 @@ Return ONLY valid JSON, nothing else:
       cp.execSync('openscad --version', { timeout: 5000, stdio: 'pipe' });
       return 'openscad';
     } catch (_) {}
-    // Common Windows install locations
+    // Common Windows install locations (use path.join for reliable path construction)
     const candidates = [
-      'C:\\Program Files\\OpenSCAD\\openscad.com',
-      'C:\\Program Files\\OpenSCAD\\openscad.exe',
-      'C:\\Program Files (x86)\\OpenSCAD\\openscad.com',
-      'C:\\Program Files (x86)\\OpenSCAD\\openscad.exe',
+      'C:/Program Files/OpenSCAD/openscad.com',
+      'C:/Program Files/OpenSCAD/openscad.exe',
+      'C:/Program Files (x86)/OpenSCAD/openscad.com',
+      'C:/Program Files (x86)/OpenSCAD/openscad.exe',
     ];
     for (const p of candidates) {
-      if (fs.existsSync(p)) return p;
+      if (fs.existsSync(p)) {
+        console.log('[DogTag] Found OpenSCAD at:', p);
+        return p;
+      }
     }
+    console.warn('[DogTag] OpenSCAD not found in PATH or common locations');
     return null;
   }
 
