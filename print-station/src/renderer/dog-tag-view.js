@@ -517,13 +517,11 @@ function dtBuildTag() {
     const bb = stl.boundingBox;
     const w = bb.max.x - bb.min.x;
     const h = bb.max.y - bb.min.y;
-    // Offset text down from center to account for ring/hook area at top
-    const textYOffset = -(h * 0.12);
     geo = {
       type: DT.selectedShape,
       width: w, height: h,
-      textCx: 0, textCy: textYOffset, textSz: null,
-      ringX: 0, ringY: h / 2 + 2,
+      textCx: 0, textCy: 0, textSz: null,
+      ringX: 0, ringY: 0,
       thickness: bb.max.z - bb.min.z,
     };
     DT.shapeGeo[DT.selectedShape] = geo;

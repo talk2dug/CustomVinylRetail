@@ -366,6 +366,7 @@ cut_depth     = ${cutDepth.toFixed(2)};
     const font = line.font || cfg.font || DEFAULTS.font;
     const tx = (bounds.centerX + (line.textXOffset || 0)).toFixed(2);
     const ty = (bounds.centerY + (line.textYOffset || 0)).toFixed(2);
+    console.log(`[DogTag] Line ${i+1} "${line.text}": drag=(${(line.textXOffset||0).toFixed(2)}, ${(line.textYOffset||0).toFixed(2)}) + center=(${bounds.centerX.toFixed(2)}, ${bounds.centerY.toFixed(2)}) => SCAD=(${tx}, ${ty})`);
 
     scad += `// Line ${i + 1}: "${line.text}"
 translate([${tx}, ${ty}, tag_thickness - cut_depth])
