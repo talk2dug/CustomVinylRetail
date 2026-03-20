@@ -56,6 +56,8 @@ const DT = {
   // v2: STL blank geometry cache { shapeId: THREE.BufferGeometry }
   stlCache: {},
   tagsDir: null,
+  // Keychain name (for file naming & product creation)
+  keychainName: '',
   // Standalone mode
   standaloneThickness: 3.0,
   standaloneConnectExpand: 0.3,
@@ -915,7 +917,7 @@ async function dtGenerate() {
     console.log('[DogTag Generate] Lines payload:', JSON.stringify(lines, null, 2));
 
     const result = await window.printStation.dogTag.generate({
-      name: lines[0]?.text || DT.petName,
+      name: DT.keychainName || lines[0]?.text || DT.petName,
       shape: DT.selectedShape,
       colors: { base: colors.baseLabel, insert: colors.insertLabel },
       textCx: DT.textCx,
@@ -992,13 +994,16 @@ async function dtSendToSlicer() {
     }
     dtSetStatus('Uploading to STL library...', 'info');
     try {
+      const displayName = DT.keychainName || r.petName;
       await window.printStation.dogTag.sendToSlicer({
         stlPath: r.files.stl,
-        name: `${r.petName} - Standalone Name`,
+        name: `${displayName} - Standalone`,
         category: 'Keychains',
         folder: 'Standalone Names',
       });
-      dtSetStatus(`Uploaded <strong>${r.petName}</strong> to STL library.`, 'success');
+      DT.lastLibraryUpload = { name: displayName, shape: 'Standalone', stlCount: 1 };
+      dtSetStatus(`Uploaded <strong>${displayName}</strong> to STL library.`, 'success');
+      dtUpdateButtons();
     } catch (e) {
       dtSetStatus(`Upload error: ${e.message || e}`, 'error');
     }
@@ -1017,9 +1022,11 @@ async function dtSendToSlicer() {
     const shapeLabel = DT.shapes.find(s => s.id === r.shape)?.label || r.shape;
 
     // Upload base plate
+    const displayName = DT.keychainName || r.petName;
+
     await window.printStation.dogTag.sendToSlicer({
       stlPath: r.files.baseStl,
-      name: `${shapeLabel} Base - ${r.petName}`,
+      name: `${displayName} - Base`,
       category: 'Keychains',
       folder: shapeLabel,
     });
@@ -1030,16 +1037,64 @@ async function dtSendToSlicer() {
       const lineSuffix = inserts.length > 1 ? ` L${i + 1}` : '';
       await window.printStation.dogTag.sendToSlicer({
         stlPath: inserts[i],
-        name: `${shapeLabel} Insert${lineSuffix} - ${r.petName}`,
+        name: `${displayName} - Insert${lineSuffix}`,
         category: 'Keychains',
         folder: shapeLabel,
       });
     }
 
     const count = 1 + inserts.length;
-    dtSetStatus(`Uploaded <strong>${r.petName}</strong> (${count} files) to STL library. Go to Slice & Print.`, 'success');
+    DT.lastLibraryUpload = { name: displayName, shape: shapeLabel, stlCount: count };
+    dtSetStatus(`Uploaded <strong>${displayName}</strong> (${count} files) to STL library.`, 'success');
+    dtUpdateButtons();
   } catch (e) {
     dtSetStatus(`Upload error: ${e.message || e}`, 'error');
+  }
+}
+
+async function dtCreateProduct() {
+  const name = DT.keychainName || DT.lines[0].text || DT.petName || '';
+  if (!name) {
+    dtSetStatus('Enter a keychain name first.', 'error');
+    return;
+  }
+  if (!DT.lastGenResult) {
+    dtSetStatus('Generate a keychain first.', 'error');
+    return;
+  }
+
+  // Build product data
+  const shapeLabel = DT.shapes.find(s => s.id === DT.lastGenResult.shape)?.label || DT.lastGenResult.shape || 'Keychain';
+  const colors = COLOR_PRESETS[DT.colorIdx] || COLOR_PRESETS[0];
+  const lineTexts = DT.lines.filter((l, i) => i < DT.lineCount && l.text).map(l => l.text);
+  const description = `${shapeLabel} keychain - ${lineTexts.join(' / ')} - ${colors.label}`;
+
+  dtSetStatus('Creating product...', 'info');
+  try {
+    const serverUrl = window.printStationConfig?.serverBaseUrl || window.APP_CONFIG?.serverUrl || 'https://store.swayzecustomvinyl.com';
+    const apiKey = window.printStationConfig?.apiKey || window.APP_CONFIG?.internalKey || '';
+
+    const resp = await fetch(`${serverUrl}/api/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({
+        title: name,
+        description,
+        category: 'Keychains',
+        priceCents: 1500,  // default $15.00
+        active: true,
+      }),
+    });
+    const product = await resp.json();
+    if (product.error) throw new Error(product.error);
+
+    dtSetStatus(
+      `Created product <strong>${name}</strong> ($15.00). ` +
+      `<a href="#" onclick="document.querySelector('[data-view=products]')?.click(); return false;" style="color:var(--accent);">View in Products →</a>`,
+      'success'
+    );
+  } catch (e) {
+    dtSetStatus(`Product error: ${e.message || e}`, 'error');
   }
 }
 
@@ -1182,6 +1237,21 @@ function dtRenderHistory() {
 // UI HELPERS
 // ═══════════════════════════════════════════════════════════════
 
+// Auto-suggest a keychain name from shape + text lines (only if user hasn't manually edited it)
+let _dtNameManuallyEdited = false;
+function dtAutoSuggestName() {
+  if (_dtNameManuallyEdited) return;
+  const shape = DT.shapes.find(s => s.id === DT.selectedShape);
+  const shapeLabel = shape?.label || DT.selectedShape;
+  const lineTexts = DT.lines.filter((l, i) => i < DT.lineCount && l.text).map(l => l.text);
+  const suggested = lineTexts.length ? `${shapeLabel} - ${lineTexts.join(' / ')}` : '';
+  const nameInput = document.getElementById('dtKeychainName');
+  if (nameInput) {
+    nameInput.value = suggested;
+    DT.keychainName = suggested;
+  }
+}
+
 function dtSetStatus(html, type) {
   const el = document.getElementById('dtStatus');
   if (!el) return;
@@ -1192,14 +1262,20 @@ function dtSetStatus(html, type) {
 function dtUpdateButtons() {
   const genBtn = document.getElementById('dtGenerateBtn');
   const slicerBtn = document.getElementById('dtSendToSlicerBtn');
+  const productBtn = document.getElementById('dtCreateProductBtn');
   if (genBtn) {
     genBtn.disabled = DT.generating;
     genBtn.textContent = DT.generating ? 'Generating...' : 'Generate Keychain';
   }
   if (slicerBtn) {
-    const hasStl = DT.lastGenResult?.files?.baseStl;
+    const hasStl = DT.lastGenResult?.files?.baseStl || DT.lastGenResult?.files?.stl;
     slicerBtn.disabled = !hasStl;
-    slicerBtn.title = hasStl ? 'Upload STLs to slicer catalog' : 'Generate a tag with OpenSCAD first';
+    slicerBtn.title = hasStl ? 'Upload STLs to library' : 'Generate a keychain first';
+  }
+  if (productBtn) {
+    const hasStl = DT.lastGenResult?.files?.baseStl || DT.lastGenResult?.files?.stl;
+    productBtn.disabled = !hasStl;
+    productBtn.title = hasStl ? 'Create a product listing for this keychain' : 'Generate a keychain first';
   }
 }
 
@@ -1362,6 +1438,8 @@ async function initDogTagsView() {
         // Keep backward compat
         if (idx === 0) DT.petName = DT.lines[0].text;
         dtBuildTag();
+        // Auto-suggest keychain name if user hasn't manually set one
+        dtAutoSuggestName();
       });
       textInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') dtGenerate(); });
     }
@@ -1479,7 +1557,18 @@ async function initDogTagsView() {
   // Buttons
   document.getElementById('dtGenerateBtn')?.addEventListener('click', dtGenerate);
   document.getElementById('dtSendToSlicerBtn')?.addEventListener('click', dtSendToSlicer);
+  document.getElementById('dtCreateProductBtn')?.addEventListener('click', dtCreateProduct);
   document.getElementById('dtAddBatchBtn')?.addEventListener('click', dtAddToBatch);
+
+  // Keychain name field — mark as manually edited so auto-suggest stops overriding
+  document.getElementById('dtKeychainName')?.addEventListener('input', (e) => {
+    DT.keychainName = e.target.value;
+    _dtNameManuallyEdited = true;
+  });
+  // Reset manual flag when field is cleared
+  document.getElementById('dtKeychainName')?.addEventListener('change', (e) => {
+    if (!e.target.value.trim()) _dtNameManuallyEdited = false;
+  });
   document.getElementById('dtBatchGenerateBtn')?.addEventListener('click', dtBatchGenerateAll);
   document.getElementById('dtBatchClearBtn')?.addEventListener('click', dtBatchClear);
   document.getElementById('dtResetPosBtn')?.addEventListener('click', dtResetTextPos);

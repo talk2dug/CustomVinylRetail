@@ -7630,6 +7630,10 @@
               <option>Blue + White</option>
             </select>
 
+            <!-- Keychain Name (for file naming / product title) -->
+            <label class="dt-label">Keychain Name</label>
+            <input type="text" id="dtKeychainName" placeholder="e.g. NC Heart - My Love" maxlength="60" class="dt-input" style="margin-bottom:12px;" />
+
             <!-- ===== BASE PLATE MODE CONTROLS ===== -->
             <div id="dtBasePlateControls">
               <!-- Line Count Toggle -->
@@ -7752,9 +7756,12 @@
             <!-- Action Buttons -->
             <div style="display:flex;gap:8px;margin-bottom:8px;margin-top:12px;">
               <button id="dtGenerateBtn" class="primary dt-action-btn" style="flex:1;">Generate Keychain</button>
-              <button id="dtSendToSlicerBtn" class="dt-action-btn" style="flex:1;" disabled title="Generate first">Send to Slicer</button>
+              <button id="dtSendToSlicerBtn" class="dt-action-btn" style="flex:1;" disabled title="Generate first">📦 Send to Library</button>
             </div>
-            <button id="dtAddBatchBtn" class="dt-action-btn secondary" style="width:100%;">+ Add to Batch Queue</button>
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+              <button id="dtCreateProductBtn" class="dt-action-btn" style="flex:1;background:var(--accent-2,#059669);color:#fff;" disabled title="Generate & send to library first">🏷️ Create Product</button>
+              <button id="dtAddBatchBtn" class="dt-action-btn secondary" style="flex:1;">+ Add to Batch</button>
+            </div>
 
             <!-- Status -->
             <div id="dtStatus" class="dt-status" style="margin-top:12px;"></div>
