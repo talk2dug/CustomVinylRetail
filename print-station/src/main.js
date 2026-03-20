@@ -7770,7 +7770,7 @@ Return ONLY valid JSON, nothing else:
   }
 
   // Generate SCAD files (+ STL if openscad available)
-  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz }) => {
+  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz, lines, lineCount }) => {
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       throw new Error('Pet name is required');
     }
@@ -7795,6 +7795,18 @@ Return ONLY valid JSON, nothing else:
     if (textCy !== undefined && textCy !== null) options.textCy = textCy;
     if (textSz !== undefined && textSz !== null) options.textSz = textSz;
 
+    // Pass multi-line text with per-line positions
+    if (lines && Array.isArray(lines) && lines.length > 0) {
+      // Clean text in each line same as name cleaning
+      options.lines = lines.map(ln => ({
+        text: (ln.text || '').trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, DOG_TAG_MAX_NAME_LEN),
+        font: ln.font || 'Liberation Sans:style=Bold',
+        fontSize: ln.fontSize || null,
+        textXOffset: ln.textXOffset ?? 0,
+        textYOffset: ln.textYOffset ?? 0,
+      })).filter(ln => ln.text.length > 0);
+    }
+
     const result = await generateDogTag({
       name: cleanName,
       shape: safeShape,
@@ -7804,36 +7816,15 @@ Return ONLY valid JSON, nothing else:
       options,
     });
 
-    // Try to render STLs via openscad CLI + manifold-3d boolean
+    // Try to render STLs via openscad CLI
     let stlResults = { rendered: false, baseStl: null, textStl: null };
     if (isOpenscadAvailable()) {
       const stlDir = getDogTagDir('stl-queue');
-      const textStl = result.textSCAD.replace('.scad', '.stl');
       const baseStl = result.baseSCAD.replace('.scad', '.stl');
+      const textStl = result.textSCAD.replace('.scad', '.stl');
 
-      // 1. Render the text/insert STL
+      const baseOk = renderScadToStl(result.baseSCAD, baseStl);
       const textOk = renderScadToStl(result.textSCAD, textStl);
-
-      // 2. Render the cutter STL (pocket shape to subtract from blank)
-      let baseOk = false;
-      if (result.cutterSCAD && baseStlPath) {
-        const cutterStl = result.cutterSCAD.replace('.scad', '.stl');
-        const cutterOk = renderScadToStl(result.cutterSCAD, cutterStl);
-        if (cutterOk) {
-          // 3. Boolean subtract: blank - cutter = base with pocket
-          try {
-            const { manifoldSubtract } = require('./generate_dog_tag_v2');
-            await manifoldSubtract(baseStlPath, cutterStl, baseStl);
-            baseOk = fs.existsSync(baseStl);
-            if (baseOk) console.log(`[DogTag] Manifold subtraction succeeded: ${path.basename(baseStl)}`);
-          } catch (e) {
-            console.error(`[DogTag] Manifold subtraction failed:`, e.message);
-          }
-        }
-      } else {
-        // No cutter (e.g. standalone mode) — try direct OpenSCAD render
-        baseOk = renderScadToStl(result.baseSCAD, baseStl);
-      }
 
       if (baseOk && textOk) {
         const qBase = path.join(stlDir, path.basename(baseStl));
