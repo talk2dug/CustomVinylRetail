@@ -337,10 +337,21 @@ function renderVideo(session) {
     const framesPattern = path.join(session.framesDir, 'frame_%05d.jpg');
     const videoPath = path.join(jobDir, 'timelapse.mp4');
 
-    // ffmpeg: input frames at 30fps, encode with H.264, good quality
+    // Calculate framerate to ensure minimum video duration
+    // Target: at least 15 seconds, max 30fps, min 2fps
+    const MIN_DURATION = 15; // seconds
+    const MAX_FPS = 30;
+    const MIN_FPS = 2;
+    let fps = Math.max(MIN_FPS, Math.min(MAX_FPS, session.frameCount / MIN_DURATION));
+    // Round to 1 decimal for ffmpeg
+    fps = Math.round(fps * 10) / 10;
+    const estDuration = (session.frameCount / fps).toFixed(1);
+    console.log(`[Timelapse] Rendering ${session.frameCount} frames at ${fps}fps → ~${estDuration}s video`);
+
+    // ffmpeg: encode with H.264, good quality
     const args = [
       '-y',                           // overwrite output
-      '-framerate', '30',             // input framerate (30fps = smooth timelapse)
+      '-framerate', String(fps),      // dynamic framerate based on frame count
       '-i', framesPattern,            // input frame pattern
       '-c:v', 'libx264',             // H.264 codec
       '-preset', 'medium',            // encoding speed/quality tradeoff
