@@ -123,7 +123,8 @@ async function pollPrintServer() {
 
         const session = sessions[printerId];
         if (session) {
-          await checkLayerChange(printerId);
+          const progress = ls.progress || 0;
+          await checkForCapture(printerId, progress);
         }
       }
 
@@ -195,104 +196,54 @@ function startSession(printerId, printerName, filename, moonrakerUrl) {
 }
 
 /**
- * Query Moonraker for current layer and toolhead position.
- * Trigger capture only on layer changes, after a delay for head parking.
+ * Check if we should capture a frame based on progress changes.
+ * Uses progress from the Pi print server (since Moonraker LAN IPs
+ * aren't reachable from the VPS). Captures every ~0.5% progress
+ * with a delay for the head to reach the park position.
  */
-async function checkLayerChange(printerId) {
+async function checkForCapture(printerId, progress) {
   const session = sessions[printerId];
-  if (!session || !session.moonrakerUrl || session.pendingCapture) return;
+  if (!session || session.pendingCapture) return;
 
-  try {
-    // Query Moonraker directly for layer info and toolhead position
-    const resp = await fetch(
-      `${session.moonrakerUrl}/printer/objects/query?print_stats&toolhead`,
-      { signal: AbortSignal.timeout(4000) }
-    );
-    if (!resp.ok) return;
+  // Capture every 0.5% progress (~200 frames for a full print)
+  const progressStep = 0.005;
+  const lastProg = session.lastProgress || 0;
 
-    const data = await resp.json();
-    const status = data?.result?.status || {};
-    const printStats = status.print_stats || {};
-    const toolhead = status.toolhead || {};
+  // First frame: capture when printing starts
+  if (session.frameCount === 0 && progress > 0.001) {
+    session.lastProgress = progress;
+    scheduleCapture(printerId, session.frameCount + 1);
+    return;
+  }
 
-    // Get current layer from print_stats.info (Klipper tracks this)
-    const info = printStats.info || {};
-    const currentLayer = info.current_layer || 0;
-    const totalLayers = info.total_layer || 0;
-
-    // Also track progress as fallback
-    const progress = printStats.progress || session.lastProgress || 0;
-
-    // First frame: always capture when printing starts
-    if (session.frameCount === 0 && currentLayer > 0) {
-      session.lastLayer = currentLayer;
-      session.lastProgress = progress;
-      // Still wait for park before first capture
-      scheduleCapture(printerId, currentLayer);
-      return;
-    }
-
-    // Detect layer change
-    if (currentLayer > session.lastLayer && currentLayer > 0) {
-      session.lastLayer = currentLayer;
-      session.lastProgress = progress;
-      scheduleCapture(printerId, currentLayer);
-    }
-
-  } catch (err) {
-    // Moonraker query failed — fall back to progress-based capture
-    // (handles cases where Moonraker is unreachable from the VPS)
-    const session2 = sessions[printerId];
-    if (!session2) return;
-    const ls = session2.lastProgress || 0;
-    // Fallback: still use progress but with a larger step (2%)
-    // This is worse but better than nothing
+  // Capture on progress increment
+  if (progress - lastProg >= progressStep) {
+    session.lastProgress = progress;
+    scheduleCapture(printerId, session.frameCount + 1);
   }
 }
 
 /**
  * Schedule a frame capture after LAYER_CHANGE_DELAY ms.
  * The delay gives the print head time to reach the park/purge position.
+ * The slicer profile injects G-code that parks at X278 Y200 with 800ms dwell
+ * before each layer, so a 1.5s delay from detecting the progress change
+ * should land us in the dwell window.
  */
-function scheduleCapture(printerId, layer) {
+function scheduleCapture(printerId, frameNum) {
   const session = sessions[printerId];
   if (!session) return;
 
   session.pendingCapture = true;
 
-  setTimeout(async () => {
+  setTimeout(() => {
     const s = sessions[printerId];
     if (!s) return;
     s.pendingCapture = false;
 
-    // Optional: verify head is near park position before capturing
-    if (s.moonrakerUrl) {
-      try {
-        const resp = await fetch(
-          `${s.moonrakerUrl}/printer/objects/query?toolhead`,
-          { signal: AbortSignal.timeout(3000) }
-        );
-        if (resp.ok) {
-          const data = await resp.json();
-          const pos = data?.result?.status?.toolhead?.position;
-          if (pos && Array.isArray(pos)) {
-            const [x, y] = pos;
-            const dist = Math.sqrt((x - PARK_X) ** 2 + (y - PARK_Y) ** 2);
-            if (dist > PARK_TOLERANCE) {
-              // Head hasn't parked yet — wait a bit more and capture anyway
-              // (better than skipping the frame entirely)
-              await new Promise(r => setTimeout(r, 800));
-            }
-          }
-        }
-      } catch (_) {
-        // Can't check position — capture anyway after the delay
-      }
-    }
-
     captureFrame(printerId);
-    if (layer % 20 === 0) {
-      console.log(`[Timelapse] ${s.printerName}: layer ${layer}, frame ${s.frameCount}`);
+    if (s.frameCount % 20 === 0) {
+      console.log(`[Timelapse] ${s.printerName}: frame ${s.frameCount}, progress ${(s.lastProgress * 100).toFixed(1)}%`);
     }
   }, LAYER_CHANGE_DELAY);
 }
