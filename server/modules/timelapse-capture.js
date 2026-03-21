@@ -123,8 +123,8 @@ async function pollPrintServer() {
 
         const session = sessions[printerId];
         if (session) {
-          const progress = ls.progress || 0;
-          await checkForCapture(printerId, progress);
+          const currentLayer = ls.currentLayer || 0;
+          await checkForCapture(printerId, currentLayer);
         }
       }
 
@@ -196,30 +196,19 @@ function startSession(printerId, printerName, filename, moonrakerUrl) {
 }
 
 /**
- * Check if we should capture a frame based on progress changes.
- * Uses progress from the Pi print server (since Moonraker LAN IPs
- * aren't reachable from the VPS). Captures every ~0.5% progress
- * with a delay for the head to reach the park position.
+ * Check if we should capture a frame based on layer changes.
+ * Uses currentLayer from the Pi print server (which gets it from
+ * Moonraker's print_stats.info.current_layer). Only captures once
+ * per layer, with a delay for the head to reach the park position.
  */
-async function checkForCapture(printerId, progress) {
+async function checkForCapture(printerId, currentLayer) {
   const session = sessions[printerId];
   if (!session || session.pendingCapture) return;
 
-  // Capture every 0.5% progress (~200 frames for a full print)
-  const progressStep = 0.005;
-  const lastProg = session.lastProgress || 0;
-
-  // First frame: capture when printing starts
-  if (session.frameCount === 0 && progress > 0.001) {
-    session.lastProgress = progress;
-    scheduleCapture(printerId, session.frameCount + 1);
-    return;
-  }
-
-  // Capture on progress increment
-  if (progress - lastProg >= progressStep) {
-    session.lastProgress = progress;
-    scheduleCapture(printerId, session.frameCount + 1);
+  // Only capture when layer changes (one frame per layer)
+  if (currentLayer > 0 && currentLayer > session.lastLayer) {
+    session.lastLayer = currentLayer;
+    scheduleCapture(printerId, currentLayer);
   }
 }
 
@@ -242,8 +231,8 @@ function scheduleCapture(printerId, frameNum) {
     s.pendingCapture = false;
 
     captureFrame(printerId);
-    if (s.frameCount % 20 === 0) {
-      console.log(`[Timelapse] ${s.printerName}: frame ${s.frameCount}, progress ${(s.lastProgress * 100).toFixed(1)}%`);
+    if (s.frameCount % 20 === 0 || s.frameCount <= 3) {
+      console.log(`[Timelapse] ${s.printerName}: layer ${s.lastLayer}, frame ${s.frameCount}`);
     }
   }, LAYER_CHANGE_DELAY);
 }

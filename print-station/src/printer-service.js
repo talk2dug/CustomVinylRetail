@@ -76,6 +76,9 @@ class PrinterService {
     const progress = vsd.progress ?? display.progress ?? 0;
     const printDuration = printStats.print_duration || 0;
 
+    // Layer info from print_stats.info (populated by SET_PRINT_STATS_INFO in G-code)
+    const info = printStats.info || {};
+
     return {
       state: printStats.state || 'unknown',
       temperatures: {
@@ -88,6 +91,8 @@ class PrinterService {
       totalDuration: printStats.total_duration || 0,
       filamentUsed: printStats.filament_used || 0,
       message: display.message || printStats.message || '',
+      currentLayer: info.current_layer || 0,
+      totalLayers: info.total_layer || 0,
       timestamp: Date.now()
     };
   }
