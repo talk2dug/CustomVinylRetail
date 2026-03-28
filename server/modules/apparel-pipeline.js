@@ -863,6 +863,68 @@ async function runFullPipeline(collectionCategory, options = {}) {
     }
 
     // ------------------------------------------------------------------
+    // Step 7b: Publish featured products to TikTok Shop
+    // ------------------------------------------------------------------
+    // Products in the reels should be on TikTok Shop so customers can buy
+    // what they see in the video. Respects the 100-product TikTok limit.
+    if (results.reelsCreated > 0 && !options.skipShopify) {
+      console.log('[ApparelPipeline] Step 7b: Publishing reel products to TikTok Shop');
+      if (notify) await sendTelegram('🛒 Adding reel products to TikTok Shop...');
+
+      try {
+        const shopify = require('../integrations/shopify');
+        const tiktokPub = await shopify.findTikTokPublication();
+
+        if (tiktokPub) {
+          // Get products currently on TikTok to check count
+          const currentTikTok = await shopify.getProductsOnPublication(tiktokPub.id).catch(() => []);
+          const currentCount = currentTikTok.length;
+          console.log(`[ApparelPipeline] TikTok Shop: ${currentCount}/100 products currently`);
+
+          // Collect Shopify product IDs from the latest publish manifest
+          const manifestDir = '/mnt/dbFiles/apparel-mockups';
+          const manifests = fs.existsSync(manifestDir)
+            ? fs.readdirSync(manifestDir).filter(f => f.startsWith('shopify_publish_')).sort().reverse()
+            : [];
+
+          if (manifests.length) {
+            const latest = JSON.parse(fs.readFileSync(path.join(manifestDir, manifests[0]), 'utf8'));
+            const productIds = (latest.results || [])
+              .filter(r => r.shopifyId)
+              .map(r => r.shopifyId);
+
+            // Only add up to the 100 limit
+            const available = 100 - currentCount;
+            const toAdd = productIds.slice(0, Math.max(0, available));
+
+            if (toAdd.length > 0) {
+              let added = 0;
+              for (const pid of toAdd) {
+                try {
+                  await shopify.publishToPublications(pid, [tiktokPub.id]);
+                  added++;
+                } catch (err) {
+                  console.warn(`[ApparelPipeline] TikTok publish failed for ${pid}: ${err.message}`);
+                }
+                await new Promise(r => setTimeout(r, 500)); // rate limit
+              }
+              console.log(`[ApparelPipeline] Added ${added} products to TikTok Shop (${currentCount + added}/100)`);
+              if (notify) await sendTelegram(`🛒 Added ${added} products to TikTok Shop (${currentCount + added}/100 total)`);
+            } else {
+              console.log(`[ApparelPipeline] TikTok Shop at capacity (${currentCount}/100), skipping`);
+              if (notify) await sendTelegram(`⚠️ TikTok Shop at capacity (${currentCount}/100)`);
+            }
+          }
+        } else {
+          console.log('[ApparelPipeline] TikTok Shop channel not found in Shopify');
+        }
+      } catch (err) {
+        console.error('[ApparelPipeline] TikTok Shop publish error:', err.message);
+        if (notify) await sendTelegram(`⚠️ TikTok Shop publish failed: ${err.message}`);
+      }
+    }
+
+    // ------------------------------------------------------------------
     // Step 8: Final summary
     // ------------------------------------------------------------------
     results.completedAt = new Date().toISOString();
