@@ -100,6 +100,8 @@ class AiApparelMockupService {
       db,
       modelFrontId,
       modelBackId,
+      modelFrontPath,
+      modelBackPath,
       clothingColor,
       placements = [],
       backPlacements = [],
@@ -108,23 +110,37 @@ class AiApparelMockupService {
 
     const result = { front: null, back: null };
 
-    // Process front view
-    if (modelFrontId && placements.length > 0) {
+    // Process front view — supports direct path OR DB lookup by ID
+    if ((modelFrontId || modelFrontPath) && placements.length > 0) {
       console.log('[AiApparel] Generating front view...');
-      const frontModelPath = await this._getModelImagePath(db, modelFrontId, clothingColor, garmentType);
+      let frontModelPath;
+      if (modelFrontPath && fs.existsSync(modelFrontPath)) {
+        frontModelPath = modelFrontPath;
+      } else if (modelFrontId) {
+        frontModelPath = await this._getModelImagePath(db, modelFrontId, clothingColor, garmentType);
+      } else {
+        throw new Error('No valid front model image path');
+      }
 
       result.front = await this.placeMultipleGraphics(frontModelPath, placements, { garmentType });
     }
 
     // Rate limit between views
-    if (result.front && modelBackId && backPlacements.length > 0) {
+    if (result.front && (modelBackId || modelBackPath) && backPlacements.length > 0) {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
-    // Process back view
-    if (modelBackId && backPlacements.length > 0) {
+    // Process back view — supports direct path OR DB lookup by ID
+    if ((modelBackId || modelBackPath) && backPlacements.length > 0) {
       console.log('[AiApparel] Generating back view...');
-      const backModelPath = await this._getModelImagePath(db, modelBackId, clothingColor, garmentType);
+      let backModelPath;
+      if (modelBackPath && fs.existsSync(modelBackPath)) {
+        backModelPath = modelBackPath;
+      } else if (modelBackId) {
+        backModelPath = await this._getModelImagePath(db, modelBackId, clothingColor, garmentType);
+      } else {
+        throw new Error('No valid back model image path');
+      }
 
       result.back = await this.placeMultipleGraphics(backModelPath, backPlacements, { garmentType });
     }

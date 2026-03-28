@@ -404,6 +404,8 @@ async function handleAiImageRoute(pathname, req, res) {
       const {
         modelFrontId,
         modelBackId,
+        modelFrontPath,
+        modelBackPath,
         clothingColor,
         placements = [],
         backPlacements = [],
@@ -411,8 +413,8 @@ async function handleAiImageRoute(pathname, req, res) {
         generateSideBySide = true
       } = body;
 
-      if (!modelFrontId && !modelBackId) {
-        sendJson(res, 400, { success: false, error: 'At least one model ID (modelFrontId or modelBackId) required' });
+      if (!modelFrontId && !modelBackId && !modelFrontPath && !modelBackPath) {
+        sendJson(res, 400, { success: false, error: 'At least one model ID or image path required' });
         return true;
       }
 
@@ -466,6 +468,8 @@ async function handleAiImageRoute(pathname, req, res) {
         db: mainDb,
         modelFrontId,
         modelBackId,
+        modelFrontPath,
+        modelBackPath,
         clothingColor,
         placements,
         backPlacements,

@@ -91,9 +91,6 @@ const { handleQuoteRoute } = require('./quote-server');
 const { handleFinanceRoute } = require('./finance-server');
 const { handleFootageRoute } = require('./footage-server');
 const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
-const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
-const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
-const { processNewCollection } = require('./modules/apparel-pipeline');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
@@ -9894,48 +9891,76 @@ Keep it concise and actionable.`;
     return;
   }
 
-  // Apparel Pipeline — full autonomous workflow
-  if (parsedUrl.pathname === '/api/apparel-pipeline/run' && req.method === 'POST') {
+  // TikTok Marketing Dashboard — managed video CRUD (must come before assembler catch-all)
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/tiktok-videos/managed')) {
     if (!requireInternalKey(req, res)) return;
-    try {
-      const chunks = [];
-      req.on('data', c => chunks.push(c));
-      req.on('end', () => {
-        let body = {};
-        try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch (_) {}
-        const category = body.category || '';
-        if (!category) {
-          sendJson(res, 400, { error: 'category required' });
-          return;
-        }
-        sendJson(res, 202, { status: 'started', category, message: 'Full apparel pipeline running in background' });
-        processNewCollection(category).catch(err => {
-          console.error('[ApparelPipeline] Fatal:', err.message);
-        });
-      });
-    } catch (e) {
-      sendJson(res, 500, { error: e.message });
+    const idMatch = parsedUrl.pathname.match(/\/api\/tiktok-videos\/managed\/([^/]+)$/);
+
+    // GET /api/tiktok-videos/managed — list tracked videos
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok-videos/managed') {
+      const filters = {};
+      if (parsedUrl.searchParams.get('status')) filters.status = parsedUrl.searchParams.get('status');
+      if (parsedUrl.searchParams.get('platform')) filters.platform = parsedUrl.searchParams.get('platform');
+      if (parsedUrl.searchParams.get('collection')) filters.collection = parsedUrl.searchParams.get('collection');
+      if (parsedUrl.searchParams.get('search')) filters.search = parsedUrl.searchParams.get('search');
+      if (parsedUrl.searchParams.get('limit')) filters.limit = parsedUrl.searchParams.get('limit');
+      sendJson(res, 200, { items: db.listTiktokVideos(filters) });
+      return;
     }
-    return;
-  }
 
-  // Shopify Apparel Publisher API
-  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/shopify-apparel')) {
-    if (!requireInternalKey(req, res)) return;
-    handleShopifyApparelRoute(parsedUrl.pathname, req, res, db).catch(err => {
-      console.error('[ShopifyApparel API Error]', err);
-      sendJson(res, 500, { error: err.message || 'Internal server error' });
-    });
-    return;
-  }
+    // GET /api/tiktok-videos/managed/stats
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok-videos/managed/stats') {
+      sendJson(res, 200, db.getTiktokVideoStats());
+      return;
+    }
 
-  // Batch Mockup Generator API
-  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/batch-mockups')) {
-    if (!requireInternalKey(req, res)) return;
-    handleBatchMockupRoute(parsedUrl.pathname, req, res, db).catch(err => {
-      console.error('[BatchMockup API Error]', err);
-      sendJson(res, 500, { error: err.message || 'Internal server error' });
-    });
+    // POST /api/tiktok-videos/managed — create tracking record
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/tiktok-videos/managed') {
+      collectRequestBody(req, (error, body) => {
+        if (error) { sendJson(res, 413, { error: error.message }); return; }
+        try {
+          const data = JSON.parse(body || '{}');
+          const record = db.createTiktokVideo(data);
+          sendJson(res, 201, record);
+        } catch (e) {
+          sendJson(res, 400, { error: e.message });
+        }
+      });
+      return;
+    }
+
+    // GET /api/tiktok-videos/managed/:id
+    if (req.method === 'GET' && idMatch) {
+      const record = db.getTiktokVideo(idMatch[1]);
+      if (!record) { sendJson(res, 404, { error: 'Not found' }); return; }
+      sendJson(res, 200, record);
+      return;
+    }
+
+    // PATCH /api/tiktok-videos/managed/:id
+    if (req.method === 'PATCH' && idMatch) {
+      collectRequestBody(req, (error, body) => {
+        if (error) { sendJson(res, 413, { error: error.message }); return; }
+        try {
+          const updates = JSON.parse(body || '{}');
+          const record = db.updateTiktokVideo(idMatch[1], updates);
+          if (!record) { sendJson(res, 404, { error: 'Not found' }); return; }
+          sendJson(res, 200, record);
+        } catch (e) {
+          sendJson(res, 400, { error: e.message });
+        }
+      });
+      return;
+    }
+
+    // DELETE /api/tiktok-videos/managed/:id
+    if (req.method === 'DELETE' && idMatch) {
+      db.deleteTiktokVideo(idMatch[1]);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    sendJson(res, 404, { error: 'Not found' });
     return;
   }
 
@@ -18900,20 +18925,14 @@ Return ONLY valid JSON, no markdown or explanation.`;
 
       console.log('[Human Model AI] Generated category:', category);
 
-      // Update the database with the full model profile
+      // Update the database with the analyzed metadata and generated category
       db.updateHumanModel(modelId, {
         gender: metadata.gender,
         ethnicity: metadata.ethnicity,
         apparel_type: metadata.apparel_type,
         facing: metadata.facing,
         pose_type: metadata.pose,
-        category: category,
-        style: metadata.style,
-        demographic: metadata.demographic,
-        setting: metadata.setting,
-        garment_color: metadata.garment_color,
-        age_range: metadata.age_range,
-        sells_best_with: metadata.sells_best_with
+        category: category
       });
 
       sendJson(res, 200, {

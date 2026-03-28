@@ -2831,14 +2831,8 @@ function initCustomArtTables() {
     CREATE INDEX IF NOT EXISTS idx_human_models_active ON human_models(active);
   `);
 
-  // Migration: add columns if missing
+  // Migration: add mask_path column if missing
   ensureColumn('human_models', 'mask_path', 'TEXT');
-  ensureColumn('human_models', 'style', 'TEXT');
-  ensureColumn('human_models', 'demographic', 'TEXT');
-  ensureColumn('human_models', 'setting', 'TEXT');
-  ensureColumn('human_models', 'garment_color', 'TEXT');
-  ensureColumn('human_models', 'age_range', 'TEXT');
-  ensureColumn('human_models', 'sells_best_with', 'TEXT');
 
   // Recolored Human Models (AI-generated color variants)
   db.exec(`
@@ -3739,6 +3733,32 @@ function initCustomArtTables() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // TikTok Marketing Dashboard — tracked videos with approval workflow
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tiktok_videos (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      url TEXT,
+      template TEXT,
+      collection TEXT,
+      designs TEXT,
+      duration REAL,
+      file_size INTEGER,
+      status TEXT DEFAULT 'draft',
+      caption TEXT,
+      platform TEXT,
+      published_at TEXT,
+      published_url TEXT,
+      views INTEGER DEFAULT 0,
+      likes INTEGER DEFAULT 0,
+      comments INTEGER DEFAULT 0,
+      shares INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   console.log('[Finance] ✅ Tables initialized successfully');
 
   // Auto-classify existing Multiboard items that lack metadata
@@ -3995,12 +4015,6 @@ function updateHumanModel(id, updates) {
   if (updates.status !== undefined) { fields.push('status = @status'); params.status = updates.status; }
   if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
   if (updates.sortOrder !== undefined) { fields.push('sort_order = @sortOrder'); params.sortOrder = updates.sortOrder; }
-  if (updates.style !== undefined) { fields.push('style = @style'); params.style = updates.style; }
-  if (updates.demographic !== undefined) { fields.push('demographic = @demographic'); params.demographic = updates.demographic; }
-  if (updates.setting !== undefined) { fields.push('setting = @setting'); params.setting = updates.setting; }
-  if (updates.garment_color !== undefined) { fields.push('garment_color = @garment_color'); params.garment_color = updates.garment_color; }
-  if (updates.age_range !== undefined) { fields.push('age_range = @age_range'); params.age_range = updates.age_range; }
-  if (updates.sells_best_with !== undefined) { fields.push('sells_best_with = @sells_best_with'); params.sells_best_with = typeof updates.sells_best_with === 'string' ? updates.sells_best_with : JSON.stringify(updates.sells_best_with); }
 
   if (!fields.length) return getHumanModelById(id);
 
@@ -4051,13 +4065,7 @@ function mapHumanModel(row) {
     filePath: row.file_path,
     optimizedPath: row.optimized_path,
     thumbnailPath: row.thumbnail_path,
-    maskPath: row.mask_path,
-    style: row.style,
-    demographic: row.demographic,
-    setting: row.setting,
-    garmentColor: row.garment_color,
-    ageRange: row.age_range,
-    sellsBestWith: row.sells_best_with ? (function() { try { return JSON.parse(row.sells_best_with); } catch (_) { return row.sells_best_with; } })() : null,
+    maskPath: row.mask_path,  // Clothing mask for color tinting
     status: row.status,
     active: Boolean(row.active),
     sortOrder: row.sort_order,
@@ -8042,6 +8050,67 @@ function getFootageStats() {
   return { total_clips: total.count, total_bytes: total.total_bytes, by_category: byCategory, by_status: byStatus };
 }
 
+// ---------------------------------------------------------------------------
+// TikTok Marketing Dashboard — managed video CRUD
+// ---------------------------------------------------------------------------
+function listTiktokVideos(filters = {}) {
+  let sql = 'SELECT * FROM tiktok_videos WHERE 1=1';
+  const params = [];
+  if (filters.status) { sql += ' AND status = ?'; params.push(filters.status); }
+  if (filters.platform) { sql += ' AND platform = ?'; params.push(filters.platform); }
+  if (filters.collection) { sql += ' AND collection = ?'; params.push(filters.collection); }
+  if (filters.search) { sql += ' AND (filename LIKE ? OR caption LIKE ? OR template LIKE ?)'; params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`); }
+  sql += ' ORDER BY created_at DESC';
+  if (filters.limit) { sql += ' LIMIT ?'; params.push(parseInt(filters.limit)); }
+  if (filters.offset) { sql += ' OFFSET ?'; params.push(parseInt(filters.offset)); }
+  return db.prepare(sql).all(...params);
+}
+
+function getTiktokVideo(id) {
+  return db.prepare('SELECT * FROM tiktok_videos WHERE id = ?').get(id) || null;
+}
+
+function createTiktokVideo(data) {
+  const id = data.id || require('crypto').randomUUID();
+  db.prepare(`INSERT INTO tiktok_videos (id, filename, url, template, collection, designs, duration, file_size, status, caption, platform, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(
+    id, data.filename, data.url || null, data.template || null, data.collection || null,
+    data.designs || null, data.duration || null, data.file_size || null,
+    data.status || 'draft', data.caption || null, data.platform || null
+  );
+  return getTiktokVideo(id);
+}
+
+function updateTiktokVideo(id, updates) {
+  const allowed = ['filename', 'url', 'template', 'collection', 'designs', 'duration', 'file_size',
+    'status', 'caption', 'platform', 'published_at', 'published_url', 'views', 'likes', 'comments', 'shares'];
+  const sets = [];
+  const params = [];
+  for (const [key, val] of Object.entries(updates)) {
+    if (allowed.includes(key)) {
+      sets.push(`${key} = ?`);
+      params.push(val);
+    }
+  }
+  if (sets.length === 0) return getTiktokVideo(id);
+  sets.push('updated_at = CURRENT_TIMESTAMP');
+  params.push(id);
+  db.prepare(`UPDATE tiktok_videos SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getTiktokVideo(id);
+}
+
+function deleteTiktokVideo(id) {
+  db.prepare('DELETE FROM tiktok_videos WHERE id = ?').run(id);
+  return { ok: true };
+}
+
+function getTiktokVideoStats() {
+  const total = db.prepare('SELECT COUNT(*) as count FROM tiktok_videos').get();
+  const byStatus = db.prepare('SELECT status, COUNT(*) as count FROM tiktok_videos GROUP BY status').all();
+  const byPlatform = db.prepare('SELECT platform, COUNT(*) as count FROM tiktok_videos WHERE platform IS NOT NULL GROUP BY platform').all();
+  return { total: total.count, by_status: byStatus, by_platform: byPlatform };
+}
+
 module.exports = {
   initDatabase,
   normalizeEmail,
@@ -8408,5 +8477,12 @@ module.exports = {
   updateFootage,
   deleteFootage,
   listFootageCategories,
-  getFootageStats
+  getFootageStats,
+  // TikTok Marketing Dashboard
+  listTiktokVideos,
+  getTiktokVideo,
+  createTiktokVideo,
+  updateTiktokVideo,
+  deleteTiktokVideo,
+  getTiktokVideoStats
 };
