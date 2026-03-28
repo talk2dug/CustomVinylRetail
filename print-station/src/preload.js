@@ -304,6 +304,7 @@ contextBridge.exposeInMainWorld('printStation', {
     // File operations
     selectFile: (options) => ipcRenderer.invoke('custom-art:select-file', options || {}),
     selectFiles: (options) => ipcRenderer.invoke('custom-art:select-files', options || {}),
+    scanFolder: (directory) => ipcRenderer.invoke('custom-art:scan-folder', directory),
     uploadFile: (filePath, type) => ipcRenderer.invoke('custom-art:upload', { filePath, type }),
     extractZip: (zipPath) => ipcRenderer.invoke('custom-art:extract-zip', zipPath),
 
@@ -701,6 +702,74 @@ contextBridge.exposeInMainWorld('printStation', {
     openTagsFolder: () => ipcRenderer.invoke('dog-tag:open-tags-folder'),
     importBlank: (shapeId) => ipcRenderer.invoke('dog-tag:import-blank', shapeId),
     loadBlankStl: (shapeId) => ipcRenderer.invoke('dog-tag:load-blank-stl', shapeId),
+    deleteShape: (shapeId) => ipcRenderer.invoke('dog-tag:shapes:delete', shapeId),
+    updateShape: (shapeId, updates) => ipcRenderer.invoke('dog-tag:shapes:update', { shapeId, updates }),
+  },
+
+  // ============================================================================
+  // FOOTAGE LIBRARY & CAMERA RECORDING API
+  // ============================================================================
+  footage: {
+    // Clips CRUD (proxied to server)
+    listClips: (filters) => ipcRenderer.invoke('footage:clips:list', filters || {}),
+    getClip: (id) => ipcRenderer.invoke('footage:clips:get', id),
+    updateClip: (id, data) => ipcRenderer.invoke('footage:clips:update', { id, data }),
+    deleteClip: (id) => ipcRenderer.invoke('footage:clips:delete', id),
+    getStats: () => ipcRenderer.invoke('footage:stats'),
+    getCategories: () => ipcRenderer.invoke('footage:categories'),
+    getProducts: () => ipcRenderer.invoke('footage:products'),
+    upload: (filePath, meta) => ipcRenderer.invoke('footage:upload', { filePath, meta }),
+    getFileUrl: (filename) => ipcRenderer.invoke('footage:fileUrl', filename),
+    getThumbUrl: (filename) => ipcRenderer.invoke('footage:thumbUrl', filename),
+
+    // Camera management
+    listCameras: () => ipcRenderer.invoke('footage:cameras:list'),
+    addCamera: (config) => ipcRenderer.invoke('footage:cameras:add', config || {}),
+    updateCamera: (id, data) => ipcRenderer.invoke('footage:cameras:update', { id, data }),
+    removeCamera: (id) => ipcRenderer.invoke('footage:cameras:remove', id),
+    testCamera: (config) => ipcRenderer.invoke('footage:cameras:test', config || {}),
+    discoverCamera: (config) => ipcRenderer.invoke('footage:cameras:discover', config || {}),
+
+    // Recording (segmented, auto-reconnect)
+    startRecording: (cameraId, outputDir, stream) =>
+      ipcRenderer.invoke('footage:record:start', { cameraId, outputDir, stream }),
+    stopRecording: (cameraId) => ipcRenderer.invoke('footage:record:stop', cameraId),
+    getRecordingStatus: () => ipcRenderer.invoke('footage:record:status'),
+    getCameraRecordingStatus: (cameraId) => ipcRenderer.invoke('footage:record:cameraStatus', cameraId),
+
+    // Live preview
+    startPreview: (cameraId) => ipcRenderer.invoke('footage:preview:start', cameraId),
+    stopPreview: (cameraId) => ipcRenderer.invoke('footage:preview:stop', cameraId),
+    onPreviewFrame: (cb) => {
+      if (typeof cb !== 'function') return () => {};
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('footage:preview:frame', handler);
+      return () => ipcRenderer.off('footage:preview:frame', handler);
+    },
+
+    // Recording progress (elapsed time ticks)
+    onRecordingTick: (cb) => {
+      if (typeof cb !== 'function') return () => {};
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('footage:record:tick', handler);
+      return () => ipcRenderer.off('footage:record:tick', handler);
+    },
+
+    // Recorder events: recording-started, recording-stopped, reconnecting, error, segment-complete
+    onEvent: (eventName, cb) => {
+      if (typeof cb !== 'function') return () => {};
+      const channel = `footage:event:${eventName}`;
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.off(channel, handler);
+    },
+
+    // Preflight checks
+    checkFfmpeg: () => ipcRenderer.invoke('footage:ffmpeg:check'),
+    checkPython: () => ipcRenderer.invoke('footage:python:check'),
+
+    // Select a video file via native dialog
+    selectVideoFile: () => ipcRenderer.invoke('footage:selectVideoFile')
   },
 
   printQuotes: {

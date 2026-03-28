@@ -61,13 +61,31 @@ function slugify(value) {
 
 function collectFilesRecursive(dirPath) {
   const collected = [];
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  let entries;
+  try {
+    entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  } catch (err) {
+    console.warn(`  Warning: cannot read directory ${dirPath}: ${err.message}`);
+    return collected;
+  }
 
   for (const entry of entries) {
     const entryPath = path.join(dirPath, entry.name);
-    if (entry.isDirectory()) {
+    // Follow symlinks by using fs.statSync when needed
+    let isDir = entry.isDirectory();
+    let isFile = entry.isFile();
+    if (entry.isSymbolicLink()) {
+      try {
+        const realStat = fs.statSync(entryPath);
+        isDir = realStat.isDirectory();
+        isFile = realStat.isFile();
+      } catch (err) {
+        continue; // broken symlink, skip
+      }
+    }
+    if (isDir) {
       collected.push(...collectFilesRecursive(entryPath));
-    } else if (entry.isFile()) {
+    } else if (isFile) {
       collected.push(entryPath);
     }
   }
@@ -123,7 +141,12 @@ async function buildCatalogFromRoot({ libraryRoot, outputFile, webSubPath, catal
   const designQueue = [];
 
   for (const entry of rootEntries) {
-    if (!entry.isDirectory()) continue;
+    // Follow symlinks for top-level category directories
+    let entryIsDir = entry.isDirectory();
+    if (!entryIsDir && entry.isSymbolicLink()) {
+      try { entryIsDir = fs.statSync(path.join(libraryRoot, entry.name)).isDirectory(); } catch (_) {}
+    }
+    if (!entryIsDir) continue;
     if (entry.name.startsWith('.')) continue;
     if (SKIP_DIRS.has(entry.name)) continue;
 

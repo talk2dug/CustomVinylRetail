@@ -12,6 +12,7 @@ const { PrinterFleetDB } = require('./printer-fleet-db');
 const { PrinterService } = require('./printer-service');
 const chokidar = require('chokidar');
 const { generateDogTag, getShapeGeometry, getAllShapeGeometry, loadShapesConfig, saveShapesConfig, autoFontSize, DEFAULTS: DOG_TAG_DEFAULTS, SHAPE_DEFAULTS } = require('./generate_dog_tag_v2');
+const cameraRecorder = require('./camera-recorder');
 let autoUpdater = null;
 let tesseractWorker = null;
 
@@ -1454,6 +1455,30 @@ async function uploadArtwork(params) {
       results.push(result);
     }
     return results.length === 1 ? results[0] : { success: true, uploaded: results.length };
+  }
+
+  // No preview + no SVG but has EPS/AI/PDF — try to generate preview via sharp
+  if (!previewPath && sourcePaths.length > 0) {
+    const convertibleExts = ['.eps', '.ai', '.pdf'];
+    const convertible = sourcePaths.filter(p => convertibleExts.includes(path.extname(p).toLowerCase()));
+    if (convertible.length > 0) {
+      const bestSource = convertible[0];
+      const tempDir = path.join(app.getPath('temp'), 'print-station-assets');
+      try { fs.mkdirSync(tempDir, { recursive: true }); } catch (_) {}
+      const generatedPng = path.join(tempDir, `source-preview-${Date.now()}.png`);
+      try {
+        await sharp(bestSource, { density: 300 }).resize(2000, 2000, { fit: 'inside' }).png().toFile(generatedPng);
+        return uploadSingleArtwork({
+          previewPath: generatedPng,
+          sourcePaths,
+          categoryMode, existingCategory, newCategoryName, displayName, apparel, apparelCategory
+        });
+      } catch (sharpErr) {
+        console.warn(`[Artwork] sharp failed to convert ${path.extname(bestSource)} to PNG: ${sharpErr.message} — skipping this artwork`);
+        // Don't throw — just skip silently for bulk imports
+        return { success: false, error: `Cannot generate preview from ${path.extname(bestSource)} file` };
+      }
+    }
   }
 
   if (!previewPath) {
@@ -4865,6 +4890,158 @@ Return ONLY valid JSON, nothing else:
     return { canceled: false, filePaths: result.filePaths };
   });
 
+  // Custom Art - Smart folder scan: groups files by base name, associates previews with sources
+  // Returns { artworks: [{ name, category, previewPath, sourcePaths }], tempDirs }
+  ipcMain.handle('custom-art:scan-folder', async (_event, directory) => {
+    if (!directory) throw new Error('No directory specified');
+    const unzipper = require('unzipper');
+    const os = require('os');
+    let createExtractorFromFile;
+    try { createExtractorFromFile = require('node-unrar-js').createExtractorFromFile; } catch (_) {}
+
+    const rootDir = directory;
+    const previewExts = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+    const sourceExts = new Set(['.svg', '.ai', '.eps', '.pdf']);
+    const allExts = new Set([...previewExts, ...sourceExts]);
+
+    const tempDirs = [];
+    const rawFiles = []; // { filePath, baseName, ext, category }
+
+    // Determine category: top-level subfolder name under rootDir
+    function getCategory(filePath) {
+      const rel = path.relative(rootDir, filePath);
+      const parts = rel.split(/[\\/]/);
+      if (parts.length <= 1) return path.basename(rootDir).replace(/[_-]/g, ' ');
+      return parts[0].replace(/[_-]/g, ' ');
+    }
+
+    // Recursively collect all artwork files
+    async function walkDir(dir) {
+      let entries;
+      try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (_) { return; }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name.startsWith('.') || entry.name === '__MACOSX') continue;
+          await walkDir(full);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (allExts.has(ext)) {
+            rawFiles.push({
+              filePath: full,
+              baseName: path.basename(entry.name, ext).toLowerCase().trim(),
+              ext,
+              category: getCategory(full)
+            });
+          }
+        }
+      }
+    }
+
+    // Extract files from ZIP
+    async function processZip(zipPath, category) {
+      try {
+        const zipDir = await unzipper.Open.file(zipPath);
+        const tempDir = path.join(os.tmpdir(), `artwork-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        tempDirs.push(tempDir);
+        for (const entry of zipDir.files) {
+          if (entry.type === 'Directory') continue;
+          const zExt = path.extname(entry.path).toLowerCase();
+          if (!allExts.has(zExt)) continue;
+          if (entry.path.includes('__MACOSX') || entry.path.includes('/.')) continue;
+          const filename = path.basename(entry.path);
+          let destPath = path.join(tempDir, filename);
+          let counter = 1;
+          while (fs.existsSync(destPath)) {
+            destPath = path.join(tempDir, `${path.basename(filename, zExt)}_${counter}${zExt}`);
+            counter++;
+          }
+          await new Promise((resolve, reject) => {
+            entry.stream()
+              .pipe(fs.createWriteStream(destPath))
+              .on('finish', resolve)
+              .on('error', reject);
+          });
+          rawFiles.push({ filePath: destPath, baseName: path.basename(filename, zExt).toLowerCase().trim(), ext: zExt, category });
+        }
+      } catch (err) { console.warn(`[CustomArt] ZIP extract fail (${path.basename(zipPath)}): ${err.message}`); }
+    }
+
+    // Extract files from RAR
+    async function processRar(rarPath, category) {
+      if (!createExtractorFromFile) return;
+      try {
+        const tempDir = path.join(os.tmpdir(), `artwork-rar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        tempDirs.push(tempDir);
+        const extractor = await createExtractorFromFile({ filepath: rarPath, targetPath: tempDir });
+        const { files: rarFiles } = extractor.extract();
+        for (const rFile of [...rarFiles]) {
+          if (rFile.fileHeader.flags.directory) continue;
+          const rPath = rFile.fileHeader.name;
+          const rExt = path.extname(rPath).toLowerCase();
+          if (!allExts.has(rExt)) continue;
+          if (rPath.includes('__MACOSX') || rPath.includes('/.')) continue;
+          const extractedPath = path.join(tempDir, rPath);
+          if (!fs.existsSync(extractedPath)) continue;
+          const destName = path.basename(rPath);
+          let destPath = path.join(tempDir, destName);
+          if (destPath !== extractedPath) {
+            let counter = 1;
+            while (fs.existsSync(destPath)) {
+              destPath = path.join(tempDir, `${path.basename(destName, rExt)}_${counter}${rExt}`);
+              counter++;
+            }
+            fs.renameSync(extractedPath, destPath);
+          }
+          rawFiles.push({ filePath: destPath, baseName: path.basename(destName, rExt).toLowerCase().trim(), ext: rExt, category });
+        }
+      } catch (err) { console.warn(`[CustomArt] RAR extract fail: ${err.message}`); }
+    }
+
+    // 1. Walk the directory tree
+    await walkDir(rootDir);
+
+    // 2. Process archives at any level
+    async function findArchives(dir) {
+      let entries;
+      try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (_) { return; }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!entry.name.startsWith('.') && entry.name !== '__MACOSX') await findArchives(full);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          const category = getCategory(full);
+          if (ext === '.zip') await processZip(full, category);
+          else if (ext === '.rar') await processRar(full, category);
+        }
+      }
+    }
+    await findArchives(rootDir);
+
+    // 3. Group by category + baseName
+    const groupMap = new Map();
+    for (const file of rawFiles) {
+      const key = `${file.category}||${file.baseName}`;
+      if (!groupMap.has(key)) {
+        groupMap.set(key, { name: file.baseName.replace(/[_-]/g, ' '), category: file.category, previewPath: null, sourcePaths: [] });
+      }
+      const group = groupMap.get(key);
+      if (previewExts.has(file.ext)) {
+        if (!group.previewPath || file.ext === '.png') group.previewPath = file.filePath;
+      }
+      if (sourceExts.has(file.ext)) {
+        group.sourcePaths.push(file.filePath);
+      }
+    }
+
+    const artworks = [...groupMap.values()];
+    console.log(`[CustomArt] Folder scan: ${artworks.length} artworks from ${directory} (${tempDirs.length} temp dirs)`);
+    return { artworks, tempDirs };
+  });
+
   // Custom Art - Extract ZIP file and return image paths
   ipcMain.handle('custom-art:extract-zip', async (_event, zipPath) => {
     const AdmZip = require('adm-zip');
@@ -7429,6 +7606,191 @@ Return ONLY valid JSON, nothing else:
     return resp;
   }
 
+  // ==========================================================================
+  // FOOTAGE LIBRARY & CAMERA RECORDING
+  // ==========================================================================
+
+  // Helper: proxy GET to server footage API
+  async function footageFetch(apiPath, method = 'GET', body = null) {
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const url = `${settings.serverBaseUrl}/api/footage${apiPath}`;
+    const headers = {};
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+    if (body && method !== 'GET') headers['Content-Type'] = 'application/json';
+    const opts = { method, headers };
+    if (body && method !== 'GET') opts.body = JSON.stringify(body);
+    const resp = await doFetch(url, opts);
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `Server returned ${resp.status}`);
+    }
+    return resp.json();
+  }
+
+  ipcMain.handle('footage:clips:list', async (_event, filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.category) params.set('category', filters.category);
+    if (filters.status) params.set('status', filters.status);
+    if (filters.search) params.set('search', filters.search);
+    if (filters.limit) params.set('limit', String(filters.limit));
+    if (filters.offset) params.set('offset', String(filters.offset));
+    const qs = params.toString();
+    return footageFetch(`/clips${qs ? '?' + qs : ''}`);
+  });
+
+  ipcMain.handle('footage:clips:get', async (_event, id) => {
+    return footageFetch(`/clips/${id}`);
+  });
+
+  ipcMain.handle('footage:clips:update', async (_event, { id, data } = {}) => {
+    return footageFetch(`/clips/${id}`, 'PATCH', data);
+  });
+
+  ipcMain.handle('footage:clips:delete', async (_event, id) => {
+    return footageFetch(`/clips/${id}`, 'DELETE');
+  });
+
+  ipcMain.handle('footage:stats', async () => {
+    return footageFetch('/stats');
+  });
+
+  ipcMain.handle('footage:categories', async () => {
+    return footageFetch('/categories');
+  });
+
+  ipcMain.handle('footage:products', async () => {
+    return footageFetch('/products');
+  });
+
+  ipcMain.handle('footage:fileUrl', async (_event, filename) => {
+    const settings = ensureServerConfigured();
+    const key = settings.apiKey ? `?key=${settings.apiKey}` : '';
+    return `${settings.serverBaseUrl}/api/footage/file/${filename}${key}`;
+  });
+
+  ipcMain.handle('footage:thumbUrl', async (_event, filename) => {
+    const settings = ensureServerConfigured();
+    const key = settings.apiKey ? `?key=${settings.apiKey}` : '';
+    return `${settings.serverBaseUrl}/api/footage/thumb/${filename}${key}`;
+  });
+
+  // Upload a video file to server footage library
+  ipcMain.handle('footage:upload', async (_event, { filePath, meta } = {}) => {
+    if (!filePath) throw new Error('No file path provided');
+    const { fetch: doFetch } = await ensureFetch();
+    const settings = ensureServerConfigured();
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePath), path.basename(filePath));
+    if (meta) {
+      if (meta.category) form.append('category', meta.category);
+      if (meta.subcategory) form.append('subcategory', meta.subcategory);
+      if (meta.product_id) form.append('product_id', meta.product_id);
+      if (meta.product_name) form.append('product_name', meta.product_name);
+      if (meta.tags) form.append('tags', meta.tags);
+      if (meta.notes) form.append('notes', meta.notes);
+      form.append('source', meta.source || 'print-station');
+    }
+    const headers = form.getHeaders();
+    if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+    const resp = await doFetch(`${settings.serverBaseUrl}/api/footage/upload`, {
+      method: 'POST',
+      headers,
+      body: form
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `Upload failed: ${resp.status}`);
+    }
+    const result = await resp.json();
+    // Clean up temp file if it's in our temp directory
+    if (filePath.includes('print-station-recordings')) {
+      cameraRecorder.cleanupTempFile(filePath);
+    }
+    return result;
+  });
+
+  // Camera management
+  ipcMain.handle('footage:cameras:list', () => cameraRecorder.listCameras());
+  ipcMain.handle('footage:cameras:add', (_event, config) => cameraRecorder.addCamera(config));
+  ipcMain.handle('footage:cameras:update', (_event, { id, data }) => cameraRecorder.updateCamera(id, data));
+  ipcMain.handle('footage:cameras:remove', (_event, id) => cameraRecorder.removeCamera(id));
+  ipcMain.handle('footage:cameras:test', (_event, config) => cameraRecorder.testCamera(config));
+  ipcMain.handle('footage:cameras:discover', (_event, config) => cameraRecorder.discoverCamera(config));
+
+  // Recording (segmented, auto-reconnect)
+  ipcMain.handle('footage:record:start', async (_event, { cameraId, outputDir, stream } = {}) => {
+    return cameraRecorder.startRecording(cameraId, outputDir, stream);
+  });
+
+  ipcMain.handle('footage:record:stop', async (_event, cameraId) => {
+    return cameraRecorder.stopRecording(cameraId);
+  });
+
+  ipcMain.handle('footage:record:status', () => cameraRecorder.getRecordingStatus());
+  ipcMain.handle('footage:record:cameraStatus', (_event, cameraId) => cameraRecorder.getStatus(cameraId));
+
+  // Forward recorder events to renderer
+  const recorderEvents = ['recording-started', 'recording-stopped', 'reconnecting', 'error', 'segment-complete'];
+  for (const evt of recorderEvents) {
+    cameraRecorder.events.on(evt, (data) => {
+      const bw = BrowserWindow.getAllWindows()[0];
+      if (bw) bw.webContents.send(`footage:event:${evt}`, data);
+    });
+  }
+
+  // Elapsed-time tick interval for active recordings
+  setInterval(() => {
+    const statuses = cameraRecorder.getRecordingStatus();
+    const active = Object.values(statuses).filter(s => s.active);
+    if (active.length > 0) {
+      const bw = BrowserWindow.getAllWindows()[0];
+      if (bw) {
+        for (const s of active) {
+          bw.webContents.send('footage:record:tick', s);
+        }
+      }
+    }
+  }, 1000);
+
+  // Live preview
+  ipcMain.handle('footage:preview:start', (_event, cameraId) => {
+    cameraRecorder.startPreviewLoop(cameraId, (frame, error) => {
+      const bw = BrowserWindow.getAllWindows()[0];
+      if (bw) {
+        bw.webContents.send('footage:preview:frame', { cameraId, frame, error });
+      }
+    }, 750);
+    return { ok: true };
+  });
+
+  ipcMain.handle('footage:preview:stop', (_event, cameraId) => {
+    cameraRecorder.stopPreviewLoop(cameraId);
+    return { ok: true };
+  });
+
+  // ffmpeg + python check
+  ipcMain.handle('footage:ffmpeg:check', () => cameraRecorder.checkFfmpeg());
+  ipcMain.handle('footage:python:check', () => cameraRecorder.checkPython());
+
+  // Select video file dialog
+  ipcMain.handle('footage:selectVideoFile', async () => {
+    const bw = BrowserWindow.getAllWindows()[0];
+    const result = await dialog.showOpenDialog(bw, {
+      title: 'Select Video File',
+      filters: [
+        { name: 'Video Files', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] }
+      ],
+      properties: ['openFile']
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    return result.filePaths[0];
+  });
+
+  // ==========================================================================
+  // PRINT QUOTES
+  // ==========================================================================
+
   ipcMain.handle('pq:list', async (_event, query = {}) => {
     const params = new URLSearchParams();
     if (query.status) params.set('status', query.status);
@@ -7543,16 +7905,20 @@ Return ONLY valid JSON, nothing else:
       cp.execSync('openscad --version', { timeout: 5000, stdio: 'pipe' });
       return 'openscad';
     } catch (_) {}
-    // Common Windows install locations
+    // Common Windows install locations (use path.join for reliable path construction)
     const candidates = [
-      'C:\\Program Files\\OpenSCAD\\openscad.com',
-      'C:\\Program Files\\OpenSCAD\\openscad.exe',
-      'C:\\Program Files (x86)\\OpenSCAD\\openscad.com',
-      'C:\\Program Files (x86)\\OpenSCAD\\openscad.exe',
+      'C:/Program Files/OpenSCAD/openscad.com',
+      'C:/Program Files/OpenSCAD/openscad.exe',
+      'C:/Program Files (x86)/OpenSCAD/openscad.com',
+      'C:/Program Files (x86)/OpenSCAD/openscad.exe',
     ];
     for (const p of candidates) {
-      if (fs.existsSync(p)) return p;
+      if (fs.existsSync(p)) {
+        console.log('[DogTag] Found OpenSCAD at:', p);
+        return p;
+      }
     }
+    console.warn('[DogTag] OpenSCAD not found in PATH or common locations');
     return null;
   }
 
@@ -7569,7 +7935,8 @@ Return ONLY valid JSON, nothing else:
     try {
       cp.execSync(`"${oscad}" -o "${stlPath}" "${scadPath}"`, { timeout: 120000, stdio: 'pipe' });
       return fs.existsSync(stlPath);
-    } catch (_) {
+    } catch (err) {
+      console.error(`[DogTag] OpenSCAD failed for ${path.basename(scadPath)}:`, err.stderr ? err.stderr.toString().slice(0, 500) : err.message);
       return false;
     }
   }
@@ -7579,7 +7946,7 @@ Return ONLY valid JSON, nothing else:
   }
 
   // Generate SCAD files (+ STL if openscad available)
-  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz }) => {
+  ipcMain.handle('dog-tag:generate', async (_event, { name, shape = 'bone', colors = {}, textCx, textCy, textSz, lines, lineCount, textBox, lineBoxes }) => {
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       throw new Error('Pet name is required');
     }
@@ -7604,6 +7971,22 @@ Return ONLY valid JSON, nothing else:
     if (textCy !== undefined && textCy !== null) options.textCy = textCy;
     if (textSz !== undefined && textSz !== null) options.textSz = textSz;
 
+    // Pass per-line text placement boxes
+    if (lineBoxes && Array.isArray(lineBoxes) && lineBoxes.length > 0) {
+      options.lineBoxes = lineBoxes;
+    }
+
+    // Pass multi-line text with per-line positions from the 3D preview
+    if (lines && Array.isArray(lines) && lines.length > 0) {
+      options.lines = lines.map(ln => ({
+        text: ln.text || '',
+        font: ln.font || 'Liberation Sans:style=Bold',
+        fontSize: ln.fontSize || null,
+        textXOffset: ln.textXOffset ?? 0,
+        textYOffset: ln.textYOffset ?? 0,
+      }));
+    }
+
     const result = await generateDogTag({
       name: cleanName,
       shape: safeShape,
@@ -7613,22 +7996,59 @@ Return ONLY valid JSON, nothing else:
       options,
     });
 
-    // Try to render STLs via openscad CLI
+    // Try to render STLs via openscad CLI + manifold-3d boolean
     let stlResults = { rendered: false, baseStl: null, textStl: null };
     if (isOpenscadAvailable()) {
       const stlDir = getDogTagDir('stl-queue');
-      const baseStl = result.baseSCAD.replace('.scad', '.stl');
       const textStl = result.textSCAD.replace('.scad', '.stl');
+      const baseStl = result.baseSCAD.replace('.scad', '.stl');
 
-      const baseOk = renderScadToStl(result.baseSCAD, baseStl);
-      const textOk = renderScadToStl(result.textSCAD, textStl);
+      // 1. Render ALL text/insert STLs (one per line)
+      const allTextScads = result.textSCADs || [result.textSCAD];
+      const textStls = [];
+      let allTextOk = true;
+      for (const tScad of allTextScads) {
+        const tStl = tScad.replace('.scad', '.stl');
+        const ok = renderScadToStl(tScad, tStl);
+        if (ok) {
+          textStls.push(tStl);
+        } else {
+          allTextOk = false;
+          console.error(`[DogTag] Failed to render insert: ${path.basename(tScad)}`);
+        }
+      }
 
-      if (baseOk && textOk) {
+      // 2. Render the cutter STL (pocket shape to subtract from blank)
+      let baseOk = false;
+      if (result.cutterSCAD && baseStlPath) {
+        const cutterStl = result.cutterSCAD.replace('.scad', '.stl');
+        const cutterOk = renderScadToStl(result.cutterSCAD, cutterStl);
+        if (cutterOk) {
+          // 3. Boolean subtract: blank - cutter = base with pocket
+          try {
+            const { manifoldSubtract } = require('./generate_dog_tag_v2');
+            await manifoldSubtract(baseStlPath, cutterStl, baseStl);
+            baseOk = fs.existsSync(baseStl);
+            if (baseOk) console.log(`[DogTag] Manifold subtraction succeeded: ${path.basename(baseStl)}`);
+          } catch (e) {
+            console.error(`[DogTag] Manifold subtraction failed:`, e.message);
+          }
+        }
+      } else {
+        // No cutter (e.g. standalone mode) — try direct OpenSCAD render
+        baseOk = renderScadToStl(result.baseSCAD, baseStl);
+      }
+
+      if (baseOk && textStls.length > 0) {
         const qBase = path.join(stlDir, path.basename(baseStl));
-        const qText = path.join(stlDir, path.basename(textStl));
         fs.copyFileSync(baseStl, qBase);
-        fs.copyFileSync(textStl, qText);
-        stlResults = { rendered: true, baseStl: qBase, textStl: qText };
+        // Copy all insert STLs to queue
+        const qTextPaths = textStls.map(t => {
+          const qPath = path.join(stlDir, path.basename(t));
+          fs.copyFileSync(t, qPath);
+          return qPath;
+        });
+        stlResults = { rendered: true, baseStl: qBase, textStl: qTextPaths[0], textStls: qTextPaths };
       }
     }
 
@@ -7644,6 +8064,7 @@ Return ONLY valid JSON, nothing else:
         textScad: result.textSCAD,
         baseStl: stlResults.baseStl,
         textStl: stlResults.textStl,
+        textStls: stlResults.textStls || (stlResults.textStl ? [stlResults.textStl] : []),
       },
       status: stlResults.rendered ? 'ready_to_print' : 'scad_generated',
       printNotes: result.printNotes,
@@ -7674,6 +8095,8 @@ Return ONLY valid JSON, nothing else:
         if (cfg.fontSize !== undefined && cfg.fontSize !== null) geo.textSz = cfg.fontSize;
         if (cfg.thickness !== undefined) geo.thickness = cfg.thickness;
         if (cfg.pocketDepth !== undefined) geo.pocketDepth = cfg.pocketDepth;
+        if (cfg.textBox) geo.textBox = cfg.textBox;
+        if (cfg.lineBoxes) geo.lineBoxes = cfg.lineBoxes;
       }
       const hasBlankStl = !!resolveBlankStl(id);
       return {
@@ -7685,6 +8108,32 @@ Return ONLY valid JSON, nothing else:
       };
     });
     return { shapes, defaults: DOG_TAG_DEFAULTS, tagsDir: dogTagTagsDir() };
+  });
+
+  // Delete a shape from config
+  ipcMain.handle('dog-tag:shapes:delete', (_event, shapeId) => {
+    if (!shapeId) return { ok: false };
+    const config = getDogTagShapesConfig(true);
+    if (config[shapeId]) {
+      delete config[shapeId];
+      saveShapesConfig(dogTagConfigFile(), config);
+      _shapesConfigCache = null; // bust cache
+      // Also try to delete the blank STL
+      const stlPath = path.join(dogTagTagsDir(), `${shapeId}.stl`);
+      try { if (fs.existsSync(stlPath)) fs.unlinkSync(stlPath); } catch (_) {}
+    }
+    return { ok: true };
+  });
+
+  // Update shape config (e.g. textBox)
+  ipcMain.handle('dog-tag:shapes:update', (_event, { shapeId, updates }) => {
+    if (!shapeId || !updates) return { ok: false };
+    const config = getDogTagShapesConfig(true);
+    if (!config[shapeId]) config[shapeId] = {};
+    Object.assign(config[shapeId], updates);
+    saveShapesConfig(dogTagConfigFile(), config);
+    _shapesConfigCache = null;
+    return { ok: true };
   });
 
   // Check if openscad is available
@@ -7829,28 +8278,38 @@ Return ONLY valid JSON, nothing else:
   // Import a blank STL via file dialog
   ipcMain.handle('dog-tag:import-blank', async (_event, shapeId) => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
-      title: 'Select Blank STL for ' + (shapeId || 'tag shape'),
+      title: shapeId ? `Select Blank STL for ${shapeId}` : 'Import Base Plate STL(s)',
       filters: [{ name: 'STL Files', extensions: ['stl'] }],
-      properties: ['openFile'],
+      properties: shapeId ? ['openFile'] : ['openFile', 'multiSelections'],
     });
     if (canceled || !filePaths.length) return { imported: false };
 
-    const srcPath = filePaths[0];
-    const destName = (shapeId || path.basename(srcPath, '.stl')) + '_blank.stl';
-    const destPath = path.join(dogTagTagsDir(), destName);
-    fs.copyFileSync(srcPath, destPath);
-
-    // Update shapes config
     const shapesConfig = getDogTagShapesConfig(true);
-    if (!shapesConfig[shapeId]) {
-      shapesConfig[shapeId] = { label: shapeId.charAt(0).toUpperCase() + shapeId.slice(1) };
-    }
-    shapesConfig[shapeId].stlFile = destName;
-    shapesConfig[shapeId].hasBlankStl = true;
-    saveShapesConfig(dogTagConfigFile(), shapesConfig);
-    _shapesConfigCache = null; // invalidate cache
+    const importedShapes = [];
 
-    return { imported: true, stlFile: destName, path: destPath };
+    for (const srcPath of filePaths) {
+      const baseName = path.basename(srcPath, '.stl')
+        .toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      const sid = shapeId || baseName || `shape_${Date.now()}`;
+      const destName = `${sid}_blank.stl`;
+      const destPath = path.join(dogTagTagsDir(), destName);
+      fs.copyFileSync(srcPath, destPath);
+
+      if (!shapesConfig[sid]) {
+        const label = path.basename(srcPath, '.stl')
+          .replace(/[-_]/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+        shapesConfig[sid] = { label };
+      }
+      shapesConfig[sid].stlFile = destName;
+      shapesConfig[sid].hasBlankStl = true;
+      importedShapes.push({ id: sid, label: shapesConfig[sid].label });
+    }
+
+    saveShapesConfig(dogTagConfigFile(), shapesConfig);
+    _shapesConfigCache = null;
+
+    return { imported: true, count: importedShapes.length, shapes: importedShapes };
   });
 
   // Load a blank STL file as base64 for Three.js preview
@@ -7862,7 +8321,8 @@ Return ONLY valid JSON, nothing else:
   });
 
   // Send a single generated STL to the slicer catalog
-  ipcMain.handle('dog-tag:send-to-slicer', async (_event, { stlPath, name, category }) => {
+  ipcMain.handle('dog-tag:send-to-slicer', async (_event, { stlPath, name, category, folder }) => {
+    console.log(`[DogTag Library] Uploading: ${stlPath} as "${name}" to ${category}/${folder || 'root'}`);
     if (!stlPath || !fs.existsSync(stlPath)) {
       throw new Error('STL file not found: ' + (stlPath || 'none'));
     }
@@ -7870,16 +8330,18 @@ Return ONLY valid JSON, nothing else:
     const { fetch: fetchFn } = await ensureFetch();
     const settings = getSettings();
     const serverUrl = settings.serverUrl || 'https://store.swayzecustomvinyl.com';
-    const apiKey = settings.slicerApiKey || '';
+    const apiKey = settings.slicerApiKey || process.env.INTERNAL_API_KEY || 'laZHEthV92qDq0adO07UnqoH3O4baZmV';
 
     const formData = new FormData();
     formData.append('file', fs.createReadStream(stlPath));
     formData.append('name', name || path.basename(stlPath, '.stl'));
-    formData.append('category', category || 'Dog Tags');
+    formData.append('category', category || 'Keychains');
+    if (folder) formData.append('folder', folder);
 
     const headers = formData.getHeaders();
-    if (apiKey) headers['x-api-key'] = apiKey;
+    headers['x-api-key'] = apiKey;
 
+    console.log(`[DogTag Library] POST ${serverUrl}/api/slicer/catalog`);
     const resp = await fetchFn(`${serverUrl}/api/slicer/catalog`, {
       method: 'POST',
       headers,
@@ -7888,10 +8350,13 @@ Return ONLY valid JSON, nothing else:
 
     if (!resp.ok) {
       const txt = await resp.text();
-      throw new Error(`Slicer upload failed (${resp.status}): ${txt}`);
+      console.error(`[DogTag Library] Upload failed (${resp.status}): ${txt}`);
+      throw new Error(`Library upload failed (${resp.status}): ${txt}`);
     }
 
-    return resp.json();
+    const result = await resp.json();
+    console.log(`[DogTag Library] Upload success:`, result.id || result);
+    return result;
   });
 }
 
@@ -7942,6 +8407,12 @@ app.on('ready', async () => {
     applyWatchSettings(getSettings());
   } catch (err) {
     console.warn('Watch configuration failed:', err?.message || err);
+  }
+  // Initialize camera recorder for footage library
+  try {
+    cameraRecorder.init();
+  } catch (err) {
+    console.warn('Camera recorder unavailable:', err?.message || err);
   }
   const mainWindow = createWindow();
 
@@ -8248,7 +8719,9 @@ app.on('ready', async () => {
   });
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
+  // Finalize any active camera recordings
+  try { await cameraRecorder.shutdown(); } catch (_) {}
   if (printerService) {
     printerService.disconnectAll();
   }

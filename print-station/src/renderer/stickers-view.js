@@ -69,6 +69,12 @@ function setupStickersEventListeners() {
     savedSearch.addEventListener('input', debounce(filterSavedOrders, 300));
   }
 
+  // Manual Mode: Google Drive Sync
+  const gdriveSyncBtn = document.getElementById('stickersGdriveSyncBtn');
+  if (gdriveSyncBtn) {
+    gdriveSyncBtn.addEventListener('click', stickersGdriveSync);
+  }
+
   // Manual Mode: Category filter
   const categorySelect = document.getElementById('stickersCategorySelect');
   if (categorySelect) {
@@ -240,6 +246,29 @@ function showStandardSidePanels(show) {
   });
 }
 
+async function stickersGdriveSync() {
+  const btn = document.getElementById('stickersGdriveSyncBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '☁ Syncing...'; }
+  try {
+    const result = await printStation.stickerSheets.gdriveSync();
+    if (result?.success && result.added > 0) {
+      const toast = typeof showToast === 'function' ? showToast : (msg) => alert(msg);
+      toast(`Google Drive sync: ${result.added} graphic${result.added !== 1 ? 's' : ''} across ${result.categories} categories`, 'success', 4000);
+      await loadStickersCategories();
+      await loadStickersCatalog();
+    } else {
+      const toast = typeof showToast === 'function' ? showToast : (msg) => alert(msg);
+      toast('Google Drive sync: no new graphics found', 'info', 3000);
+    }
+  } catch (err) {
+    console.error('[Stickers] GDrive sync error:', err);
+    const toast = typeof showToast === 'function' ? showToast : (msg) => alert(msg);
+    toast('Google Drive sync failed: ' + err.message, 'error', 6000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '☁ Sync Google Drive'; }
+  }
+}
+
 async function loadStickersCategories() {
   try {
     const result = await printStation.stickerSheets.getCategories();
@@ -321,6 +350,7 @@ function renderStickersCatalog() {
         <div class="sticker-title" style="font-size:10px;padding:4px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
           ${sticker.title}
         </div>
+        ${sticker.gdrive ? '<div style="position:absolute;bottom:4px;left:4px;background:#2563eb;color:#fff;font-size:9px;padding:1px 5px;border-radius:4px;">☁</div>' : ''}
         ${isSelected ? `<div class="sticker-selected-badge" style="position:absolute;top:4px;right:4px;background:#4ade80;color:#000;font-size:10px;padding:2px 6px;border-radius:10px;">x${stickersState.selection.get(sticker.imagePath).quantity}</div>` : ''}
       </div>
     `;

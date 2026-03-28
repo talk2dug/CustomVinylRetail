@@ -1830,6 +1830,11 @@ function switchView(viewId) {
     if (typeof window.initTrendMonitorView === 'function') window.initTrendMonitorView();
   }
 
+  // Footage Library view
+  if (viewId === 'footageLibraryView') {
+    if (typeof window.initFootageLibraryView === 'function') window.initFootageLibraryView();
+  }
+
   // External view files (loaded as regular scripts, accessed via window)
   if (viewId === 'slicerView') {
     if (typeof window.initSlicerView === 'function') window.initSlicerView();
@@ -13270,77 +13275,85 @@ async function handleBulkUpload() {
       return;
     }
 
-    const selection = await printStation.selectFiles({
-      title: 'Select folder of preview images',
-      properties: ['openDirectory']
+    const selection = await printStation.selectFolder({
+      title: 'Select folder with artwork (subfolders = categories, supports ZIP/RAR)'
     });
     if (!selection || !selection.length) {
       return;
     }
 
     const directory = selection[0];
-    let files = [];
+
+    elements.uploadStatus.textContent = 'Scanning folder for artwork files (recursing subfolders, extracting archives)...';
+    elements.uploadStatus.className = 'status-bar muted';
+
+    let scanResult;
     try {
-      files = await printStation.listImageFiles({ directory });
+      scanResult = await printStation.customArt.scanFolder(directory);
     } catch (error) {
-      elements.uploadStatus.textContent = error?.message || 'Unable to read folder.';
+      elements.uploadStatus.textContent = error?.message || 'Unable to scan folder.';
       elements.uploadStatus.className = 'status-bar error';
-      showToast(error?.message || 'Unable to read folder.', 'error', 6000);
+      showToast(error?.message || 'Unable to scan folder.', 'error', 6000);
       return;
     }
 
-    files = (files || []).filter((filePath) => BULK_IMAGE_EXTENSIONS.has(getBulkFileExtension(filePath)));
-
-    if (!files.length) {
-      elements.uploadStatus.textContent = 'No images found in that folder.';
+    const { artworks, tempDirs } = scanResult;
+    if (!artworks || !artworks.length) {
+      elements.uploadStatus.textContent = 'No artwork files found in the selected folder or its subfolders.';
       elements.uploadStatus.className = 'status-bar error';
-      showToast('No PNG/JPG/GIF/WEBP images found in the selected folder.', 'error', 6000);
+      showToast('No PNG/JPG/SVG/AI/EPS/PDF files found. Check subfolders and archives.', 'error', 6000);
       return;
     }
 
-    const baseName =
-      (categoryMode === 'existing'
-        ? getCategoryDisplayNameBySlug(existingCategory)
-        : newCategoryName) || 'Catalog Item';
-    const startIndex =
-      categoryMode === 'existing' ? getCategoryDesignCount(existingCategory) + 1 : 1;
-    const digits = Math.max(3, String(startIndex + files.length - 1).length);
+    const totalCount = artworks.length;
+    const categories = [...new Set(artworks.map(a => a.category))];
+    const sourceOnlyCount = artworks.filter(a => !a.previewPath && a.sourcePaths.length > 0).length;
 
-    elements.uploadStatus.textContent = `Uploading ${files.length} designs…`;
+    elements.uploadStatus.textContent = `Uploading ${totalCount} artwork${totalCount !== 1 ? 's' : ''} across ${categories.length} categor${categories.length === 1 ? 'y' : 'ies'}${sourceOnlyCount ? ` (${sourceOnlyCount} will generate previews)` : ''}...`;
     elements.uploadStatus.className = 'status-bar muted';
 
     let successCount = 0;
-    for (let index = 0; index < files.length; index += 1) {
-      const displayName = `${baseName} ${String(startIndex + index).padStart(digits, '0')}`;
+    let errorCount = 0;
+    for (let i = 0; i < artworks.length; i++) {
+      const artwork = artworks[i];
+      // Always use 'new' category mode with the detected folder name — server auto-creates or finds existing
+      const useCategory = artwork.category || newCategoryName || existingCategory || '';
+      const displayName = artwork.name || `Artwork ${i + 1}`;
       try {
         await printStation.uploadArtwork({
-          previewPath: files[index],
-          sourcePaths: [],
-          categoryMode,
-          existingCategory,
-          newCategoryName,
+          previewPath: artwork.previewPath || undefined,
+          sourcePaths: artwork.sourcePaths || [],
+          categoryMode: 'new',
+          newCategoryName: useCategory,
           displayName
         });
-        successCount += 1;
-        elements.uploadStatus.textContent = `Uploaded ${displayName} (${successCount}/${files.length})`;
-        elements.uploadStatus.className = 'status-bar muted';
+        successCount++;
+        if ((i + 1) % 3 === 0 || i === artworks.length - 1) {
+          const pct = Math.round(((i + 1) / totalCount) * 100);
+          elements.uploadStatus.textContent = `Uploaded ${successCount}/${totalCount} (${pct}%) — ${displayName}`;
+        }
       } catch (error) {
-        const message = error?.message || `Unable to upload ${displayName}.`;
-        elements.uploadStatus.textContent = message;
-        elements.uploadStatus.className = 'status-bar error';
-        showToast(message, 'error', 6000);
-        break;
+        errorCount++;
+        console.error(`[BulkUpload] Failed: ${displayName}:`, error.message || error);
       }
     }
 
-    if (successCount === files.length) {
-      elements.uploadStatus.textContent = `Bulk upload complete: ${successCount} designs added.`;
-      elements.uploadStatus.className = 'status-bar success';
-      showToast(`Uploaded ${successCount} designs.`, 'success');
+    // Clean up temp directories from archive extraction
+    for (const dir of tempDirs || []) {
+      try { await printStation.cleanupTempDir(dir); } catch (_) {}
+    }
+
+    if (successCount > 0) {
+      const catList = categories.length <= 5 ? ` (${categories.join(', ')})` : '';
+      elements.uploadStatus.textContent = `Bulk upload complete: ${successCount} uploaded, ${errorCount} failed across ${categories.length} categor${categories.length === 1 ? 'y' : 'ies'}${catList}`;
+      elements.uploadStatus.className = errorCount > 0 ? 'status-bar warning' : 'status-bar success';
+      showToast(`Uploaded ${successCount} artworks.`, 'success');
       resetUploadForm();
       await loadCatalog({ silent: true, forceRefresh: true });
-    } else if (successCount > 0) {
-      showToast(`Stopped after ${successCount} uploads.`, 'warning', 6000);
+    } else {
+      elements.uploadStatus.textContent = `Bulk upload failed: ${errorCount} errors.`;
+      elements.uploadStatus.className = 'status-bar error';
+      showToast(`All ${errorCount} uploads failed.`, 'error', 6000);
     }
   } finally {
     elements.uploadForm.classList.remove('busy');
@@ -20199,7 +20212,7 @@ async function loadCustomArtArtwork() {
   try {
     console.log('[Custom Art] Fetching artwork from API...');
     const [artworkResult, categoriesResult] = await Promise.all([
-      printStation.customArt.listArtwork({ activeOnly: false, limit: 1000 }),
+      printStation.customArt.listArtwork({ activeOnly: false, limit: 10000 }),
       printStation.customArt.getArtworkCategories()
     ]);
     console.log('[Custom Art] API returned:', artworkResult, categoriesResult);

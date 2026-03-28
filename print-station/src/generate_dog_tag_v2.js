@@ -34,6 +34,21 @@ const DEFAULTS = {
   textYOffset:    0,
 };
 
+// ── FONT LIST (OpenSCAD-compatible system fonts) ─────────────
+const FONT_LIST = [
+  { value: 'Liberation Sans:style=Bold', label: 'Liberation Sans Bold', category: 'block' },
+  { value: 'Arial:style=Bold',           label: 'Arial Bold',           category: 'block' },
+  { value: 'Impact',                      label: 'Impact',               category: 'block' },
+  { value: 'Georgia:style=Bold',          label: 'Georgia Bold',         category: 'block' },
+  { value: 'Times New Roman:style=Bold',  label: 'Times New Roman Bold', category: 'block' },
+  { value: 'Verdana:style=Bold',          label: 'Verdana Bold',         category: 'block' },
+  { value: 'Comic Sans MS:style=Bold',    label: 'Comic Sans Bold',     category: 'block' },
+  { value: 'Courier New:style=Bold',      label: 'Courier New Bold',    category: 'block' },
+  { value: 'Segoe Script',                label: 'Segoe Script',         category: 'script' },
+  { value: 'Lucida Handwriting',           label: 'Lucida Handwriting',  category: 'script' },
+  { value: 'Brush Script MT',             label: 'Brush Script',         category: 'script' },
+];
+
 // ── AUTO SCALE font for long names ───────────────────────────
 function autoFontSize(name, base = 7.5) {
   if (name.length <= 4)  return base;
@@ -43,76 +58,13 @@ function autoFontSize(name, base = 7.5) {
   return base * 0.58;
 }
 
-// ── V1 FALLBACK SHAPE CODE ───────────────────────────────────
-// Used when no blank STL file exists for a shape
-const SHAPE_OPENSCAD = {
-  bone: `
-module shape_2d() {
-  shaft_len = 32; shaft_w = 10; end_r = 10;
-  union() {
-    hull() {
-      for(x = [-shaft_len/2 + 2, shaft_len/2 - 2])
-        translate([x, 0]) circle(r=shaft_w/2, $fn=32);
-    }
-    for(ex = [-shaft_len/2, shaft_len/2])
-      for(angle = [45, 135, 225, 315])
-        translate([ex + cos(angle)*6, sin(angle)*6]) circle(r=end_r/2, $fn=32);
-  }
-}`,
-  shield: `
-module shape_2d() {
-  w = 40; h = 50; top_r = 5;
-  hull() {
-    translate([-w/2+top_r,  h/2-top_r]) circle(r=top_r, $fn=32);
-    translate([ w/2-top_r,  h/2-top_r]) circle(r=top_r, $fn=32);
-    translate([0, -h/2+3])              circle(r=3,      $fn=32);
-  }
-}`,
-  heart: `
-module heart_2d() {
-  union() {
-    translate([-10, 0]) circle(r=10, $fn=64);
-    translate([ 10, 0]) circle(r=10, $fn=64);
-    polygon(points=[[-20,0],[20,0],[0,-22]]);
-  }
-}
-module shape_2d() { scale([1.15,1.15]) heart_2d(); }`,
-  paw: `
-module shape_2d() { circle(d=44, $fn=64); }`,
-  hydrant: `
-module shape_2d() {
-  offset(r=2, $fn=32) union() {
-    translate([0,-18]) square([30,8],  center=true);
-    translate([0,-10]) square([24,12], center=true);
-    translate([0, 2])  square([20,12], center=true);
-    translate([0, 11]) { square([18,4],center=true); translate([0,4]) circle(r=7,$fn=48); }
-    translate([-14,-4]) circle(r=4,$fn=24);
-    translate([ 14,-4]) circle(r=4,$fn=24);
-  }
-}`,
-  star: `
-module shape_2d() {
-  offset(r=1.5,$fn=32)
-  polygon([
-    for(i=[0:9])
-      let(angle=360/5/2*i-90, r=(i%2==0)?24:11)
-      [cos(angle)*r, sin(angle)*r]
-  ]);
-}`,
-};
-
-// Default shape metadata (ring position, text position, etc.)
-const SHAPE_DEFAULTS = {
-  bone:    { ringX: -44, ringY: 0,  textXOffset: 0, textYOffset: -2,  fontSize: 7,   thickness: 3.2, pocketDepth: 1.4, needsTab: false, label: 'Classic Bone',    width: 64, height: 30 },
-  shield:  { ringX: 0,   ringY: 20, textXOffset: 0, textYOffset: -6,  fontSize: 8,   thickness: 3.2, pocketDepth: 1.4, needsTab: true,  label: 'Shield / Badge',  width: 40, height: 50 },
-  heart:   { ringX: 0,   ringY: 10, textXOffset: 0, textYOffset: -8,  fontSize: 7.5, thickness: 3.2, pocketDepth: 1.4, needsTab: false, label: 'Heart',           width: 46, height: 44 },
-  paw:     { ringX: 0,   ringY: 24, textXOffset: 0, textYOffset: -13, fontSize: 6.5, thickness: 4.0, pocketDepth: 1.6, needsTab: true,  label: 'Paw Print',       width: 44, height: 44 },
-  hydrant: { ringX: 0,   ringY: 22, textXOffset: 0, textYOffset: -13, fontSize: 6,   thickness: 3.2, pocketDepth: 1.4, needsTab: true,  label: 'Fire Hydrant',    width: 40, height: 50 },
-  star:    { ringX: 0,   ringY: 27, textXOffset: 0, textYOffset: -2,  fontSize: 6.5, thickness: 3.2, pocketDepth: 1.4, needsTab: true,  label: 'Sheriff Star',    width: 50, height: 50 },
-};
+// No predefined shapes — all shapes come from user-uploaded STL blanks.
+// SHAPE_DEFAULTS is kept as an empty object for backward compat.
+const SHAPE_OPENSCAD = {};
+const SHAPE_DEFAULTS = {};
 
 // ── LOAD SHAPES CONFIG ───────────────────────────────────────
-// Reads tag_shapes.json, merges with built-in defaults
+// Reads tag_shapes.json — all shapes are user-uploaded STL blanks
 function loadShapesConfig(configPath) {
   let userConfig = {};
   if (configPath && fs.existsSync(configPath)) {
@@ -122,160 +74,523 @@ function loadShapesConfig(configPath) {
     } catch (_) {}
   }
 
-  const merged = {};
-  // Start with built-in shapes
-  for (const [id, defaults] of Object.entries(SHAPE_DEFAULTS)) {
-    merged[id] = { ...defaults, stlFile: null, hasBlankStl: false };
-  }
-  // Overlay user config
+  const shapes = {};
   for (const [id, cfg] of Object.entries(userConfig)) {
-    merged[id] = { ...merged[id] || {}, ...cfg };
-    // Normalize
-    if (!merged[id].label) merged[id].label = id.charAt(0).toUpperCase() + id.slice(1);
+    shapes[id] = { ...cfg };
+    if (!shapes[id].label) shapes[id].label = id.charAt(0).toUpperCase() + id.slice(1);
+    // Default geometry values for shapes that don't have them
+    if (shapes[id].thickness == null) shapes[id].thickness = DEFAULTS.thickness;
+    if (shapes[id].pocketDepth == null) shapes[id].pocketDepth = DEFAULTS.pocketDepth;
+    if (shapes[id].fontSize == null) shapes[id].fontSize = DEFAULTS.fontSize;
+    if (shapes[id].textXOffset == null) shapes[id].textXOffset = 0;
+    if (shapes[id].textYOffset == null) shapes[id].textYOffset = 0;
   }
-  return merged;
+  return shapes;
 }
 
 // Save shapes config
 function saveShapesConfig(configPath, shapesObj) {
   const out = {
-    _comment: 'BRCC Dog Tag Shape Config — one entry per tag shape',
+    _comment: 'BRCC Keychain Shape Config — user-uploaded STL blanks',
     shapes: shapesObj,
   };
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(out, null, 2));
 }
 
-// ── SCAD: BASE TAG (STL-import mode) ─────────────────────────
-function buildBaseTagFromStl(cfg) {
-  const fs_size = cfg.fontSize || autoFontSize(cfg.name, DEFAULTS.fontSize);
+// ── Read STL bounding box + top-surface centroid (binary STL) ─
+function readStlBounds(stlPath) {
+  try {
+    const buf = fs.readFileSync(stlPath);
+    // Binary STL: 80-byte header, 4-byte triangle count, then 50 bytes per triangle
+    const triCount = buf.readUInt32LE(80);
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < triCount; i++) {
+      const offset = 84 + i * 50;
+      for (let v = 0; v < 3; v++) {
+        const x = buf.readFloatLE(offset + 12 + v * 12);
+        const y = buf.readFloatLE(offset + 12 + v * 12 + 4);
+        const z = buf.readFloatLE(offset + 12 + v * 12 + 8);
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+      }
+    }
+
+    const height = maxZ - minZ;
+
+    // Compute centroid of top-surface triangles (z near maxZ)
+    // This gives a much better text center than bounding box center
+    // for asymmetric shapes like bones where the shaft is offset
+    const topThreshold = maxZ - height * 0.3; // top 30% of height
+    let topSumX = 0, topSumY = 0, topArea = 0;
+    for (let i = 0; i < triCount; i++) {
+      const offset = 84 + i * 50;
+      const vx = [], vy = [], vz = [];
+      for (let v = 0; v < 3; v++) {
+        vx.push(buf.readFloatLE(offset + 12 + v * 12));
+        vy.push(buf.readFloatLE(offset + 12 + v * 12 + 4));
+        vz.push(buf.readFloatLE(offset + 12 + v * 12 + 8));
+      }
+      // Check if this triangle is on the top surface
+      const avgZ = (vz[0] + vz[1] + vz[2]) / 3;
+      if (avgZ >= topThreshold) {
+        // Triangle centroid and area (using cross product)
+        const cx = (vx[0] + vx[1] + vx[2]) / 3;
+        const cy = (vy[0] + vy[1] + vy[2]) / 3;
+        const ax = vx[1] - vx[0], ay = vy[1] - vy[0], az = vz[1] - vz[0];
+        const bx = vx[2] - vx[0], by = vy[2] - vy[0], bz = vz[2] - vz[0];
+        const area = 0.5 * Math.sqrt(
+          (ay*bz - az*by)**2 + (az*bx - ax*bz)**2 + (ax*by - ay*bx)**2
+        );
+        topSumX += cx * area;
+        topSumY += cy * area;
+        topArea += area;
+      }
+    }
+
+    // Use top-surface centroid if available, else bounding box center
+    const surfaceCenterX = topArea > 0 ? topSumX / topArea : (maxX + minX) / 2;
+    const surfaceCenterY = topArea > 0 ? topSumY / topArea : (maxY + minY) / 2;
+
+    // Build Y→width profile: for each Y band, track the actual X extent
+    // This lets us know how wide the shape is at any Y position
+    const yBands = 20; // 20 horizontal bands
+    const bandHeight = (maxY - minY) / yBands;
+    const widthProfile = []; // [{y, minX, maxX, width}]
+    for (let b = 0; b < yBands; b++) {
+      const bandMinY = minY + b * bandHeight;
+      const bandMaxY = bandMinY + bandHeight;
+      const bandCenterY = bandMinY + bandHeight / 2;
+      let bMinX = Infinity, bMaxX = -Infinity;
+      // Scan top-surface triangles that overlap this Y band
+      for (let i = 0; i < triCount; i++) {
+        const off = 84 + i * 50;
+        const verts = [];
+        for (let v = 0; v < 3; v++) {
+          verts.push({
+            x: buf.readFloatLE(off + 12 + v * 12),
+            y: buf.readFloatLE(off + 12 + v * 12 + 4),
+            z: buf.readFloatLE(off + 12 + v * 12 + 8),
+          });
+        }
+        // Only top-surface triangles
+        const avgZ = (verts[0].z + verts[1].z + verts[2].z) / 3;
+        if (avgZ < topThreshold) continue;
+        // Check if any vertex is in this Y band
+        const triMinY = Math.min(verts[0].y, verts[1].y, verts[2].y);
+        const triMaxY = Math.max(verts[0].y, verts[1].y, verts[2].y);
+        if (triMaxY < bandMinY || triMinY > bandMaxY) continue;
+        for (const v of verts) {
+          if (v.y >= bandMinY && v.y <= bandMaxY) {
+            if (v.x < bMinX) bMinX = v.x;
+            if (v.x > bMaxX) bMaxX = v.x;
+          }
+        }
+      }
+      if (bMinX < Infinity) {
+        widthProfile.push({ y: bandCenterY, minX: bMinX, maxX: bMaxX, width: bMaxX - bMinX });
+      }
+    }
+
+    return {
+      minX, maxX, minY, maxY, minZ, maxZ,
+      width: maxX - minX,
+      depth: maxY - minY,
+      height,
+      centerX: surfaceCenterX,
+      centerY: surfaceCenterY,
+      bboxCenterX: (maxX + minX) / 2,
+      bboxCenterY: (maxY + minY) / 2,
+      widthProfile, // Y→width lookup for smart text sizing
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// ── Repair non-manifold STL ───────────────────────────────────
+// OpenSCAD 2021 CGAL requires watertight meshes. Tinkercad often
+// exports STLs with non-manifold edges (>2 faces sharing an edge).
+// This repairs the mesh by rebuilding it: deduplicating vertices,
+// removing degenerate/duplicate faces, and filling small holes.
+function repairStl(srcPath, dstPath) {
+  const buf = fs.readFileSync(srcPath);
+  const triCount = buf.readUInt32LE(80);
+
+  // Parse all triangles
+  const vertMap = new Map(); // "x,y,z" -> index
+  const verts = [];
+  const faces = [];
+
+  function getVertIdx(x, y, z) {
+    // Round to avoid floating-point near-duplicates
+    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
+    if (vertMap.has(key)) return vertMap.get(key);
+    const idx = verts.length;
+    verts.push([x, y, z]);
+    vertMap.set(key, idx);
+    return idx;
+  }
+
+  for (let i = 0; i < triCount; i++) {
+    const off = 84 + i * 50;
+    const nx = buf.readFloatLE(off);
+    const ny = buf.readFloatLE(off + 4);
+    const nz = buf.readFloatLE(off + 8);
+    const v = [];
+    for (let j = 0; j < 3; j++) {
+      const x = buf.readFloatLE(off + 12 + j * 12);
+      const y = buf.readFloatLE(off + 12 + j * 12 + 4);
+      const z = buf.readFloatLE(off + 12 + j * 12 + 8);
+      v.push(getVertIdx(x, y, z));
+    }
+    // Skip degenerate faces (two or more vertices the same)
+    if (v[0] === v[1] || v[1] === v[2] || v[0] === v[2]) continue;
+    faces.push({ v, normal: [nx, ny, nz] });
+  }
+
+  // Remove duplicate faces (same 3 vertex indices in any order)
+  const faceSet = new Set();
+  const uniqueFaces = [];
+  for (const face of faces) {
+    const key = [...face.v].sort((a, b) => a - b).join(',');
+    if (faceSet.has(key)) continue;
+    faceSet.add(key);
+    uniqueFaces.push(face);
+  }
+
+  // Build edge map to find non-manifold edges
+  const edgeMap = new Map();
+  for (let fi = 0; fi < uniqueFaces.length; fi++) {
+    const f = uniqueFaces[fi];
+    for (let e = 0; e < 3; e++) {
+      const a = f.v[e], b = f.v[(e + 1) % 3];
+      const key = [Math.min(a, b), Math.max(a, b)].join(',');
+      if (!edgeMap.has(key)) edgeMap.set(key, []);
+      edgeMap.get(key).push(fi);
+    }
+  }
+
+  // Remove faces that create non-manifold edges (keep first 2 per edge)
+  const removeFaces = new Set();
+  for (const [, faceIndices] of edgeMap) {
+    if (faceIndices.length > 2) {
+      for (let i = 2; i < faceIndices.length; i++) {
+        removeFaces.add(faceIndices[i]);
+      }
+    }
+  }
+
+  const cleanFaces = uniqueFaces.filter((_, i) => !removeFaces.has(i));
+
+  // Rebuild edge map after removals to find boundary edges (holes)
+  const edgeMap2 = new Map();
+  for (let fi = 0; fi < cleanFaces.length; fi++) {
+    const f = cleanFaces[fi];
+    for (let e = 0; e < 3; e++) {
+      const a = f.v[e], b = f.v[(e + 1) % 3];
+      const key = [Math.min(a, b), Math.max(a, b)].join(',');
+      edgeMap2.set(key, (edgeMap2.get(key) || 0) + 1);
+    }
+  }
+
+  // Find boundary edges (shared by only 1 face = hole)
+  const boundaryEdges = [];
+  for (const [key, count] of edgeMap2) {
+    if (count === 1) {
+      const [a, b] = key.split(',').map(Number);
+      boundaryEdges.push([a, b]);
+    }
+  }
+
+  // Fill holes with fan triangulation
+  // Group boundary edges into loops
+  const newFaces = [];
+  if (boundaryEdges.length > 0) {
+    const edgeAdj = new Map();
+    for (const [a, b] of boundaryEdges) {
+      if (!edgeAdj.has(a)) edgeAdj.set(a, []);
+      if (!edgeAdj.has(b)) edgeAdj.set(b, []);
+      edgeAdj.get(a).push(b);
+      edgeAdj.get(b).push(a);
+    }
+
+    const visited = new Set();
+    for (const startVert of edgeAdj.keys()) {
+      if (visited.has(startVert)) continue;
+      // Walk the loop
+      const loop = [startVert];
+      visited.add(startVert);
+      let current = startVert;
+      while (true) {
+        const neighbors = edgeAdj.get(current) || [];
+        const next = neighbors.find(n => !visited.has(n));
+        if (next === undefined) break;
+        loop.push(next);
+        visited.add(next);
+        current = next;
+      }
+      // Create fan triangles to fill the hole
+      if (loop.length >= 3) {
+        const center = loop[0];
+        for (let i = 1; i < loop.length - 1; i++) {
+          newFaces.push({
+            v: [center, loop[i + 1], loop[i]], // reversed winding to face inward
+            normal: [0, 0, 0] // OpenSCAD recomputes normals
+          });
+        }
+      }
+    }
+  }
+
+  const allFaces = [...cleanFaces, ...newFaces];
+
+  // Write repaired binary STL
+  const outBuf = Buffer.alloc(84 + allFaces.length * 50);
+  buf.copy(outBuf, 0, 0, 80); // preserve header
+  outBuf.writeUInt32LE(allFaces.length, 80);
+  for (let i = 0; i < allFaces.length; i++) {
+    const off = 84 + i * 50;
+    const f = allFaces[i];
+    outBuf.writeFloatLE(f.normal[0], off);
+    outBuf.writeFloatLE(f.normal[1], off + 4);
+    outBuf.writeFloatLE(f.normal[2], off + 8);
+    for (let j = 0; j < 3; j++) {
+      const v = verts[f.v[j]];
+      outBuf.writeFloatLE(v[0], off + 12 + j * 12);
+      outBuf.writeFloatLE(v[1], off + 12 + j * 12 + 4);
+      outBuf.writeFloatLE(v[2], off + 12 + j * 12 + 8);
+    }
+    outBuf.writeUInt16LE(0, off + 48); // attribute byte count
+  }
+  fs.writeFileSync(dstPath, outBuf);
+  return {
+    originalTris: triCount,
+    repairedTris: allFaces.length,
+    removedFaces: removeFaces.size,
+    holesPatched: newFaces.length,
+    boundaryEdges: boundaryEdges.length,
+  };
+}
+
+// ── Helper: get shape width at a given Y position from width profile ──
+function getWidthAtY(bounds, targetY) {
+  if (!bounds.widthProfile || bounds.widthProfile.length === 0) {
+    return bounds.width; // fallback to full bounding box width
+  }
+  // Find the closest band
+  let closest = bounds.widthProfile[0];
+  let closestDist = Math.abs(closest.y - targetY);
+  for (const band of bounds.widthProfile) {
+    const dist = Math.abs(band.y - targetY);
+    if (dist < closestDist) {
+      closest = band;
+      closestDist = dist;
+    }
+  }
+  return closest.width;
+}
+
+// ── SCAD: TEXT CUTTER (standalone, for manifold boolean) ──────
+// Generates the text cutter solid(s) — no import().
+// OpenSCAD renders this to an STL, then manifold-3d subtracts it
+// from the user's blank STL in Node.js.
+// Supports multiple text lines via cfg.lines array.
+function buildTextCutterScad(cfg) {
+  const bounds = readStlBounds(cfg.baseStlPath);
+  if (!bounds) return null;
+
+  const actualThickness = bounds.height;
   const cutDepth = cfg.pocketDepth + 0.2;
+  const lines = cfg.lines || [{ text: cfg.name, font: cfg.font, fontSize: cfg.fontSize }];
+  // Liberation Sans Bold uppercase: actual average is ~0.68 per char,
+  // plus offset(r=pocket_clearance) expands each side, plus spacing.
+  // Use 0.78 as a safe ratio to prevent text overflow.
+  const charWidthRatio = 0.78;
+  const lineBoxes = cfg.lineBoxes || null;
 
-  return `// ============================================================
-// BRCC Dog Tag — BASE with text pocket (STL import mode)
-// Name: ${cfg.name}
-// Base STL: ${path.basename(cfg.baseStlPath)}
-// Blue Ridge Custom Co | blueridgecustomco.us
-// ============================================================
-// PRINT IN: Color A (tag body color)
-// After printing: press text insert (Color B) into pocket.
+  let scad = `// ============================================================
+// BRCC Keychain — TEXT CUTTER (for boolean subtraction)
+// Lines: ${lines.map(l => l.text).join(', ')}
+// STL center: (${bounds.bboxCenterX.toFixed(2)}, ${bounds.bboxCenterY.toFixed(2)})
 // ============================================================
 
-font          = "${cfg.font}";
-pet_name      = "${cfg.name}";
-tag_thickness = ${cfg.thickness};
-pocket_depth  = ${cfg.pocketDepth};
+tag_thickness = ${actualThickness.toFixed(2)};
 pocket_clear  = ${cfg.pocketClearance};
-font_size     = ${fs_size.toFixed(2)};
-text_x        = ${cfg.textXOffset};
-text_y        = ${cfg.textYOffset};
 cut_depth     = ${cutDepth.toFixed(2)};
 
-module text_cutter() {
-  translate([text_x, text_y, tag_thickness - cut_depth])
-  linear_extrude(height = cut_depth + 0.01)
-    offset(r = pocket_clear, $fn = 16)
-      text(pet_name, size = font_size, font = font,
-           halign = "center", valign = "center");
-}
-
-difference() {
-  import("${cfg.baseStlPath.replace(/\\/g, '/')}");
-  text_cutter();
-}
 `;
+
+  lines.forEach((line, i) => {
+    const font = line.font || cfg.font || DEFAULTS.font;
+    const box = lineBoxes?.[i];
+
+    let tx, ty, fs_size;
+
+    if (box && box.w > 0 && box.h > 0) {
+      // ── Per-line box mode: center text in this line's box ──
+      // box.x, box.y are offsets from STL center (Three.js preview coords)
+      tx = bounds.bboxCenterX + (box.x || 0);
+      ty = bounds.bboxCenterY + (box.y || 0);
+
+      // Auto-size font: fit text within box width, then cap to box height
+      // Primary constraint is WIDTH (text must not exceed box width)
+      const maxByWidth = (box.w * 0.85) / (line.text.length * charWidthRatio);
+      const maxByHeight = box.h * 0.65; // text should be ~65% of box height max
+      fs_size = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
+      fs_size = Math.min(fs_size, maxByWidth, maxByHeight);
+
+      console.log(`[DogTag] Line ${i+1} "${line.text}": box=${box.w}x${box.h} at (${box.x},${box.y}) → STL(${tx.toFixed(1)}, ${ty.toFixed(1)}) size=${fs_size.toFixed(1)}mm`);
+    } else {
+      // ── Fallback: auto-center on shape ──
+      const autoW = getWidthAtY(bounds, bounds.bboxCenterY) * 0.75;
+      const autoH = bounds.depth * 0.55;
+      tx = bounds.bboxCenterX;
+      ty = bounds.bboxCenterY + (lines.length > 1 ? (i === 0 ? autoH * 0.2 : -autoH * 0.2) : 0);
+
+      fs_size = line.fontSize || autoFontSize(line.text, DEFAULTS.fontSize);
+      const maxPerLine = autoH / (lines.length * 1.4);
+      if (fs_size > maxPerLine) fs_size = maxPerLine;
+      const estW = line.text.length * charWidthRatio * fs_size;
+      if (estW > autoW * 0.95) fs_size = (autoW * 0.95) / (line.text.length * charWidthRatio);
+      if (i > 0) fs_size = Math.min(fs_size, (lines[0].fontSize || fs_size) * 0.7);
+
+      console.log(`[DogTag] Line ${i+1} "${line.text}": auto pos=(${tx.toFixed(1)}, ${ty.toFixed(1)}) size=${fs_size.toFixed(1)}mm`);
+    }
+
+    line.fontSize = fs_size;
+
+    scad += `// Line ${i + 1}: "${line.text}" (size=${fs_size.toFixed(1)}mm)
+translate([${tx.toFixed(2)}, ${ty.toFixed(2)}, tag_thickness - cut_depth])
+linear_extrude(height = cut_depth + 0.01)
+  offset(r = pocket_clear, $fn = 16)
+    text("${line.text}", size = ${fs_size.toFixed(2)}, font = "${font}",
+         halign = "center", valign = "center");
+
+`;
+  });
+
+  return scad;
 }
 
-// ── SCAD: BASE TAG (v1 fallback — shape code) ────────────────
-function buildBaseTagFromShape(cfg) {
-  const shapeCode = SHAPE_OPENSCAD[cfg.shape];
-  if (!shapeCode) throw new Error(`Unknown shape: "${cfg.shape}"`);
-
-  const fs_size = cfg.fontSize || autoFontSize(cfg.name, DEFAULTS.fontSize);
-  const sd = SHAPE_DEFAULTS[cfg.shape] || {};
-  const needsTab = sd.needsTab || false;
-
-  const tabModule = needsTab ? `
-module ring_tab() {
-  translate([ring_x, ring_y, 0]) cylinder(d=10, h=thickness, $fn=32);
-}` : `module ring_tab() { /* no tab needed */ }`;
-
+// ── SCAD: STANDALONE NAME (text only, no base plate) ─────────
+// Generates extruded text with optional offset to connect letters.
+function buildStandaloneNameScad(cfg) {
   return `// ============================================================
-// BRCC Dog Tag — BASE (${cfg.shape.toUpperCase()}) - Print in COLOR A
-// Pet name: ${cfg.name}
-// Blue Ridge Custom Co | blueridgecustomco.us
-// ============================================================
-// PRINT IN: Color A (tag body color)
-// After printing: press text insert (Color B) into pocket.
+// BRCC Keychain — STANDALONE NAME
+// Text: ${cfg.text}
 // ============================================================
 
-${shapeCode.trim()}
+font           = "${cfg.font || DEFAULTS.font}";
+name_text      = "${cfg.text}";
+font_size      = ${(cfg.fontSize || 10).toFixed(2)};
+thickness      = ${(cfg.thickness || 3.0).toFixed(2)};
+connect_expand = ${(cfg.connectExpand || 0).toFixed(2)};
 
-ring_x = ${sd.ringX || 0}; ring_y = ${sd.ringY || 0};
-text_cx = ${cfg.textXOffset}; text_cy = ${cfg.textYOffset};
-text_sz = ${fs_size.toFixed(2)};
-
-thickness        = ${cfg.thickness};
-pocket_depth     = ${cfg.pocketDepth};
-pocket_clearance = ${cfg.pocketClearance};
-ring_hole_dia    = ${cfg.ringHoleDia};
-font             = "${cfg.font}";
-pet_name         = "${cfg.name}";
-
-${tabModule}
-
-module ring_hole() {
-  translate([ring_x, ring_y, -1])
-    cylinder(d=ring_hole_dia, h=thickness+2, $fn=28);
-}
-
-module text_pocket() {
-  translate([text_cx, text_cy, thickness - pocket_depth])
-  linear_extrude(height=pocket_depth + 0.01)
-    offset(r=pocket_clearance, $fn=16)
-      text(pet_name, size=text_sz, font=font,
-           halign="center", valign="center");
-}
-
-module chamfer_groove() {
-  translate([0, 0, thickness - 0.4])
-  linear_extrude(height=0.41)
-  difference() {
-    offset(r=-1.5) shape_2d();
-    offset(r=-3.0) shape_2d();
-  }
-}
-
-difference() {
-  union() {
-    linear_extrude(height=thickness) shape_2d();
-    ring_tab();
-  }
-  ring_hole();
-  text_pocket();
-}
-chamfer_groove();
+linear_extrude(height = thickness)
+  offset(r = connect_expand, $fn = 16)
+    text(name_text, size = font_size, font = font,
+         halign = "center", valign = "center");
 `;
 }
+
+// ── MANIFOLD BOOLEAN: subtract text cutter STL from blank STL ──
+// Uses manifold-3d (same engine as OpenSCAD 2024+) which handles
+// non-manifold meshes that OpenSCAD 2021 CGAL cannot.
+// Runs in a child process to avoid WASM issues in Electron main process.
+const cp = require('child_process');
+
+async function manifoldSubtract(baseStlPath, cutterStlPath, outputPath) {
+  const workerScript = path.join(__dirname, 'manifold-worker.js');
+
+  // Find a real Node.js binary (not electron.exe)
+  // In Electron, process.execPath is electron.exe which can't run plain scripts
+  let nodeBin = 'node';
+  if (process.versions.electron) {
+    // We're inside Electron — use system node
+    nodeBin = process.platform === 'win32' ? 'node.exe' : 'node';
+  } else {
+    nodeBin = process.execPath; // Already plain Node.js
+  }
+
+  return new Promise((resolve, reject) => {
+    // Set cwd to project root so require('manifold-3d/...') resolves from node_modules
+    const projectRoot = path.join(__dirname, '..');
+    const child = cp.spawn(nodeBin, [workerScript, baseStlPath, cutterStlPath, outputPath], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: projectRoot,
+      timeout: 120000,
+      windowsHide: true,
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    child.on('close', (code) => {
+      if (code !== 0) {
+        let msg = `Worker exited with code ${code}`;
+        try {
+          const parsed = JSON.parse(stderr.trim());
+          if (parsed.error) msg = parsed.error;
+        } catch (_) {
+          if (stderr.trim()) msg = stderr.trim().slice(0, 300);
+        }
+        console.error(`[DogTag] Manifold worker failed: ${msg}`);
+        return reject(new Error(msg));
+      }
+
+      try {
+        const lines = stdout.trim().split('\n');
+        const lastLine = lines[lines.length - 1];
+        const result = JSON.parse(lastLine);
+        if (result.success) {
+          console.log(`[DogTag] Manifold: base vol=${result.baseVol.toFixed(1)}, cutter vol=${result.cutterVol.toFixed(1)} → result vol=${result.volume.toFixed(1)} (${result.triCount} tris)`);
+          resolve(result);
+        } else {
+          console.error(`[DogTag] Manifold worker error: ${result.error}`);
+          reject(new Error(result.error));
+        }
+      } catch (parseErr) {
+        console.error('[DogTag] Failed to parse manifold worker output:', stdout.slice(0, 300));
+        reject(new Error('Manifold worker produced invalid output'));
+      }
+    });
+
+    child.on('error', (err) => {
+      console.error(`[DogTag] Manifold worker spawn error: ${err.message}`);
+      reject(err);
+    });
+  });
+}
+
+// (v1 fallback shape code removed — all shapes are now user-uploaded STL blanks)
 
 // ── SCAD: TEXT INSERT (same for both modes) ──────────────────
-function buildTextInsert(cfg) {
-  const fs_size = cfg.fontSize || autoFontSize(cfg.name, DEFAULTS.fontSize);
+// lineOverride: optional { text, font, fontSize } for multi-line support
+function buildTextInsert(cfg, lineOverride) {
+  const text = lineOverride ? lineOverride.text : cfg.name;
+  const font = lineOverride ? (lineOverride.font || cfg.font) : cfg.font;
+  const fs_size = lineOverride ? (lineOverride.fontSize || autoFontSize(text, DEFAULTS.fontSize)) : (cfg.fontSize || autoFontSize(cfg.name, DEFAULTS.fontSize));
   const slabH   = (cfg.pocketDepth - 0.05).toFixed(2);
   const letterH = cfg.insertHeight.toFixed(2);
 
   return `// ============================================================
-// BRCC Dog Tag — TEXT INSERT - Print in COLOR B
-// Name: ${cfg.name}
-// Blue Ridge Custom Co | blueridgecustomco.us
+// BRCC Keychain — TEXT INSERT - Print in COLOR B
+// Text: ${text}
 // ============================================================
 // PRINT IN: Color B (accent/name color)
 // Print FLAT on bed. No supports needed.
 // Press into pocket of base tag after both are printed.
 // ============================================================
 
-font      = "${cfg.font}";
-pet_name  = "${cfg.name}";
+font      = "${font}";
+pet_name  = "${text}";
 font_size = ${fs_size.toFixed(2)};
 slab_h    = ${slabH};
 letter_h  = ${letterH};
@@ -329,6 +644,8 @@ async function generateDogTag({
     textXOffset:     options.textCx         ?? options.textXOffset     ?? shapeCfg.textXOffset ?? sd.textXOffset ?? 0,
     textYOffset:     options.textCy         ?? options.textYOffset     ?? shapeCfg.textYOffset ?? sd.textYOffset ?? 0,
     baseStlPath:     baseStlPath,
+    textBox:         options.textBox        || shapeCfg.textBox        || null,
+    lineBoxes:       options.lineBoxes      || shapeCfg.lineBoxes      || null,
   };
 
   // Auto-scale font if not set
@@ -336,37 +653,132 @@ async function generateDogTag({
     cfg.fontSize = autoFontSize(cleanName, shapeCfg.fontSize || sd.fontSize || DEFAULTS.fontSize);
   }
 
+  // Clamp font size so text fits within STL (or shape) width
+  // Liberation Sans Bold uppercase averages ~0.62x font_size per char
+  if (baseStlPath && fs.existsSync(baseStlPath)) {
+    const bounds = readStlBounds(baseStlPath);
+    if (bounds) {
+      const charW = 0.62;
+      const estW = cleanName.length * charW * cfg.fontSize;
+      const maxW = bounds.width * 0.80; // 80% of STL width
+      if (estW > maxW) {
+        const clamped = maxW / (cleanName.length * charW);
+        console.log(`[DogTag] Font clamped: ${cfg.fontSize.toFixed(1)}→${clamped.toFixed(1)}mm for "${cleanName}" (${cleanName.length} chars, STL width ${bounds.width.toFixed(0)}mm)`);
+        cfg.fontSize = clamped;
+      }
+    }
+  } else if (sd.width) {
+    const charW = 0.62;
+    const estW = cleanName.length * charW * cfg.fontSize;
+    const maxW = sd.width * 0.80;
+    if (estW > maxW) {
+      cfg.fontSize = maxW / (cleanName.length * charW);
+    }
+  }
+
   fs.mkdirSync(outputDir, { recursive: true });
 
   const baseScadPath   = path.join(outputDir, `tag_base_${safeShape}_${safeFile}.scad`);
   const insertScadPath = path.join(outputDir, `tag_insert_${safeShape}_${safeFile}.scad`);
 
-  // Build SCAD — STL-import mode or fallback
-  let baseContent;
-  if (baseStlPath && fs.existsSync(baseStlPath)) {
-    baseContent = buildBaseTagFromStl(cfg);
-  } else {
-    baseContent = buildBaseTagFromShape(cfg);
+  const isStlImport = baseStlPath && fs.existsSync(baseStlPath);
+  if (!isStlImport) {
+    throw new Error(`No STL blank found for shape "${safeShape}". Upload a base plate STL first.`);
   }
-  const insertContent = buildTextInsert(cfg);
 
-  fs.writeFileSync(baseScadPath, baseContent);
-  fs.writeFileSync(insertScadPath, insertContent);
+  // Build lines array for multi-line support
+  const lines = (options.lines || []).map(l => ({
+    text: (l.text || '').trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, 20),
+    font: l.font || cfg.font,
+    fontSize: l.fontSize || null,
+    textXOffset: l.textXOffset ?? cfg.textXOffset,
+    textYOffset: l.textYOffset ?? cfg.textYOffset,
+  })).filter(l => l.text.length > 0);
+
+  // Fallback: if no lines provided, use single name
+  if (lines.length === 0) {
+    lines.push({ text: cleanName, font: cfg.font, fontSize: cfg.fontSize, textXOffset: cfg.textXOffset, textYOffset: cfg.textYOffset });
+  }
+
+  // Auto-scale font per line if not set
+  lines.forEach(l => {
+    if (!l.fontSize) l.fontSize = autoFontSize(l.text, shapeCfg.fontSize || sd.fontSize || DEFAULTS.fontSize);
+  });
+
+  // Pass lines to cfg for cutter
+  cfg.lines = lines;
+
+  // Build SCAD files — STL-import mode only
+  let cutterScadPath = null;
+  const cutterContent = buildTextCutterScad(cfg);
+  if (cutterContent) {
+    cutterScadPath = path.join(outputDir, `tag_cutter_${safeShape}_${safeFile}.scad`);
+    fs.writeFileSync(cutterScadPath, cutterContent);
+  }
+  const bounds = readStlBounds(baseStlPath);
+  const refContent = `// Reference SCAD — base STL is generated via manifold-3d boolean\n// Blank: ${path.basename(baseStlPath)}\n// Dims: ${bounds ? bounds.width.toFixed(1) + ' x ' + bounds.depth.toFixed(1) + ' x ' + bounds.height.toFixed(1) : 'unknown'} mm\n`;
+  fs.writeFileSync(baseScadPath, refContent);
+
+  // Generate insert SCAD(s) — one per line
+  const insertScadPaths = [];
+  lines.forEach((line, i) => {
+    const suffix = lines.length > 1 ? `_line${i + 1}` : '';
+    const insertPath = path.join(outputDir, `tag_insert${suffix}_${safeShape}_${safeFile}.scad`);
+    const insertContent = buildTextInsert(cfg, line);
+    fs.writeFileSync(insertPath, insertContent);
+    insertScadPaths.push(insertPath);
+  });
 
   return {
-    baseSCAD:  baseScadPath,
-    textSCAD:  insertScadPath,
-    petName:   cleanName,
-    shape:     safeShape,
-    mode:      (baseStlPath && fs.existsSync(baseStlPath)) ? 'stl-import' : 'shape-fallback',
-    config:    cfg,
+    baseSCAD:    baseScadPath,
+    textSCAD:    insertScadPaths[0],       // backward compat: line 1
+    textSCADs:   insertScadPaths,          // all lines
+    cutterSCAD:  cutterScadPath,
+    blankStl:    baseStlPath,
+    petName:     cleanName,
+    shape:       safeShape,
+    mode:        'stl-import',
+    lines,
+    config:      cfg,
     printNotes: {
-      baseColor:   'Color A — tag body',
-      insertColor: 'Color B — name accent',
+      baseColor:   'Color A — keychain body',
+      insertColor: 'Color B — text accent',
       layerHeight: '0.15mm for crisp text edges',
       supports:    'None — print both flat',
       assembly:    'Press insert into pocket. Optional CA glue.',
     },
+  };
+}
+
+// ── STANDALONE NAME GENERATOR ────────────────────────────────
+async function generateStandaloneName({
+  text,
+  font = DEFAULTS.font,
+  fontSize = 10,
+  thickness = 3.0,
+  connectExpand = 0.3,
+  outputDir = '.',
+}) {
+  if (!text || text.trim().length === 0) throw new Error('Text is required');
+
+  const cleanText = text.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '').slice(0, 20);
+  if (cleanText.length === 0) throw new Error('Text must contain alphanumeric characters');
+  const safeFile = cleanText.replace(/\s+/g, '_');
+
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  const scadPath = path.join(outputDir, `standalone_${safeFile}.scad`);
+  const scadContent = buildStandaloneNameScad({ text: cleanText, font, fontSize, thickness, connectExpand });
+  fs.writeFileSync(scadPath, scadContent);
+
+  return {
+    scadPath,
+    text: cleanText,
+    font,
+    fontSize,
+    thickness,
+    connectExpand,
+    mode: 'standalone',
   };
 }
 
@@ -397,11 +809,15 @@ function getAllShapeGeometry() {
 
 module.exports = {
   generateDogTag,
+  generateStandaloneName,
+  manifoldSubtract,
   autoFontSize,
+  readStlBounds,
   loadShapesConfig,
   saveShapesConfig,
   getShapeGeometry,
   getAllShapeGeometry,
   DEFAULTS,
   SHAPE_DEFAULTS,
+  FONT_LIST,
 };
