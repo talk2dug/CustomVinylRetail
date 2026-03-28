@@ -3445,6 +3445,10 @@ function initCustomArtTables() {
   ensureColumn('stl_catalog', 'tags', 'TEXT DEFAULT NULL');       // JSON array e.g. ["multiboard-remix"]
   ensureColumn('stl_catalog', 'mount_config', 'TEXT DEFAULT NULL'); // JSON: { face, gridSize, transform, mountStlId }
 
+  // Google Drive integration
+  ensureColumn('stl_catalog', 'source', "TEXT DEFAULT 'local'");    // 'local' or 'gdrive'
+  ensureColumn('stl_catalog', 'gdrive_path', 'TEXT DEFAULT NULL');   // relative path within gdrive STL folder
+
   // Thangs Parts Index (sync Multiboard parts from Thangs API)
   db.exec(`
     CREATE TABLE IF NOT EXISTS thangs_parts_index (
@@ -6619,12 +6623,12 @@ function createStlCatalogItem(item) {
       default_quality, default_strength, default_material, default_texture, default_supports,
       default_surface, default_speed,
       notes, file_size, triangle_count, dim_x, dim_y, dim_z, est_weight_g, est_time_min,
-      description, source_url)
+      description, source_url, source, gdrive_path)
     VALUES (@name, @category, @folder, @stl_path, @thumbnail_path,
       @default_quality, @default_strength, @default_material, @default_texture, @default_supports,
       @default_surface, @default_speed,
       @notes, @file_size, @triangle_count, @dim_x, @dim_y, @dim_z, @est_weight_g, @est_time_min,
-      @description, @source_url)
+      @description, @source_url, @source, @gdrive_path)
   `);
   const info = ins.run({
     name: item.name || 'Unnamed',
@@ -6648,7 +6652,9 @@ function createStlCatalogItem(item) {
     est_weight_g: item.est_weight_g || null,
     est_time_min: item.est_time_min || null,
     description: item.description || null,
-    source_url: item.source_url || null
+    source_url: item.source_url || null,
+    source: item.source || 'local',
+    gdrive_path: item.gdrive_path || null
   });
 
   // Auto-extract Multiboard metadata when category is 'Multiboard'
@@ -6661,6 +6667,10 @@ function createStlCatalogItem(item) {
 
 function getStlCatalogItem(id) {
   return db.prepare('SELECT * FROM stl_catalog WHERE id = ?').get(id) || null;
+}
+
+function getStlCatalogItemByGdrivePath(gdrivePath) {
+  return db.prepare('SELECT * FROM stl_catalog WHERE gdrive_path = ? AND source = ?').get(gdrivePath, 'gdrive') || null;
 }
 
 function listStlCatalog({ category, search, folder } = {}) {
@@ -8281,6 +8291,7 @@ module.exports = {
   // STL Catalog (3D Slicer)
   createStlCatalogItem,
   getStlCatalogItem,
+  getStlCatalogItemByGdrivePath,
   listStlCatalog,
   listStlCatalogCategories,
   listStlCatalogCategoriesWithCounts,

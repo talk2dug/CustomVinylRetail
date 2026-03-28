@@ -1394,17 +1394,24 @@ function ensureUniqueBase(previewsDir, base, ext) {
 }
 
 function regenerateCatalog() {
+  // Save backup before regen so gdrive categories can be preserved
+  const catalogPath = path.join(WEB_DIR, 'catalog.json');
+  try { if (fs.existsSync(catalogPath)) fs.copyFileSync(catalogPath, catalogPath + '.bak'); } catch (_) {}
+
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
       [path.join(APP_ROOT, 'scripts', 'generate-catalog.js')],
-      { env: { ...process.env, LIBRARY_ROOT } },
+      { env: { ...process.env, LIBRARY_ROOT }, timeout: 60000 },
       (error) => {
         if (error) {
           console.error('Catalog regeneration failed:', error);
           reject(error);
           return;
         }
+        // Invalidate catalog cache
+        catalogCache = null;
+        catalogCacheTime = 0;
         resolve();
       }
     );
@@ -8160,6 +8167,85 @@ Keep it concise and actionable.`;
       console.error('[Sticker Sheet Catalog Error]', err);
       sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
     });
+    return;
+  }
+
+  // Serve Google Drive sticker catalog image
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/sticker-catalog/gdrive-image/')) {
+    (async () => {
+      try {
+        const relativePath = decodeURIComponent(parsedUrl.pathname.replace('/api/sticker-catalog/gdrive-image/', ''));
+        if (!relativePath || relativePath.includes('..') || path.isAbsolute(relativePath)) {
+          res.statusCode = 400;
+          res.end('Invalid path');
+          return;
+        }
+        const fullPath = path.join(GDRIVE_GRAPHICS_DIR, relativePath);
+        const resolved = path.resolve(fullPath);
+        if (!resolved.startsWith(path.resolve(GDRIVE_GRAPHICS_DIR))) {
+          res.statusCode = 400;
+          res.end('Invalid path');
+          return;
+        }
+        if (!fs.existsSync(fullPath)) {
+          res.statusCode = 404;
+          res.end('Image not found on Google Drive');
+          return;
+        }
+        const ext = path.extname(fullPath).toLowerCase();
+        const mimeTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.bmp': 'image/bmp' };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        const fileBuffer = await fs.promises.readFile(fullPath);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.end(fileBuffer);
+      } catch (err) {
+        console.error('[GDrive Image Error]', err);
+        res.statusCode = 500;
+        res.end('Error serving image');
+      }
+    })();
+    return;
+  }
+
+  // Google Drive Graphics sync — runs generate-catalog.js on the server
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/gdrive/sync') {
+    if (!requireInternalKey(req, res)) return;
+    const scriptPath = path.join(APP_ROOT, 'scripts', 'generate-catalog.js');
+    // Save backup so gdrive categories are preserved
+    const catPath = path.join(WEB_DIR, 'catalog.json');
+    try { if (fs.existsSync(catPath)) fs.copyFileSync(catPath, catPath + '.bak'); } catch (_) {}
+
+    console.log('[Catalog Regen] Starting generate-catalog.js --include-gdrive ...');
+    require('child_process').execFile('node', [scriptPath, '--include-gdrive'], {
+      cwd: APP_ROOT,
+      timeout: 600000,
+      env: { ...process.env, LIBRARY_ROOT }
+    }, (err, stdout, stderr) => {
+      if (stdout) stdout.split('\n').filter(Boolean).forEach(l => console.log('[Catalog Regen]', l));
+      if (stderr) stderr.split('\n').filter(Boolean).forEach(l => console.error('[Catalog Regen]', l));
+      if (err) {
+        console.error('[Catalog Regen] Failed:', err.message);
+        sendJson(res, 500, { success: false, error: 'Catalog generation failed: ' + err.message });
+        return;
+      }
+      // Invalidate catalog cache so next fetch picks up the new catalog.json
+      catalogCache = null;
+      catalogCacheTime = 0;
+      sendJson(res, 200, { success: true, message: 'Catalog regenerated', output: stdout });
+    });
+    return;
+  }
+
+  // Google Drive Graphics status
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sticker-sheets/gdrive/status') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const mounted = fs.existsSync(GDRIVE_GRAPHICS_DIR);
+      sendJson(res, 200, { mounted });
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+    }
     return;
   }
 
@@ -21642,6 +21728,9 @@ async function handleApplyMetalPrintFilter(req, res) {
 const STICKER_CATALOG_ROOT = process.env.STICKER_CATALOG_PATH || LIBRARY_ROOT;
 const STICKER_OUTPUT_DIR = process.env.STICKER_OUTPUT_PATH || path.join(LIBRARY_ROOT, 'sticker-sheets');
 
+// Google Drive Graphics (served via /api/sticker-catalog/gdrive-image/)
+const GDRIVE_GRAPHICS_DIR = '/mnt/gdrive/Side Hustle Library/Graphics';
+
 /**
  * List generated sticker sheet batches (sorted newest first)
  */
@@ -21936,6 +22025,7 @@ async function loadCatalogJson() {
   return null;
 }
 
+
 async function handleStickerSheetCategories(req, res) {
   try {
     const catalog = await loadCatalogJson();
@@ -21984,7 +22074,11 @@ async function handleStickerSheetCatalog(req, res, parsedUrl) {
         // URL: https://blueridgecustomco.com/library/Category/uploads/previews/file.png
         // Local: /home/ubuntu/vinylApp/web/library/Category/uploads/previews/file.png
         let localPath = design.image;
-        if (design.image && design.image.startsWith('http')) {
+        if (design.gdrive && design.image && design.image.startsWith('/api/sticker-catalog/gdrive-image/')) {
+          // Google Drive item — resolve to actual mount path for sticker sheet generation
+          const relPath = decodeURIComponent(design.image.replace('/api/sticker-catalog/gdrive-image/', ''));
+          localPath = path.join(GDRIVE_GRAPHICS_DIR, relPath);
+        } else if (design.image && design.image.startsWith('http')) {
           try {
             const imageUrl = new URL(design.image);
             // Extract path after domain (e.g., /library/Category/...)

@@ -828,32 +828,37 @@ async function slicerUploadStl() {
       return;
     }
 
-    // ZIP flow: extract and upload each model inside
-    if (ext === 'zip') {
-      slicerShowProgress('Extracting ZIP archive...', 'Finding 3D models');
+    // ZIP/RAR flow: extract and upload each model inside
+    if (ext === 'zip' || ext === 'rar') {
+      const archiveType = ext.toUpperCase();
+      slicerShowProgress(`Extracting ${archiveType} archive...`, 'Finding 3D models');
       let result;
       try {
-        result = await printStation.slicer.extractZip(filePath);
+        result = ext === 'rar'
+          ? await printStation.slicer.extractRar(filePath)
+          : await printStation.slicer.extractZip(filePath);
       } catch (err) {
         slicerHideProgress();
-        alert('Failed to extract ZIP: ' + err.message);
+        alert(`Failed to extract ${archiveType}: ` + err.message);
         return;
       }
       slicerHideProgress();
 
       if (!result.files.length) {
-        showToast('No 3D model files found in ZIP.', 'warning', 4000);
+        showToast(`No 3D model files found in ${archiveType}.`, 'warning', 4000);
         try { await printStation.slicer.cleanupTemp(result.tempDir); } catch (_) {}
         return;
       }
 
-      const category = document.getElementById('slicerCategoryFilter')?.value || '';
+      // Use archive filename as category
+      const archiveName = filePath.split(/[\\/]/).pop();
+      const archiveCategory = archiveName.replace(/\.(zip|rar)$/i, '').replace(/[_-]/g, ' ');
       const uploadFiles = result.files.map(f => ({
         filePath: f.filePath,
         name: f.name,
-        category,
-        source: 'zip',
-        zipName: filePath.split(/[\\/]/).pop()
+        category: archiveCategory,
+        source: ext,
+        zipName: archiveName
       }));
       slicerRunBulkUploadBackground(uploadFiles, result.tempDir);
       return;
@@ -965,7 +970,7 @@ async function slicerRunBulkUploadBackground(files, tempDir = null) {
     const pct = Math.round((uploaded / total) * 100);
     if (titleEl) titleEl.textContent = `Uploading ${uploaded} / ${total} files`;
     if (pctEl) pctEl.textContent = pct + '%';
-    if (fileEl) fileEl.textContent = file.name + (file.source === 'zip' ? ` (${file.zipName})` : '');
+    if (fileEl) fileEl.textContent = file.name + ((file.source === 'zip' || file.source === 'rar') ? ` (${file.zipName})` : '');
     if (barEl) barEl.style.width = pct + '%';
 
     try {
@@ -3541,7 +3546,7 @@ function bpWireEvents(bedDims) {
       if (!pp2 || pp2.selectedMeshIndex < 0) return;
       const t = slicerState.plateTransforms[pp2.meshes[pp2.selectedMeshIndex].stlId];
       const cur = (t && t.scale) ? t.scale : 1;
-      bpScaleSelected(cur + 0.1);
+      bpScaleSelected(cur + 0.01);
     });
   }
   const scaleDown = document.getElementById('bpScaleDown');
@@ -3551,7 +3556,7 @@ function bpWireEvents(bedDims) {
       if (!pp2 || pp2.selectedMeshIndex < 0) return;
       const t = slicerState.plateTransforms[pp2.meshes[pp2.selectedMeshIndex].stlId];
       const cur = (t && t.scale) ? t.scale : 1;
-      bpScaleSelected(cur - 0.1);
+      bpScaleSelected(cur - 0.01);
     });
   }
 
@@ -3570,6 +3575,10 @@ function bpWireEvents(bedDims) {
   // Reset all transforms
   const resetAllBtn = document.getElementById('bpResetAll');
   if (resetAllBtn) resetAllBtn.addEventListener('click', bpResetAllTransforms);
+
+  // Bake transform to file
+  const bpBakeBtn = document.getElementById('bpBakeTransform');
+  if (bpBakeBtn) bpBakeBtn.addEventListener('click', bpBakeTransformToFile);
 
   // --- Keyboard shortcuts ---
   function onKeyDown(e) {
@@ -3721,9 +3730,11 @@ async function slicerShowBuildPlatePreview(itemsOverride) {
               </div>
               <button id="bpScaleUp" style="width:36px;height:36px;border:1px solid rgba(255,255,255,0.2);border-radius:6px;background:rgba(56,189,248,0.1);color:#fff;cursor:pointer;font-size:1.1rem;font-weight:700;">+</button>
             </div>
-            <input id="bpScaleSlider" type="range" min="1" max="10000" value="100" step="5"
+            <input id="bpScaleSlider" type="range" min="1" max="10000" value="100" step="1"
               style="width:100%;margin-top:6px;accent-color:var(--accent);">
             <div id="bpScaleDims" class="muted" style="font-size:0.75rem;text-align:center;margin-top:4px;color:rgba(255,255,255,0.5);"></div>
+            <button id="bpBakeTransform" style="width:100%;margin-top:8px;padding:8px;border:1px solid rgba(251,146,60,0.5);border-radius:6px;background:rgba(251,146,60,0.1);color:#fb923c;cursor:pointer;font-size:0.85rem;font-weight:600;">Bake to File (Permanent)</button>
+            <div style="font-size:0.65rem;color:rgba(255,255,255,0.4);text-align:center;margin-top:3px;">Rewrites STL at current scale — reduces file size</div>
           </div>
           <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px;">
             <button id="bpDropToPlate" style="width:100%;padding:8px;border:1px solid rgba(34,211,238,0.4);border-radius:6px;background:rgba(34,211,238,0.1);color:#22d3ee;cursor:pointer;font-size:0.85rem;font-weight:600;">⬇ Drop to Plate</button>
@@ -5073,6 +5084,72 @@ async function slicerSaveDefaultOrientation() {
     console.error('[Slicer] Save default orientation failed:', err);
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Default'; }
     alert('Failed to save default orientation: ' + err.message);
+  }
+}
+
+/**
+ * Bake transform from the build plate — permanently rewrites the STL file at current scale/rotation.
+ */
+async function bpBakeTransformToFile() {
+  const pp = slicerState.platePreview;
+  if (!pp || pp.selectedMeshIndex < 0) { alert('Select a model on the plate first.'); return; }
+
+  const entry = pp.meshes[pp.selectedMeshIndex];
+  const stlId = entry.stlId;
+  const t = slicerState.plateTransforms[stlId];
+  if (!t || ((t.scale === 1 || !t.scale) && !t.rx && !t.ry && !t.rz)) {
+    alert('Nothing to bake — scale is 100% and no rotation is set.');
+    return;
+  }
+
+  const items = slicerState.catalogItems || [];
+  const item = items.find(i => i.id === stlId);
+  const pct = Math.round((t.scale || 1) * 100);
+  const sizeMB = (item && item.file_size) ? (item.file_size / 1024 / 1024).toFixed(1) : '?';
+  const msg = `This will permanently rewrite the STL file at ${pct}% scale.\n\n` +
+    `Current file size: ${sizeMB} MB\n` +
+    `This CANNOT be undone — the original file will be replaced.\n\n` +
+    `Continue?`;
+  if (!confirm(msg)) return;
+
+  const btn = document.getElementById('bpBakeTransform');
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = 'Baking…'; }
+
+    const transform = { rx: t.rx || 0, ry: t.ry || 0, rz: t.rz || 0, scale: t.scale || 1 };
+    const result = await printStation.slicer.bakeTransform(stlId, transform);
+
+    if (result.error) throw new Error(result.error);
+
+    // Reset transform — the file is now baked at this scale
+    delete slicerState.plateTransforms[stlId];
+    if (item) {
+      item.default_transform = null;
+      if (result.item) {
+        item.dim_x = result.item.dim_x;
+        item.dim_y = result.item.dim_y;
+        item.dim_z = result.item.dim_z;
+        item.file_size = result.item.file_size;
+      }
+    }
+
+    const savedMB = ((result.savedBytes || 0) / 1024 / 1024).toFixed(1);
+    const newMB = ((result.newSize || 0) / 1024 / 1024).toFixed(1);
+
+    if (btn) {
+      btn.textContent = `Baked! ${newMB}MB (saved ${savedMB}MB)`;
+      setTimeout(() => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Bake to File (Permanent)'; }
+      }, 3000);
+    }
+
+    // Reload plate with new baked geometry
+    bpUpdateScaleUI(1, entry);
+    await bpLoadAllModels(slicerGetBedDimensions());
+  } catch (err) {
+    console.error('[Slicer] Bake transform (plate) failed:', err);
+    if (btn) { btn.disabled = false; btn.textContent = 'Bake to File (Permanent)'; }
+    alert('Failed to bake transform: ' + err.message);
   }
 }
 

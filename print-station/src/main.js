@@ -1457,6 +1457,30 @@ async function uploadArtwork(params) {
     return results.length === 1 ? results[0] : { success: true, uploaded: results.length };
   }
 
+  // No preview + no SVG but has EPS/AI/PDF — try to generate preview via sharp
+  if (!previewPath && sourcePaths.length > 0) {
+    const convertibleExts = ['.eps', '.ai', '.pdf'];
+    const convertible = sourcePaths.filter(p => convertibleExts.includes(path.extname(p).toLowerCase()));
+    if (convertible.length > 0) {
+      const bestSource = convertible[0];
+      const tempDir = path.join(app.getPath('temp'), 'print-station-assets');
+      try { fs.mkdirSync(tempDir, { recursive: true }); } catch (_) {}
+      const generatedPng = path.join(tempDir, `source-preview-${Date.now()}.png`);
+      try {
+        await sharp(bestSource, { density: 300 }).resize(2000, 2000, { fit: 'inside' }).png().toFile(generatedPng);
+        return uploadSingleArtwork({
+          previewPath: generatedPng,
+          sourcePaths,
+          categoryMode, existingCategory, newCategoryName, displayName, apparel, apparelCategory
+        });
+      } catch (sharpErr) {
+        console.warn(`[Artwork] sharp failed to convert ${path.extname(bestSource)} to PNG: ${sharpErr.message} — skipping this artwork`);
+        // Don't throw — just skip silently for bulk imports
+        return { success: false, error: `Cannot generate preview from ${path.extname(bestSource)} file` };
+      }
+    }
+  }
+
   if (!previewPath) {
     throw new Error('Select a preview image or include SVG source files.');
   }
@@ -4864,6 +4888,158 @@ Return ONLY valid JSON, nothing else:
       return { canceled: true, filePaths: [] };
     }
     return { canceled: false, filePaths: result.filePaths };
+  });
+
+  // Custom Art - Smart folder scan: groups files by base name, associates previews with sources
+  // Returns { artworks: [{ name, category, previewPath, sourcePaths }], tempDirs }
+  ipcMain.handle('custom-art:scan-folder', async (_event, directory) => {
+    if (!directory) throw new Error('No directory specified');
+    const unzipper = require('unzipper');
+    const os = require('os');
+    let createExtractorFromFile;
+    try { createExtractorFromFile = require('node-unrar-js').createExtractorFromFile; } catch (_) {}
+
+    const rootDir = directory;
+    const previewExts = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+    const sourceExts = new Set(['.svg', '.ai', '.eps', '.pdf']);
+    const allExts = new Set([...previewExts, ...sourceExts]);
+
+    const tempDirs = [];
+    const rawFiles = []; // { filePath, baseName, ext, category }
+
+    // Determine category: top-level subfolder name under rootDir
+    function getCategory(filePath) {
+      const rel = path.relative(rootDir, filePath);
+      const parts = rel.split(/[\\/]/);
+      if (parts.length <= 1) return path.basename(rootDir).replace(/[_-]/g, ' ');
+      return parts[0].replace(/[_-]/g, ' ');
+    }
+
+    // Recursively collect all artwork files
+    async function walkDir(dir) {
+      let entries;
+      try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (_) { return; }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name.startsWith('.') || entry.name === '__MACOSX') continue;
+          await walkDir(full);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (allExts.has(ext)) {
+            rawFiles.push({
+              filePath: full,
+              baseName: path.basename(entry.name, ext).toLowerCase().trim(),
+              ext,
+              category: getCategory(full)
+            });
+          }
+        }
+      }
+    }
+
+    // Extract files from ZIP
+    async function processZip(zipPath, category) {
+      try {
+        const zipDir = await unzipper.Open.file(zipPath);
+        const tempDir = path.join(os.tmpdir(), `artwork-zip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        tempDirs.push(tempDir);
+        for (const entry of zipDir.files) {
+          if (entry.type === 'Directory') continue;
+          const zExt = path.extname(entry.path).toLowerCase();
+          if (!allExts.has(zExt)) continue;
+          if (entry.path.includes('__MACOSX') || entry.path.includes('/.')) continue;
+          const filename = path.basename(entry.path);
+          let destPath = path.join(tempDir, filename);
+          let counter = 1;
+          while (fs.existsSync(destPath)) {
+            destPath = path.join(tempDir, `${path.basename(filename, zExt)}_${counter}${zExt}`);
+            counter++;
+          }
+          await new Promise((resolve, reject) => {
+            entry.stream()
+              .pipe(fs.createWriteStream(destPath))
+              .on('finish', resolve)
+              .on('error', reject);
+          });
+          rawFiles.push({ filePath: destPath, baseName: path.basename(filename, zExt).toLowerCase().trim(), ext: zExt, category });
+        }
+      } catch (err) { console.warn(`[CustomArt] ZIP extract fail (${path.basename(zipPath)}): ${err.message}`); }
+    }
+
+    // Extract files from RAR
+    async function processRar(rarPath, category) {
+      if (!createExtractorFromFile) return;
+      try {
+        const tempDir = path.join(os.tmpdir(), `artwork-rar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+        fs.mkdirSync(tempDir, { recursive: true });
+        tempDirs.push(tempDir);
+        const extractor = await createExtractorFromFile({ filepath: rarPath, targetPath: tempDir });
+        const { files: rarFiles } = extractor.extract();
+        for (const rFile of [...rarFiles]) {
+          if (rFile.fileHeader.flags.directory) continue;
+          const rPath = rFile.fileHeader.name;
+          const rExt = path.extname(rPath).toLowerCase();
+          if (!allExts.has(rExt)) continue;
+          if (rPath.includes('__MACOSX') || rPath.includes('/.')) continue;
+          const extractedPath = path.join(tempDir, rPath);
+          if (!fs.existsSync(extractedPath)) continue;
+          const destName = path.basename(rPath);
+          let destPath = path.join(tempDir, destName);
+          if (destPath !== extractedPath) {
+            let counter = 1;
+            while (fs.existsSync(destPath)) {
+              destPath = path.join(tempDir, `${path.basename(destName, rExt)}_${counter}${rExt}`);
+              counter++;
+            }
+            fs.renameSync(extractedPath, destPath);
+          }
+          rawFiles.push({ filePath: destPath, baseName: path.basename(destName, rExt).toLowerCase().trim(), ext: rExt, category });
+        }
+      } catch (err) { console.warn(`[CustomArt] RAR extract fail: ${err.message}`); }
+    }
+
+    // 1. Walk the directory tree
+    await walkDir(rootDir);
+
+    // 2. Process archives at any level
+    async function findArchives(dir) {
+      let entries;
+      try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (_) { return; }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!entry.name.startsWith('.') && entry.name !== '__MACOSX') await findArchives(full);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          const category = getCategory(full);
+          if (ext === '.zip') await processZip(full, category);
+          else if (ext === '.rar') await processRar(full, category);
+        }
+      }
+    }
+    await findArchives(rootDir);
+
+    // 3. Group by category + baseName
+    const groupMap = new Map();
+    for (const file of rawFiles) {
+      const key = `${file.category}||${file.baseName}`;
+      if (!groupMap.has(key)) {
+        groupMap.set(key, { name: file.baseName.replace(/[_-]/g, ' '), category: file.category, previewPath: null, sourcePaths: [] });
+      }
+      const group = groupMap.get(key);
+      if (previewExts.has(file.ext)) {
+        if (!group.previewPath || file.ext === '.png') group.previewPath = file.filePath;
+      }
+      if (sourceExts.has(file.ext)) {
+        group.sourcePaths.push(file.filePath);
+      }
+    }
+
+    const artworks = [...groupMap.values()];
+    console.log(`[CustomArt] Folder scan: ${artworks.length} artworks from ${directory} (${tempDirs.length} temp dirs)`);
+    return { artworks, tempDirs };
   });
 
   // Custom Art - Extract ZIP file and return image paths

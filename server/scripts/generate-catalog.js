@@ -244,7 +244,80 @@ async function buildCatalogFromRoot({ libraryRoot, outputFile, webSubPath, catal
   return { categories: categories.length, designs: totalDesigns };
 }
 
+// Google Drive Graphics directory
+const GDRIVE_GRAPHICS_DIR = '/mnt/gdrive/Side Hustle Library/Graphics';
+
+/**
+ * Build catalog entries from Google Drive Graphics folder.
+ * Returns categories array compatible with catalog.json format.
+ * Images are served via /api/sticker-catalog/gdrive-image/ endpoint.
+ */
+function buildGdriveGraphicsCategories() {
+  if (!fs.existsSync(GDRIVE_GRAPHICS_DIR)) {
+    console.log('Google Drive Graphics: Mount not available, skipping');
+    return [];
+  }
+
+  const categories = [];
+  const topEntries = fs.readdirSync(GDRIVE_GRAPHICS_DIR, { withFileTypes: true });
+  let totalDesigns = 0;
+
+  for (const entry of topEntries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith('.')) continue;
+
+    const catName = entry.name;
+    const catPath = path.join(GDRIVE_GRAPHICS_DIR, catName);
+    console.log(`Google Drive Graphics: Scanning ${catName}...`);
+
+    const files = collectFilesRecursive(catPath);
+    const designsByKey = new Map();
+
+    for (const filePath of files) {
+      if (isJunkFile(filePath)) continue;
+      const ext = path.extname(filePath).toLowerCase();
+      if (!IMAGE_EXTENSIONS.has(ext)) continue;
+
+      const baseName = formatDisplayName(path.basename(filePath, ext));
+      const key = slugify(baseName) || slugify(path.basename(filePath));
+      const relativeToGdrive = path.relative(GDRIVE_GRAPHICS_DIR, filePath).split(path.sep).join('/');
+
+      if (!designsByKey.has(key)) {
+        designsByKey.set(key, {
+          id: key,
+          name: baseName,
+          image: `/api/sticker-catalog/gdrive-image/${encodeURIComponent(relativeToGdrive)}`,
+          sources: {},
+          autoDescription: ''
+        });
+      }
+
+      // Attach source files (SVG, AI, EPS, etc.)
+      if (SOURCE_EXTENSION_MAP.has(ext)) {
+        const design = designsByKey.get(key);
+        if (design) {
+          design.sources[SOURCE_EXTENSION_MAP.get(ext)] = `/api/sticker-catalog/gdrive-image/${encodeURIComponent(relativeToGdrive)}`;
+        }
+      }
+    }
+
+    if (designsByKey.size > 0) {
+      categories.push({
+        name: `GDrive: ${formatDisplayName(catName)}`,
+        slug: `gdrive-${slugify(catName)}`,
+        designs: Array.from(designsByKey.values()).sort((a, b) => a.name.localeCompare(b.name))
+      });
+      totalDesigns += designsByKey.size;
+      console.log(`Google Drive Graphics:   ${catName}: ${designsByKey.size} designs`);
+    }
+  }
+
+  console.log(`Google Drive Graphics: ${totalDesigns} designs across ${categories.length} categories`);
+  return categories;
+}
+
 async function buildAllCatalogs() {
+  const includeGdrive = process.argv.includes('--include-gdrive');
   console.log('=== Building Catalogs ===\n');
 
   // Build Apparel Ready catalog (main library)
@@ -254,6 +327,43 @@ async function buildAllCatalogs() {
     webSubPath: 'library',
     catalogName: 'Apparel Ready'
   });
+
+  // Preserve existing Google Drive categories from the old catalog
+  // (only re-scan Google Drive when explicitly requested with --include-gdrive)
+  try {
+    const catalogData = JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf8'));
+    if (includeGdrive) {
+      console.log('\nGoogle Drive scan requested (--include-gdrive)...');
+      const gdriveCategories = buildGdriveGraphicsCategories();
+      // Remove old gdrive categories, add fresh ones
+      catalogData.categories = (catalogData.categories || []).filter(c => !c.slug || !c.slug.startsWith('gdrive-'));
+      if (gdriveCategories.length > 0) {
+        catalogData.categories.push(...gdriveCategories);
+        const gdriveDesigns = gdriveCategories.reduce((sum, c) => sum + c.designs.length, 0);
+        console.log(`Apparel Ready: Added ${gdriveCategories.length} Google Drive categories (${gdriveDesigns} designs)`);
+      }
+      fs.writeFileSync(OUTPUT_FILE, JSON.stringify(catalogData, null, 2), 'utf8');
+    } else {
+      // Preserve any existing gdrive categories from the previous catalog
+      let existingGdrive = [];
+      try {
+        // Read the catalog we just wrote — it won't have gdrive categories
+        // Try to recover them from a backup or the previously loaded catalog
+        const backupPath = OUTPUT_FILE + '.bak';
+        if (fs.existsSync(backupPath)) {
+          const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
+          existingGdrive = (backup.categories || []).filter(c => c.slug && c.slug.startsWith('gdrive-'));
+        }
+      } catch (_) {}
+      if (existingGdrive.length > 0) {
+        catalogData.categories.push(...existingGdrive);
+        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(catalogData, null, 2), 'utf8');
+        console.log(`Apparel Ready: Preserved ${existingGdrive.length} existing Google Drive categories`);
+      }
+    }
+  } catch (err) {
+    console.error('Google Drive categories handling failed:', err.message);
+  }
 
   // Build Decal Creator Icons catalog
   const decalResult = await buildCatalogFromRoot({

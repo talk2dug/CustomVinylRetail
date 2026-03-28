@@ -494,6 +494,80 @@ async function handleSlicerRoute(pathname, req, res, db) {
     return true;
   }
 
+  // POST /api/slicer/catalog/:id/bake-transform — permanently bake transform into STL file
+  const bakeMatch = route.match(/^\/catalog\/(\d+)\/bake-transform$/);
+  if (req.method === 'POST' && bakeMatch) {
+    try {
+      const id = parseInt(bakeMatch[1], 10);
+      const item = db.getStlCatalogItem(id);
+      if (!item) { sendError(res, 404, 'STL catalog item not found'); return true; }
+
+      const body = await parseBody(req);
+      const transform = body.transform;
+      if (!transform || (!transform.scale || transform.scale === 1) && !transform.rx && !transform.ry && !transform.rz) {
+        sendError(res, 400, 'No meaningful transform to bake (scale=1, no rotation)');
+        return true;
+      }
+
+      const stlPath = path.isAbsolute(item.stl_path.trim())
+        ? item.stl_path.trim()
+        : path.join(slicer.STL_MODELS, item.stl_path.trim());
+
+      if (!fs.existsSync(stlPath)) {
+        sendError(res, 404, `STL file not found: ${stlPath}`);
+        return true;
+      }
+
+      const originalSize = fs.statSync(stlPath).size;
+
+      const forcedTransform = { ...transform, _forceBake: true, posX: 0, posZ: 0 };
+      const bakedPath = slicer.bakeTransformToSTL(stlPath, forcedTransform, id);
+      if (!bakedPath) {
+        sendError(res, 500, 'Failed to bake transform — file may be ASCII STL (only binary supported)');
+        return true;
+      }
+
+      const bakedSize = fs.statSync(bakedPath).size;
+      fs.copyFileSync(bakedPath, stlPath);
+      fs.unlinkSync(bakedPath);
+
+      const newDims = getStlDimensions(stlPath);
+
+      db.updateStlCatalogItem(id, {
+        default_transform: null,
+        dim_x: newDims.x,
+        dim_y: newDims.y,
+        dim_z: newDims.z,
+        file_size: bakedSize
+      });
+
+      // Invalidate cached g-code for this item
+      try {
+        const cached = db.db.prepare('SELECT gcode_path FROM gcode_cache WHERE stl_catalog_id = ?').all(id);
+        for (const row of cached) {
+          try { if (row.gcode_path && fs.existsSync(row.gcode_path)) fs.unlinkSync(row.gcode_path); } catch (_) {}
+        }
+        db.db.prepare('DELETE FROM gcode_cache WHERE stl_catalog_id = ?').run(id);
+      } catch (_) {}
+
+      const savedMB = ((originalSize - bakedSize) / 1024 / 1024).toFixed(1);
+      console.log(`[Slicer] Bake transform: ${item.name || item.stl_path} — ${(originalSize / 1024 / 1024).toFixed(1)}MB → ${(bakedSize / 1024 / 1024).toFixed(1)}MB (saved ${savedMB}MB)`);
+
+      sendJson(res, 200, {
+        success: true,
+        originalSize,
+        newSize: bakedSize,
+        savedBytes: originalSize - bakedSize,
+        dimensions: newDims,
+        item: db.getStlCatalogItem(id)
+      });
+    } catch (err) {
+      console.error('[Slicer] Bake transform error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
   // DELETE /api/slicer/catalog/:id — delete catalog item + G-code cache
   const catalogDeleteMatch = route.match(/^\/catalog\/(\d+)$/);
   if (req.method === 'DELETE' && catalogDeleteMatch) {

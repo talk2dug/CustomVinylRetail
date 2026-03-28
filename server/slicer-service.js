@@ -1871,5 +1871,6 @@ module.exports = {
   STL_THUMBNAILS,
   GCODE_CACHE,
   PROFILES_DIR,
-  DATA_DIR
+  DATA_DIR,
+  bakeTransformToSTL
 };

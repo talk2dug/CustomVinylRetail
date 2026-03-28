@@ -304,6 +304,7 @@ contextBridge.exposeInMainWorld('printStation', {
     // File operations
     selectFile: (options) => ipcRenderer.invoke('custom-art:select-file', options || {}),
     selectFiles: (options) => ipcRenderer.invoke('custom-art:select-files', options || {}),
+    scanFolder: (directory) => ipcRenderer.invoke('custom-art:scan-folder', directory),
     uploadFile: (filePath, type) => ipcRenderer.invoke('custom-art:upload', { filePath, type }),
     extractZip: (zipPath) => ipcRenderer.invoke('custom-art:extract-zip', zipPath),
 
