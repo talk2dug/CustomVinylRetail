@@ -3743,6 +3743,7 @@ function initCustomArtTables() {
       template TEXT,
       collection TEXT,
       designs TEXT,
+      shopify_product_ids TEXT,
       duration REAL,
       file_size INTEGER,
       status TEXT DEFAULT 'draft',
@@ -3758,6 +3759,7 @@ function initCustomArtTables() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
   `);
+  ensureColumn('tiktok_videos', 'shopify_product_ids', 'TEXT');
 
   console.log('[Finance] ✅ Tables initialized successfully');
 
@@ -8072,17 +8074,17 @@ function getTiktokVideo(id) {
 
 function createTiktokVideo(data) {
   const id = data.id || require('crypto').randomUUID();
-  db.prepare(`INSERT INTO tiktok_videos (id, filename, url, template, collection, designs, duration, file_size, status, caption, platform, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(
+  db.prepare(`INSERT INTO tiktok_videos (id, filename, url, template, collection, designs, shopify_product_ids, duration, file_size, status, caption, platform, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(
     id, data.filename, data.url || null, data.template || null, data.collection || null,
-    data.designs || null, data.duration || null, data.file_size || null,
+    data.designs || null, data.shopifyProductIds || null, data.duration || null, data.fileSize || data.file_size || null,
     data.status || 'draft', data.caption || null, data.platform || null
   );
   return getTiktokVideo(id);
 }
 
 function updateTiktokVideo(id, updates) {
-  const allowed = ['filename', 'url', 'template', 'collection', 'designs', 'duration', 'file_size',
+  const allowed = ['filename', 'url', 'template', 'collection', 'designs', 'shopify_product_ids', 'duration', 'file_size',
     'status', 'caption', 'platform', 'published_at', 'published_url', 'views', 'likes', 'comments', 'shares'];
   const sets = [];
   const params = [];

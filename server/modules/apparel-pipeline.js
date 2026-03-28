@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 const { categorizeDesign, categorizeCollection, getDesignCategory, THEMES } = require('./design-categorizer');
 
@@ -851,6 +852,46 @@ async function runFullPipeline(collectionCategory, options = {}) {
           results.reelsCreated++;
           results.reelUrls.push(reel.outputUrl);
           console.log(`[ApparelPipeline] Reel created: ${reel.outputUrl}`);
+
+          // Save reel → product association in DB
+          try {
+            const db = require('../db');
+            const designIds = items.map(item => item.design?.id).filter(Boolean);
+
+            // Find Shopify product IDs for these designs from the publish manifest
+            let shopifyProductIds = [];
+            const manifestDir = '/mnt/dbFiles/apparel-mockups';
+            if (fs.existsSync(manifestDir)) {
+              const manifests = fs.readdirSync(manifestDir)
+                .filter(f => f.startsWith('shopify_publish_'))
+                .sort().reverse();
+              if (manifests.length) {
+                const manifest = JSON.parse(fs.readFileSync(path.join(manifestDir, manifests[0]), 'utf8'));
+                shopifyProductIds = (manifest.results || [])
+                  .filter(r => r.shopifyId && designIds.some(did => r.designId?.includes(did.substring(0, 20))))
+                  .map(r => String(r.shopifyId));
+              }
+            }
+
+            const videoId = `tv_${crypto.randomBytes(8).toString('hex')}`;
+            db.createTiktokVideo({
+              id: videoId,
+              filename: path.basename(reel.outputPath || reel.outputUrl),
+              url: reel.outputUrl,
+              template: theme,
+              collection: collectionCategory,
+              designs: JSON.stringify(designIds),
+              shopifyProductIds: JSON.stringify(shopifyProductIds),
+              duration: reel.duration || null,
+              fileSize: reel.size || null,
+              status: 'draft',
+              caption: THEME_COPY[theme]?.hooks?.[0] + ' ' + (THEME_COPY[theme]?.body || '')
+            });
+
+            console.log(`[ApparelPipeline] Saved reel record: ${videoId} with ${shopifyProductIds.length} product associations`);
+          } catch (dbErr) {
+            console.warn(`[ApparelPipeline] Could not save reel record: ${dbErr.message}`);
+          }
         } catch (err) {
           console.error(`[ApparelPipeline] Reel generation failed for "${theme}": ${err.message}`);
           results.errors.push(`Reel ${theme} failed: ${err.message}`);
