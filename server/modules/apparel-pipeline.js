@@ -714,7 +714,58 @@ async function runFullPipeline(collectionCategory, options = {}) {
     }
 
     if (notify) {
-      await sendTelegram(`✅ Mockups generated: ${results.mockupsGenerated}`);
+      await sendTelegram(`✅ Lifestyle mockups generated: ${results.mockupsGenerated}`);
+    }
+
+    // ------------------------------------------------------------------
+    // Step 5b: Generate product blank mockups (what they'll actually get)
+    // ------------------------------------------------------------------
+    console.log('[ApparelPipeline] Step 5b: Generating product blank mockups');
+    if (notify) await sendTelegram('👕 Generating product blank mockups (white tee, black tee, + theme pick)...');
+
+    try {
+      const { generateProductMockups } = require('./product-blank-mockup');
+      const LIBRARY_ROOT = process.env.LIBRARY_ROOT || path.join(APP_ROOT, 'web', 'library');
+      let blankCount = 0;
+
+      for (const theme of Object.keys(themeGroups)) {
+        for (const item of themeGroups[theme]) {
+          // Resolve graphic path
+          let graphicPath = null;
+          if (item.design?.image) {
+            let imgPath = item.design.image;
+            if (imgPath.startsWith('http')) {
+              try { imgPath = decodeURIComponent(new URL(imgPath).pathname); } catch (_) {}
+            }
+            if (imgPath.startsWith('/library/')) {
+              graphicPath = path.join(LIBRARY_ROOT, imgPath.slice('/library/'.length));
+            } else if (imgPath.startsWith('/')) {
+              graphicPath = path.join(APP_ROOT, 'web', imgPath.slice(1));
+            }
+          }
+
+          if (!graphicPath || !fs.existsSync(graphicPath)) continue;
+
+          // Check if product blanks already exist for this design
+          const existingBlanks = fs.existsSync('/mnt/dbFiles/product-blank-mockups')
+            ? fs.readdirSync('/mnt/dbFiles/product-blank-mockups').filter(f => f.includes(item.design.id.substring(0, 30)))
+            : [];
+          if (existingBlanks.length >= 2) continue; // already done
+
+          try {
+            const blanks = await generateProductMockups(item.design.id, graphicPath, theme);
+            blankCount += blanks.length;
+          } catch (err) {
+            console.warn(`[ApparelPipeline] Product blank failed for ${item.design.id}: ${err.message}`);
+          }
+        }
+      }
+
+      console.log(`[ApparelPipeline] Generated ${blankCount} product blank mockups`);
+      if (notify) await sendTelegram(`👕 Generated ${blankCount} product blank mockups`);
+    } catch (err) {
+      console.error('[ApparelPipeline] Product blank step failed:', err.message);
+      if (notify) await sendTelegram(`⚠️ Product blank step failed: ${err.message}`);
     }
 
     // ------------------------------------------------------------------

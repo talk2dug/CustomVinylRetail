@@ -24,6 +24,7 @@ const ENV_PATH = path.join(APP_ROOT, '.env');
 if (fs.existsSync(ENV_PATH)) require('dotenv').config({ path: ENV_PATH });
 
 const MOCKUP_DIR = '/mnt/dbFiles/apparel-mockups';
+const PRODUCT_BLANK_DIR = '/mnt/dbFiles/product-blank-mockups';
 const CATALOG_DIR = path.join(APP_ROOT, 'web', 'library');
 const PUBLIC_BASE = process.env.PUBLIC_URL || 'https://blueridgecustomco.com';
 
@@ -145,7 +146,7 @@ async function findOrCreateCollection(title) {
   }
 }
 
-async function publishProduct({ title, descriptionHtml, designImageUrl, mockupImageUrl, tags, designId }) {
+async function publishProduct({ title, descriptionHtml, designImageUrl, mockupImageUrl, productBlankUrls, tags, designId }) {
   // Build size variants
   const variants = SIZE_VARIANTS.map(v => ({
     option1: v.size,
@@ -160,9 +161,17 @@ async function publishProduct({ title, descriptionHtml, designImageUrl, mockupIm
     weight_unit: 'kg'
   }));
 
-  // Build images — mockup first (it's the hero), design second
+  // Build images — order matters for the listing:
+  // 1. Lifestyle mockup (the hero/marketing shot)
+  // 2. Product blank mockups (what they'll actually get)
+  // 3. Flat design image
   const images = [];
   if (mockupImageUrl) images.push({ src: mockupImageUrl, alt: `${title} - Lifestyle Mockup` });
+  if (productBlankUrls && productBlankUrls.length) {
+    for (const pb of productBlankUrls) {
+      images.push({ src: pb.url, alt: `${title} - ${pb.label}` });
+    }
+  }
   if (designImageUrl) images.push({ src: designImageUrl, alt: `${title} - Design` });
 
   const product = {
@@ -204,13 +213,40 @@ function loadCatalog() {
 }
 
 function findMockupForDesign(designId) {
-  // Look for mockup files that contain the design ID
+  // Look for lifestyle mockup files that contain the design ID
   if (!fs.existsSync(MOCKUP_DIR)) return null;
   const files = fs.readdirSync(MOCKUP_DIR).filter(f =>
     f.startsWith('mockup_') && f.includes(designId.substring(0, 30)) && f.endsWith('.jpg')
   );
   if (files.length === 0) return null;
   return path.join(MOCKUP_DIR, files[0]);
+}
+
+function findProductBlanksForDesign(designId) {
+  // Look for product blank mockups that contain the design ID
+  if (!fs.existsSync(PRODUCT_BLANK_DIR)) return [];
+  const files = fs.readdirSync(PRODUCT_BLANK_DIR).filter(f =>
+    f.startsWith('product_') && f.includes(designId.substring(0, 30)) && f.endsWith('.jpg')
+  );
+  return files.map(f => {
+    // Extract type and color from filename: product_designId_type_color_timestamp.jpg
+    const parts = f.replace('product_', '').replace('.jpg', '').split('_');
+    // Find type and color parts (after the design id portion)
+    let label = 'Product';
+    const fLower = f.toLowerCase();
+    if (fLower.includes('_hoodie_')) {
+      label = fLower.includes('_black_') ? 'Black Hoodie' : fLower.includes('_grey_') ? 'Grey Hoodie' : fLower.includes('_navy_') ? 'Navy Hoodie' : 'Hoodie';
+    } else if (fLower.includes('_t-shirt_') || fLower.includes('_tee_')) {
+      label = fLower.includes('_black_') ? 'Black Tee' : fLower.includes('_white_') ? 'White Tee' : fLower.includes('_grey_') ? 'Grey Tee' : 'T-Shirt';
+    } else if (fLower.includes('_hat_')) {
+      label = 'Hat';
+    }
+    return {
+      path: path.join(PRODUCT_BLANK_DIR, f),
+      filename: f,
+      label
+    };
+  });
 }
 
 function encodeImageUrl(url) {
@@ -320,9 +356,15 @@ async function publishBatch(options = {}) {
     const designImageUrl = resolveDesignImageUrl(design);
     const mockupImageUrl = getMockupPublicUrl(mockupPath);
 
+    // Find product blank mockups (white tee, black tee, hoodie, etc.)
+    const productBlanks = findProductBlanksForDesign(design.id);
+    const productBlankUrls = productBlanks.map(pb => {
+      const url = getMockupPublicUrl(pb.path);
+      return url ? { url, label: pb.label } : null;
+    }).filter(Boolean);
+
     console.log(`[${i + 1}/${designs.length}] "${cleanName}"`);
-    console.log(`  Design: ${designImageUrl ? 'YES' : 'NO'}`);
-    console.log(`  Mockup: ${mockupImageUrl ? 'YES' : 'NO'}`);
+    console.log(`  Lifestyle: ${mockupImageUrl ? 'YES' : 'NO'} | Product blanks: ${productBlankUrls.length} | Design: ${designImageUrl ? 'YES' : 'NO'}`);
 
     // Generate AI description
     const description = await generateProductDescription(cleanName, cat.name);
@@ -330,15 +372,13 @@ async function publishBatch(options = {}) {
 
     // Build tags
     const designTags = [...TAGS_BASE];
-    // Add keywords from the design name
     cleanName.split(' ').forEach(word => {
       if (word.length > 3) designTags.push(word.toLowerCase());
     });
 
     if (dryRun) {
       console.log(`  [DRY RUN] Would create: "${title}"`);
-      console.log(`  Description: ${description.substring(0, 100)}...`);
-      console.log(`  Tags: ${designTags.join(', ')}`);
+      console.log(`  Images: 1 lifestyle + ${productBlankUrls.length} product blanks + 1 design = ${1 + productBlankUrls.length + 1} total`);
       console.log(`  Variants: ${SIZE_VARIANTS.map(v => `${v.size}=$${v.price}`).join(', ')}`);
       success++;
       results.push({ designId: design.id, title, dryRun: true });
@@ -349,6 +389,7 @@ async function publishBatch(options = {}) {
           descriptionHtml,
           designImageUrl,
           mockupImageUrl,
+          productBlankUrls,
           tags: designTags,
           designId: design.id
         });
