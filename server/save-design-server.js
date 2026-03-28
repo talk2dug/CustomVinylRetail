@@ -91,6 +91,9 @@ const { handleQuoteRoute } = require('./quote-server');
 const { handleFinanceRoute } = require('./finance-server');
 const { handleFootageRoute } = require('./footage-server');
 const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
+const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
+const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
+const { processNewCollection } = require('./modules/apparel-pipeline');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
@@ -111,6 +114,7 @@ const salesPipelineMonitor = require('./modules/sales-pipeline-monitor');
 const aiSalesAgent = require('./modules/ai-sales-agent');
 const telegramPrinterBot = require('./modules/telegram-printer-bot');
 const printMonitor = require('./modules/print-monitor');
+const timelapseCapture = require('./modules/timelapse-capture');
 const diskWatcher = require('./modules/disk-watcher');
 const marketingTeam = require('./modules/marketing-team');
 const shopifyOrderSync = require('./modules/shopify-order-sync');
@@ -1393,17 +1397,24 @@ function ensureUniqueBase(previewsDir, base, ext) {
 }
 
 function regenerateCatalog() {
+  // Save backup before regen so gdrive categories can be preserved
+  const catalogPath = path.join(WEB_DIR, 'catalog.json');
+  try { if (fs.existsSync(catalogPath)) fs.copyFileSync(catalogPath, catalogPath + '.bak'); } catch (_) {}
+
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
       [path.join(APP_ROOT, 'scripts', 'generate-catalog.js')],
-      { env: { ...process.env, LIBRARY_ROOT } },
+      { env: { ...process.env, LIBRARY_ROOT }, timeout: 60000 },
       (error) => {
         if (error) {
           console.error('Catalog regeneration failed:', error);
           reject(error);
           return;
         }
+        // Invalidate catalog cache
+        catalogCache = null;
+        catalogCacheTime = 0;
         resolve();
       }
     );
@@ -3894,6 +3905,38 @@ const requestHandler = async (req, res) => {
     if (req.method === 'POST' && pmRoute === '/disable') {
       printMonitor.setEnabled(false);
       sendJson(res, 200, { ok: true, enabled: false });
+      return;
+    }
+    sendJson(res, 404, { error: 'Not found' });
+    return;
+  }
+
+  // Timelapse API
+  if (parsedUrl.pathname.startsWith('/api/timelapse')) {
+    const tlRoute = parsedUrl.pathname.replace('/api/timelapse', '') || '/';
+
+    // GET /api/timelapse/sessions — active capture sessions
+    if (req.method === 'GET' && tlRoute === '/sessions') {
+      sendJson(res, 200, { sessions: timelapseCapture.getActiveSessions() });
+      return;
+    }
+    // GET /api/timelapse/list — completed timelapses
+    if (req.method === 'GET' && (tlRoute === '/list' || tlRoute === '/')) {
+      sendJson(res, 200, { timelapses: timelapseCapture.listTimelapses() });
+      return;
+    }
+    // GET /api/timelapse/video/:jobKey — stream video file
+    const videoMatch = tlRoute.match(/^\/video\/(.+)$/);
+    if (req.method === 'GET' && videoMatch) {
+      const videoPath = timelapseCapture.getVideoPath(decodeURIComponent(videoMatch[1]));
+      if (!videoPath) { sendJson(res, 404, { error: 'Video not found' }); return; }
+      const stat = fs.statSync(videoPath);
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': stat.size,
+        'Content-Disposition': `inline; filename="${path.basename(videoPath)}"`,
+      });
+      fs.createReadStream(videoPath).pipe(res);
       return;
     }
     sendJson(res, 404, { error: 'Not found' });
@@ -8130,6 +8173,85 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // Serve Google Drive sticker catalog image
+  if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/sticker-catalog/gdrive-image/')) {
+    (async () => {
+      try {
+        const relativePath = decodeURIComponent(parsedUrl.pathname.replace('/api/sticker-catalog/gdrive-image/', ''));
+        if (!relativePath || relativePath.includes('..') || path.isAbsolute(relativePath)) {
+          res.statusCode = 400;
+          res.end('Invalid path');
+          return;
+        }
+        const fullPath = path.join(GDRIVE_GRAPHICS_DIR, relativePath);
+        const resolved = path.resolve(fullPath);
+        if (!resolved.startsWith(path.resolve(GDRIVE_GRAPHICS_DIR))) {
+          res.statusCode = 400;
+          res.end('Invalid path');
+          return;
+        }
+        if (!fs.existsSync(fullPath)) {
+          res.statusCode = 404;
+          res.end('Image not found on Google Drive');
+          return;
+        }
+        const ext = path.extname(fullPath).toLowerCase();
+        const mimeTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.bmp': 'image/bmp' };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        const fileBuffer = await fs.promises.readFile(fullPath);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.end(fileBuffer);
+      } catch (err) {
+        console.error('[GDrive Image Error]', err);
+        res.statusCode = 500;
+        res.end('Error serving image');
+      }
+    })();
+    return;
+  }
+
+  // Google Drive Graphics sync — runs generate-catalog.js on the server
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/gdrive/sync') {
+    if (!requireInternalKey(req, res)) return;
+    const scriptPath = path.join(APP_ROOT, 'scripts', 'generate-catalog.js');
+    // Save backup so gdrive categories are preserved
+    const catPath = path.join(WEB_DIR, 'catalog.json');
+    try { if (fs.existsSync(catPath)) fs.copyFileSync(catPath, catPath + '.bak'); } catch (_) {}
+
+    console.log('[Catalog Regen] Starting generate-catalog.js --include-gdrive ...');
+    require('child_process').execFile('node', [scriptPath, '--include-gdrive'], {
+      cwd: APP_ROOT,
+      timeout: 600000,
+      env: { ...process.env, LIBRARY_ROOT }
+    }, (err, stdout, stderr) => {
+      if (stdout) stdout.split('\n').filter(Boolean).forEach(l => console.log('[Catalog Regen]', l));
+      if (stderr) stderr.split('\n').filter(Boolean).forEach(l => console.error('[Catalog Regen]', l));
+      if (err) {
+        console.error('[Catalog Regen] Failed:', err.message);
+        sendJson(res, 500, { success: false, error: 'Catalog generation failed: ' + err.message });
+        return;
+      }
+      // Invalidate catalog cache so next fetch picks up the new catalog.json
+      catalogCache = null;
+      catalogCacheTime = 0;
+      sendJson(res, 200, { success: true, message: 'Catalog regenerated', output: stdout });
+    });
+    return;
+  }
+
+  // Google Drive Graphics status
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/sticker-sheets/gdrive/status') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const mounted = fs.existsSync(GDRIVE_GRAPHICS_DIR);
+      sendJson(res, 200, { mounted });
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
   // Serve sticker catalog image by category/filename
   if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/sticker-catalog/image/')) {
     handleStickerCatalogImage(req, res, parsedUrl).catch(err => {
@@ -9767,6 +9889,51 @@ Keep it concise and actionable.`;
     if (!isFileServe && !requireInternalKey(req, res)) return;
     handleFootageRoute(parsedUrl.pathname, req, res, db).catch(err => {
       console.error('[Footage API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Apparel Pipeline — full autonomous workflow
+  if (parsedUrl.pathname === '/api/apparel-pipeline/run' && req.method === 'POST') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const chunks = [];
+      req.on('data', c => chunks.push(c));
+      req.on('end', () => {
+        let body = {};
+        try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch (_) {}
+        const category = body.category || '';
+        if (!category) {
+          sendJson(res, 400, { error: 'category required' });
+          return;
+        }
+        sendJson(res, 202, { status: 'started', category, message: 'Full apparel pipeline running in background' });
+        processNewCollection(category).catch(err => {
+          console.error('[ApparelPipeline] Fatal:', err.message);
+        });
+      });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return;
+  }
+
+  // Shopify Apparel Publisher API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/shopify-apparel')) {
+    if (!requireInternalKey(req, res)) return;
+    handleShopifyApparelRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[ShopifyApparel API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Batch Mockup Generator API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/batch-mockups')) {
+    if (!requireInternalKey(req, res)) return;
+    handleBatchMockupRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[BatchMockup API Error]', err);
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;
@@ -21373,19 +21540,32 @@ if (require.main === module) {
       console.error('[Server] Failed to start Shopify order sync:', error.message);
     }
 
-    // Telegram printer bot polling disabled — conflicts with main Telegram bot service
-    // telegramPrinterBot.startPolling();
+    // Telegram printer bot: command polling + server-side status polling from Pi
+    try {
+      telegramPrinterBot.startPolling();
+      telegramPrinterBot.startStatusPolling();
+      console.log('[Server] Telegram printer bot started (commands + status polling)');
+    } catch (error) {
+      console.error('[Server] Failed to start printer bot:', error.message);
+    }
 
     // AI Print Monitor — analyzes webcam snapshots for failures every 45s
     try {
       const telegram = require('./lib/telegram-notifier');
       printMonitor.init({
         getCache: () => telegramPrinterBot.getCache(),
-        notify: async (text, photoBuffer) => {
-          if (photoBuffer) {
-            await telegram.sendPhoto(photoBuffer, text);
+        notify: async (text, photoData) => {
+          if (photoData) {
+            // photoData may be a Buffer or base64 string depending on source
+            const buf = Buffer.isBuffer(photoData) ? photoData
+              : (typeof photoData === 'string' ? Buffer.from(photoData, 'base64') : null);
+            if (buf && buf.length > 100) {
+              await telegram.sendPhoto(buf, text);
+            } else {
+              await telegram.sendMessage(text);
+            }
           } else {
-            await telegram.send(text);
+            await telegram.sendMessage(text);
           }
         },
         db
@@ -21393,6 +21573,14 @@ if (require.main === module) {
       console.log('[Server] AI Print Monitor started');
     } catch (err) {
       console.error('[Server] Failed to start print monitor:', err.message);
+    }
+
+    // Timelapse capture — monitors layer changes and captures webcam frames
+    try {
+      timelapseCapture.init({ db });
+      console.log('[Server] Timelapse capture service started');
+    } catch (err) {
+      console.error('[Server] Failed to start timelapse capture:', err.message);
     }
 
     // Disk watcher — auto-clean root partition when usage gets high
@@ -21587,6 +21775,9 @@ async function handleApplyMetalPrintFilter(req, res) {
 // Use main library catalog for stickers (same as design catalog)
 const STICKER_CATALOG_ROOT = process.env.STICKER_CATALOG_PATH || LIBRARY_ROOT;
 const STICKER_OUTPUT_DIR = process.env.STICKER_OUTPUT_PATH || path.join(LIBRARY_ROOT, 'sticker-sheets');
+
+// Google Drive Graphics (served via /api/sticker-catalog/gdrive-image/)
+const GDRIVE_GRAPHICS_DIR = '/mnt/gdrive/Side Hustle Library/Graphics';
 
 /**
  * List generated sticker sheet batches (sorted newest first)
@@ -21882,6 +22073,7 @@ async function loadCatalogJson() {
   return null;
 }
 
+
 async function handleStickerSheetCategories(req, res) {
   try {
     const catalog = await loadCatalogJson();
@@ -21930,7 +22122,11 @@ async function handleStickerSheetCatalog(req, res, parsedUrl) {
         // URL: https://blueridgecustomco.com/library/Category/uploads/previews/file.png
         // Local: /home/ubuntu/vinylApp/web/library/Category/uploads/previews/file.png
         let localPath = design.image;
-        if (design.image && design.image.startsWith('http')) {
+        if (design.gdrive && design.image && design.image.startsWith('/api/sticker-catalog/gdrive-image/')) {
+          // Google Drive item — resolve to actual mount path for sticker sheet generation
+          const relPath = decodeURIComponent(design.image.replace('/api/sticker-catalog/gdrive-image/', ''));
+          localPath = path.join(GDRIVE_GRAPHICS_DIR, relPath);
+        } else if (design.image && design.image.startsWith('http')) {
           try {
             const imageUrl = new URL(design.image);
             // Extract path after domain (e.g., /library/Category/...)

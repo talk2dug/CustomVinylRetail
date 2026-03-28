@@ -1,6 +1,6 @@
 /**
  * Human Model Image Analyzer
- * Uses Claude Vision API to extract metadata from human model images:
+ * Uses Gemini Vision (primary) or Claude Vision (fallback) to extract metadata:
  * - Gender (male, female)
  * - Ethnicity (caucasian, black, asian, hispanic, middle-eastern, south-asian, mixed, other)
  * - Apparel Type (t-shirt, hoodie, tank-top, long-sleeve, polo, crewneck, v-neck, sweatshirt, jacket)
@@ -10,7 +10,9 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
-const { Anthropic } = require('@anthropic-ai/sdk');
+
+let Anthropic;
+try { Anthropic = require('@anthropic-ai/sdk').Anthropic; } catch (_) {}
 
 const ENV_PATH = path.resolve(__dirname, '..', '.env');
 if (fs.existsSync(ENV_PATH)) {
@@ -29,31 +31,12 @@ function cleanKey(value) {
 }
 
 const ANTHROPIC_API_KEY = cleanKey(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || '');
-const anthropicClient = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+const anthropicClient = (ANTHROPIC_API_KEY && Anthropic) ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+const GEMINI_API_KEY = cleanKey(process.env.GEMINI_API_KEY || '');
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=`;
 
-/**
- * Analyze a human model image and extract metadata
- * @param {string} imagePath - Path to the image file
- * @returns {Promise<Object>} - { gender, ethnicity, apparel_type, facing, confidence }
- */
-async function analyzeHumanModel(imagePath) {
-  if (!anthropicClient) {
-    throw new Error('Anthropic client not configured. Please set ANTHROPIC_API_KEY in .env file.');
-  }
-
-  if (!fs.existsSync(imagePath)) {
-    throw new Error(`Image not found: ${imagePath}`);
-  }
-
-  // Resize image for API (max 1024px, convert to JPEG)
-  const resized = await sharp(imagePath)
-    .resize({ width: 1024, height: 1024, fit: 'inside' })
-    .jpeg({ quality: 85 })
-    .toBuffer();
-
-  const base64Image = resized.toString('base64');
-
-  const systemPrompt = `You are an image analysis assistant specializing in identifying characteristics of human models wearing apparel for e-commerce mockup purposes.
+const ANALYSIS_PROMPT = `You are an image analysis assistant specializing in identifying characteristics of human models wearing apparel for e-commerce mockup purposes.
 
 Analyze the image and extract the following information:
 1. Gender: male or female
@@ -61,6 +44,7 @@ Analyze the image and extract the following information:
 3. Apparel Type: The type of upper-body garment (t-shirt, hoodie, tank-top, long-sleeve, polo, crewneck, v-neck, sweatshirt, jacket, dress, or other)
 4. Facing: Which direction the model is facing (front, back, side-left, side-right, three-quarter-left, three-quarter-right)
 5. Pose: Standing, sitting, casual, formal, action, etc.
+6. Multiple people: If there are multiple people, describe the PRIMARY subject (the one most centered/prominent).
 
 Respond ONLY with valid JSON in this exact format:
 {
@@ -72,64 +56,161 @@ Respond ONLY with valid JSON in this exact format:
   "confidence": 0.0-1.0
 }`;
 
-  const messages = [
-    {
+const validGenders = ['male', 'female'];
+const validEthnicities = ['caucasian', 'black', 'asian', 'hispanic', 'middle-eastern', 'south-asian', 'mixed', 'other'];
+const validApparelTypes = ['t-shirt', 'hoodie', 'tank-top', 'long-sleeve', 'polo', 'crewneck', 'v-neck', 'sweatshirt', 'jacket', 'dress', 'other'];
+const validFacings = ['front', 'back', 'side-left', 'side-right', 'three-quarter-left', 'three-quarter-right'];
+
+function parseAnalysisResponse(responseText) {
+  let jsonStr = responseText.trim();
+  // Extract JSON from markdown code blocks
+  if (jsonStr.includes('```')) {
+    const match = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (match) jsonStr = match[1].trim();
+  }
+  // Fallback: find first { ... } block
+  if (!jsonStr.startsWith('{')) {
+    const braceMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (braceMatch) jsonStr = braceMatch[0];
+  }
+  const metadata = JSON.parse(jsonStr);
+  return {
+    gender: validGenders.includes(metadata.gender?.toLowerCase()) ? metadata.gender.toLowerCase() : null,
+    ethnicity: validEthnicities.includes(metadata.ethnicity?.toLowerCase()) ? metadata.ethnicity.toLowerCase() : null,
+    apparel_type: validApparelTypes.includes(metadata.apparel_type?.toLowerCase()) ? metadata.apparel_type.toLowerCase() : null,
+    facing: validFacings.includes(metadata.facing?.toLowerCase()) ? metadata.facing.toLowerCase() : 'front',
+    pose: metadata.pose || null,
+    confidence: typeof metadata.confidence === 'number' ? metadata.confidence : 0.8
+  };
+}
+
+/**
+ * Analyze via Gemini Vision API (primary — free/cheap)
+ */
+async function analyzeWithGemini(base64Image) {
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
+
+  const url = GEMINI_URL + GEMINI_API_KEY;
+  console.log(`[HumanModelAnalyzer] Gemini URL: ${url.substring(0, 80)}... (image: ${(base64Image.length / 1024).toFixed(0)}KB)`);
+
+  const body = {
+    contents: [{
+      parts: [
+        { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
+        { text: ANALYSIS_PROMPT + '\n\nAnalyze this human model image and provide the metadata as JSON.' }
+      ]
+    }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } }
+  };
+
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000)
+    });
+  } catch (fetchErr) {
+    console.error(`[HumanModelAnalyzer] Gemini fetch error: ${fetchErr.message}`);
+    throw fetchErr;
+  }
+
+  console.log(`[HumanModelAnalyzer] Gemini response status: ${resp.status}`);
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    console.error(`[HumanModelAnalyzer] Gemini API error: ${resp.status} ${errText.substring(0, 300)}`);
+    throw new Error(`Gemini API ${resp.status}: ${errText.substring(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  // Gemini 2.5 may return multiple parts (thinking + response). Find the text part with JSON.
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  console.log(`[HumanModelAnalyzer] Gemini parts count: ${parts.length}, types: ${parts.map(p => p.thought ? 'thought' : 'text').join(',')}`);
+  // Concatenate all text parts (skip thought parts)
+  let text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('\n');
+  if (!text) text = parts.map(p => p.text || '').join('\n'); // fallback: include everything
+  if (!text) {
+    console.error('[HumanModelAnalyzer] No text in Gemini response:', JSON.stringify(data).substring(0, 300));
+    throw new Error('No text in Gemini response');
+  }
+
+  console.log(`[HumanModelAnalyzer] Gemini raw response (${parts.length} parts, ${text.length} chars): ${JSON.stringify(text.substring(0, 400))}`);
+  try {
+    const result = parseAnalysisResponse(text);
+    console.log(`[HumanModelAnalyzer] Gemini parsed OK:`, JSON.stringify(result));
+    return result;
+  } catch (parseErr) {
+    console.error(`[HumanModelAnalyzer] Gemini parse failed: ${parseErr.message}, raw: ${text.substring(0, 300)}`);
+    throw parseErr;
+  }
+}
+
+/**
+ * Analyze via Claude Vision API (fallback)
+ */
+async function analyzeWithClaude(base64Image) {
+  if (!anthropicClient) throw new Error('Anthropic client not configured');
+
+  const result = await anthropicClient.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 300,
+    temperature: 0.1,
+    system: ANALYSIS_PROMPT,
+    messages: [{
       role: 'user',
       content: [
-        {
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: 'image/jpeg',
-            data: base64Image
-          }
-        },
-        {
-          type: 'text',
-          text: 'Analyze this human model image and provide the metadata as JSON. Focus on accurately identifying the gender, ethnicity, apparel type, and facing direction.'
-        }
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+        { type: 'text', text: 'Analyze this human model image and provide the metadata as JSON.' }
       ]
-    }
-  ];
+    }]
+  });
 
-  try {
-    const result = await anthropicClient.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 300,
-      temperature: 0.1,
-      system: systemPrompt,
-      messages: messages
-    });
+  return parseAnalysisResponse(result.content[0].text);
+}
 
-    const responseText = result.content[0].text.trim();
-
-    // Parse JSON from response (handle markdown code blocks)
-    let jsonStr = responseText;
-    if (jsonStr.includes('```')) {
-      const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (match) jsonStr = match[1].trim();
-    }
-
-    const metadata = JSON.parse(jsonStr);
-
-    // Validate and normalize values
-    const validGenders = ['male', 'female'];
-    const validEthnicities = ['caucasian', 'black', 'asian', 'hispanic', 'middle-eastern', 'south-asian', 'mixed', 'other'];
-    const validApparelTypes = ['t-shirt', 'hoodie', 'tank-top', 'long-sleeve', 'polo', 'crewneck', 'v-neck', 'sweatshirt', 'jacket', 'dress', 'other'];
-    const validFacings = ['front', 'back', 'side-left', 'side-right', 'three-quarter-left', 'three-quarter-right'];
-
-    return {
-      gender: validGenders.includes(metadata.gender?.toLowerCase()) ? metadata.gender.toLowerCase() : null,
-      ethnicity: validEthnicities.includes(metadata.ethnicity?.toLowerCase()) ? metadata.ethnicity.toLowerCase() : null,
-      apparel_type: validApparelTypes.includes(metadata.apparel_type?.toLowerCase()) ? metadata.apparel_type.toLowerCase() : null,
-      facing: validFacings.includes(metadata.facing?.toLowerCase()) ? metadata.facing.toLowerCase() : 'front',
-      pose: metadata.pose || null,
-      confidence: typeof metadata.confidence === 'number' ? metadata.confidence : 0.8
-    };
-  } catch (err) {
-    console.error('[HumanModelAnalyzer] Error analyzing image:', err.message);
-    throw err;
+/**
+ * Analyze a human model image and extract metadata.
+ * Tries Gemini first (cheaper), falls back to Claude.
+ */
+async function analyzeHumanModel(imagePath) {
+  if (!GEMINI_API_KEY && !anthropicClient) {
+    throw new Error('No AI API configured. Set GEMINI_API_KEY or ANTHROPIC_API_KEY in .env');
   }
+
+  if (!fs.existsSync(imagePath)) {
+    throw new Error(`Image not found: ${imagePath}`);
+  }
+
+  const resized = await sharp(imagePath)
+    .resize({ width: 1024, height: 1024, fit: 'inside' })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+
+  const base64Image = resized.toString('base64');
+
+  // Try Gemini first, fall back to Claude
+  console.log(`[HumanModelAnalyzer] GEMINI_API_KEY set: ${!!GEMINI_API_KEY}, Anthropic set: ${!!anthropicClient}`);
+  if (GEMINI_API_KEY) {
+    try {
+      console.log('[HumanModelAnalyzer] Attempting Gemini analysis...');
+      return await analyzeWithGemini(base64Image);
+    } catch (err) {
+      console.warn('[HumanModelAnalyzer] Gemini failed, trying Claude:', err.message, err.stack?.split('\n')[1]);
+    }
+  }
+
+  if (anthropicClient) {
+    try {
+      return await analyzeWithClaude(base64Image);
+    } catch (err) {
+      console.error('[HumanModelAnalyzer] Claude also failed:', err.message);
+      throw err;
+    }
+  }
+
+  throw new Error('All AI backends failed');
 }
 
 /**
