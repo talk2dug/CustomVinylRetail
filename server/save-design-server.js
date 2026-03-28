@@ -3718,8 +3718,8 @@ const requestHandler = async (req, res) => {
 
     if (req.method === 'GET' && parsedUrl.pathname === '/api/marketing/journal') {
       try {
-        const limit = parseInt(parsedUrl.searchParams.get('limit')) || 100;
-        const type = parsedUrl.searchParams.get('type');
+        const limit = parseInt(parsedUrl.query?.limit) || 100;
+        const type = parsedUrl.query?.type;
         let rows;
         if (type) {
           rows = db.prepare('SELECT * FROM marketing_journal WHERE type = ? ORDER BY timestamp DESC LIMIT ?').all(type, limit);
@@ -3767,8 +3767,8 @@ const requestHandler = async (req, res) => {
 
     if (req.method === 'GET' && parsedUrl.pathname === '/api/marketing/metrics') {
       try {
-        const date = parsedUrl.searchParams.get('date');
-        const metricType = parsedUrl.searchParams.get('type');
+        const date = parsedUrl.query?.date;
+        const metricType = parsedUrl.query?.type;
         let rows;
         if (date && metricType) {
           rows = db.prepare('SELECT * FROM marketing_metrics WHERE date = ? AND metric_type = ? ORDER BY date DESC').all(date, metricType);
@@ -9899,11 +9899,12 @@ Keep it concise and actionable.`;
     // GET /api/tiktok-videos/managed — list tracked videos
     if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok-videos/managed') {
       const filters = {};
-      if (parsedUrl.searchParams.get('status')) filters.status = parsedUrl.searchParams.get('status');
-      if (parsedUrl.searchParams.get('platform')) filters.platform = parsedUrl.searchParams.get('platform');
-      if (parsedUrl.searchParams.get('collection')) filters.collection = parsedUrl.searchParams.get('collection');
-      if (parsedUrl.searchParams.get('search')) filters.search = parsedUrl.searchParams.get('search');
-      if (parsedUrl.searchParams.get('limit')) filters.limit = parsedUrl.searchParams.get('limit');
+      const q = parsedUrl.query || {};
+      if (q.status) filters.status = q.status;
+      if (q.platform) filters.platform = q.platform;
+      if (q.collection) filters.collection = q.collection;
+      if (q.search) filters.search = q.search;
+      if (q.limit) filters.limit = q.limit;
       sendJson(res, 200, { items: db.listTiktokVideos(filters) });
       return;
     }
