@@ -15,6 +15,8 @@ const footageState = {
   recordingTickUnsub: null,
   recordingStartedAt: null,
   timerInterval: null,
+  piRecordingFiles: [],      // Pi camera: files returned after stop
+  piPullProgressUnsub: null, // Pi pull progress listener
   // Upload
   selectedFile: null,
   // Library
@@ -227,12 +229,6 @@ async function stopFootageRecording() {
     const result = await window.printStation.footage.stopRecording(footageState.recordingCameraId);
     clearInterval(footageState.timerInterval);
 
-    // Collect all segment files
-    footageState.recordingSegments = (result.segments || []).map(s => {
-      // segments are basenames; full paths are in outputDir
-      return result.outputDir ? result.outputDir + '/' + s : s;
-    });
-
     // Show tag form
     document.getElementById('footageRecordingIndicator').classList.add('hidden');
     document.getElementById('footageStopRecBtn').style.display = 'none';
@@ -242,19 +238,39 @@ async function stopFootageRecording() {
     const tagForm = document.getElementById('footageRecordTagForm');
     tagForm.classList.remove('hidden');
 
-    const segCount = footageState.recordingSegments.length;
-    document.getElementById('footageRecordPreview').innerHTML =
-      `<p style="margin:0;color:var(--text-muted);">Recording stopped: ${formatDuration(result.elapsed)} total &middot; ${segCount} segment(s)</p>
-       ${segCount > 0 ? `<p style="margin:4px 0 0;font-size:0.8rem;color:#888;">Each segment will be uploaded individually with the same tags.</p>` : ''}`;
+    if (result.piCamera && result.piFiles) {
+      // Pi camera — files are on the Pi, need to be pulled
+      footageState.piRecordingFiles = result.piFiles;
+      footageState.recordingSegments = [];
+      const fileCount = result.piFiles.length;
+      const totalSize = result.piFiles.reduce((sum, f) => sum + (f.size_bytes || 0), 0);
+      document.getElementById('footageRecordPreview').innerHTML =
+        `<p style="margin:0;color:var(--text-muted);">Pi recording stopped: ${formatDuration(result.elapsed)} total &middot; ${fileCount} file(s) (${formatBytes(totalSize)})</p>
+         <p style="margin:4px 0 0;font-size:0.8rem;color:#888;">Files will be pulled from the Pi and uploaded to the server.</p>`;
+    } else {
+      // Local camera — segments are on disk
+      footageState.piRecordingFiles = [];
+      footageState.recordingSegments = (result.segments || []).map(s => {
+        return result.outputDir ? result.outputDir + '/' + s : s;
+      });
+      const segCount = footageState.recordingSegments.length;
+      document.getElementById('footageRecordPreview').innerHTML =
+        `<p style="margin:0;color:var(--text-muted);">Recording stopped: ${formatDuration(result.elapsed)} total &middot; ${segCount} segment(s)</p>
+         ${segCount > 0 ? `<p style="margin:4px 0 0;font-size:0.8rem;color:#888;">Each segment will be uploaded individually with the same tags.</p>` : ''}`;
+    }
   } catch (e) {
     showFootageToast('Failed to stop recording: ' + e.message, true);
   }
 }
 
 async function uploadFootageRecording() {
-  const segments = footageState.recordingSegments;
-  if (!segments.length) {
-    showFootageToast('No segments to upload', true);
+  const piFiles = footageState.piRecordingFiles || [];
+  const segments = footageState.recordingSegments || [];
+  const isPi = piFiles.length > 0;
+  const totalCount = isPi ? piFiles.length : segments.length;
+
+  if (totalCount === 0) {
+    showFootageToast('No files to upload', true);
     return;
   }
 
@@ -263,6 +279,10 @@ async function uploadFootageRecording() {
   const productName = document.getElementById('footageRecProductInput').value.trim();
   const notes = document.getElementById('footageRecNotes').value.trim();
   const tags = [category, subcategory].filter(Boolean).join(',');
+  const meta = {
+    category, subcategory, product_name: productName, tags,
+    source: isPi ? 'pi-camera' : 'print-station'
+  };
 
   const progressEl = document.getElementById('footageRecUploadProgress');
   progressEl.classList.remove('hidden');
@@ -270,29 +290,51 @@ async function uploadFootageRecording() {
   let uploaded = 0;
   let failed = 0;
 
-  for (const segPath of segments) {
-    progressEl.querySelector('.footage-progress-text').textContent =
-      `Uploading segment ${uploaded + 1} of ${segments.length}...`;
-    try {
-      await window.printStation.footage.upload(segPath, {
-        category,
-        subcategory,
-        product_name: productName,
-        tags,
-        notes: notes ? `${notes} [segment ${uploaded + 1}/${segments.length}]` : `segment ${uploaded + 1}/${segments.length}`,
-        source: 'print-station'
-      });
-      uploaded++;
-    } catch (e) {
-      console.error(`[Footage] Upload segment failed:`, e);
-      failed++;
+  if (isPi) {
+    // Pi camera: pull each file from Pi and upload to server
+    const cameraId = footageState.recordingCameraId;
+    for (const piFile of piFiles) {
+      progressEl.querySelector('.footage-progress-text').textContent =
+        `Pulling & uploading ${uploaded + 1} of ${totalCount}: ${piFile.filename}...`;
+      try {
+        await window.printStation.footage.pi.pullAndUpload(cameraId, piFile.filename, {
+          ...meta,
+          notes: notes
+            ? `${notes} [file ${uploaded + 1}/${totalCount}]`
+            : `file ${uploaded + 1}/${totalCount}`
+        });
+        // Delete from Pi after successful upload
+        try { await window.printStation.footage.pi.delete(cameraId, piFile.filename); } catch (_) {}
+        uploaded++;
+      } catch (e) {
+        console.error(`[Footage] Pi pull+upload failed for ${piFile.filename}:`, e);
+        failed++;
+      }
+    }
+  } else {
+    // Local camera: upload segments directly
+    for (const segPath of segments) {
+      progressEl.querySelector('.footage-progress-text').textContent =
+        `Uploading segment ${uploaded + 1} of ${totalCount}...`;
+      try {
+        await window.printStation.footage.upload(segPath, {
+          ...meta,
+          notes: notes
+            ? `${notes} [segment ${uploaded + 1}/${totalCount}]`
+            : `segment ${uploaded + 1}/${totalCount}`
+        });
+        uploaded++;
+      } catch (e) {
+        console.error(`[Footage] Upload segment failed:`, e);
+        failed++;
+      }
     }
   }
 
   if (failed > 0) {
-    showFootageToast(`Uploaded ${uploaded}/${segments.length} segments (${failed} failed)`, true);
+    showFootageToast(`Uploaded ${uploaded}/${totalCount} (${failed} failed)`, true);
   } else {
-    showFootageToast(`All ${uploaded} segment(s) uploaded!`);
+    showFootageToast(`All ${uploaded} file(s) uploaded!`);
   }
   resetRecordForm();
 }
@@ -305,6 +347,7 @@ function discardFootageRecording() {
 
 function resetRecordForm() {
   footageState.recordingSegments = [];
+  footageState.piRecordingFiles = [];
   footageState.recordingCameraId = null;
   clearInterval(footageState.timerInterval);
 
@@ -603,7 +646,8 @@ function populateCameraSelect(cameras) {
   cameras.filter(c => c.enabled !== false).forEach(c => {
     const opt = document.createElement('option');
     opt.value = c.id;
-    opt.textContent = c.name + (c.rotation ? ` (${c.rotation}\u00B0)` : '');
+    const label = c.piHost ? `[Pi] ${c.name}` : c.name;
+    opt.textContent = label + (c.rotation ? ` (${c.rotation}\u00B0)` : '');
     select.appendChild(opt);
   });
   if (currentVal) select.value = currentVal;
@@ -620,20 +664,27 @@ async function loadFootageCameraList() {
       return;
     }
 
-    list.innerHTML = cameras.map(c => `
+    list.innerHTML = cameras.map(c => {
+      const isPi = !!c.piHost;
+      const typeLabel = isPi
+        ? `Pi Camera: ${c.piHost}:${c.piPort || 8080}`
+        : (c.rtspUrl || `ONVIF: ${c.onvifHost || 'not set'}:${c.onvifPort || 8000}`);
+      return `
       <div class="footage-camera-card">
         <div class="footage-camera-info">
-          <strong>${c.name}</strong>
-          <span class="muted">${c.rtspUrl || `ONVIF: ${c.onvifHost || 'not set'}:${c.onvifPort || 8000}`}</span>
+          <strong>${isPi ? '[Pi] ' : ''}${c.name}</strong>
+          <span class="muted">${typeLabel}</span>
           <span class="muted">Rotation: ${c.rotation || 0}&deg;</span>
         </div>
         <div class="footage-camera-actions">
+          ${isPi ? `<button class="secondary small" data-cam-pifiles="${c.id}">Files</button>` : ''}
           <button class="secondary small" data-cam-test="${c.id}">Test</button>
           <button class="secondary small" data-cam-edit="${c.id}">Edit</button>
           <button class="danger small" data-cam-remove="${c.id}">Remove</button>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     list.querySelectorAll('[data-cam-test]').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -673,6 +724,11 @@ async function loadFootageCameraList() {
         }
       });
     });
+
+    // Pi camera: browse remote files
+    list.querySelectorAll('[data-cam-pifiles]').forEach(btn => {
+      btn.addEventListener('click', () => openPiFileBrowser(btn.dataset.camPifiles));
+    });
   } catch (e) {
     console.error('[Footage] Camera list error:', e);
   }
@@ -680,47 +736,73 @@ async function loadFootageCameraList() {
 
 function openCameraEditor(cam) {
   const isNew = !cam;
+  const isPi = cam?.piHost ? true : false;
   const modal = document.getElementById('footageDetailModal');
   const body = document.getElementById('footageModalBody');
   document.getElementById('footageModalTitle').textContent = isNew ? 'Add Camera' : 'Edit Camera';
 
   body.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:8px;">
+      <label class="footage-label">Camera Type</label>
+      <select id="camEditorType" class="select-input">
+        <option value="onvif" ${!isPi ? 'selected' : ''}>ONVIF / RTSP Camera</option>
+        <option value="pi" ${isPi ? 'selected' : ''}>Raspberry Pi Camera</option>
+      </select>
+
       <label class="footage-label">Camera Name</label>
       <input type="text" id="camEditorName" class="text-input" value="${cam?.name || ''}" placeholder="Workshop Camera" />
 
-      <label class="footage-label">RTSP URL (manual)</label>
-      <input type="text" id="camEditorRtsp" class="text-input" value="${cam?.rtspUrl || ''}" placeholder="rtsp://user:pass@192.168.0.x:554/stream1" />
-      <small class="muted">Leave blank to auto-discover via ONVIF below</small>
+      <!-- Pi Camera Fields -->
+      <div id="camEditorPiFields" style="display:${isPi ? 'flex' : 'none'};flex-direction:column;gap:8px;">
+        <label class="footage-label">Pi Host (IP)</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="camEditorPiHost" class="text-input" value="${cam?.piHost || '192.168.0.141'}" placeholder="192.168.0.141" style="flex:2;" />
+          <input type="number" id="camEditorPiPort" class="text-input" value="${cam?.piPort || 8080}" placeholder="8080" style="flex:1;" title="HTTP API port" />
+        </div>
 
-      <label class="footage-label">ONVIF Host</label>
-      <div style="display:flex;gap:8px;">
-        <input type="text" id="camEditorOnvifHost" class="text-input" value="${cam?.onvifHost || ''}" placeholder="192.168.0.145" style="flex:2;" />
-        <input type="number" id="camEditorOnvifPort" class="text-input" value="${cam?.onvifPort || 8000}" placeholder="8000" style="flex:1;" title="ONVIF port" />
+        <label class="footage-label">RTSP Settings</label>
+        <div style="display:flex;gap:8px;">
+          <input type="number" id="camEditorPiRtspPort" class="text-input" value="${cam?.piRtspPort || 8554}" placeholder="8554" style="flex:1;" title="RTSP port" />
+          <input type="text" id="camEditorPiRtspPath" class="text-input" value="${cam?.piRtspPath || '/cam'}" placeholder="/cam" style="flex:1;" title="RTSP path" />
+        </div>
+        <small class="muted">RTSP URL will be: rtsp://&lt;host&gt;:&lt;port&gt;&lt;path&gt;</small>
       </div>
 
-      <div style="display:flex;gap:8px;">
-        <div style="flex:1;">
-          <label class="footage-label">ONVIF User</label>
-          <input type="text" id="camEditorOnvifUser" class="text-input" value="${cam?.onvifUser || ''}" placeholder="admin" />
-        </div>
-        <div style="flex:1;">
-          <label class="footage-label">ONVIF Password</label>
-          <input type="text" id="camEditorOnvifPass" class="text-input" value="${cam?.onvifPass || ''}" placeholder="password" />
-        </div>
-      </div>
+      <!-- ONVIF / RTSP Camera Fields -->
+      <div id="camEditorOnvifFields" style="display:${isPi ? 'none' : 'flex'};flex-direction:column;gap:8px;">
+        <label class="footage-label">RTSP URL (manual)</label>
+        <input type="text" id="camEditorRtsp" class="text-input" value="${cam?.rtspUrl || ''}" placeholder="rtsp://user:pass@192.168.0.x:554/stream1" />
+        <small class="muted">Leave blank to auto-discover via ONVIF below</small>
 
-      <div style="display:flex;gap:8px;">
-        <div style="flex:1;">
-          <label class="footage-label">ONVIF Profile Token</label>
-          <input type="text" id="camEditorOnvifProfile" class="text-input" value="${cam?.onvifProfile || 'PROFILE_16415'}" placeholder="PROFILE_16415" />
+        <label class="footage-label">ONVIF Host</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="camEditorOnvifHost" class="text-input" value="${cam?.onvifHost || ''}" placeholder="192.168.0.145" style="flex:2;" />
+          <input type="number" id="camEditorOnvifPort" class="text-input" value="${cam?.onvifPort || 8000}" placeholder="8000" style="flex:1;" title="ONVIF port" />
         </div>
-        <div style="flex:1;">
-          <label class="footage-label">Stream</label>
-          <select id="camEditorStream" class="select-input">
-            <option value="main" ${(cam?.stream || 'main') === 'main' ? 'selected' : ''}>Main (high res)</option>
-            <option value="sub" ${cam?.stream === 'sub' ? 'selected' : ''}>Sub (low res)</option>
-          </select>
+
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;">
+            <label class="footage-label">ONVIF User</label>
+            <input type="text" id="camEditorOnvifUser" class="text-input" value="${cam?.onvifUser || ''}" placeholder="admin" />
+          </div>
+          <div style="flex:1;">
+            <label class="footage-label">ONVIF Password</label>
+            <input type="text" id="camEditorOnvifPass" class="text-input" value="${cam?.onvifPass || ''}" placeholder="password" />
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;">
+            <label class="footage-label">ONVIF Profile Token</label>
+            <input type="text" id="camEditorOnvifProfile" class="text-input" value="${cam?.onvifProfile || 'PROFILE_16415'}" placeholder="PROFILE_16415" />
+          </div>
+          <div style="flex:1;">
+            <label class="footage-label">Stream</label>
+            <select id="camEditorStream" class="select-input">
+              <option value="main" ${(cam?.stream || 'main') === 'main' ? 'selected' : ''}>Main (high res)</option>
+              <option value="sub" ${cam?.stream === 'sub' ? 'selected' : ''}>Sub (low res)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -741,18 +823,42 @@ function openCameraEditor(cam) {
     </div>
   `;
 
+  // Toggle fields based on camera type
+  document.getElementById('camEditorType').addEventListener('change', () => {
+    const isPiType = document.getElementById('camEditorType').value === 'pi';
+    document.getElementById('camEditorPiFields').style.display = isPiType ? 'flex' : 'none';
+    document.getElementById('camEditorOnvifFields').style.display = isPiType ? 'none' : 'flex';
+    document.getElementById('camEditorDiscoverBtn').style.display = isPiType ? 'none' : '';
+  });
+  // Init visibility
+  document.getElementById('camEditorDiscoverBtn').style.display = isPi ? 'none' : '';
+
   document.getElementById('camEditorSaveBtn').addEventListener('click', async () => {
+    const isPiType = document.getElementById('camEditorType').value === 'pi';
     const data = {
       name: document.getElementById('camEditorName').value.trim() || 'Camera',
-      rtspUrl: document.getElementById('camEditorRtsp').value.trim(),
-      onvifHost: document.getElementById('camEditorOnvifHost').value.trim(),
-      onvifPort: parseInt(document.getElementById('camEditorOnvifPort').value) || 8000,
-      onvifUser: document.getElementById('camEditorOnvifUser').value.trim(),
-      onvifPass: document.getElementById('camEditorOnvifPass').value.trim(),
-      onvifProfile: document.getElementById('camEditorOnvifProfile').value.trim(),
-      stream: document.getElementById('camEditorStream').value,
       rotation: parseInt(document.getElementById('camEditorRotation').value) || 0
     };
+
+    if (isPiType) {
+      data.piHost = document.getElementById('camEditorPiHost').value.trim();
+      data.piPort = parseInt(document.getElementById('camEditorPiPort').value) || 8080;
+      data.piRtspPort = parseInt(document.getElementById('camEditorPiRtspPort').value) || 8554;
+      data.piRtspPath = document.getElementById('camEditorPiRtspPath').value.trim() || '/cam';
+      // Clear ONVIF fields
+      data.rtspUrl = '';
+      data.onvifHost = '';
+    } else {
+      data.rtspUrl = document.getElementById('camEditorRtsp').value.trim();
+      data.onvifHost = document.getElementById('camEditorOnvifHost').value.trim();
+      data.onvifPort = parseInt(document.getElementById('camEditorOnvifPort').value) || 8000;
+      data.onvifUser = document.getElementById('camEditorOnvifUser').value.trim();
+      data.onvifPass = document.getElementById('camEditorOnvifPass').value.trim();
+      data.onvifProfile = document.getElementById('camEditorOnvifProfile').value.trim();
+      data.stream = document.getElementById('camEditorStream').value;
+      // Clear Pi fields
+      data.piHost = '';
+    }
     try {
       if (isNew) {
         await window.printStation.footage.addCamera(data);
@@ -855,21 +961,187 @@ function openCameraEditor(cam) {
     const status = document.getElementById('camEditorStatus');
     status.textContent = 'Testing connection...';
     try {
-      const result = await window.printStation.footage.testCamera({
-        rtspUrl: document.getElementById('camEditorRtsp').value.trim(),
-        onvifHost: document.getElementById('camEditorOnvifHost').value.trim(),
-        onvifPort: parseInt(document.getElementById('camEditorOnvifPort').value) || 8000,
-        onvifUser: document.getElementById('camEditorOnvifUser').value.trim(),
-        onvifPass: document.getElementById('camEditorOnvifPass').value.trim(),
-        onvifProfile: document.getElementById('camEditorOnvifProfile').value.trim()
-      });
-      status.textContent = result.success ? 'Connection successful!' : `Failed: ${result.error}`;
+      const isPiType = document.getElementById('camEditorType').value === 'pi';
+      let config;
+      if (isPiType) {
+        config = {
+          piHost: document.getElementById('camEditorPiHost').value.trim(),
+          piPort: parseInt(document.getElementById('camEditorPiPort').value) || 8080,
+          piRtspPort: parseInt(document.getElementById('camEditorPiRtspPort').value) || 8554,
+          piRtspPath: document.getElementById('camEditorPiRtspPath').value.trim() || '/cam'
+        };
+      } else {
+        config = {
+          rtspUrl: document.getElementById('camEditorRtsp').value.trim(),
+          onvifHost: document.getElementById('camEditorOnvifHost').value.trim(),
+          onvifPort: parseInt(document.getElementById('camEditorOnvifPort').value) || 8000,
+          onvifUser: document.getElementById('camEditorOnvifUser').value.trim(),
+          onvifPass: document.getElementById('camEditorOnvifPass').value.trim(),
+          onvifProfile: document.getElementById('camEditorOnvifProfile').value.trim()
+        };
+      }
+      const result = await window.printStation.footage.testCamera(config);
+      if (result.success) {
+        let msg = 'Connection successful!';
+        if (isPiType && result.piStatus) {
+          msg += ` Disk free: ${formatBytes(result.piStatus.disk_free_bytes || 0)}`;
+          if (result.rtspOk) msg += ' | RTSP OK';
+          else if (result.rtspError) msg += ` | RTSP failed: ${result.rtspError}`;
+        }
+        status.textContent = msg;
+      } else {
+        status.textContent = `Failed: ${result.error}`;
+      }
     } catch (e) {
       status.textContent = 'Error: ' + e.message;
     }
   });
 
   modal.classList.remove('hidden');
+}
+
+// ============================================================================
+// Pi Camera File Browser
+// ============================================================================
+async function openPiFileBrowser(cameraId) {
+  const cam = footageState.cameras.find(c => c.id === cameraId);
+  if (!cam) return;
+
+  const modal = document.getElementById('footageDetailModal');
+  const body = document.getElementById('footageModalBody');
+  document.getElementById('footageModalTitle').textContent = `Pi Recordings — ${cam.name}`;
+
+  body.innerHTML = '<p class="muted">Loading recordings from Pi...</p>';
+  modal.classList.remove('hidden');
+
+  try {
+    const result = await window.printStation.footage.pi.recordings(cameraId);
+    const files = result.files || [];
+
+    if (!files.length) {
+      body.innerHTML = `
+        <p class="muted">No recordings on Pi.</p>
+        <p class="muted" style="font-size:0.8rem;">Disk free: ${formatBytes(result.disk_free_bytes || 0)}</p>`;
+      return;
+    }
+
+    body.innerHTML = `
+      <p style="margin:0 0 8px;font-size:0.85rem;color:var(--text-muted);">
+        ${files.length} file(s) &middot; ${formatBytes(result.total_bytes || 0)} used &middot;
+        ${formatBytes(result.disk_free_bytes || 0)} free
+      </p>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button id="piPullAllBtn" class="primary small">Pull All &amp; Upload</button>
+        <button id="piDeleteAllBtn" class="danger small">Delete All from Pi</button>
+      </div>
+      <div id="piFileList" style="display:flex;flex-direction:column;gap:6px;">
+        ${files.map(f => `
+          <div class="footage-camera-card" style="padding:8px 12px;">
+            <div class="footage-camera-info" style="gap:2px;">
+              <strong style="font-size:0.85rem;">${f.filename}</strong>
+              <span class="muted" style="font-size:0.8rem;">${formatBytes(f.size_bytes || 0)} &middot; ${f.duration_seconds ? formatDuration(f.duration_seconds) : '?'} &middot; ${f.created_at ? new Date(f.created_at).toLocaleString() : ''}</span>
+            </div>
+            <div class="footage-camera-actions">
+              <button class="secondary small" data-pi-pull="${f.filename}">Pull &amp; Upload</button>
+              <button class="danger small" data-pi-delete="${f.filename}">Delete</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div id="piPullStatus" class="muted" style="margin-top:8px;"></div>
+    `;
+
+    // Individual pull+upload buttons
+    body.querySelectorAll('[data-pi-pull]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const filename = btn.dataset.piPull;
+        btn.disabled = true;
+        btn.textContent = 'Pulling...';
+        const statusEl = document.getElementById('piPullStatus');
+        try {
+          statusEl.textContent = `Pulling ${filename}...`;
+          await window.printStation.footage.pi.pullAndUpload(cameraId, filename, {
+            category: '', subcategory: '', tags: '', notes: '',
+            source: 'pi-camera'
+          });
+          try { await window.printStation.footage.pi.delete(cameraId, filename); } catch (_) {}
+          btn.textContent = 'Done!';
+          statusEl.textContent = `${filename} uploaded and removed from Pi.`;
+          showFootageToast(`${filename} uploaded!`);
+        } catch (e) {
+          btn.textContent = 'Failed';
+          btn.disabled = false;
+          statusEl.textContent = `Failed: ${e.message}`;
+          showFootageToast(`Pull failed: ${e.message}`, true);
+        }
+      });
+    });
+
+    // Individual delete buttons
+    body.querySelectorAll('[data-pi-delete]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const filename = btn.dataset.piDelete;
+        try {
+          await window.printStation.footage.pi.delete(cameraId, filename);
+          btn.closest('.footage-camera-card').remove();
+          showFootageToast(`${filename} deleted from Pi`);
+        } catch (e) {
+          showFootageToast(`Delete failed: ${e.message}`, true);
+        }
+      });
+    });
+
+    // Pull All
+    document.getElementById('piPullAllBtn').addEventListener('click', async () => {
+      const pullAllBtn = document.getElementById('piPullAllBtn');
+      pullAllBtn.disabled = true;
+      const statusEl = document.getElementById('piPullStatus');
+      let done = 0;
+      for (const f of files) {
+        statusEl.textContent = `Pulling ${done + 1}/${files.length}: ${f.filename}...`;
+        try {
+          await window.printStation.footage.pi.pullAndUpload(cameraId, f.filename, {
+            category: '', subcategory: '', tags: '', notes: '',
+            source: 'pi-camera'
+          });
+          try { await window.printStation.footage.pi.delete(cameraId, f.filename); } catch (_) {}
+          done++;
+        } catch (e) {
+          statusEl.textContent = `Failed on ${f.filename}: ${e.message}`;
+          showFootageToast(`Pull failed: ${e.message}`, true);
+          break;
+        }
+      }
+      if (done === files.length) {
+        statusEl.textContent = `All ${done} file(s) uploaded!`;
+        showFootageToast(`All ${done} Pi recordings uploaded!`);
+        modal.classList.add('hidden');
+      }
+    });
+
+    // Delete All
+    document.getElementById('piDeleteAllBtn').addEventListener('click', async () => {
+      const confirmed = await window.printStation.showConfirm(
+        `Delete all ${files.length} recording(s) from Pi? This cannot be undone.`,
+        'Delete All Pi Recordings'
+      );
+      if (!confirmed) return;
+      const statusEl = document.getElementById('piPullStatus');
+      let deleted = 0;
+      for (const f of files) {
+        try {
+          await window.printStation.footage.pi.delete(cameraId, f.filename);
+          deleted++;
+        } catch (_) {}
+      }
+      statusEl.textContent = `Deleted ${deleted}/${files.length} file(s).`;
+      showFootageToast(`Deleted ${deleted} file(s) from Pi`);
+      openPiFileBrowser(cameraId); // refresh
+    });
+
+  } catch (e) {
+    body.innerHTML = `<p style="color:var(--danger);">Failed to load Pi recordings: ${e.message}</p>`;
+  }
 }
 
 // ============================================================================

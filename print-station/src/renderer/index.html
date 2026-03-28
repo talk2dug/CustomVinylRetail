@@ -115,6 +115,7 @@
           <button class="dropdown-item" data-view="fbScheduleManagerView">Schedule Manager</button>
           <button class="dropdown-item" data-view="aiAgentView">AI Sales Agent</button>
           <button class="dropdown-item" data-view="trendMonitorView">Trend Monitor</button>
+          <button class="dropdown-item" data-view="tiktokMarketingView">TikTok Dashboard</button>
           <button class="dropdown-item" data-view="footageLibraryView">Footage Library</button>
         </div>
       </div>
@@ -4784,6 +4785,102 @@
       <!-- ================================================================== -->
       <!-- FOOTAGE LIBRARY & CAMERA RECORDING                                -->
       <!-- ================================================================== -->
+      <!-- ================================================================== -->
+      <!-- TIKTOK MARKETING DASHBOARD                                       -->
+      <!-- ================================================================== -->
+      <section id="tiktokMarketingView" class="view">
+        <div class="view-toolbar">
+          <div class="catalog-toolbar-group">
+            <h3 style="margin:0;">TikTok Marketing Dashboard</h3>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="ttDashRefreshBtn" class="secondary small">Refresh</button>
+          </div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div style="display:flex;gap:16px;padding:8px 16px;background:var(--card);border:1px solid var(--border);border-radius:6px;margin:8px 16px;">
+          <div style="text-align:center;"><span id="ttStatTotal" style="font-size:1.3rem;font-weight:600;color:var(--accent);">0</span><br/><small class="muted">Total</small></div>
+          <div style="text-align:center;"><span id="ttStatDraft" style="font-size:1.3rem;font-weight:600;color:#888;">0</span><br/><small class="muted">Draft</small></div>
+          <div style="text-align:center;"><span id="ttStatApproved" style="font-size:1.3rem;font-weight:600;color:var(--success, #2e7d32);">0</span><br/><small class="muted">Approved</small></div>
+          <div style="text-align:center;"><span id="ttStatPublished" style="font-size:1.3rem;font-weight:600;color:#0ea5e9;">0</span><br/><small class="muted">Published</small></div>
+        </div>
+
+        <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:16px;overflow-y:auto;flex:1;">
+
+          <!-- Pipeline Launcher -->
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;">
+            <h4 style="margin:0 0 8px;">Pipeline Launcher</h4>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <select id="ttPipelineCollection" class="select-input" style="flex:1;min-width:200px;">
+                <option value="">Select collection...</option>
+              </select>
+              <button id="ttPipelineRunBtn" class="primary">Run Pipeline</button>
+            </div>
+            <div id="ttPipelineStatus" class="muted" style="margin-top:8px;font-size:0.85rem;"></div>
+            <details style="margin-top:8px;">
+              <summary class="muted" style="cursor:pointer;font-size:0.85rem;">Pipeline History</summary>
+              <div id="ttPipelineHistory" style="margin-top:8px;"></div>
+            </details>
+          </div>
+
+          <!-- Draft Videos Grid -->
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h4 style="margin:0;">Draft Videos</h4>
+              <button id="ttVideoRefreshBtn" class="secondary small">Refresh</button>
+            </div>
+            <div id="ttVideoGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:12px;"></div>
+          </div>
+
+          <!-- Published Videos Table -->
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h4 style="margin:0;">Published Videos</h4>
+              <select id="ttPublishedFilterPlatform" class="select-input" style="width:auto;">
+                <option value="">All Platforms</option>
+                <option value="tiktok">TikTok</option>
+                <option value="facebook">Facebook</option>
+                <option value="instagram">Instagram</option>
+              </select>
+            </div>
+            <table class="inventory-table" style="width:100%;">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Platform</th>
+                  <th>Video</th>
+                  <th>Collection</th>
+                  <th>Views</th>
+                  <th>Likes</th>
+                  <th>Link</th>
+                </tr>
+              </thead>
+              <tbody id="ttPublishedBody">
+                <tr><td colspan="7" class="muted" style="text-align:center;padding:16px;">No published videos yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Templates -->
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;">
+            <h4 style="margin:0 0 12px;">Video Templates</h4>
+            <div id="ttTemplateGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
+          </div>
+        </div>
+
+        <!-- Video Preview Modal -->
+        <div id="ttVideoModal" class="footage-modal-overlay hidden">
+          <div class="footage-modal">
+            <div class="footage-modal-header">
+              <h3 id="ttModalTitle">Video Preview</h3>
+              <button id="ttModalCloseBtn" class="footage-modal-close">&times;</button>
+            </div>
+            <div id="ttModalBody" class="footage-modal-body"></div>
+          </div>
+        </div>
+      </section>
+
       <section id="footageLibraryView" class="view">
         <div class="view-toolbar">
           <div class="catalog-toolbar-group">
@@ -8399,6 +8496,7 @@
     <!-- Trend Monitor View -->
     <script src="./trend-monitor-view.js"></script>
     <script src="./footage-library-view.js"></script>
+    <script src="./tiktok-marketing-view.js"></script>
     <!-- Print Quotes View -->
     <script src="./parts-finder-drawer.js"></script>
     <script src="./quotes-view.js"></script>

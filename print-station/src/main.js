@@ -2714,6 +2714,70 @@ Return ONLY valid JSON, nothing else:
   });
 
   // ========================================
+  // TIKTOK MARKETING DASHBOARD
+  // ========================================
+
+  // List generated TikTok videos (from assembler)
+  ipcMain.handle('tiktok-dash:videos', async (_event, query = {}) => {
+    return httpRequest('/api/tiktok-videos', { query });
+  });
+
+  // List video templates
+  ipcMain.handle('tiktok-dash:templates', async () => {
+    return httpRequest('/api/tiktok-videos/templates');
+  });
+
+  // Assemble a video from template
+  ipcMain.handle('tiktok-dash:assemble', async (_event, payload = {}) => {
+    return httpRequest('/api/tiktok-videos/assemble', { method: 'POST', body: payload, timeout: 120000 });
+  });
+
+  // Delete a generated video
+  ipcMain.handle('tiktok-dash:deleteVideo', async (_event, filename) => {
+    return httpRequest(`/api/tiktok-videos/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  });
+
+  // Get video file URL (for streaming in <video> element)
+  ipcMain.handle('tiktok-dash:videoUrl', async (_event, filename) => {
+    const settings = ensureServerConfigured();
+    return `${settings.serverBaseUrl}/api/tiktok-videos/${encodeURIComponent(filename)}`;
+  });
+
+  // Managed video CRUD (tracking/approval)
+  ipcMain.handle('tiktok-dash:managed:list', async (_event, filters = {}) => {
+    return httpRequest('/api/tiktok-videos/managed', { query: filters });
+  });
+
+  ipcMain.handle('tiktok-dash:managed:stats', async () => {
+    return httpRequest('/api/tiktok-videos/managed/stats');
+  });
+
+  ipcMain.handle('tiktok-dash:managed:create', async (_event, data = {}) => {
+    return httpRequest('/api/tiktok-videos/managed', { method: 'POST', body: data });
+  });
+
+  ipcMain.handle('tiktok-dash:managed:update', async (_event, { id, updates } = {}) => {
+    return httpRequest(`/api/tiktok-videos/managed/${encodeURIComponent(id)}`, { method: 'PATCH', body: updates });
+  });
+
+  ipcMain.handle('tiktok-dash:managed:delete', async (_event, id) => {
+    return httpRequest(`/api/tiktok-videos/managed/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  });
+
+  // Pipeline
+  ipcMain.handle('tiktok-dash:catalog', async () => {
+    return httpRequest('/api/catalog');
+  });
+
+  ipcMain.handle('tiktok-dash:pipeline:run', async (_event, payload = {}) => {
+    return httpRequest('/api/apparel-pipeline/run', { method: 'POST', body: payload, timeout: 30000 });
+  });
+
+  ipcMain.handle('tiktok-dash:pipeline:manifests', async () => {
+    return httpRequest('/api/batch-mockups/manifests');
+  });
+
+  // ========================================
   // PRINTER API
   // ========================================
 
@@ -7767,6 +7831,75 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('footage:preview:stop', (_event, cameraId) => {
     cameraRecorder.stopPreviewLoop(cameraId);
     return { ok: true };
+  });
+
+  // Pi Camera remote operations
+  ipcMain.handle('footage:pi:status', async (_event, cameraId) => {
+    const cam = cameraRecorder.getCamera(cameraId);
+    if (!cam || !cameraRecorder.isPiCamera(cam)) throw new Error('Not a Pi camera');
+    return cameraRecorder.piStatus(cam);
+  });
+
+  ipcMain.handle('footage:pi:recordings', async (_event, cameraId) => {
+    const cam = cameraRecorder.getCamera(cameraId);
+    if (!cam || !cameraRecorder.isPiCamera(cam)) throw new Error('Not a Pi camera');
+    return cameraRecorder.piListRecordings(cam);
+  });
+
+  ipcMain.handle('footage:pi:pull', async (_event, { cameraId, filename }) => {
+    const cam = cameraRecorder.getCamera(cameraId);
+    if (!cam || !cameraRecorder.isPiCamera(cam)) throw new Error('Not a Pi camera');
+    const localPath = await cameraRecorder.piPullRecording(cam, filename, (progress) => {
+      const bw = BrowserWindow.getAllWindows()[0];
+      if (bw) bw.webContents.send('footage:pi:pull-progress', { cameraId, filename, ...progress });
+    });
+    return { localPath, filename };
+  });
+
+  ipcMain.handle('footage:pi:pull-and-upload', async (_event, { cameraId, filename, meta }) => {
+    const cam = cameraRecorder.getCamera(cameraId);
+    if (!cam || !cameraRecorder.isPiCamera(cam)) throw new Error('Not a Pi camera');
+
+    // Pull from Pi
+    const localPath = await cameraRecorder.piPullRecording(cam, filename, (progress) => {
+      const bw = BrowserWindow.getAllWindows()[0];
+      if (bw) bw.webContents.send('footage:pi:pull-progress', { cameraId, filename, ...progress });
+    });
+
+    // Upload to server (same as footage:upload)
+    const piSettings = ensureServerConfigured();
+    const { fetch: doFetch } = await ensureFetch();
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('video', fs.createReadStream(localPath), { filename });
+    if (meta) {
+      if (meta.category) form.append('category', meta.category);
+      if (meta.subcategory) form.append('subcategory', meta.subcategory);
+      if (meta.product_name) form.append('product_name', meta.product_name);
+      if (meta.tags) form.append('tags', meta.tags);
+      if (meta.notes) form.append('notes', meta.notes);
+      form.append('source', meta.source || 'pi-camera');
+    }
+    const headers = form.getHeaders();
+    if (piSettings.apiKey) headers['X-API-Key'] = piSettings.apiKey;
+    const resp = await doFetch(`${piSettings.serverBaseUrl}/api/footage/upload`, {
+      method: 'POST', headers, body: form
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `Upload failed: ${resp.status}`);
+    }
+    const result = await resp.json();
+
+    // Clean up local temp file
+    cameraRecorder.cleanupTempFile(localPath);
+    return result;
+  });
+
+  ipcMain.handle('footage:pi:delete', async (_event, { cameraId, filename }) => {
+    const cam = cameraRecorder.getCamera(cameraId);
+    if (!cam || !cameraRecorder.isPiCamera(cam)) throw new Error('Not a Pi camera');
+    return cameraRecorder.piDeleteRecording(cam, filename);
   });
 
   // ffmpeg + python check
