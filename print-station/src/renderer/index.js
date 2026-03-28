@@ -1748,6 +1748,9 @@ function switchView(viewId) {
     // Initialize TikTok view - check connection status
     initTikTokView();
   }
+  if (viewId === 'tiktokMarketingView') {
+    if (typeof window.initTiktokMarketingView === 'function') window.initTiktokMarketingView();
+  }
   if (viewId === 'printerView') {
     // Initialize Printer view - load printers
     initPrinterView();

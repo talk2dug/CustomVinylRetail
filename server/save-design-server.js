@@ -91,6 +91,9 @@ const { handleQuoteRoute } = require('./quote-server');
 const { handleFinanceRoute } = require('./finance-server');
 const { handleFootageRoute } = require('./footage-server');
 const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
+const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
+const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
+const { runFullPipeline } = require('./modules/apparel-pipeline');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
@@ -9891,6 +9894,46 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // Batch Mockup Generator API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/batch-mockups')) {
+    if (!requireInternalKey(req, res)) return;
+    handleBatchMockupRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Batch Mockup API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Shopify Apparel Publisher API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/shopify-apparel')) {
+    if (!requireInternalKey(req, res)) return;
+    handleShopifyApparelRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Shopify Apparel API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Apparel Pipeline — full end-to-end run
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/apparel-pipeline/run') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const { category } = JSON.parse(body || '{}');
+        if (!category) { sendJson(res, 400, { error: 'category is required' }); return; }
+        // Run pipeline in background — don't await
+        runFullPipeline(category).catch(err => {
+          console.error('[Apparel Pipeline Error]', err);
+        });
+        sendJson(res, 200, { status: 'started', category });
+      } catch (e) {
+        sendJson(res, 400, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // TikTok Marketing Dashboard — managed video CRUD (must come before assembler catch-all)
   if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/tiktok-videos/managed')) {
     if (!requireInternalKey(req, res)) return;
@@ -9898,8 +9941,8 @@ Keep it concise and actionable.`;
 
     // GET /api/tiktok-videos/managed — list tracked videos
     if (req.method === 'GET' && parsedUrl.pathname === '/api/tiktok-videos/managed') {
-      const filters = {};
       const q = parsedUrl.query || {};
+      const filters = {};
       if (q.status) filters.status = q.status;
       if (q.platform) filters.platform = q.platform;
       if (q.collection) filters.collection = q.collection;

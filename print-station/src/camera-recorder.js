@@ -65,6 +65,8 @@ const activePreviews = new Map();       // cameraId → { running, stop() }
 
 const SEGMENT_SECONDS = 300;            // 5-minute MP4 segments
 const RECONNECT_DELAY_MS = 10_000;      // wait 10 s before reconnect
+const PI_PULL_DIR = path.join(app.getPath('temp'), 'print-station-pi-pulls');
+if (!fs.existsSync(PI_PULL_DIR)) fs.mkdirSync(PI_PULL_DIR, { recursive: true });
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -141,7 +143,12 @@ function addCamera(config) {
     onvifProfile: config.onvifProfile || '',
     enabled: config.enabled !== false,
     rotation: config.rotation || 0,
-    stream: config.stream || 'main'
+    stream: config.stream || 'main',
+    // Pi camera fields
+    piHost: config.piHost || '',
+    piPort: config.piPort || 8080,
+    piRtspPort: config.piRtspPort || 8554,
+    piRtspPath: config.piRtspPath || '/cam'
   };
   cameras.push(cam);
   saveCameras();
@@ -223,6 +230,9 @@ function fetchRtspUrl(cam) {
  * Otherwise, fetch via ONVIF Python script.
  */
 async function getRtspUrl(cam) {
+  // Pi camera — build RTSP URL from pi config
+  if (isPiCamera(cam)) return piRtspUrl(cam);
+
   // Static URL (Frigate, manual entry, etc.)
   if (cam.rtspUrl) return cam.rtspUrl;
 
@@ -285,9 +295,146 @@ async function discoverCamera(config) {
 }
 
 // ---------------------------------------------------------------------------
+// Pi Camera HTTP API helpers
+// ---------------------------------------------------------------------------
+
+function isPiCamera(cam) {
+  return !!(cam && cam.piHost);
+}
+
+function piBaseUrl(cam) {
+  const host = cam.piHost || '192.168.0.141';
+  const port = cam.piPort || 8080;
+  return `http://${host}:${port}`;
+}
+
+async function piFetch(cam, endpoint, options = {}) {
+  const url = `${piBaseUrl(cam)}${endpoint}`;
+  log(`Pi API: ${options.method || 'GET'} ${url}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeout || 10_000);
+  try {
+    const resp = await fetch(url, {
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new Error(text || `HTTP ${resp.status}`);
+    }
+    return resp.json();
+  } catch (e) {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') throw new Error('Pi camera request timed out');
+    throw e;
+  }
+}
+
+/** Get Pi server status */
+async function piStatus(cam) {
+  return piFetch(cam, '/api/status');
+}
+
+/** Start recording on the Pi */
+async function piStartRecording(cam, prefix) {
+  return piFetch(cam, '/api/record/start', {
+    method: 'POST',
+    body: prefix ? { prefix } : {}
+  });
+}
+
+/** Stop recording on the Pi */
+async function piStopRecording(cam) {
+  return piFetch(cam, '/api/record/stop', { method: 'POST' });
+}
+
+/** List recordings on the Pi */
+async function piListRecordings(cam) {
+  return piFetch(cam, '/api/recordings');
+}
+
+/** Delete a recording from the Pi */
+async function piDeleteRecording(cam, filename) {
+  return piFetch(cam, `/api/recordings/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+}
+
+/** Download a recording from the Pi to local temp dir, return local path */
+async function piPullRecording(cam, filename, progressCb) {
+  const url = `${piBaseUrl(cam)}/api/recordings/${encodeURIComponent(filename)}`;
+  const localPath = path.join(PI_PULL_DIR, filename);
+  log(`Pi pull: ${url} → ${localPath}`);
+
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Download failed: HTTP ${resp.status}`);
+
+  const totalBytes = parseInt(resp.headers.get('content-length') || '0', 10);
+  const fileStream = fs.createWriteStream(localPath);
+
+  // resp.body is a ReadableStream (web stream), use async iteration
+  let downloaded = 0;
+  const reader = resp.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      fileStream.write(Buffer.from(value));
+      downloaded += value.byteLength;
+      if (progressCb && totalBytes > 0) {
+        progressCb({ downloaded, totalBytes, percent: Math.round((downloaded / totalBytes) * 100) });
+      }
+    }
+  } catch (err) {
+    fileStream.end();
+    throw err;
+  }
+  fileStream.end();
+  log(`Pi pull complete: ${filename} (${downloaded} bytes)`);
+  return localPath;
+}
+
+/**
+ * Test a Pi camera connection — checks HTTP API and RTSP.
+ */
+async function testPiCamera(config) {
+  try {
+    const status = await piFetch(config, '/api/status');
+    const result = { success: true, piStatus: status };
+    // Also test RTSP if we can build the URL
+    const rtsp = piRtspUrl(config);
+    if (rtsp) {
+      try {
+        await probeRtsp(rtsp);
+        result.rtspOk = true;
+      } catch (e) {
+        result.rtspOk = false;
+        result.rtspError = e.message;
+      }
+    }
+    return result;
+  } catch (e) {
+    return { success: false, error: e.message || 'Pi camera connection failed' };
+  }
+}
+
+/** Build the RTSP URL for a Pi camera */
+function piRtspUrl(cam) {
+  if (cam.rtspUrl) return cam.rtspUrl;
+  const host = cam.piHost || '192.168.0.141';
+  const rtspPort = cam.piRtspPort || 8554;
+  const rtspPath = cam.piRtspPath || '/cam';
+  return `rtsp://${host}:${rtspPort}${rtspPath}`;
+}
+
+// ---------------------------------------------------------------------------
 // Test Camera Connection
 // ---------------------------------------------------------------------------
 async function testCamera(config) {
+  // Pi camera — test HTTP API + RTSP
+  if (isPiCamera(config)) return testPiCamera(config);
+
   try {
     let url;
     if (config.rtspUrl) {
@@ -668,6 +815,41 @@ async function startRecording(cameraId, outputDir, stream) {
   if (activeRecordings.has(cameraId)) {
     throw new Error('Camera is already recording');
   }
+
+  const cam = getCamera(cameraId);
+  if (!cam) throw new Error('Camera not found');
+
+  // Pi camera — delegate to Pi HTTP API
+  if (isPiCamera(cam)) {
+    const result = await piStartRecording(cam, cam.name?.replace(/\s+/g, '_').toLowerCase());
+    const piSession = {
+      type: 'pi',
+      cameraId,
+      cam,
+      sessionId: result.session_id,
+      active: true,
+      startedAt: Date.now(),
+      toStatus() {
+        return {
+          sessionId: this.sessionId,
+          cameraId: this.cameraId,
+          cameraName: this.cam?.name || '',
+          active: this.active,
+          piCamera: true,
+          elapsed: this.startedAt ? Math.round((Date.now() - this.startedAt) / 1000) : 0,
+          startedAt: this.startedAt,
+          segments: [],
+          segmentCount: 0,
+          errors: []
+        };
+      }
+    };
+    activeRecordings.set(cameraId, piSession);
+    emitter.emit('recording-started', piSession.toStatus());
+    log(`Pi recording started: session ${result.session_id}`);
+    return piSession.toStatus();
+  }
+
   const session = new RecordingSession(cameraId, outputDir || TEMP_DIR, stream || 'main');
   activeRecordings.set(cameraId, session);
   await session.start();
@@ -682,6 +864,24 @@ async function startRecording(cameraId, outputDir, stream) {
 async function stopRecording(cameraId) {
   const session = activeRecordings.get(cameraId);
   if (!session) throw new Error('No active recording for this camera');
+
+  // Pi camera — stop via HTTP API
+  if (session.type === 'pi') {
+    const result = await piStopRecording(session.cam);
+    session.active = false;
+    activeRecordings.delete(cameraId);
+    const status = {
+      ...session.toStatus(),
+      active: false,
+      piCamera: true,
+      piFiles: result.files || [],
+      elapsed: session.startedAt ? Math.round((Date.now() - session.startedAt) / 1000) : 0
+    };
+    emitter.emit('recording-stopped', status);
+    log(`Pi recording stopped: ${(result.files || []).length} file(s)`);
+    return status;
+  }
+
   const status = await session.stop();
   activeRecordings.delete(cameraId);
   return status;
@@ -703,7 +903,10 @@ function getRecordingStatus() {
  */
 function getStatus(cameraId) {
   const session = activeRecordings.get(cameraId);
-  return session ? session.toStatus() : { active: false, cameraId };
+  if (!session) return { active: false, cameraId };
+  const status = session.toStatus();
+  // For Pi cameras, fetch live status from Pi to get segment count
+  return status;
 }
 
 // ---------------------------------------------------------------------------
@@ -825,6 +1028,15 @@ module.exports = {
   getRecordingStatus,
   getStatus,
 
+  // Pi Camera
+  isPiCamera,
+  piStatus,
+  piStartRecording,
+  piStopRecording,
+  piListRecordings,
+  piDeleteRecording,
+  piPullRecording,
+
   // Utilities
   cleanupTempFile,
   checkFfmpeg,
@@ -832,5 +1044,6 @@ module.exports = {
   shutdown,
 
   TEMP_DIR,
+  PI_PULL_DIR,
   SEGMENT_SECONDS
 };

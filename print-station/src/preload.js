@@ -206,6 +206,30 @@ contextBridge.exposeInMainWorld('printStation', {
   },
 
   // ============================================================================
+  // TIKTOK MARKETING DASHBOARD
+  // ============================================================================
+  tiktokDash: {
+    // Generated videos (from assembler)
+    listVideos: (query) => ipcRenderer.invoke('tiktok-dash:videos', query || {}),
+    listTemplates: () => ipcRenderer.invoke('tiktok-dash:templates'),
+    assembleVideo: (payload) => ipcRenderer.invoke('tiktok-dash:assemble', payload || {}),
+    deleteVideo: (filename) => ipcRenderer.invoke('tiktok-dash:deleteVideo', filename),
+    getVideoUrl: (filename) => ipcRenderer.invoke('tiktok-dash:videoUrl', filename),
+    // Managed video tracking (approval workflow)
+    managed: {
+      list: (filters) => ipcRenderer.invoke('tiktok-dash:managed:list', filters || {}),
+      stats: () => ipcRenderer.invoke('tiktok-dash:managed:stats'),
+      create: (data) => ipcRenderer.invoke('tiktok-dash:managed:create', data || {}),
+      update: (id, updates) => ipcRenderer.invoke('tiktok-dash:managed:update', { id, updates }),
+      delete: (id) => ipcRenderer.invoke('tiktok-dash:managed:delete', id)
+    },
+    // Pipeline
+    getCatalog: () => ipcRenderer.invoke('tiktok-dash:catalog'),
+    runPipeline: (payload) => ipcRenderer.invoke('tiktok-dash:pipeline:run', payload || {}),
+    getManifests: () => ipcRenderer.invoke('tiktok-dash:pipeline:manifests')
+  },
+
+  // ============================================================================
   // PRINTER API
   // ============================================================================
   printer: {
@@ -762,6 +786,22 @@ contextBridge.exposeInMainWorld('printStation', {
       const handler = (_e, data) => cb(data || {});
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.off(channel, handler);
+    },
+
+    // Pi Camera remote operations
+    pi: {
+      status: (cameraId) => ipcRenderer.invoke('footage:pi:status', cameraId),
+      recordings: (cameraId) => ipcRenderer.invoke('footage:pi:recordings', cameraId),
+      pull: (cameraId, filename) => ipcRenderer.invoke('footage:pi:pull', { cameraId, filename }),
+      pullAndUpload: (cameraId, filename, meta) =>
+        ipcRenderer.invoke('footage:pi:pull-and-upload', { cameraId, filename, meta }),
+      delete: (cameraId, filename) => ipcRenderer.invoke('footage:pi:delete', { cameraId, filename }),
+      onPullProgress: (cb) => {
+        if (typeof cb !== 'function') return () => {};
+        const handler = (_e, data) => cb(data || {});
+        ipcRenderer.on('footage:pi:pull-progress', handler);
+        return () => ipcRenderer.off('footage:pi:pull-progress', handler);
+      }
     },
 
     // Preflight checks
