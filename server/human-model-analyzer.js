@@ -36,51 +36,90 @@ const GEMINI_API_KEY = cleanKey(process.env.GEMINI_API_KEY || '');
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=`;
 
-const ANALYSIS_PROMPT = `You are an image analysis assistant specializing in identifying characteristics of human models wearing apparel for e-commerce mockup purposes.
+const ANALYSIS_PROMPT = `You are a creative director at a custom apparel company. You're evaluating model photos to decide which product designs they should wear in marketing materials.
 
-Analyze the image and extract the following information:
-1. Gender: male or female
-2. Ethnicity: caucasian, black, asian, hispanic, middle-eastern, south-asian, mixed, or other
-3. Apparel Type: The type of upper-body garment (t-shirt, hoodie, tank-top, long-sleeve, polo, crewneck, v-neck, sweatshirt, jacket, dress, or other)
-4. Facing: Which direction the model is facing (front, back, side-left, side-right, three-quarter-left, three-quarter-right)
-5. Pose: Standing, sitting, casual, formal, action, etc.
-6. Multiple people: If there are multiple people, describe the PRIMARY subject (the one most centered/prominent).
+Look at this model photo and build a complete profile. Think about WHO this person represents to a buyer — what audience would see themselves in this model?
 
-Respond ONLY with valid JSON in this exact format:
-{
-  "gender": "male|female",
-  "ethnicity": "caucasian|black|asian|hispanic|middle-eastern|south-asian|mixed|other",
-  "apparel_type": "t-shirt|hoodie|tank-top|long-sleeve|polo|crewneck|v-neck|sweatshirt|jacket|dress|other",
-  "facing": "front|back|side-left|side-right|three-quarter-left|three-quarter-right",
-  "pose": "string describing the pose",
-  "confidence": 0.0-1.0
-}`;
+Analyze and return:
+
+1. **gender**: male or female
+2. **ethnicity**: caucasian, black, asian, hispanic, middle-eastern, south-asian, mixed, or other
+3. **apparel_type**: What upper-body garment are they wearing? (t-shirt, hoodie, tank-top, long-sleeve, polo, crewneck, v-neck, sweatshirt, jacket, dress, hat, beanie, or other)
+4. **facing**: front, back, side-left, side-right, three-quarter-left, three-quarter-right
+5. **pose**: Describe the pose briefly
+6. **style**: The model's overall aesthetic/vibe. Pick ONE:
+   - pinup-retro (vintage glamour, tattoos, rockabilly, bold makeup, retro hair)
+   - edgy-urban (streetwear, dark colors, attitude, graffiti/brick backgrounds)
+   - outdoor-active (nature settings, athletic, adventure vibes)
+   - casual-everyday (relatable, everyday person, suburban, approachable)
+   - preppy-clean (polished, bright colors, put-together)
+   - bohemian-artsy (creative, eclectic, colorful, artistic)
+   - skater-youth (skateparks, sneakers, oversized fits, young energy)
+   - fitness-athletic (gym, sports, muscular, activewear)
+   - professional-minimal (clean backgrounds, studio lighting, commercial)
+   - country-southern (rural, western, americana vibes)
+7. **demographic**: Who does this model represent as a customer? Pick ONE:
+   - gen-z-trendy (teens/early 20s, social media native)
+   - young-adult (20s-30s, lifestyle focused)
+   - millennial-parent (30s-40s, family/work balance)
+   - blue-collar (working class, trades, hands-on)
+   - creative-artist (musicians, artists, makers)
+   - outdoor-enthusiast (hikers, campers, adventure seekers)
+   - biker-gearhead (motorcycle/car culture)
+   - faith-community (church, spiritual, family values)
+   - everyday-mom (relatable mother, busy life, humor)
+   - everyday-dad (relatable father, dad jokes, weekend warrior)
+   - alt-subculture (tattoo culture, punk, goth, alternative)
+   - fitness-focused (gym rats, athletes, health conscious)
+8. **setting**: Where was the photo taken? Pick ONE:
+   - studio, outdoor-nature, urban-street, cafe-restaurant, beach-coastal, suburban, industrial, skatepark, gym, home, retail-store, alley-gritty, park, rural
+9. **garment_color**: What color is the main garment? (white, black, gray, navy, cream, red, blue, green, pink, etc.)
+10. **age_range**: Approximate age (teens, early-20s, mid-20s, late-20s, early-30s, mid-30s, 40s, 50s+)
+11. **sells_best_with**: What TYPES of graphic designs would look best on this model? List 2-3:
+   - vintage-pinup, retro-americana, sarcastic-humor, skull-dark, nature-outdoor, faith-scripture, motorcycle-garage, abstract-art, pop-culture, animal-nature, music-band, sports, political, cute-kawaii, typography-quote, military-patriotic
+
+If there are multiple people, profile the PRIMARY subject (most centered/prominent).
+
+Respond ONLY with valid JSON matching this structure exactly.`;
 
 const validGenders = ['male', 'female'];
 const validEthnicities = ['caucasian', 'black', 'asian', 'hispanic', 'middle-eastern', 'south-asian', 'mixed', 'other'];
-const validApparelTypes = ['t-shirt', 'hoodie', 'tank-top', 'long-sleeve', 'polo', 'crewneck', 'v-neck', 'sweatshirt', 'jacket', 'dress', 'other'];
+const validApparelTypes = ['t-shirt', 'hoodie', 'tank-top', 'long-sleeve', 'polo', 'crewneck', 'v-neck', 'sweatshirt', 'jacket', 'dress', 'hat', 'beanie', 'other'];
 const validFacings = ['front', 'back', 'side-left', 'side-right', 'three-quarter-left', 'three-quarter-right'];
+const validStyles = ['pinup-retro', 'edgy-urban', 'outdoor-active', 'casual-everyday', 'preppy-clean', 'bohemian-artsy', 'skater-youth', 'fitness-athletic', 'professional-minimal', 'country-southern'];
+const validDemographics = ['gen-z-trendy', 'young-adult', 'millennial-parent', 'blue-collar', 'creative-artist', 'outdoor-enthusiast', 'biker-gearhead', 'faith-community', 'everyday-mom', 'everyday-dad', 'alt-subculture', 'fitness-focused'];
+const validSettings = ['studio', 'outdoor-nature', 'urban-street', 'cafe-restaurant', 'beach-coastal', 'suburban', 'industrial', 'skatepark', 'gym', 'home', 'retail-store', 'alley-gritty', 'park', 'rural'];
 
 function parseAnalysisResponse(responseText) {
   let jsonStr = responseText.trim();
-  // Extract JSON from markdown code blocks
   if (jsonStr.includes('```')) {
     const match = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
     if (match) jsonStr = match[1].trim();
   }
-  // Fallback: find first { ... } block
   if (!jsonStr.startsWith('{')) {
     const braceMatch = jsonStr.match(/\{[\s\S]*\}/);
     if (braceMatch) jsonStr = braceMatch[0];
   }
-  const metadata = JSON.parse(jsonStr);
+  const m = JSON.parse(jsonStr);
+
+  // Normalize sells_best_with to always be an array
+  let sellsBestWith = m.sells_best_with;
+  if (typeof sellsBestWith === 'string') sellsBestWith = sellsBestWith.split(',').map(s => s.trim());
+  if (!Array.isArray(sellsBestWith)) sellsBestWith = [];
+
   return {
-    gender: validGenders.includes(metadata.gender?.toLowerCase()) ? metadata.gender.toLowerCase() : null,
-    ethnicity: validEthnicities.includes(metadata.ethnicity?.toLowerCase()) ? metadata.ethnicity.toLowerCase() : null,
-    apparel_type: validApparelTypes.includes(metadata.apparel_type?.toLowerCase()) ? metadata.apparel_type.toLowerCase() : null,
-    facing: validFacings.includes(metadata.facing?.toLowerCase()) ? metadata.facing.toLowerCase() : 'front',
-    pose: metadata.pose || null,
-    confidence: typeof metadata.confidence === 'number' ? metadata.confidence : 0.8
+    gender: validGenders.includes(m.gender?.toLowerCase()) ? m.gender.toLowerCase() : null,
+    ethnicity: validEthnicities.includes(m.ethnicity?.toLowerCase()) ? m.ethnicity.toLowerCase() : null,
+    apparel_type: validApparelTypes.includes(m.apparel_type?.toLowerCase()) ? m.apparel_type.toLowerCase() : null,
+    facing: validFacings.includes(m.facing?.toLowerCase()) ? m.facing.toLowerCase() : 'front',
+    pose: m.pose || null,
+    style: validStyles.includes(m.style?.toLowerCase()) ? m.style.toLowerCase() : null,
+    demographic: validDemographics.includes(m.demographic?.toLowerCase()) ? m.demographic.toLowerCase() : null,
+    setting: validSettings.includes(m.setting?.toLowerCase()) ? m.setting.toLowerCase() : null,
+    garment_color: m.garment_color?.toLowerCase() || null,
+    age_range: m.age_range || null,
+    sells_best_with: sellsBestWith.slice(0, 5),
+    confidence: typeof m.confidence === 'number' ? m.confidence : 0.8
   };
 }
 

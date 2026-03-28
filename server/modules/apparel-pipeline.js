@@ -149,65 +149,138 @@ function logToJournal(entry) {
 const _recentModels = [];
 const MAX_RECENT = 20;
 
-function matchModelToDesign(designCategory, models) {
+/**
+ * Match a model to a design based on the model's full profile.
+ *
+ * This thinks like a creative director:
+ * 1. First check sells_best_with — does the model's profile say it sells this type of design?
+ * 2. Then check style alignment — pinup designs need pinup-style models
+ * 3. Then check demographic fit — sarcastic humor needs everyday relatable models
+ * 4. Rotate to avoid using the same model twice in a row
+ */
+
+// Map design themes to what sells_best_with tags to look for
+const THEME_TO_DESIGN_TAGS = {
+  'outdoor-adventure': ['nature-outdoor', 'retro-americana'],
+  'moto-garage': ['motorcycle-garage', 'skull-dark', 'retro-americana'],
+  'faith-inspirational': ['faith-scripture', 'typography-quote'],
+  'retro-vintage': ['retro-americana', 'vintage-pinup', 'typography-quote'],
+  'edgy-urban': ['skull-dark', 'abstract-art', 'music-band'],
+  'humor-fun': ['sarcastic-humor', 'pop-culture', 'cute-kawaii'],
+  'nature-animals': ['animal-nature', 'nature-outdoor'],
+  'sports-fitness': ['sports', 'typography-quote'],
+  'music-culture': ['music-band', 'pop-culture', 'retro-americana'],
+  'abstract-artistic': ['abstract-art', 'typography-quote']
+};
+
+// Map design themes to preferred model styles
+const THEME_TO_MODEL_STYLE = {
+  'outdoor-adventure': ['outdoor-active', 'casual-everyday', 'skater-youth'],
+  'moto-garage': ['edgy-urban', 'pinup-retro', 'casual-everyday'],
+  'faith-inspirational': ['casual-everyday', 'preppy-clean', 'country-southern'],
+  'retro-vintage': ['pinup-retro', 'edgy-urban', 'bohemian-artsy'],
+  'edgy-urban': ['edgy-urban', 'pinup-retro', 'skater-youth'],
+  'humor-fun': ['casual-everyday', 'skater-youth', 'preppy-clean'],
+  'nature-animals': ['outdoor-active', 'casual-everyday', 'bohemian-artsy'],
+  'sports-fitness': ['fitness-athletic', 'outdoor-active', 'casual-everyday'],
+  'music-culture': ['edgy-urban', 'pinup-retro', 'bohemian-artsy', 'skater-youth'],
+  'abstract-artistic': ['bohemian-artsy', 'casual-everyday', 'professional-minimal']
+};
+
+// Special collection keyword → design tag mapping for collections with obvious intent
+const COLLECTION_KEYWORDS = {
+  'pinup': 'vintage-pinup',
+  'pin-up': 'vintage-pinup',
+  'pin up': 'vintage-pinup',
+  'skeleton': 'skull-dark',
+  'skull': 'skull-dark',
+  'sarcastic': 'sarcastic-humor',
+  'funny': 'sarcastic-humor',
+  'outdoor': 'nature-outdoor',
+  'camping': 'nature-outdoor',
+  'biker': 'motorcycle-garage',
+  'motorcycle': 'motorcycle-garage',
+  'faith': 'faith-scripture',
+  'christian': 'faith-scripture',
+  'bible': 'faith-scripture',
+  'retro': 'retro-americana',
+  'vintage': 'retro-americana'
+};
+
+function matchModelToDesign(designCategory, models, collectionName = '') {
   if (!models || !models.length) return null;
 
-  const category = (designCategory || '').toLowerCase();
+  const theme = (designCategory || '').toLowerCase();
+  const collectionLower = (collectionName || '').toLowerCase();
+
+  // Determine what design tags to look for in models
+  const desiredTags = new Set(THEME_TO_DESIGN_TAGS[theme] || []);
+
+  // Check collection name for obvious keywords (e.g., "PinUp Girls" → vintage-pinup)
+  for (const [keyword, tag] of Object.entries(COLLECTION_KEYWORDS)) {
+    if (collectionLower.includes(keyword)) {
+      desiredTags.add(tag);
+    }
+  }
+
+  // Preferred model styles for this theme
+  const preferredStyles = THEME_TO_MODEL_STYLE[theme] || [];
+
   let scored = models.map(m => {
-    const title = (m.title || '').toLowerCase();
     let score = 0;
 
-    // Outdoor/nature themes → models in outdoor/nature settings
-    if (category === 'outdoor-adventure' || category === 'nature-animals') {
-      if (/beach|park|outdoor|nature|trail|mountain|lake|forest|garden/.test(title)) score += 3;
-      if (/skate|surf|camp/.test(title)) score += 2;
+    // STRONGEST SIGNAL: model's sells_best_with matches the design type
+    const modelTags = Array.isArray(m.sellsBestWith) ? m.sellsBestWith : [];
+    for (const tag of modelTags) {
+      if (desiredTags.has(tag)) score += 5;
     }
 
-    // Moto/edgy → darker, urban settings
-    if (category === 'moto-garage' || category === 'edgy-urban') {
-      if (/urban|street|dark|grunge|alley|city|night|brick|garage/.test(title)) score += 3;
-      if (/leather|denim|tattoo|studio/.test(title)) score += 2;
+    // STRONG SIGNAL: model's style matches preferred styles for this theme
+    if (m.style && preferredStyles.includes(m.style)) {
+      const styleRank = preferredStyles.indexOf(m.style);
+      score += (4 - styleRank); // First preferred style gets +4, second +3, etc.
     }
 
-    // Faith/inspirational → warm, friendly
-    if (category === 'faith-inspirational') {
-      if (/smile|warm|soft|bright|light|sun|friendly|peaceful/.test(title)) score += 3;
-      if (/garden|family|clean/.test(title)) score += 2;
-    }
+    // MODERATE SIGNAL: model's demographic fits the design audience
+    if (theme === 'humor-fun' && (m.demographic === 'everyday-mom' || m.demographic === 'everyday-dad' || m.demographic === 'millennial-parent')) score += 3;
+    if (theme === 'outdoor-adventure' && m.demographic === 'outdoor-enthusiast') score += 3;
+    if (theme === 'faith-inspirational' && m.demographic === 'faith-community') score += 3;
+    if (theme === 'moto-garage' && m.demographic === 'biker-gearhead') score += 3;
+    if ((theme === 'edgy-urban' || theme === 'retro-vintage') && m.demographic === 'alt-subculture') score += 3;
 
-    // Retro/vintage → classic looks
-    if (category === 'retro-vintage') {
-      if (/retro|vintage|classic|old|film|70s|80s|90s/.test(title)) score += 3;
-      if (/denim|record|camera/.test(title)) score += 2;
-    }
+    // LIGHT SIGNAL: setting vibe
+    if (theme === 'outdoor-adventure' && (m.setting === 'outdoor-nature' || m.setting === 'beach-coastal' || m.setting === 'park')) score += 1;
+    if ((theme === 'moto-garage' || theme === 'edgy-urban') && (m.setting === 'urban-street' || m.setting === 'alley-gritty' || m.setting === 'industrial')) score += 1;
 
-    // Humor → casual, relaxed
-    if (category === 'humor-fun') {
-      if (/casual|fun|laugh|relax|chill|couch|cozy/.test(title)) score += 3;
-      if (/colorful|bright|pop/.test(title)) score += 2;
-    }
-
-    // Prefer phoenix (lifestyle) models slightly
-    if (/phoenix/.test(title)) score += 1;
-
-    // Penalize recently used models to rotate
+    // Penalize recently used models to ensure variety
     const recentIdx = _recentModels.indexOf(m.id);
-    if (recentIdx !== -1) score -= 2;
+    if (recentIdx !== -1) score -= 3;
 
     return { model: m, score };
   });
 
-  // Sort by score descending, then randomize ties
+  // Sort by score descending, randomize ties
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return Math.random() - 0.5;
   });
 
-  const chosen = scored[0].model;
+  // CRITICAL: Only use models that actually scored well.
+  // If we have models with score >= 5 (meaning sells_best_with matched),
+  // NEVER fall back to low-scoring models. Reuse good matches instead.
+  const strongMatches = scored.filter(s => s.score >= 5);
+  const pool = strongMatches.length > 0 ? strongMatches : scored;
 
-  // Track usage for rotation
+  // Within the good pool, prefer least-recently-used
+  const chosen = pool[0].model;
+  console.log(`[Pipeline] Model match: "${(chosen.title || chosen.id).substring(0, 35)}" (style=${chosen.style}, demo=${chosen.demographic}, score=${pool[0].score}/${scored[0].score}) for theme=${theme} [pool: ${pool.length}/${scored.length}]`);
+
+  // Track usage for rotation — but with a shorter memory so we cycle through
+  // the good models rather than exhausting them and falling to bad ones
   _recentModels.push(chosen.id);
-  if (_recentModels.length > MAX_RECENT) _recentModels.shift();
+  // Keep recent list shorter than the strong match pool so we always have options
+  const maxRecent = strongMatches.length > 0 ? Math.max(1, strongMatches.length - 2) : MAX_RECENT;
+  if (_recentModels.length > maxRecent) _recentModels.shift();
 
   return chosen;
 }
@@ -568,7 +641,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
     if (models.length) {
       for (const theme of Object.keys(themeGroups)) {
         for (const item of themeGroups[theme]) {
-          item.matchedModel = matchModelToDesign(theme, models);
+          item.matchedModel = matchModelToDesign(theme, models, collectionCategory);
         }
       }
       console.log(`[ApparelPipeline] Matched models for ${results.categorized} designs`);

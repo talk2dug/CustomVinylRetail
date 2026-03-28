@@ -18900,14 +18900,20 @@ Return ONLY valid JSON, no markdown or explanation.`;
 
       console.log('[Human Model AI] Generated category:', category);
 
-      // Update the database with the analyzed metadata and generated category
+      // Update the database with the full model profile
       db.updateHumanModel(modelId, {
         gender: metadata.gender,
         ethnicity: metadata.ethnicity,
         apparel_type: metadata.apparel_type,
         facing: metadata.facing,
         pose_type: metadata.pose,
-        category: category
+        category: category,
+        style: metadata.style,
+        demographic: metadata.demographic,
+        setting: metadata.setting,
+        garment_color: metadata.garment_color,
+        age_range: metadata.age_range,
+        sells_best_with: metadata.sells_best_with
       });
 
       sendJson(res, 200, {

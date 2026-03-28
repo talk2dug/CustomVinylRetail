@@ -2831,8 +2831,14 @@ function initCustomArtTables() {
     CREATE INDEX IF NOT EXISTS idx_human_models_active ON human_models(active);
   `);
 
-  // Migration: add mask_path column if missing
+  // Migration: add columns if missing
   ensureColumn('human_models', 'mask_path', 'TEXT');
+  ensureColumn('human_models', 'style', 'TEXT');
+  ensureColumn('human_models', 'demographic', 'TEXT');
+  ensureColumn('human_models', 'setting', 'TEXT');
+  ensureColumn('human_models', 'garment_color', 'TEXT');
+  ensureColumn('human_models', 'age_range', 'TEXT');
+  ensureColumn('human_models', 'sells_best_with', 'TEXT');
 
   // Recolored Human Models (AI-generated color variants)
   db.exec(`
@@ -3989,6 +3995,12 @@ function updateHumanModel(id, updates) {
   if (updates.status !== undefined) { fields.push('status = @status'); params.status = updates.status; }
   if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
   if (updates.sortOrder !== undefined) { fields.push('sort_order = @sortOrder'); params.sortOrder = updates.sortOrder; }
+  if (updates.style !== undefined) { fields.push('style = @style'); params.style = updates.style; }
+  if (updates.demographic !== undefined) { fields.push('demographic = @demographic'); params.demographic = updates.demographic; }
+  if (updates.setting !== undefined) { fields.push('setting = @setting'); params.setting = updates.setting; }
+  if (updates.garment_color !== undefined) { fields.push('garment_color = @garment_color'); params.garment_color = updates.garment_color; }
+  if (updates.age_range !== undefined) { fields.push('age_range = @age_range'); params.age_range = updates.age_range; }
+  if (updates.sells_best_with !== undefined) { fields.push('sells_best_with = @sells_best_with'); params.sells_best_with = typeof updates.sells_best_with === 'string' ? updates.sells_best_with : JSON.stringify(updates.sells_best_with); }
 
   if (!fields.length) return getHumanModelById(id);
 
@@ -4039,7 +4051,13 @@ function mapHumanModel(row) {
     filePath: row.file_path,
     optimizedPath: row.optimized_path,
     thumbnailPath: row.thumbnail_path,
-    maskPath: row.mask_path,  // Clothing mask for color tinting
+    maskPath: row.mask_path,
+    style: row.style,
+    demographic: row.demographic,
+    setting: row.setting,
+    garmentColor: row.garment_color,
+    ageRange: row.age_range,
+    sellsBestWith: row.sells_best_with ? (function() { try { return JSON.parse(row.sells_best_with); } catch (_) { return row.sells_best_with; } })() : null,
     status: row.status,
     active: Boolean(row.active),
     sortOrder: row.sort_order,
