@@ -856,6 +856,9 @@ async function runFullPipeline(collectionCategory, options = {}) {
         } catch (err) {
           // Poll endpoint might not exist as a GET — that's ok, just wait
           if (i === 5) console.warn('[ApparelPipeline] Mockup poll failed, will assume done after timeout');
+          // Still report progress so UI knows we're working (estimate based on time elapsed)
+          const estimatedProgress = Math.min(Math.round((i / maxPolls) * results.mockupsGenerated), results.mockupsGenerated - 1);
+          reportProgress('lifestyle-mockups', { progress: estimatedProgress, total: results.mockupsGenerated || designsToProcess.length });
         }
       }
 
@@ -863,6 +866,9 @@ async function runFullPipeline(collectionCategory, options = {}) {
         console.log('[ApparelPipeline] Mockup poll timed out, proceeding anyway');
       }
     }
+
+    // Mark lifestyle mockups as done regardless of poll success
+    reportProgress('lifestyle-mockups', { progress: designsToProcess.length, total: designsToProcess.length });
 
     if (notify) {
       await sendTelegram(`✅ Lifestyle mockups generated: ${results.mockupsGenerated}`);
