@@ -789,7 +789,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
     if (models.length) {
       for (const theme of Object.keys(themeGroups)) {
         for (const item of themeGroups[theme]) {
-          item.matchedModel = matchModelToDesign(theme, models, collectionCategory);
+          item.matchedModel = matchModelToDesign(theme, models, collectionCategory || categoryLabel);
         }
       }
       console.log(`[ApparelPipeline] Matched models for ${results.categorized} designs`);
@@ -808,7 +808,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
       const mockupResp = await apiFetch('/api/batch-mockups/generate', {
         method: 'POST',
         body: JSON.stringify({
-          category: collectionCategory,
+          category: collectionCategory || categoryLabel,
           limit: limit,
           modelFilter: options.modelFilter || 'phoenix',
           size: options.size || 'medium'
@@ -941,7 +941,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
         const shopifyResp = await apiFetch('/api/shopify-apparel/publish', {
           method: 'POST',
           body: JSON.stringify({
-            category: collectionCategory,
+            category: collectionCategory || categoryLabel,
             limit: limit
           }),
           timeout: 300000 // 5 min for Shopify
@@ -1081,7 +1081,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
                 filename: path.basename(reel.outputPath || reel.outputUrl),
                 url: reel.outputUrl,
                 template: theme,
-                collection: collectionCategory,
+                collection: collectionCategory || categoryLabel,
                 designs: JSON.stringify(chunkDesignIds),
                 shopifyProductIds: JSON.stringify(shopifyProductIds),
                 duration: reel.duration || null,
@@ -1314,7 +1314,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
 
       const pageCount = (results.landingPages || []).length;
       await sendTelegram(
-        `🏭 *Pipeline Complete — ${cat.name}*\n` +
+        `🏭 *Pipeline Complete — ${categoryLabel}*\n` +
         `⏱ Duration: ${durationMin}min\n` +
         `📊 Categorized: ${results.categorized}\n` +
         `🎨 Mockups: ${results.mockupsGenerated}\n` +
@@ -1345,12 +1345,12 @@ async function runFullPipeline(collectionCategory, options = {}) {
     console.error('[ApparelPipeline] Pipeline failed:', err);
 
     if (notify) {
-      await sendTelegram(`❌ *Pipeline Failed*\n${collectionCategory}\n${err.message}`, 'Markdown');
+      await sendTelegram(`❌ *Pipeline Failed*\n${collectionCategory || categoryLabel}\n${err.message}`, 'Markdown');
     }
 
     logToJournal({
       type: 'pipeline-error',
-      category: collectionCategory,
+      category: collectionCategory || categoryLabel,
       error: err.message
     });
   }
