@@ -244,6 +244,7 @@ async function generateMockup(design, model, options = {}) {
 async function runBatch(options = {}) {
   const {
     category = '95 T Shirt Designs Mega Bundle',
+    designIds = null,
     limit = 10,
     modelFilter = {},
     zone = 'front-chest',
@@ -253,13 +254,33 @@ async function runBatch(options = {}) {
 
   console.log('=== Batch Mockup Generator ===');
   console.log(`Category: ${category}`);
+  if (designIds) console.log(`Design IDs: ${designIds.length} specific designs`);
   console.log(`Limit: ${limit}`);
   console.log(`Model filter:`, modelFilter);
   console.log();
 
   // Load designs
   const catalog = loadCatalog();
-  const { category: catName, designs } = getDesignsFromCategory(catalog, category);
+  let designs = [];
+  let catName = category;
+
+  if (designIds && Array.isArray(designIds) && designIds.length) {
+    const idSet = new Set(designIds.map(id => String(id)));
+    for (const cat of (catalog.categories || [])) {
+      for (const design of (cat.designs || [])) {
+        if (idSet.has(String(design.id))) {
+          designs.push(design);
+          idSet.delete(String(design.id));
+        }
+      }
+      if (idSet.size === 0) break;
+    }
+    catName = `Campaign (${designs.length} designs)`;
+  } else {
+    const result = getDesignsFromCategory(catalog, category);
+    catName = result.category;
+    designs = result.designs;
+  }
   console.log(`Found ${designs.length} designs in "${catName}"`);
 
   // Load models
@@ -379,6 +400,7 @@ async function handleBatchMockupRoute(pathname, req, res, db) {
       // Run async
       runBatch({
         category: body.category || '95 T Shirt Designs Mega Bundle',
+        designIds: body.designIds || null,
         limit: body.limit || 10,
         modelFilter: body.modelFilter || {},
         zone: body.zone || 'front-chest',

@@ -805,14 +805,18 @@ async function runFullPipeline(collectionCategory, options = {}) {
 
     let mockupJobId = null;
     try {
+      const mockupPayload = {
+        category: collectionCategory || categoryLabel,
+        limit: limit,
+        modelFilter: options.modelFilter || 'phoenix',
+        size: options.size || 'medium'
+      };
+      if (options.designIds && options.designIds.length) {
+        mockupPayload.designIds = options.designIds;
+      }
       const mockupResp = await apiFetch('/api/batch-mockups/generate', {
         method: 'POST',
-        body: JSON.stringify({
-          category: collectionCategory || categoryLabel,
-          limit: limit,
-          modelFilter: options.modelFilter || 'phoenix',
-          size: options.size || 'medium'
-        })
+        body: JSON.stringify(mockupPayload)
       });
       mockupJobId = mockupResp.jobId || mockupResp.id;
       results.mockupsGenerated = mockupResp.count || mockupResp.queued || 0;
