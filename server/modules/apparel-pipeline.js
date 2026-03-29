@@ -31,6 +31,19 @@ const MIN_REEL_IMAGES = 4;
 const MAX_REEL_IMAGES = 5; // chunk reels into 4-5 images each
 const REEL_CHUNK_SIZE = 5;
 
+// Pipeline step definitions for progress tracking
+const PIPELINE_STEPS = [
+  { key: 'load',             index: 0, label: 'Loading Designs' },
+  { key: 'categorize',       index: 1, label: 'Categorizing' },
+  { key: 'match-models',     index: 2, label: 'Matching Models' },
+  { key: 'lifestyle-mockups', index: 3, label: 'Lifestyle Mockups' },
+  { key: 'product-blanks',   index: 4, label: 'Product Blanks' },
+  { key: 'shopify-publish',  index: 5, label: 'Shopify Publish' },
+  { key: 'create-reels',     index: 6, label: 'Creating Reels' },
+  { key: 'landing-pages',    index: 7, label: 'Landing Pages' },
+  { key: 'complete',         index: 8, label: 'Complete' }
+];
+
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 fs.mkdirSync(TEMP_DIR, { recursive: true });
 
@@ -609,10 +622,15 @@ function escapeHtml(str) {
 // ============================================================================
 
 /**
- * Run the full apparel pipeline for a collection category.
+ * Run the full apparel pipeline.
  *
- * @param {string} collectionCategory - Category name from catalog.json
+ * Accepts either a category name OR an array of specific design IDs (for campaign mode).
+ *
+ * @param {string} collectionCategory - Category name from catalog.json (can be null if designIds provided)
  * @param {object} [options]
+ * @param {string[]} [options.designIds] - Specific design IDs to process (overrides category lookup)
+ * @param {string} [options.campaignSlug] - Campaign slug for tracking
+ * @param {string} [options.campaignTitle] - Campaign title for display
  * @param {number} [options.limit] - Max designs to process
  * @param {string} [options.modelFilter] - Model filter (e.g. 'phoenix')
  * @param {string} [options.size] - Mockup size
@@ -622,12 +640,15 @@ function escapeHtml(str) {
  * @param {Array<{type: string, color: string}>} [options.apparelChoices] -
  *   User-selected apparel items (2 items). Overrides auto tier system.
  *   e.g. [{type:'T-shirt',color:'Black'},{type:'Hoodie',color:'Navy'}]
+ * @param {function} [options.onProgress] - Progress callback: ({ step, stepIndex, stepLabel, progress, total })
  * @returns {object} Pipeline results
  */
 async function runFullPipeline(collectionCategory, options = {}) {
   const notify = options.notify !== false;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
   const results = {
-    category: collectionCategory,
+    category: collectionCategory || options.campaignTitle || 'Campaign',
+    campaignSlug: options.campaignSlug || null,
     categorized: 0,
     mockupsGenerated: 0,
     shopifyPublished: 0,
@@ -637,27 +658,70 @@ async function runFullPipeline(collectionCategory, options = {}) {
     startedAt: new Date().toISOString()
   };
 
+  function reportProgress(stepKey, extra = {}) {
+    const stepDef = PIPELINE_STEPS.find(s => s.key === stepKey) || { key: stepKey, index: 0, label: stepKey };
+    if (onProgress) {
+      try {
+        onProgress({ step: stepKey, stepIndex: stepDef.index, stepLabel: stepDef.label, totalSteps: PIPELINE_STEPS.length, ...extra });
+      } catch (_) {}
+    }
+  }
+
   try {
     // ------------------------------------------------------------------
-    // Step 1: Load catalog and get designs for this category
+    // Step 1: Load designs (from designIds or category)
     // ------------------------------------------------------------------
-    console.log(`[ApparelPipeline] Step 1: Loading designs for "${collectionCategory}"`);
-    const catalog = loadCatalog();
-    const cat = catalog.categories.find(c =>
-      c.name.toLowerCase().includes(collectionCategory.toLowerCase()) ||
-      (c.slug && c.slug.toLowerCase().includes(collectionCategory.toLowerCase()))
-    );
-    if (!cat) throw new Error(`Category not found: "${collectionCategory}"`);
+    reportProgress('load', { progress: 0, total: 1 });
 
-    const designs = cat.designs || [];
-    const limit = options.limit || designs.length;
-    const designsToProcess = designs.slice(0, limit);
+    let designsToProcess = [];
+    let categoryLabel = collectionCategory || options.campaignTitle || 'Campaign';
 
-    if (!designsToProcess.length) throw new Error(`No designs found in category "${collectionCategory}"`);
+    if (options.designIds && Array.isArray(options.designIds) && options.designIds.length) {
+      // Campaign mode — find specific designs across all categories
+      console.log(`[ApparelPipeline] Step 1: Loading ${options.designIds.length} specific designs`);
+      const catalog = loadCatalog();
+      const idSet = new Set(options.designIds.map(id => String(id)));
+
+      for (const cat of (catalog.categories || [])) {
+        for (const design of (cat.designs || [])) {
+          if (idSet.has(String(design.id))) {
+            designsToProcess.push(design);
+            idSet.delete(String(design.id));
+          }
+        }
+        if (idSet.size === 0) break;
+      }
+
+      if (idSet.size > 0) {
+        console.warn(`[ApparelPipeline] ${idSet.size} design IDs not found in catalog: ${[...idSet].slice(0, 5).join(', ')}`);
+      }
+
+      categoryLabel = options.campaignTitle || `Campaign (${designsToProcess.length} designs)`;
+    } else {
+      // Category mode — original behavior
+      console.log(`[ApparelPipeline] Step 1: Loading designs for "${collectionCategory}"`);
+      const catalog = loadCatalog();
+      const cat = catalog.categories.find(c =>
+        c.name.toLowerCase().includes(collectionCategory.toLowerCase()) ||
+        (c.slug && c.slug.toLowerCase().includes(collectionCategory.toLowerCase()))
+      );
+      if (!cat) throw new Error(`Category not found: "${collectionCategory}"`);
+
+      const designs = cat.designs || [];
+      const limit = options.limit || designs.length;
+      designsToProcess = designs.slice(0, limit);
+    }
+
+    if (!designsToProcess.length) throw new Error(`No designs found for "${categoryLabel}"`);
+
+    const limit = options.limit || designsToProcess.length;
+    if (limit < designsToProcess.length) designsToProcess = designsToProcess.slice(0, limit);
+
+    reportProgress('load', { progress: 1, total: 1 });
 
     if (notify) {
       await sendTelegram(
-        `🏭 *Apparel Pipeline Started*\nCategory: ${cat.name}\nDesigns: ${designsToProcess.length}`,
+        `🏭 *Apparel Pipeline Started*\n${options.campaignSlug ? 'Campaign: ' + options.campaignSlug + '\n' : ''}Source: ${categoryLabel}\nDesigns: ${designsToProcess.length}`,
         'Markdown'
       );
     }
@@ -665,6 +729,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
     // ------------------------------------------------------------------
     // Step 2: Categorize designs by theme
     // ------------------------------------------------------------------
+    reportProgress('categorize', { progress: 0, total: designsToProcess.length });
     console.log(`[ApparelPipeline] Step 2: Categorizing ${designsToProcess.length} designs`);
     const themeGroups = {}; // theme -> [{ design, category }]
 
@@ -687,12 +752,13 @@ async function runFullPipeline(collectionCategory, options = {}) {
           name: design.name || design.title || path.basename(design.preview || '', '.png')
         });
         results.categorized++;
+        reportProgress('categorize', { progress: results.categorized, total: designsToProcess.length });
       } catch (err) {
         console.warn(`[ApparelPipeline] Failed to categorize ${design.name || design.id}: ${err.message}`);
-        // Put uncategorized designs in default
         if (!themeGroups.default) themeGroups.default = [];
         themeGroups.default.push({ design, category: null, name: design.name || 'Unknown' });
         results.categorized++;
+        reportProgress('categorize', { progress: results.categorized, total: designsToProcess.length });
       }
     }
 
@@ -709,6 +775,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
     // ------------------------------------------------------------------
     // Step 3: Match models to designs
     // ------------------------------------------------------------------
+    reportProgress('match-models', { progress: 0, total: results.categorized });
     console.log('[ApparelPipeline] Step 3: Matching models to designs');
     let models = [];
     try {
@@ -727,10 +794,12 @@ async function runFullPipeline(collectionCategory, options = {}) {
       }
       console.log(`[ApparelPipeline] Matched models for ${results.categorized} designs`);
     }
+    reportProgress('match-models', { progress: results.categorized, total: results.categorized });
 
     // ------------------------------------------------------------------
     // Step 4: Generate mockups via batch API
     // ------------------------------------------------------------------
+    reportProgress('lifestyle-mockups', { progress: 0, total: designsToProcess.length });
     console.log('[ApparelPipeline] Step 4: Generating mockups');
     if (notify) await sendTelegram('🎨 Generating mockups...');
 
@@ -783,6 +852,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
           if (i % 6 === 5) {
             console.log(`[ApparelPipeline] Mockup progress: ${progress}/${total}`);
           }
+          reportProgress('lifestyle-mockups', { progress, total });
         } catch (err) {
           // Poll endpoint might not exist as a GET — that's ok, just wait
           if (i === 5) console.warn('[ApparelPipeline] Mockup poll failed, will assume done after timeout');
@@ -801,6 +871,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
     // ------------------------------------------------------------------
     // Step 5b: Generate product blank mockups (what they'll actually get)
     // ------------------------------------------------------------------
+    reportProgress('product-blanks', { progress: 0, total: designsToProcess.length });
     console.log('[ApparelPipeline] Step 5b: Generating product blank mockups');
     if (notify) await sendTelegram('👕 Generating product blank mockups (white tee, black tee, + theme pick)...');
 
@@ -808,6 +879,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
       const { generateProductMockups } = require('./product-blank-mockup');
       const LIBRARY_ROOT = process.env.LIBRARY_ROOT || path.join(APP_ROOT, 'web', 'library');
       let blankCount = 0;
+      let blankDesignsProcessed = 0;
 
       for (const theme of Object.keys(themeGroups)) {
         for (const item of themeGroups[theme]) {
@@ -839,6 +911,8 @@ async function runFullPipeline(collectionCategory, options = {}) {
           } catch (err) {
             console.warn(`[ApparelPipeline] Product blank failed for ${item.design.id}: ${err.message}`);
           }
+          blankDesignsProcessed++;
+          reportProgress('product-blanks', { progress: blankDesignsProcessed, total: designsToProcess.length });
         }
       }
 
@@ -853,6 +927,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
     // Step 6: Publish to Shopify
     // ------------------------------------------------------------------
     if (!options.skipShopify) {
+      reportProgress('shopify-publish', { progress: 0, total: designsToProcess.length });
       console.log('[ApparelPipeline] Step 6: Publishing to Shopify');
       if (notify) await sendTelegram('🛍 Publishing to Shopify...');
 
@@ -867,6 +942,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
         });
         results.shopifyPublished = shopifyResp.published || shopifyResp.count || 0;
         console.log(`[ApparelPipeline] Published ${results.shopifyPublished} to Shopify`);
+        reportProgress('shopify-publish', { progress: results.shopifyPublished, total: designsToProcess.length });
 
         if (notify) {
           await sendTelegram(`🛍 Published ${results.shopifyPublished} products to Shopify`);
@@ -888,6 +964,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
     const allReelRecords = []; // collect for Step 7c landing pages
 
     if (!options.skipReels) {
+      reportProgress('create-reels', { progress: 0, total: Object.keys(themeGroups).length });
       console.log('[ApparelPipeline] Step 7: Generating themed reels (chunked, 4-5 images each)');
       if (notify) await sendTelegram('🎬 Generating TikTok reels (4-5 images each)...');
 
@@ -1035,6 +1112,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
         const tiktokCount = allReelRecords.filter(r => r.isTikTokShopReel).length;
         const shopifyCount = allReelRecords.filter(r => !r.isTikTokShopReel).length;
         await sendTelegram(`🎬 Created ${results.reelsCreated} reels (${tiktokCount} TikTok Shop, ${shopifyCount} Shopify)`);
+        reportProgress('create-reels', { progress: results.reelsCreated, total: results.reelsCreated });
       }
     }
 
@@ -1101,6 +1179,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
     results.landingPages = [];
 
     if (allReelRecords.length > 0 && !options.skipShopify) {
+      reportProgress('landing-pages', { progress: 0, total: allReelRecords.length });
       console.log(`[ApparelPipeline] Step 7c: Creating Shopify landing pages for ${allReelRecords.length} reels`);
       if (notify) await sendTelegram('📄 Creating Shopify landing pages for reels...');
 
@@ -1199,6 +1278,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
             console.error(`[ApparelPipeline] Landing page failed for reel ${rec.videoId}: ${err.message}`);
             results.errors.push(`Landing page ${rec.videoId} failed: ${err.message}`);
           }
+          reportProgress('landing-pages', { progress: results.landingPages.length, total: allReelRecords.length });
         }
 
         if (notify && results.landingPages.length > 0) {
@@ -1213,6 +1293,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
     // ------------------------------------------------------------------
     // Step 8: Final summary
     // ------------------------------------------------------------------
+    reportProgress('complete', { progress: 1, total: 1 });
     results.completedAt = new Date().toISOString();
     const durationMs = new Date(results.completedAt) - new Date(results.startedAt);
     const durationMin = Math.round(durationMs / 60000);
@@ -1318,5 +1399,6 @@ module.exports = {
   matchModelToDesign,
   buildReelLandingPageHtml,
   formatThemeName,
+  PIPELINE_STEPS,
   THEME_COPY
 };

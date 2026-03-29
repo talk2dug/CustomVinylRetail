@@ -9920,24 +9920,97 @@ Keep it concise and actionable.`;
     collectRequestBody(req, (error, body) => {
       if (error) { sendJson(res, 413, { error: error.message }); return; }
       try {
-        const { category, apparelChoices, limit, modelFilter, size, skipShopify, skipReels } = JSON.parse(body || '{}');
-        if (!category) { sendJson(res, 400, { error: 'category is required' }); return; }
-        // Run pipeline in background — don't await
-        const pipelineOpts = {};
-        if (apparelChoices) pipelineOpts.apparelChoices = apparelChoices;
-        if (limit) pipelineOpts.limit = limit;
-        if (modelFilter) pipelineOpts.modelFilter = modelFilter;
-        if (size) pipelineOpts.size = size;
-        if (skipShopify) pipelineOpts.skipShopify = skipShopify;
-        if (skipReels) pipelineOpts.skipReels = skipReels;
-        runFullPipeline(category, pipelineOpts).catch(err => {
-          console.error('[Apparel Pipeline Error]', err);
+        const { category, designIds, campaignSlug, campaignTitle, apparelChoices, limit, modelFilter, size, skipShopify, skipReels } = JSON.parse(body || '{}');
+        if (!category && (!designIds || !designIds.length)) {
+          sendJson(res, 400, { error: 'category or designIds is required' }); return;
+        }
+
+        // Create pipeline run record for tracking
+        const run = db.createPipelineRun({
+          campaign_slug: campaignSlug || null,
+          status: 'running',
+          current_step: 'load',
+          current_step_index: 0,
+          apparel_choices: apparelChoices ? JSON.stringify(apparelChoices) : null,
+          design_ids: designIds ? JSON.stringify(designIds) : null,
+          design_count: designIds ? designIds.length : (limit || 0),
+          started_at: new Date().toISOString()
         });
-        sendJson(res, 200, { status: 'started', category });
+        const runId = run.id;
+
+        const pipelineOpts = {
+          designIds, campaignSlug, campaignTitle,
+          apparelChoices, limit, modelFilter, size, skipShopify, skipReels,
+          onProgress: ({ step, stepIndex, stepLabel, progress, total }) => {
+            try {
+              db.updatePipelineRun(runId, {
+                current_step: step,
+                current_step_index: stepIndex,
+                step_progress: progress || 0,
+                step_total: total || 0
+              });
+            } catch (_) {}
+          }
+        };
+
+        // Run pipeline in background — don't await
+        runFullPipeline(category, pipelineOpts).then(results => {
+          db.updatePipelineRun(runId, {
+            status: 'complete',
+            current_step: 'complete',
+            current_step_index: 8,
+            results_json: JSON.stringify(results),
+            completed_at: new Date().toISOString()
+          });
+        }).catch(err => {
+          console.error('[Apparel Pipeline Error]', err);
+          db.updatePipelineRun(runId, {
+            status: 'error',
+            error_message: err.message,
+            completed_at: new Date().toISOString()
+          });
+        });
+
+        sendJson(res, 200, { status: 'started', runId, category: category || campaignTitle || 'Campaign' });
       } catch (e) {
         sendJson(res, 400, { error: e.message });
       }
     });
+    return;
+  }
+
+  // Pipeline Runs — status polling and history
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/pipeline-runs')) {
+    if (!requireInternalKey(req, res)) return;
+
+    const idMatch = parsedUrl.pathname.match(/\/api\/pipeline-runs\/([^/]+)$/);
+
+    // GET /api/pipeline-runs/:id — poll a specific run
+    if (req.method === 'GET' && idMatch) {
+      const run = db.getPipelineRun(idMatch[1]);
+      if (!run) { sendJson(res, 404, { error: 'Pipeline run not found' }); return; }
+      // Parse JSON fields for convenience
+      const out = { ...run };
+      try { out.apparel_choices_parsed = JSON.parse(run.apparel_choices || '[]'); } catch (_) {}
+      try { out.design_ids_parsed = JSON.parse(run.design_ids || '[]'); } catch (_) {}
+      try { out.results = JSON.parse(run.results_json || 'null'); } catch (_) {}
+      sendJson(res, 200, out);
+      return;
+    }
+
+    // GET /api/pipeline-runs?campaignSlug=X — list runs for a campaign
+    if (req.method === 'GET') {
+      const q = parsedUrl.query || {};
+      const filters = {};
+      if (q.campaignSlug) filters.campaign_slug = q.campaignSlug;
+      if (q.status) filters.status = q.status;
+      if (q.limit) filters.limit = q.limit;
+      const runs = db.listPipelineRuns(filters);
+      sendJson(res, 200, { runs });
+      return;
+    }
+
+    sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
 

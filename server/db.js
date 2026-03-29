@@ -3769,6 +3769,28 @@ function initCustomArtTables() {
   ensureColumn('tiktok_videos', 'shopify_page_id', 'TEXT');
   ensureColumn('tiktok_videos', 'shopify_page_url', 'TEXT');
 
+  // Pipeline Runs — tracks apparel pipeline executions linked to campaigns
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pipeline_runs (
+      id TEXT PRIMARY KEY,
+      campaign_slug TEXT,
+      status TEXT DEFAULT 'pending',
+      current_step TEXT,
+      current_step_index INTEGER DEFAULT 0,
+      total_steps INTEGER DEFAULT 9,
+      step_progress INTEGER DEFAULT 0,
+      step_total INTEGER DEFAULT 0,
+      apparel_choices TEXT,
+      design_ids TEXT,
+      design_count INTEGER DEFAULT 0,
+      results_json TEXT,
+      error_message TEXT,
+      started_at TEXT,
+      completed_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   console.log('[Finance] ✅ Tables initialized successfully');
 
   // Auto-classify existing Multiboard items that lack metadata
@@ -8139,6 +8161,71 @@ function getTiktokVideoStats() {
   return { total: total.count, by_status: byStatus, by_platform: byPlatform };
 }
 
+// ---------------------------------------------------------------------------
+// Pipeline Runs — campaign-linked pipeline execution tracking
+// ---------------------------------------------------------------------------
+
+function createPipelineRun(data) {
+  const id = data.id || `pr_${require('crypto').randomBytes(8).toString('hex')}`;
+  db.prepare(`INSERT INTO pipeline_runs (id, campaign_slug, status, current_step, current_step_index, total_steps,
+    step_progress, step_total, apparel_choices, design_ids, design_count, results_json, error_message, started_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`).run(
+    id,
+    data.campaign_slug || null,
+    data.status || 'pending',
+    data.current_step || null,
+    data.current_step_index || 0,
+    data.total_steps || 9,
+    data.step_progress || 0,
+    data.step_total || 0,
+    data.apparel_choices || null,
+    data.design_ids || null,
+    data.design_count || 0,
+    data.results_json || null,
+    data.error_message || null,
+    data.started_at || new Date().toISOString()
+  );
+  return getPipelineRun(id);
+}
+
+function getPipelineRun(id) {
+  return db.prepare('SELECT * FROM pipeline_runs WHERE id = ?').get(id) || null;
+}
+
+function updatePipelineRun(id, updates) {
+  const allowed = ['status', 'current_step', 'current_step_index', 'total_steps',
+    'step_progress', 'step_total', 'apparel_choices', 'design_ids', 'design_count',
+    'results_json', 'error_message', 'started_at', 'completed_at'];
+  const sets = [];
+  const params = [];
+  for (const [key, val] of Object.entries(updates)) {
+    if (allowed.includes(key)) {
+      sets.push(`${key} = ?`);
+      params.push(val);
+    }
+  }
+  if (sets.length === 0) return getPipelineRun(id);
+  params.push(id);
+  db.prepare(`UPDATE pipeline_runs SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getPipelineRun(id);
+}
+
+function listPipelineRuns(filters = {}) {
+  let sql = 'SELECT * FROM pipeline_runs WHERE 1=1';
+  const params = [];
+  if (filters.campaign_slug) { sql += ' AND campaign_slug = ?'; params.push(filters.campaign_slug); }
+  if (filters.status) { sql += ' AND status = ?'; params.push(filters.status); }
+  sql += ' ORDER BY created_at DESC';
+  if (filters.limit) { sql += ' LIMIT ?'; params.push(parseInt(filters.limit)); }
+  if (filters.offset) { sql += ' OFFSET ?'; params.push(parseInt(filters.offset)); }
+  return db.prepare(sql).all(...params);
+}
+
+function getLatestPipelineRun(campaignSlug) {
+  return db.prepare('SELECT * FROM pipeline_runs WHERE campaign_slug = ? ORDER BY created_at DESC LIMIT 1')
+    .get(campaignSlug) || null;
+}
+
 module.exports = {
   initDatabase,
   normalizeEmail,
@@ -8512,5 +8599,11 @@ module.exports = {
   createTiktokVideo,
   updateTiktokVideo,
   deleteTiktokVideo,
-  getTiktokVideoStats
+  getTiktokVideoStats,
+  // Pipeline Runs
+  createPipelineRun,
+  getPipelineRun,
+  updatePipelineRun,
+  listPipelineRuns,
+  getLatestPipelineRun
 };
