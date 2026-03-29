@@ -230,6 +230,16 @@ contextBridge.exposeInMainWorld('printStation', {
   },
 
   // ============================================================================
+  // PIPELINE (campaign-linked pipeline execution)
+  // ============================================================================
+  pipeline: {
+    run: (payload) => ipcRenderer.invoke('pipeline:run', payload || {}),
+    getStatus: (runId) => ipcRenderer.invoke('pipeline:status', runId),
+    listRuns: (campaignSlug) => ipcRenderer.invoke('pipeline:list-runs', campaignSlug),
+    approveReel: (videoId) => ipcRenderer.invoke('pipeline:approve-reel', videoId)
+  },
+
+  // ============================================================================
   // PRINTER API
   // ============================================================================
   printer: {

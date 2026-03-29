@@ -1634,6 +1634,12 @@ function initNavDropdowns() {
 }
 
 window.switchView = switchView;
+// Expose for campaign-view.js
+window.state = state;
+window.showToast = showToast;
+window.openSsawVisual = openSsawVisual;
+window.openInventoryApparelModal = openInventoryApparelModal;
+window.handleCampaignSaveSilently = handleCampaignSaveSilently;
 function switchView(viewId) {
   // Force close any blocking modals when switching views
   try { forceCloseAllBlockingModals(); } catch (_) {}
@@ -1708,6 +1714,7 @@ function switchView(viewId) {
     }
   }
   if (viewId === 'campaignsView') {
+    if (typeof window.initCampaignView === 'function') window.initCampaignView();
     renderCampaignItems();
     refreshCampaignList();
     try { marketingLoadTemplates(); } catch (_) {}
@@ -4026,7 +4033,7 @@ function renderInventoryApparelList() {
       const id = btn.getAttribute('data-id');
       const found = _inventoryApparelItems.find((x) => String(x.id) === String(id));
       if (!found) return;
-      state.campaign.apparel = {
+      const _invApparel = {
         source: 'inventory',
         itemId: found.id,
         name: found.name || '',
@@ -4038,6 +4045,11 @@ function renderInventoryApparelList() {
         imageUrlBack: found.imageUrlBack || null,
         unitCostCents: Number.isFinite(Number(found.unitCostCents)) ? Number(found.unitCostCents) : null
       };
+      if (typeof window.handleApparelSelected === 'function' && typeof state.campaignApparelSlotIndex === 'number') {
+        window.handleApparelSelected(_invApparel);
+      } else {
+        state.campaign.apparel = _invApparel;
+      }
       try { (state.campaign.items || []).forEach((it) => { if (it.apparel) delete it.apparel; }); } catch (_) {}
       try { renderCampaignApparelSummary(); } catch (_) {}
       // If guided wizard is open, update the base image immediately
@@ -6639,7 +6651,8 @@ async function handleCampaignSave() {
       metalPrintSizes: it.metalPrintSizes || null,
       sourceArtwork: it.sourceArtwork || null
     })),
-    apparel: state.campaign.apparel || null
+    apparel: state.campaign.apparel || null,
+    apparelChoices: state.campaign.apparelChoices || [null, null]
   };
   if (state.campaign.salesInitiative) {
     payload.salesInitiative = state.campaign.salesInitiative;
@@ -6897,6 +6910,7 @@ async function handleCampaignLoad(slug) {
     state.campaign.slug = c.slug;
     state.campaign.shopifyPage = c.shopifyPage || null;
     state.campaign.apparel = c.apparel || null;
+    state.campaign.apparelChoices = c.apparelChoices || (c.apparel ? [c.apparel, null] : [null, null]);
     state.campaign.mockupStrategy = { ...getDefaultMockupStrategy(), ...(c.mockupStrategy || {}) };
     state.campaign.productType = c.productType || '';
     state.campaign.decalBackground = c.decalBackground || null;
@@ -6953,6 +6967,8 @@ async function handleCampaignLoad(slug) {
     renderCampaignItems();
     try { renderCampaignApparelSummary(); } catch (_) {}
     try { renderCampaignDecalBackground(); } catch (_) {}
+    // Notify campaign view of loaded data (pipeline history, apparel slots, analytics)
+    if (typeof window.onCampaignLoaded === 'function') window.onCampaignLoaded(state.campaign);
     // Refresh apparel data from inventory if applicable
     await refreshCampaignApparelFromInventory();
     renderSalesInitiativeSummary();
@@ -10494,7 +10510,7 @@ async function renderSsawVariants(style) {
       selectBtn.addEventListener('click', async () => {
         if (typeof state.campaignApparelSelectIndex === 'number' && state.campaignApparelSelectIndex >= 0 && state.campaign && state.campaign.items[state.campaignApparelSelectIndex]) {
           const cents = Number.isFinite(Number(v.piecePriceCents)) ? Number(v.piecePriceCents) : (Number.isFinite(Number(v.piecePrice)) ? Math.round(Number(v.piecePrice) * 100) : 0);
-          state.campaign.apparel = {
+          const _ssawApparel = {
             source: 'ssaw',
             styleID: style.styleID,
             brandName: style.brandName || '',
@@ -10504,6 +10520,12 @@ async function renderSsawVariants(style) {
             imageUrl: v.imageUrl || '',
             piecePriceCents: cents || undefined
           };
+          // Route to 2-slot apparel chooser if active
+          if (typeof window.handleApparelSelected === 'function' && typeof state.campaignApparelSlotIndex === 'number') {
+            window.handleApparelSelected(_ssawApparel);
+          } else {
+            state.campaign.apparel = _ssawApparel;
+          }
           // Clear any per-item apparel overrides for consistency
           try { (state.campaign.items || []).forEach(it => { if (it.apparel) delete it.apparel; }); } catch (_) {}
           state.campaignApparelSelectIndex = null;

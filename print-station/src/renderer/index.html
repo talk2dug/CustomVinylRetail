@@ -1731,17 +1731,9 @@
             </label>
           </div>
           <div class="catalog-toolbar-actions">
-            <button id="campaignExportShopifyButton" class="secondary">Export to Shopify</button>
-            <button id="campaignExportGuidedButton" class="secondary">Export to Shopify (Guided)</button>
-            <label id="campaignSkipMockupsLabel" class="inline" style="display:none;" title="Export decals using catalog images only (no mockup generation)"><input id="campaignSkipMockupsCheckbox" type="checkbox" /> Skip Mockups (Decals Only)</label>
-            <button id="campaignRefreshDescriptionsButton" class="secondary">Refresh Descriptions</button>
             <button id="campaignRefreshFromCatalogButton" class="secondary">Refresh from Catalog</button>
-            <button id="campaignCreateShopifyPageButton" class="secondary">Create Shopify Landing Page</button>
-            <button id="campaignApparelSsawButton" class="secondary">Select S&amp;S Apparel</button>
-            <button id="campaignApparelInventoryButton" class="secondary">Select Inventory Apparel</button>
             <button id="campaignMetalPrintSelectButton" class="secondary">Select Metal Print Art</button>
             <button id="campaignMetalPrintMockupButton" class="secondary">Create Metal Print Mockup</button>
-            <label class="inline"><input id="campaignForceExportCheckbox" type="checkbox" /> Force re-export</label>
             <button id="campaignNewButton" class="secondary">New Campaign</button>
             <button id="campaignDeleteButton" class="danger">Delete Campaign</button>
             <button id="campaignCreateButton" class="secondary">Create Campaign</button>
@@ -1750,26 +1742,31 @@
           </div>
         </div>
 
-        <div id="campaignApparelSummary" class="status-bar muted">Apparel: None selected</div>
-          <div class="inventory-card" id="campaignBulkCard">
-            <h3>Bulk item editor</h3>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <button id="campaignSelectAllItemsButton" class="secondary" type="button">Select all items</button>
-              <button id="campaignClearSelectionButton" class="secondary" type="button">Clear selection</button>
-            <label class="inline" style="margin:0;">
-              <span>Set type</span>
-              <select id="campaignBulkTypeSelect">
-                <option value="">(choose)</option>
-                <option value="sticker">Decal (sticker)</option>
-                <option value="sticker-pack">Sticker Pack</option>
-                <option value="tshirt">T-shirt</option>
-                <option value="hoodie">Hoodie</option>
-                <option value="apparel">Apparel</option>
-                <option value="metal-print">Metal Print</option>
-              </select>
-            </label>
-            <button id="campaignBulkApplyTypeButton" class="secondary" type="button">Apply to selection</button>
-            <span id="campaignBulkStatus" class="hint">Select items to enable bulk edits.</span>
+        <!-- Apparel Choices (2 slots) -->
+        <div class="inventory-card" id="campaignApparelCard">
+          <h3>Apparel Choices</h3>
+          <p class="hint" style="margin:0 0 10px;">Select 2 apparel items for this campaign. These will be used for all product blank mockups.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="apparel-choice-slot" id="campaignApparel1">
+              <div id="campaignApparel1Preview" style="height:120px;border:2px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:rgba(148,163,184,0.05);">
+                <span class="muted">Choice 1 — click to select</span>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <button id="campaignApparel1SsawBtn" class="secondary" type="button" style="flex:1;">S&amp;S Activewear</button>
+                <button id="campaignApparel1InventoryBtn" class="secondary" type="button" style="flex:1;">Inventory</button>
+                <button id="campaignApparel1ClearBtn" class="secondary" type="button" title="Clear">x</button>
+              </div>
+            </div>
+            <div class="apparel-choice-slot" id="campaignApparel2">
+              <div id="campaignApparel2Preview" style="height:120px;border:2px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:rgba(148,163,184,0.05);">
+                <span class="muted">Choice 2 — click to select</span>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <button id="campaignApparel2SsawBtn" class="secondary" type="button" style="flex:1;">S&amp;S Activewear</button>
+                <button id="campaignApparel2InventoryBtn" class="secondary" type="button" style="flex:1;">Inventory</button>
+                <button id="campaignApparel2ClearBtn" class="secondary" type="button" title="Clear">x</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="inventory-card" id="campaignTypeCard">
@@ -1807,25 +1804,23 @@
             </div>
           </div>
         </div>
-        <div class="inventory-card" id="campaignMockupCard">
-          <h3>Mockup strategy</h3>
-          <div class="inventory-form-grid" style="gap:8px;">
-            <label class="inline" style="margin:0;">
-              <input type="radio" name="campaignMockupMode" value="perItem" checked /> Individual mockups
-            </label>
-            <label class="inline" style="margin:0;">
-              <input type="radio" name="campaignMockupMode" value="campaign" /> One mockup for campaign
-            </label>
-            <label class="inline" id="campaignMockupItemWrapper" style="margin:0;display:none;">
-              <span>Select decal for mockup</span>
-              <select id="campaignMockupItemSelect">
-                <option value="">(project-level preview)</option>
-              </select>
-            </label>
-            <label class="full" id="campaignMockupDescRow" style="display:none;">
-              <span>Mockup description</span>
-              <input id="campaignMockupDescription" type="text" placeholder="Displayed on landing page" />
-            </label>
+        <!-- Pipeline Control -->
+        <div class="inventory-card" id="campaignPipelineCard">
+          <h3>Pipeline</h3>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button id="campaignRunPipelineBtn" class="primary" type="button">Run Pipeline</button>
+            <span id="campaignPipelineStatus" class="muted">Ready</span>
+          </div>
+          <div id="campaignPipelineProgress" hidden style="margin-top:16px;">
+            <div id="campaignPipelineSteps" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;"></div>
+            <div style="height:6px;background:rgba(148,163,184,0.25);border-radius:3px;overflow:hidden;">
+              <div id="campaignPipelineProgressBar" style="height:100%;width:0%;background:#22d3ee;transition:width .3s;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:4px;">
+              <span id="campaignPipelineStepLabel" class="muted" style="font-size:12px;"></span>
+              <span id="campaignPipelineProgressLabel" class="muted" style="font-size:12px;">0%</span>
+            </div>
+            <div id="campaignPipelineError" hidden style="color:var(--danger);font-size:12px;margin-top:6px;padding:6px 8px;background:rgba(239,68,68,0.1);border-radius:4px;"></div>
           </div>
         </div>
         <div class="inventory-card" id="campaignSalesCard">
@@ -1993,33 +1988,45 @@
           </div>
         </div>
 
-        <div class="inventory-card" id="campaignExportStatusCard">
-          <h3>Export Status</h3>
-          <p id="campaignShopifyStatus" class="hint"></p>
-          <div id="campaignExportProgress" style="background:rgba(148,163,184,0.15);border-radius:6px;padding:6px 8px;margin-top:8px;" hidden>
-            <div style="display:flex;gap:10px;align-items:center;">
-              <div style="flex:1;height:6px;background:rgba(148,163,184,0.25);border-radius:3px;overflow:hidden;">
-                <div id="campaignExportProgressBar" style="height:100%;width:0%;background:#22d3ee;transition:width .2s;"></div>
+        <!-- Reel Results -->
+        <div class="inventory-card" id="campaignReelResultsCard" hidden>
+          <h3>Generated Reels</h3>
+          <div id="campaignReelGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;"></div>
+        </div>
+
+        <!-- Cross-Platform Analytics -->
+        <div class="inventory-card" id="campaignAnalyticsCard" hidden>
+          <h3 style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <span>Cross-Platform Analytics</span>
+            <button id="campaignAnalyticsRefresh" class="secondary" type="button">Refresh</button>
+          </h3>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+            <div>
+              <h4 style="font-size:13px;margin:0 0 8px;color:#e879f9;">TikTok</h4>
+              <div id="campaignAnalyticsTiktok" class="analytics-metrics">
+                <div class="metric"><span class="metric-value" id="tiktokViews">--</span><span class="metric-label">Views</span></div>
+                <div class="metric"><span class="metric-value" id="tiktokLikes">--</span><span class="metric-label">Likes</span></div>
+                <div class="metric"><span class="metric-value" id="tiktokComments">--</span><span class="metric-label">Comments</span></div>
+                <div class="metric"><span class="metric-value" id="tiktokShares">--</span><span class="metric-label">Shares</span></div>
               </div>
-              <span id="campaignExportProgressLabel" class="muted" style="min-width:160px;text-align:right;font-size:12px;">0%</span>
             </div>
-            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
-              <button id="campaignExportCancelButton" class="secondary" type="button">Cancel export</button>
-              <button id="campaignExportRetryFailedButton" class="secondary" type="button">Retry failed</button>
-              <button id="campaignExportDetailsButton" class="secondary" type="button">View details</button>
-            </div>
-          </div>
-          <div id="campaignLlmProgress" style="background:rgba(148,163,184,0.15);border-radius:6px;padding:6px 8px;margin-top:8px;" hidden>
-            <div style="display:flex;gap:10px;align-items:center;">
-              <div style="flex:1;height:6px;background:rgba(148,163,184,0.25);border-radius:3px;overflow:hidden;">
-                <div id="campaignLlmProgressBar" style="height:100%;width:0%;background:#10b981;transition:width .2s;"></div>
+            <div>
+              <h4 style="font-size:13px;margin:0 0 8px;color:#60a5fa;">Facebook</h4>
+              <div id="campaignAnalyticsFacebook" class="analytics-metrics">
+                <div class="metric"><span class="metric-value" id="fbReach">--</span><span class="metric-label">Reach</span></div>
+                <div class="metric"><span class="metric-value" id="fbEngagement">--</span><span class="metric-label">Engagement</span></div>
+                <div class="metric"><span class="metric-value" id="fbClicks">--</span><span class="metric-label">Clicks</span></div>
+                <div class="metric"><span class="metric-value" id="fbShares">--</span><span class="metric-label">Shares</span></div>
               </div>
-              <span id="campaignLlmProgressLabel" class="muted" style="min-width:160px;text-align:right;font-size:12px;">0%</span>
             </div>
-            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
-              <button id="campaignLlmCancelButton" class="secondary" type="button">Cancel LLM</button>
-              <button id="campaignLlmRetryFailedButton" class="secondary" type="button">Retry failed</button>
-              <button id="campaignLlmDetailsButton" class="secondary" type="button">View details</button>
+            <div>
+              <h4 style="font-size:13px;margin:0 0 8px;color:#f472b6;">Instagram</h4>
+              <div id="campaignAnalyticsInstagram" class="analytics-metrics">
+                <div class="metric"><span class="metric-value" id="igImpressions">--</span><span class="metric-label">Impressions</span></div>
+                <div class="metric"><span class="metric-value" id="igLikes">--</span><span class="metric-label">Likes</span></div>
+                <div class="metric"><span class="metric-value" id="igComments">--</span><span class="metric-label">Comments</span></div>
+                <div class="metric"><span class="metric-value" id="igSaves">--</span><span class="metric-label">Saves</span></div>
+              </div>
             </div>
           </div>
         </div>
@@ -2027,32 +2034,29 @@
         <div class="inventory-layout">
           <div class="inventory-card" id="campaignItemsCard">
             <h3>Items in campaign</h3>
-            <table class="inventory-table" id="campaignItemsTable">
+            <table class=”inventory-table” id=”campaignItemsTable”>
               <thead>
-            <tr>
-              <th style="width:36px;"><input id="campaignSelectAllToggle" type="checkbox"></th>
-              <th>Image</th>
-              <th>Name</th>
-                  <th>Type</th>
-                  <th>Size (stickers)</th>
-                  <th>Price (USD)</th>
-                  <th>Qty</th>
-                  <th>Apparel</th>
-                  <th>Marketing</th>
+                <tr>
+                  <th style=”width:36px;”><input id=”campaignSelectAllToggle” type=”checkbox”></th>
+                  <th style=”width:60px;”>Image</th>
+                  <th>Name</th>
+                  <th style=”width:100px;”>Type</th>
+                  <th style=”width:90px;”>Price</th>
+                  <th style=”width:50px;”></th>
                 </tr>
               </thead>
-              <tbody id="campaignItemsBody">
-                <tr><td colspan="6" class="placeholder">Use “Add to campaign” in Catalog to add items.</td></tr>
+              <tbody id=”campaignItemsBody”>
+                <tr><td colspan=”6” class=”placeholder”>Use “Add to campaign” in Catalog to add items.</td></tr>
               </tbody>
             </table>
           </div>
           <div class="inventory-forms">
-            <div class="inventory-card" id="campaignPerfCard">
+            <div class="inventory-card" id="campaignPipelineHistoryCard">
               <h3 style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-                <span>Campaign performance</span>
-                <button id="campaignPerfRefresh" class="secondary">Refresh</button>
+                <span>Pipeline Runs</span>
+                <button id="campaignPipelineHistoryRefresh" class="secondary" type="button">Refresh</button>
               </h3>
-              <div id="campaignPerfTable" class="placeholder">Click Refresh to load performance.</div>
+              <div id="campaignPipelineHistory" class="placeholder">No pipeline runs yet.</div>
             </div>
             <div class="inventory-card">
               <h3 style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
@@ -8501,6 +8505,7 @@
     <script src="./parts-finder-drawer.js"></script>
     <script src="./quotes-view.js"></script>
     <script src="./apparel-mockup-view.js"></script>
+    <script src="./campaign-view.js"></script>
     <script src="./build-plate-view.js"></script>
     <script src="./etsy-listings-view.js"></script>
     <script src="./dog-tag-view.js"></script>

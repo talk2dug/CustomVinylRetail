@@ -2778,6 +2778,26 @@ Return ONLY valid JSON, nothing else:
   });
 
   // ========================================
+  // PIPELINE (campaign-linked pipeline runs)
+  // ========================================
+
+  ipcMain.handle('pipeline:run', async (_event, payload = {}) => {
+    return httpRequest('/api/apparel-pipeline/run', { method: 'POST', body: payload, timeout: 30000 });
+  });
+
+  ipcMain.handle('pipeline:status', async (_event, runId) => {
+    return httpRequest(`/api/pipeline-runs/${encodeURIComponent(runId)}`);
+  });
+
+  ipcMain.handle('pipeline:list-runs', async (_event, campaignSlug) => {
+    return httpRequest('/api/pipeline-runs', { query: { campaignSlug: campaignSlug || '' } });
+  });
+
+  ipcMain.handle('pipeline:approve-reel', async (_event, videoId) => {
+    return httpRequest(`/api/tiktok-videos/managed/${encodeURIComponent(videoId)}/approve`, { method: 'POST' });
+  });
+
+  // ========================================
   // PRINTER API
   // ========================================
 
