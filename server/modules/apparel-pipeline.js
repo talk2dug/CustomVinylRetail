@@ -28,6 +28,8 @@ const WIDTH = 1080;
 const HEIGHT = 1920;
 const SLIDE_DURATION = 3.5; // seconds per image slide
 const MIN_REEL_IMAGES = 4;
+const MAX_REEL_IMAGES = 5; // chunk reels into 4-5 images each
+const REEL_CHUNK_SIZE = 5;
 
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -536,6 +538,73 @@ function generateThemedReel(theme, mockupPaths, options = {}) {
 }
 
 // ============================================================================
+// LANDING PAGE BUILDER
+// ============================================================================
+
+function formatThemeName(theme) {
+  return (theme || 'default')
+    .split('-')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/**
+ * Build responsive HTML for a reel landing page showing featured products.
+ */
+function buildReelLandingPageHtml({ title, hook, body, products, collectionHandle, reelUrl, theme, isTikTokShopReel }) {
+  const productGridHtml = products.map(p => {
+    const imgTag = p.image
+      ? `<img src="${escapeHtml(p.image)}" alt="${escapeHtml(p.title)}" style="width:100%;height:auto;border-radius:8px;aspect-ratio:1/1;object-fit:cover;" loading="lazy">`
+      : '<div style="width:100%;aspect-ratio:1/1;background:#f0f0f0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;">No image</div>';
+    const productUrl = p.handle ? `/products/${p.handle}` : '#';
+    return `
+      <div style="text-align:center;">
+        <a href="${productUrl}" style="text-decoration:none;color:inherit;">
+          ${imgTag}
+          <h3 style="margin:12px 0 4px;font-size:16px;font-weight:600;color:#1a1a1a;">${escapeHtml(p.title)}</h3>
+          <p style="margin:0;font-size:18px;font-weight:700;color:#2d2d2d;">$${escapeHtml(p.price)}</p>
+        </a>
+        <a href="${productUrl}" style="display:inline-block;margin-top:10px;padding:10px 24px;background:#1a1a1a;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;letter-spacing:0.5px;">Shop Now</a>
+      </div>`;
+  }).join('\n');
+
+  const destination = isTikTokShopReel ? 'TikTok Shop' : 'our store';
+
+  return `
+<div style="max-width:800px;margin:0 auto;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <!-- Hero Section -->
+  <div style="text-align:center;margin-bottom:32px;">
+    <h1 style="font-size:28px;font-weight:800;margin:0 0 8px;color:#1a1a1a;">${escapeHtml(hook || title)}</h1>
+    <p style="font-size:16px;color:#555;margin:0 0 16px;max-width:600px;display:inline-block;">${escapeHtml(body || '')}</p>
+    <p style="font-size:13px;color:#888;margin:0;">Handmade in Asheville, NC | Blue Ridge Custom Co</p>
+  </div>
+
+  <!-- Product Grid -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:24px;margin-bottom:40px;">
+    ${productGridHtml}
+  </div>
+
+  <!-- See More Button -->
+  <div style="text-align:center;margin:40px 0;">
+    <a href="/collections/${escapeHtml(collectionHandle)}" style="display:inline-block;padding:16px 48px;background:#2d2d2d;color:#fff;text-decoration:none;border-radius:8px;font-size:18px;font-weight:700;letter-spacing:0.5px;transition:background 0.2s;">See More Designs</a>
+  </div>
+
+  <!-- Footer -->
+  <div style="text-align:center;padding:24px 0;border-top:1px solid #eee;margin-top:20px;">
+    <p style="font-size:13px;color:#999;margin:0;">As seen on ${escapeHtml(destination)} | Printed locally in Asheville, NC</p>
+  </div>
+</div>`;
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ============================================================================
 // FULL PIPELINE
 // ============================================================================
 
@@ -807,162 +876,210 @@ async function runFullPipeline(collectionCategory, options = {}) {
     }
 
     // ------------------------------------------------------------------
-    // Step 7: Generate themed reels
+    // Step 7: Generate themed reels (chunked into 4-5 images per reel)
     // ------------------------------------------------------------------
+    // Each theme's images are split into chunks of 4-5.
+    // First reel per theme → TikTok Shop (products associated to video).
+    // Remaining reels → Shopify store (with landing pages).
+    // ------------------------------------------------------------------
+    const allReelRecords = []; // collect for Step 7c landing pages
+
     if (!options.skipReels) {
-      console.log('[ApparelPipeline] Step 7: Generating themed reels');
-      if (notify) await sendTelegram('🎬 Generating TikTok reels...');
+      console.log('[ApparelPipeline] Step 7: Generating themed reels (chunked, 4-5 images each)');
+      if (notify) await sendTelegram('🎬 Generating TikTok reels (4-5 images each)...');
 
       const mockupDir = '/mnt/dbFiles/apparel-mockups';
 
-      for (const [theme, items] of Object.entries(themeGroups)) {
-        if (items.length < MIN_REEL_IMAGES) {
-          console.log(`[ApparelPipeline] Skipping reel for "${theme}" — only ${items.length} designs (need ${MIN_REEL_IMAGES})`);
-          continue;
+      // Load the latest Shopify publish manifest once for product ID lookups
+      let publishManifest = [];
+      const manifestDir = '/mnt/dbFiles/apparel-mockups';
+      if (fs.existsSync(manifestDir)) {
+        const manifests = fs.readdirSync(manifestDir)
+          .filter(f => f.startsWith('shopify_publish_'))
+          .sort().reverse();
+        if (manifests.length) {
+          try {
+            const mf = JSON.parse(fs.readFileSync(path.join(manifestDir, manifests[0]), 'utf8'));
+            publishManifest = mf.results || [];
+          } catch (_) {}
         }
+      }
 
-        // Find mockup images for these designs
-        const mockupPaths = [];
-        const designNames = [];
+      for (const [theme, items] of Object.entries(themeGroups)) {
+        // Gather all mockup paths + design info for this theme
+        const allMockups = []; // { path, name, designId, item }
 
         for (const item of items) {
           const designId = item.design.id || item.design.slug || '';
+          let foundPath = null;
+
           // Look for mockup files matching this design
           if (fs.existsSync(mockupDir)) {
             const files = fs.readdirSync(mockupDir).filter(f =>
               f.includes(designId) && /\.(png|jpg|jpeg|webp)$/i.test(f)
             );
             if (files.length) {
-              mockupPaths.push(path.join(mockupDir, files[0]));
-              designNames.push(item.name);
+              foundPath = path.join(mockupDir, files[0]);
             }
           }
+
           // Fallback to design preview image
-          if (mockupPaths.length === designNames.length - 1 || (!mockupPaths.length && !designNames.length)) {
+          if (!foundPath) {
             const preview = item.design.preview || item.design.image;
             if (preview) {
               const previewPath = path.join(APP_ROOT, 'web', preview);
-              if (fs.existsSync(previewPath)) {
-                mockupPaths.push(previewPath);
-                designNames.push(item.name);
-              }
+              if (fs.existsSync(previewPath)) foundPath = previewPath;
             }
+          }
+
+          if (foundPath) {
+            allMockups.push({ path: foundPath, name: item.name, designId, item });
           }
         }
 
-        if (mockupPaths.length < MIN_REEL_IMAGES) {
-          console.log(`[ApparelPipeline] Not enough mockup images for "${theme}" reel (${mockupPaths.length}/${MIN_REEL_IMAGES})`);
+        if (allMockups.length < MIN_REEL_IMAGES) {
+          console.log(`[ApparelPipeline] Skipping reels for "${theme}" — only ${allMockups.length} images (need ${MIN_REEL_IMAGES})`);
           continue;
         }
 
-        try {
-          const reel = generateThemedReel(theme, mockupPaths, { designNames });
-          results.reelsCreated++;
-          results.reelUrls.push(reel.outputUrl);
-          console.log(`[ApparelPipeline] Reel created: ${reel.outputUrl}`);
-
-          // Save reel → product association in DB
-          try {
-            const db = require('../db');
-            const designIds = items.map(item => item.design?.id).filter(Boolean);
-
-            // Find Shopify product IDs for these designs from the publish manifest
-            let shopifyProductIds = [];
-            const manifestDir = '/mnt/dbFiles/apparel-mockups';
-            if (fs.existsSync(manifestDir)) {
-              const manifests = fs.readdirSync(manifestDir)
-                .filter(f => f.startsWith('shopify_publish_'))
-                .sort().reverse();
-              if (manifests.length) {
-                const manifest = JSON.parse(fs.readFileSync(path.join(manifestDir, manifests[0]), 'utf8'));
-                shopifyProductIds = (manifest.results || [])
-                  .filter(r => r.shopifyId && designIds.some(did => r.designId?.includes(did.substring(0, 20))))
-                  .map(r => String(r.shopifyId));
-              }
-            }
-
-            const videoId = `tv_${crypto.randomBytes(8).toString('hex')}`;
-            db.createTiktokVideo({
-              id: videoId,
-              filename: path.basename(reel.outputPath || reel.outputUrl),
-              url: reel.outputUrl,
-              template: theme,
-              collection: collectionCategory,
-              designs: JSON.stringify(designIds),
-              shopifyProductIds: JSON.stringify(shopifyProductIds),
-              duration: reel.duration || null,
-              fileSize: reel.size || null,
-              status: 'draft',
-              caption: THEME_COPY[theme]?.hooks?.[0] + ' ' + (THEME_COPY[theme]?.body || '')
-            });
-
-            console.log(`[ApparelPipeline] Saved reel record: ${videoId} with ${shopifyProductIds.length} product associations`);
-          } catch (dbErr) {
-            console.warn(`[ApparelPipeline] Could not save reel record: ${dbErr.message}`);
+        // Chunk mockups into groups of REEL_CHUNK_SIZE (4-5 per reel)
+        const chunks = [];
+        for (let i = 0; i < allMockups.length; i += REEL_CHUNK_SIZE) {
+          const chunk = allMockups.slice(i, i + REEL_CHUNK_SIZE);
+          // If the last chunk is too small, merge it with the previous one
+          if (chunk.length < MIN_REEL_IMAGES && chunks.length > 0) {
+            chunks[chunks.length - 1].push(...chunk);
+          } else if (chunk.length >= MIN_REEL_IMAGES) {
+            chunks.push(chunk);
+          } else {
+            // Single small chunk — still create a reel if we have enough
+            chunks.push(chunk);
           }
-        } catch (err) {
-          console.error(`[ApparelPipeline] Reel generation failed for "${theme}": ${err.message}`);
-          results.errors.push(`Reel ${theme} failed: ${err.message}`);
+        }
+
+        // Filter out any chunks that ended up below minimum
+        const validChunks = chunks.filter(c => c.length >= MIN_REEL_IMAGES);
+        if (!validChunks.length) {
+          console.log(`[ApparelPipeline] No valid reel chunks for "${theme}" after chunking`);
+          continue;
+        }
+
+        console.log(`[ApparelPipeline] Theme "${theme}": ${allMockups.length} images → ${validChunks.length} reels`);
+
+        for (let chunkIdx = 0; chunkIdx < validChunks.length; chunkIdx++) {
+          const chunk = validChunks[chunkIdx];
+          const mockupPaths = chunk.map(m => m.path);
+          const designNames = chunk.map(m => m.name);
+          const chunkDesignIds = chunk.map(m => m.designId).filter(Boolean);
+          const isTikTokShopReel = chunkIdx === 0; // first reel → TikTok Shop
+
+          try {
+            const reelLabel = validChunks.length > 1 ? `${theme}-pt${chunkIdx + 1}` : theme;
+            const reel = generateThemedReel(theme, mockupPaths, { designNames });
+            results.reelsCreated++;
+            results.reelUrls.push(reel.outputUrl);
+            console.log(`[ApparelPipeline] Reel ${chunkIdx + 1}/${validChunks.length} created: ${reel.outputUrl} (${isTikTokShopReel ? 'TikTok Shop' : 'Shopify'})`);
+
+            // Find Shopify product IDs for designs in this chunk
+            const shopifyProductIds = publishManifest
+              .filter(r => r.shopifyId && chunkDesignIds.some(did => r.designId?.includes(did.substring(0, 20))))
+              .map(r => String(r.shopifyId));
+
+            // Save reel → product association in DB
+            try {
+              const db = require('../db');
+              const videoId = `tv_${crypto.randomBytes(8).toString('hex')}`;
+              const platform = isTikTokShopReel ? 'tiktok-shop' : 'shopify';
+              db.createTiktokVideo({
+                id: videoId,
+                filename: path.basename(reel.outputPath || reel.outputUrl),
+                url: reel.outputUrl,
+                template: theme,
+                collection: collectionCategory,
+                designs: JSON.stringify(chunkDesignIds),
+                shopifyProductIds: JSON.stringify(shopifyProductIds),
+                duration: reel.duration || null,
+                fileSize: reel.size || null,
+                status: 'draft',
+                platform,
+                caption: THEME_COPY[theme]?.hooks?.[0] + ' ' + (THEME_COPY[theme]?.body || '')
+              });
+
+              allReelRecords.push({
+                videoId,
+                theme,
+                chunkIdx,
+                isTikTokShopReel,
+                reel,
+                designIds: chunkDesignIds,
+                designNames,
+                shopifyProductIds,
+                items: chunk.map(m => m.item)
+              });
+
+              console.log(`[ApparelPipeline] Saved reel record: ${videoId} (${platform}) with ${shopifyProductIds.length} products`);
+            } catch (dbErr) {
+              console.warn(`[ApparelPipeline] Could not save reel record: ${dbErr.message}`);
+            }
+          } catch (err) {
+            console.error(`[ApparelPipeline] Reel generation failed for "${theme}" chunk ${chunkIdx + 1}: ${err.message}`);
+            results.errors.push(`Reel ${theme} chunk ${chunkIdx + 1} failed: ${err.message}`);
+          }
         }
       }
 
       if (notify && results.reelsCreated > 0) {
-        await sendTelegram(`🎬 Created ${results.reelsCreated} TikTok reels`);
+        const tiktokCount = allReelRecords.filter(r => r.isTikTokShopReel).length;
+        const shopifyCount = allReelRecords.filter(r => !r.isTikTokShopReel).length;
+        await sendTelegram(`🎬 Created ${results.reelsCreated} reels (${tiktokCount} TikTok Shop, ${shopifyCount} Shopify)`);
       }
     }
 
     // ------------------------------------------------------------------
-    // Step 7b: Publish featured products to TikTok Shop
+    // Step 7b: Publish TikTok Shop reel products only
     // ------------------------------------------------------------------
-    // Products in the reels should be on TikTok Shop so customers can buy
-    // what they see in the video. Respects the 100-product TikTok limit.
-    if (results.reelsCreated > 0 && !options.skipShopify) {
-      console.log('[ApparelPipeline] Step 7b: Publishing reel products to TikTok Shop');
-      if (notify) await sendTelegram('🛒 Adding reel products to TikTok Shop...');
+    // Only the first reel per theme goes to TikTok Shop. Associate those
+    // specific products so customers can buy what they see in the video.
+    const tiktokShopReels = allReelRecords.filter(r => r.isTikTokShopReel);
+    if (tiktokShopReels.length > 0 && !options.skipShopify) {
+      console.log(`[ApparelPipeline] Step 7b: Publishing ${tiktokShopReels.length} TikTok Shop reel products`);
+      if (notify) await sendTelegram('🛒 Adding TikTok Shop reel products...');
 
       try {
         const shopify = require('../integrations/shopify');
         const tiktokPub = await shopify.findTikTokPublication();
 
         if (tiktokPub) {
-          // Get products currently on TikTok to check count
           const currentTikTok = await shopify.getProductsOnPublication(tiktokPub.id).catch(() => []);
-          const currentCount = currentTikTok.length;
+          let currentCount = currentTikTok.length;
           console.log(`[ApparelPipeline] TikTok Shop: ${currentCount}/100 products currently`);
 
-          // Collect Shopify product IDs from the latest publish manifest
-          const manifestDir = '/mnt/dbFiles/apparel-mockups';
-          const manifests = fs.existsSync(manifestDir)
-            ? fs.readdirSync(manifestDir).filter(f => f.startsWith('shopify_publish_')).sort().reverse()
-            : [];
+          // Only add products from TikTok Shop reels
+          const tiktokProductIds = [];
+          for (const rec of tiktokShopReels) {
+            tiktokProductIds.push(...rec.shopifyProductIds);
+          }
+          const uniqueIds = [...new Set(tiktokProductIds)];
 
-          if (manifests.length) {
-            const latest = JSON.parse(fs.readFileSync(path.join(manifestDir, manifests[0]), 'utf8'));
-            const productIds = (latest.results || [])
-              .filter(r => r.shopifyId)
-              .map(r => r.shopifyId);
+          const available = 100 - currentCount;
+          const toAdd = uniqueIds.slice(0, Math.max(0, available));
 
-            // Only add up to the 100 limit
-            const available = 100 - currentCount;
-            const toAdd = productIds.slice(0, Math.max(0, available));
-
-            if (toAdd.length > 0) {
-              let added = 0;
-              for (const pid of toAdd) {
-                try {
-                  await shopify.publishToPublications(pid, [tiktokPub.id]);
-                  added++;
-                } catch (err) {
-                  console.warn(`[ApparelPipeline] TikTok publish failed for ${pid}: ${err.message}`);
-                }
-                await new Promise(r => setTimeout(r, 500)); // rate limit
+          if (toAdd.length > 0) {
+            let added = 0;
+            for (const pid of toAdd) {
+              try {
+                await shopify.publishToPublications(pid, [tiktokPub.id]);
+                added++;
+              } catch (err) {
+                console.warn(`[ApparelPipeline] TikTok publish failed for ${pid}: ${err.message}`);
               }
-              console.log(`[ApparelPipeline] Added ${added} products to TikTok Shop (${currentCount + added}/100)`);
-              if (notify) await sendTelegram(`🛒 Added ${added} products to TikTok Shop (${currentCount + added}/100 total)`);
-            } else {
-              console.log(`[ApparelPipeline] TikTok Shop at capacity (${currentCount}/100), skipping`);
-              if (notify) await sendTelegram(`⚠️ TikTok Shop at capacity (${currentCount}/100)`);
+              await new Promise(r => setTimeout(r, 500));
             }
+            console.log(`[ApparelPipeline] Added ${added} products to TikTok Shop (${currentCount + added}/100)`);
+            if (notify) await sendTelegram(`🛒 Added ${added} products to TikTok Shop (${currentCount + added}/100 total)`);
+          } else {
+            console.log(`[ApparelPipeline] TikTok Shop at capacity (${currentCount}/100), skipping`);
+            if (notify) await sendTelegram(`⚠️ TikTok Shop at capacity (${currentCount}/100)`);
           }
         } else {
           console.log('[ApparelPipeline] TikTok Shop channel not found in Shopify');
@@ -970,6 +1087,123 @@ async function runFullPipeline(collectionCategory, options = {}) {
       } catch (err) {
         console.error('[ApparelPipeline] TikTok Shop publish error:', err.message);
         if (notify) await sendTelegram(`⚠️ TikTok Shop publish failed: ${err.message}`);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Step 7c: Create Shopify landing pages for each reel
+    // ------------------------------------------------------------------
+    // Each reel gets a dedicated landing page showing the featured products
+    // with images, prices, and a "See More" button to the full collection.
+    results.landingPages = [];
+
+    if (allReelRecords.length > 0 && !options.skipShopify) {
+      console.log(`[ApparelPipeline] Step 7c: Creating Shopify landing pages for ${allReelRecords.length} reels`);
+      if (notify) await sendTelegram('📄 Creating Shopify landing pages for reels...');
+
+      try {
+        const shopify = require('../integrations/shopify');
+        const db = require('../db');
+
+        // Find the apparel collection handle for the "See More" link
+        let collectionHandle = 'apparel';
+        try {
+          const collections = await shopify.listCollections();
+          const apparelCol = (collections || []).find(c =>
+            (c.title || '').toLowerCase().includes('apparel')
+          );
+          if (apparelCol && apparelCol.handle) collectionHandle = apparelCol.handle;
+        } catch (_) {}
+
+        for (const rec of allReelRecords) {
+          try {
+            // Fetch product details from Shopify for the landing page
+            const productCards = [];
+            for (const pid of rec.shopifyProductIds) {
+              try {
+                const product = await shopify.getProduct(pid);
+                if (product) {
+                  const heroImage = (product.images || product.image) ?
+                    (Array.isArray(product.images) && product.images.length ? product.images[0].src : (product.image?.src || '')) : '';
+                  const price = product.variants?.[0]?.price || '24.99';
+                  const handle = product.handle || '';
+                  productCards.push({
+                    title: product.title || 'Custom Tee',
+                    image: heroImage,
+                    price,
+                    handle,
+                    id: pid
+                  });
+                }
+              } catch (err) {
+                console.warn(`[ApparelPipeline] Could not fetch product ${pid}: ${err.message}`);
+              }
+            }
+
+            if (!productCards.length) {
+              console.log(`[ApparelPipeline] No products found for reel ${rec.videoId}, skipping landing page`);
+              continue;
+            }
+
+            // Build the landing page HTML
+            const copy = THEME_COPY[rec.theme] || THEME_COPY.default;
+            const reelNum = rec.chunkIdx + 1;
+            const pageTitle = `${formatThemeName(rec.theme)} Collection${allReelRecords.filter(r => r.theme === rec.theme).length > 1 ? ` - Part ${reelNum}` : ''}`;
+            const pageHandle = `reel-${rec.theme}${rec.chunkIdx > 0 ? '-pt' + reelNum : ''}-${Date.now()}`;
+
+            const bodyHtml = buildReelLandingPageHtml({
+              title: pageTitle,
+              hook: pick(copy.hooks),
+              body: copy.body,
+              products: productCards,
+              collectionHandle,
+              reelUrl: rec.reel.outputUrl,
+              theme: rec.theme,
+              isTikTokShopReel: rec.isTikTokShopReel
+            });
+
+            // Check if page already exists (avoid duplicates)
+            const existing = await shopify.findPageByTitle(pageTitle).catch(() => null);
+            let page;
+            if (existing) {
+              page = await shopify.updatePage(existing.id, { body_html: bodyHtml, published: true });
+              console.log(`[ApparelPipeline] Updated existing landing page: ${existing.id}`);
+            } else {
+              page = await shopify.createPage({ title: pageTitle, body_html: bodyHtml, published: true });
+              console.log(`[ApparelPipeline] Created landing page: ${page.id} — "${pageTitle}"`);
+            }
+
+            // Update the tiktok_videos record with the Shopify page info
+            if (page && page.id) {
+              const pageUrl = `/pages/${page.handle || pageHandle}`;
+              try {
+                db.updateTiktokVideo(rec.videoId, {
+                  shopify_page_id: String(page.id),
+                  shopify_page_url: pageUrl
+                });
+              } catch (_) {}
+
+              results.landingPages.push({
+                videoId: rec.videoId,
+                theme: rec.theme,
+                pageId: page.id,
+                pageUrl,
+                productCount: productCards.length,
+                isTikTokShopReel: rec.isTikTokShopReel
+              });
+            }
+          } catch (err) {
+            console.error(`[ApparelPipeline] Landing page failed for reel ${rec.videoId}: ${err.message}`);
+            results.errors.push(`Landing page ${rec.videoId} failed: ${err.message}`);
+          }
+        }
+
+        if (notify && results.landingPages.length > 0) {
+          await sendTelegram(`📄 Created ${results.landingPages.length} Shopify landing pages`);
+        }
+      } catch (err) {
+        console.error('[ApparelPipeline] Landing page step failed:', err.message);
+        if (notify) await sendTelegram(`⚠️ Landing page step failed: ${err.message}`);
       }
     }
 
@@ -988,6 +1222,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
         ? `\n⚠️ Errors: ${results.errors.length}`
         : '';
 
+      const pageCount = (results.landingPages || []).length;
       await sendTelegram(
         `🏭 *Pipeline Complete — ${cat.name}*\n` +
         `⏱ Duration: ${durationMin}min\n` +
@@ -995,6 +1230,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
         `🎨 Mockups: ${results.mockupsGenerated}\n` +
         `🛍 Shopify: ${results.shopifyPublished}\n` +
         `🎬 Reels: ${results.reelsCreated}\n` +
+        `📄 Landing Pages: ${pageCount}\n` +
         `Reel URLs:\n${reelList}${errorNote}`,
         'Markdown'
       );
@@ -1077,5 +1313,7 @@ module.exports = {
   processNewCollection,
   generateThemedReel,
   matchModelToDesign,
+  buildReelLandingPageHtml,
+  formatThemeName,
   THEME_COPY
 };

@@ -3766,6 +3766,8 @@ function initCustomArtTables() {
     );
   `);
   ensureColumn('tiktok_videos', 'shopify_product_ids', 'TEXT');
+  ensureColumn('tiktok_videos', 'shopify_page_id', 'TEXT');
+  ensureColumn('tiktok_videos', 'shopify_page_url', 'TEXT');
 
   console.log('[Finance] ✅ Tables initialized successfully');
 
@@ -8108,7 +8110,8 @@ function createTiktokVideo(data) {
 
 function updateTiktokVideo(id, updates) {
   const allowed = ['filename', 'url', 'template', 'collection', 'designs', 'shopify_product_ids', 'duration', 'file_size',
-    'status', 'caption', 'platform', 'published_at', 'published_url', 'views', 'likes', 'comments', 'shares'];
+    'status', 'caption', 'platform', 'published_at', 'published_url', 'views', 'likes', 'comments', 'shares',
+    'shopify_page_id', 'shopify_page_url'];
   const sets = [];
   const params = [];
   for (const [key, val] of Object.entries(updates)) {
