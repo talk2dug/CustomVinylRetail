@@ -266,22 +266,30 @@ function matchModelToDesign(designCategory, models, collectionName = '') {
     return Math.random() - 0.5;
   });
 
-  // CRITICAL: Only use models that actually scored well.
-  // If we have models with score >= 5 (meaning sells_best_with matched),
-  // NEVER fall back to low-scoring models. Reuse good matches instead.
-  const strongMatches = scored.filter(s => s.score >= 5);
-  const pool = strongMatches.length > 0 ? strongMatches : scored;
+  // CRITICAL: Only use models that actually fit the design.
+  // Score models WITHOUT the recency penalty first to find true matches,
+  // then apply recency as a tiebreaker within the good pool.
+  const strongMatches = scored.filter(s => {
+    // Recalculate score without recency penalty to find true matches
+    const trueScore = s.score + (_recentModels.includes(s.model.id) ? 3 : 0);
+    return trueScore >= 5;
+  });
 
-  // Within the good pool, prefer least-recently-used
+  let pool;
+  if (strongMatches.length > 0) {
+    // Sort strong matches by actual score (with recency penalty = prefer least recent)
+    strongMatches.sort((a, b) => b.score - a.score || Math.random() - 0.5);
+    pool = strongMatches;
+  } else {
+    pool = scored;
+  }
+
   const chosen = pool[0].model;
-  console.log(`[Pipeline] Model match: "${(chosen.title || chosen.id).substring(0, 35)}" (style=${chosen.style}, demo=${chosen.demographic}, score=${pool[0].score}/${scored[0].score}) for theme=${theme} [pool: ${pool.length}/${scored.length}]`);
+  console.log(`[Pipeline] Model match: "${(chosen.title || chosen.id).substring(0, 35)}" (style=${chosen.style}, demo=${chosen.demographic}, score=${pool[0].score}) for theme=${theme} [strong: ${strongMatches.length}, total: ${scored.length}]`);
 
-  // Track usage for rotation — but with a shorter memory so we cycle through
-  // the good models rather than exhausting them and falling to bad ones
+  // Track usage — cycle through strong matches, reset when all used
   _recentModels.push(chosen.id);
-  // Keep recent list shorter than the strong match pool so we always have options
-  const maxRecent = strongMatches.length > 0 ? Math.max(1, strongMatches.length - 2) : MAX_RECENT;
-  if (_recentModels.length > maxRecent) _recentModels.shift();
+  if (_recentModels.length > MAX_RECENT) _recentModels.shift();
 
   return chosen;
 }
