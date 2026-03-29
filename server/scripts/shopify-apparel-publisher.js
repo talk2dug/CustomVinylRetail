@@ -300,6 +300,7 @@ function getMockupPublicUrl(mockupPath) {
 async function publishBatch(options = {}) {
   const {
     category = '95 T Shirt Designs Mega Bundle',
+    designIds = null,
     limit = 10,
     dryRun = false,
     delayMs = 3000
@@ -307,21 +308,40 @@ async function publishBatch(options = {}) {
 
   console.log('=== Shopify Apparel Publisher ===');
   console.log(`Category: ${category}`);
+  if (designIds) console.log(`Design IDs: ${designIds.length} specific designs`);
   console.log(`Limit: ${limit}`);
   console.log(`Dry run: ${dryRun}`);
   console.log();
 
   // Load catalog
   const catalog = loadCatalog();
-  const cat = catalog.categories.find(c =>
-    c.name.toLowerCase().includes(category.toLowerCase())
-  );
-  if (!cat) {
-    console.error(`Category not found: "${category}"`);
-    return { success: 0, failed: 0 };
-  }
+  let designs = [];
 
-  console.log(`Found ${cat.designs.length} designs in "${cat.name}"`);
+  if (designIds && Array.isArray(designIds) && designIds.length) {
+    // Campaign mode — find specific designs across all categories
+    const idSet = new Set(designIds.map(id => String(id)));
+    for (const cat of (catalog.categories || [])) {
+      for (const design of (cat.designs || [])) {
+        if (idSet.has(String(design.id))) {
+          designs.push(design);
+          idSet.delete(String(design.id));
+        }
+      }
+      if (idSet.size === 0) break;
+    }
+    console.log(`Found ${designs.length} designs from ${designIds.length} IDs`);
+  } else {
+    // Category mode — original behavior
+    const cat = catalog.categories.find(c =>
+      c.name.toLowerCase().includes(category.toLowerCase())
+    );
+    if (!cat) {
+      console.error(`Category not found: "${category}"`);
+      return { success: 0, failed: 0 };
+    }
+    designs = cat.designs || [];
+    console.log(`Found ${designs.length} designs in "${cat.name}"`);
+  }
 
   // Find/create Apparel collection
   let collectionId = null;
@@ -331,7 +351,7 @@ async function publishBatch(options = {}) {
     console.log(`Collection: ${COLLECTION_TITLE} (ID: ${collectionId || 'failed'})`);
   }
 
-  const designs = cat.designs.slice(0, limit);
+  designs = designs.slice(0, limit);
   let success = 0, failed = 0, skipped = 0;
   const results = [];
 
@@ -496,6 +516,7 @@ async function handleShopifyApparelRoute(pathname, req, res, db) {
 
       publishBatch({
         category: body.category || '95 T Shirt Designs Mega Bundle',
+        designIds: body.designIds || null,
         limit: body.limit || 10,
         dryRun: body.dryRun || false,
         delayMs: body.delayMs || 3000

@@ -938,12 +938,17 @@ async function runFullPipeline(collectionCategory, options = {}) {
       if (notify) await sendTelegram('🛍 Publishing to Shopify...');
 
       try {
+        const shopifyPayload = {
+          category: collectionCategory || categoryLabel,
+          limit: limit
+        };
+        // In campaign/designIds mode, pass specific IDs so publisher finds the right designs
+        if (options.designIds && options.designIds.length) {
+          shopifyPayload.designIds = options.designIds;
+        }
         const shopifyResp = await apiFetch('/api/shopify-apparel/publish', {
           method: 'POST',
-          body: JSON.stringify({
-            category: collectionCategory || categoryLabel,
-            limit: limit
-          }),
+          body: JSON.stringify(shopifyPayload),
           timeout: 300000 // 5 min for Shopify
         });
         results.shopifyPublished = shopifyResp.published || shopifyResp.count || 0;
