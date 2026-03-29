@@ -6213,92 +6213,39 @@ function renderCampaignItems() {
   if (!tbody) return;
   const items = state.campaign.items;
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="placeholder">Use “Add to campaign” in Catalog to add items.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan=”6” class=”placeholder”>Use “Add to campaign” in Catalog to add items.</td></tr>';
     return;
   }
-  const templateKeys = state.marketing.templateKeys || [];
   tbody.innerHTML = items
     .map((item, idx) => {
       if (!item.uid) {
         item.uid = `ci-${Date.now()}-${idx}-${Math.random().toString(36).slice(2)}`;
       }
-      const selected = state.campaign.selection.has(item.uid);
+      const selected = state.campaign.selection ? state.campaign.selection.has(item.uid) : false;
       const safeName = escapeHtml(cleanAiGeneratedName(item.name) || 'Item');
       const price = item.priceCents != null ? (item.priceCents / 100).toFixed(2) : (item.price || '');
       let imgSrc = item.image ? resolveAssetUrl(item.image, { width: 120, quality: 80 }) : '';
-      // Use black background for catalog images to make white/transparent designs visible
       if (imgSrc && imgSrc.includes('/api/library/')) {
         imgSrc = imgSrc.replace('/api/library/', '/api/library-black-bg/');
       }
       const imgHtml = imgSrc
-        ? `<img src="${escapeHtml(imgSrc)}" alt="${safeName}" style="max-height:56px;border-radius:6px;border:1px solid var(--border);background:#000;object-fit:contain;"/>`
-        : '<span class="muted" style="font-size:12px;">No image</span>';
-      const options = ['<option value="">(auto)</option>']
-        .concat(templateKeys.map((k) => `<option value="${k}">${k}</option>`))
-        .join('');
-      const apparel = item.apparel || (state.campaign && state.campaign.apparel) || null;
-      const apparelLabel = apparel && apparel.source === 'ssaw'
-        ? `${escapeHtml(apparel.brandName || '')} ${escapeHtml(apparel.styleName || '')}${apparel.colorName ? ' • ' + escapeHtml(apparel.colorName) : ''}`.trim()
-        : (apparel && apparel.source === 'inventory' ? 'Inventory apparel' : 'None');
-      const apparelThumb = apparel && apparel.imageUrl ? `<img src="${escapeHtml(resolveAssetUrl(apparel.imageUrl, { width: 80, quality: 70 }))}" alt="app" style="max-height:36px;border:1px solid var(--border);border-radius:6px;"/>` : '';
-      const exported = !!(item.shopifyProductId || item.shopify_product_id);
-      const statusLabel = exported ? 'Exported' : 'Pending';
-      const statusBg = exported ? 'rgba(22,163,74,0.12)' : 'rgba(148,163,184,0.15)';
-      const statusColor = exported ? '#16a34a' : 'var(--muted)';
+        ? `<img src=”${escapeHtml(imgSrc)}” alt=”${safeName}” style=”max-height:56px;border-radius:6px;border:1px solid var(--border);background:#000;object-fit:contain;”/>`
+        : '<span class=”muted” style=”font-size:12px;”>No image</span>';
+      const typeLabel = { tshirt: 'T-shirt', hoodie: 'Hoodie', sticker: 'Sticker', 'metal-print': 'Metal Print', 'sticker-pack': 'Sticker Pack' }[item.productType] || item.productType || 'T-shirt';
       return `
-        <tr data-index="${idx}" data-uid="${item.uid}">
-          <td>
-            <input type="checkbox" class="campaign-select-item" data-uid="${item.uid}" ${selected ? 'checked' : ''}>
-          </td>
-          <td>
-            <div style="display:flex;align-items:center;justify-content:center;">${imgHtml}</div>
-          </td>
-          <td><input type="text" class="campaign-name" value="${safeName}"></td>
-          <td>
-            <select class="campaign-type">
-              <option value="tshirt" ${item.productType==='tshirt'?'selected':''}>T‑shirt</option>
-              <option value="hoodie" ${item.productType==='hoodie'?'selected':''}>Hoodie</option>
-              <option value="sticker" ${item.productType==='sticker'?'selected':''}>Sticker</option>
-              <option value="metal-print" ${item.productType==='metal-print'?'selected':''}>Metal Print</option>
-            </select>
-          </td>
-          <td><input type="text" class="campaign-size" value="${escapeHtml(item.size || '')}" placeholder="e.g. 6\" × 3\""></td>
-          <td><input type="text" class="campaign-price" inputmode="decimal" value="${escapeHtml(String(price))}" placeholder="e.g. 4.00"></td>
-          <td><input type="number" class="campaign-qty" min="1" step="1" value="${item.quantity || 1}"></td>
-          <td>
-            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-              ${apparelThumb}
-              <span style="font-size:12px;color:var(--muted);">${apparelLabel}</span>
-            </div>
-          </td>
-          <td>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <span class="campaign-export-status" style="font-size:11px;padding:2px 8px;border-radius:999px;background:${statusBg};color:${statusColor};white-space:nowrap;">
-                ${statusLabel}
-              </span>
-              <select class="campaign-ad-template">${options}</select>
-              <div class="campaign-actions-wrapper" style="position:relative;">
-                <button type="button" class="secondary campaign-actions-toggle">Actions ▾</button>
-                <div class="campaign-actions-menu" hidden style="position:absolute;right:0;top:100%;margin-top:4px;background:#0f172a;border:1px solid var(--border);border-radius:6px;padding:4px;min-width:160px;box-shadow:0 8px 24px rgba(15,23,42,0.45);z-index:20;">
-                  <button type="button" class="secondary campaign-apparel-ssaw" style="width:100%;text-align:left;">Select S&amp;S apparel</button>
-                  <button type="button" class="secondary campaign-mockup-upload" style="width:100%;text-align:left;">Upload mockup</button>
-                  <button type="button" class="secondary campaign-mockup-settings" style="width:100%;text-align:left;">Change mockup settings</button>
-                  <hr style="border:none;border-top:1px solid var(--border);margin:4px 0;">
-                  <button type="button" class="secondary campaign-use-hero" style="width:100%;text-align:left;">Use as hero</button>
-                  <button type="button" class="secondary campaign-view-profile" style="width:100%;text-align:left;">View profile</button>
-                  <button type="button" class="secondary campaign-ad-preview" style="width:100%;text-align:left;">Ad preview</button>
-                  <button type="button" class="secondary campaign-ad-launch" style="width:100%;text-align:left;">Launch ad</button>
-                  <hr style="border:none;border-top:1px solid var(--border);margin:4px 0;">
-                  <button type="button" class="danger campaign-remove" style="width:100%;text-align:left;">Remove</button>
-                </div>
-              </div>
-            </div>
-          </td>
+        <tr data-index=”${idx}” data-uid=”${item.uid}”>
+          <td><input type=”checkbox” class=”campaign-select-item” data-uid=”${item.uid}” ${selected ? 'checked' : ''}></td>
+          <td><div style=”display:flex;align-items:center;justify-content:center;”>${imgHtml}</div></td>
+          <td><input type=”text” class=”campaign-name” value=”${safeName}” style=”width:100%;”></td>
+          <td><span style=”font-size:12px;”>${escapeHtml(typeLabel)}</span></td>
+          <td><input type=”text” class=”campaign-price” inputmode=”decimal” value=”${escapeHtml(String(price))}” placeholder=”0.00” style=”width:70px;”></td>
+          <td><button type=”button” class=”danger campaign-remove” style=”padding:2px 8px;font-size:12px;” title=”Remove”>x</button></td>
         </tr>
       `;
     })
     .join('');
 
+  // Remove button handlers
   tbody.querySelectorAll('.campaign-remove').forEach((btn) => {
     btn.addEventListener('click', () => {
       const tr = btn.closest('tr');
@@ -6310,84 +6257,7 @@ function renderCampaignItems() {
     });
   });
 
-  // Actions dropdown toggles - use event delegation to avoid listener accumulation
-  // Store reference to cleanup function on the tbody element
-  if (tbody._campaignDocClickHandler) {
-    document.removeEventListener('click', tbody._campaignDocClickHandler);
-    tbody._campaignDocClickHandler = null;
-  }
-
-  const menus = Array.from(tbody.querySelectorAll('.campaign-actions-menu'));
-
-  // Single document click handler for all dropdowns (cleaned up on re-render)
-  tbody._campaignDocClickHandler = (evt) => {
-    const target = evt.target;
-    // Close any open menu if click is outside
-    menus.forEach((menu) => {
-      const wrapper = menu.closest('.campaign-actions-wrapper');
-      const toggleBtn = wrapper?.querySelector('.campaign-actions-toggle');
-      if (!menu.hasAttribute('hidden') && !menu.contains(target) && target !== toggleBtn) {
-        menu.setAttribute('hidden', '');
-      }
-    });
-  };
-  document.addEventListener('click', tbody._campaignDocClickHandler);
-
-  tbody.querySelectorAll('.campaign-actions-toggle').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const wrapper = btn.closest('.campaign-actions-wrapper');
-      const menu = wrapper ? wrapper.querySelector('.campaign-actions-menu') : null;
-      if (!menu) return;
-      const isHidden = menu.hasAttribute('hidden');
-      // Close all menus first
-      menus.forEach((m) => m.setAttribute('hidden', ''));
-      // Open this one if it was hidden
-      if (isHidden) {
-        menu.removeAttribute('hidden');
-      }
-    });
-  });
-
-  // Choose image per item
-  tbody.querySelectorAll('.campaign-choose').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const tr = btn.closest('tr');
-      const index = Number(tr?.dataset.index || -1);
-      if (index < 0 || !state.campaign.items[index]) return;
-      try {
-        const files = await printStation.selectFiles({
-          title: 'Choose image for item',
-          properties: ['openFile'],
-          filters: [
-            { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] },
-            { name: 'All Files', extensions: ['*'] }
-          ]
-        });
-        if (!files || !files.length) return;
-        const filePath = files[0];
-        const displayName = state.campaign.items[index].name || 'Campaign Item';
-        const result = await printStation.uploadArtwork({
-          previewPath: filePath,
-          categoryMode: 'new',
-          newCategoryName: 'Campaign Assets',
-          displayName
-        });
-        const rel = result?.design?.preview || '';
-        const proxy = rel && rel.startsWith('library/')
-          ? `/api/library/${encodeURIComponent(rel.replace(/^library\//, '')).replace(/%2F/g, '/')}`
-          : rel;
-        state.campaign.items[index].image = proxy;
-        const input = tr.querySelector('.campaign-image');
-        if (input) input.value = proxy;
-        showToast('Image uploaded.', 'success');
-      } catch (error) {
-        console.error('Item image upload failed:', error);
-        showToast(error?.message || 'Unable to upload image.', 'error');
-      }
-    });
-  });
-
+  // Checkbox selection
   const checkboxes = tbody.querySelectorAll('.campaign-select-item');
   checkboxes.forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
@@ -6398,7 +6268,7 @@ function renderCampaignItems() {
   const selectAllToggle = elements.campaignSelectAllToggle;
   if (selectAllToggle) {
     const total = items.length;
-    const selectedCount = state.campaign.selection.size;
+    const selectedCount = state.campaign.selection ? state.campaign.selection.size : 0;
     selectAllToggle.checked = total > 0 && selectedCount === total;
     selectAllToggle.indeterminate = selectedCount > 0 && selectedCount < total;
     selectAllToggle.onchange = (event) => {
@@ -6408,119 +6278,8 @@ function renderCampaignItems() {
     };
   }
 
-  updateCampaignBulkStatus();
-
-  // Apparel: select S&S
-  tbody.querySelectorAll('.campaign-apparel-ssaw').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tr = btn.closest('tr');
-      const index = Number(tr?.dataset.index || -1);
-      if (index < 0 || !state.campaign.items[index]) return;
-      state.campaignApparelSelectIndex = index;
-      openSsawVisual();
-    });
-  });
-
-  // Upload mockup
-  tbody.querySelectorAll('.campaign-mockup-upload').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const tr = btn.closest('tr');
-      const index = Number(tr?.dataset.index || -1);
-      if (index < 0 || !state.campaign.items[index]) return;
-      try {
-        const files = await printStation.selectFiles({ title: 'Choose mockup', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png','jpg','jpeg','webp'] }] });
-        if (!files || !files.length) return;
-        const displayName = `${state.campaign.title || state.campaign.slug || 'Campaign'} · ${state.campaign.items[index].name || 'Item'}`;
-        const result = await printStation.uploadArtwork({ previewPath: files[0], categoryMode: 'new', newCategoryName: 'Campaign Assets', displayName });
-        const rel = result?.design?.preview || '';
-        const proxy = rel && rel.startsWith('library/') ? `/api/library/${encodeURIComponent(rel.replace(/^library\//, '')).replace(/%2F/g, '/')}` : rel;
-        state.campaign.items[index].image = proxy;
-        // Auto-set hero if missing
-        if (!state.campaign.hero || !state.campaign.hero.image) {
-          state.campaign.hero = { image: proxy };
-          elements.campaignHeroInput.value = proxy;
-        }
-        renderCampaignItems();
-        showToast('Mockup uploaded and set.', 'success');
-      } catch (e) {
-        showToast(e?.message || 'Upload failed.', 'error');
-      }
-    });
-  });
-
-  // Mockup settings (placeholder)
-  tbody.querySelectorAll('.campaign-mockup-settings').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tr = btn.closest('tr');
-      const index = Number(tr?.dataset.index || -1);
-      if (index < 0 || !state.campaign.items[index]) return;
-      openCampaignMockupSettings(index);
-    });
-  });
-
-  // Marketing buttons per item
-  tbody.querySelectorAll('.campaign-ad-preview').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const tr = btn.closest('tr');
-      const index = Number(tr?.dataset.index || -1);
-      if (index < 0 || !state.campaign.items[index]) return;
-      try { await previewCampaignItem(index); } catch (e) { showToast(e?.message || 'Preview failed', 'error'); }
-    });
-  });
-  // Use item image as hero
-  tbody.querySelectorAll('.campaign-use-hero').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tr = btn.closest('tr');
-      const index = Number(tr?.dataset.index || -1);
-      const items = state.campaign.items || [];
-      const it = items[index];
-      if (!it) return;
-      if (elements.campaignHeroInput) {
-        elements.campaignHeroInput.value = it.image || '';
-        showToast('Set hero image from item.', 'success');
-      }
-    });
-  });
-  // View profile per item
-  tbody.querySelectorAll('.campaign-view-profile').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tr = btn.closest('tr');
-      const index = Number(tr?.dataset.index || -1);
-      const items = state.campaign.items || [];
-      if (index < 0 || !items[index]) return;
-      const prof = items[index]._profile || null;
-      const body = elements.profileModalBody;
-      if (body) {
-        body.textContent = prof ? JSON.stringify(prof, null, 2) : 'No profile yet. Run “Classify all (LLM)”.';
-      }
-      if (elements.profileModal) elements.profileModal.removeAttribute('hidden');
-    });
-  });
-  tbody.querySelectorAll('.campaign-ad-launch').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const tr = btn.closest('tr');
-      const index = Number(tr?.dataset.index || -1);
-      if (index < 0 || !state.campaign.items[index]) return;
-      try { await launchCampaignItem(index); } catch (e) { showToast(e?.message || 'Launch failed', 'error'); }
-    });
-  });
-
-  // Reflect selected ad template from item state
-  Array.from(tbody.querySelectorAll('tr')).forEach((tr) => {
-    const index = Number(tr?.dataset.index || -1);
-    const item = items[index];
-    const sel = tr.querySelector('.campaign-ad-template');
-    if (sel && item && item.adTemplate) {
-      sel.value = item.adTemplate;
-    }
-    sel?.addEventListener('change', () => {
-      if (item) item.adTemplate = sel.value || '';
-    });
-  });
-
-  // Update campaign-level apparel summary whenever items render
+  try { updateCampaignBulkStatus(); } catch (_) {}
   try { renderCampaignApparelSummary(); } catch (_) {}
-  try { renderCampaignMockupControls(); } catch (_) {}
 }
 
 function renderCampaignMockupControls() {
@@ -10508,7 +10267,9 @@ async function renderSsawVariants(style) {
       selectBtn.className = 'secondary';
       selectBtn.textContent = (typeof state.campaignApparelSelectIndex === 'number' && state.campaignApparelSelectIndex >= 0) ? 'Use for campaign' : 'Select variant';
       selectBtn.addEventListener('click', async () => {
-        if (typeof state.campaignApparelSelectIndex === 'number' && state.campaignApparelSelectIndex >= 0 && state.campaign && state.campaign.items[state.campaignApparelSelectIndex]) {
+        const inCampaignMode = typeof state.campaignApparelSelectIndex === 'number' && state.campaignApparelSelectIndex >= 0 && state.campaign;
+        const inSlotMode = typeof state.campaignApparelSlotIndex === 'number' && state.campaign;
+        if (inCampaignMode || inSlotMode) {
           const cents = Number.isFinite(Number(v.piecePriceCents)) ? Number(v.piecePriceCents) : (Number.isFinite(Number(v.piecePrice)) ? Math.round(Number(v.piecePrice) * 100) : 0);
           const _ssawApparel = {
             source: 'ssaw',
@@ -10521,7 +10282,7 @@ async function renderSsawVariants(style) {
             piecePriceCents: cents || undefined
           };
           // Route to 2-slot apparel chooser if active
-          if (typeof window.handleApparelSelected === 'function' && typeof state.campaignApparelSlotIndex === 'number') {
+          if (typeof window.handleApparelSelected === 'function' && inSlotMode) {
             window.handleApparelSelected(_ssawApparel);
           } else {
             state.campaign.apparel = _ssawApparel;
