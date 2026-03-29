@@ -56,14 +56,31 @@ const TIER_2_BY_THEME = {
 /**
  * Get the list of blanks a design should be mocked up on.
  * Returns [{type, color, label, imageUrl}]
+ *
+ * @param {string} theme - Design theme key
+ * @param {object} [options]
+ * @param {Array<{type: string, color: string}>} [options.apparelChoices] -
+ *   User-selected apparel items (e.g. [{type:'T-shirt',color:'Black'},{type:'Hoodie',color:'Navy'}]).
+ *   When provided, these replace the default tier system entirely.
  */
-async function getBlanksForDesign(theme) {
-  const blanks = [...TIER_1];
+async function getBlanksForDesign(theme, options = {}) {
+  let blanks;
 
-  // Add tier 2 pick if it's not a duplicate of tier 1
-  const tier2 = TIER_2_BY_THEME[theme] || TIER_2_BY_THEME['humor-fun'];
-  const isDupe = blanks.some(b => b.type === tier2.type && b.color === tier2.color);
-  if (!isDupe) blanks.push(tier2);
+  if (options.apparelChoices && Array.isArray(options.apparelChoices) && options.apparelChoices.length) {
+    // User explicitly chose which apparel to use — skip tier system
+    blanks = options.apparelChoices.map(c => ({
+      type: c.type || 'T-shirt',
+      color: c.color || 'White',
+      label: c.label || `${c.color || 'White'} ${c.type || 'T-shirt'}`
+    }));
+    console.log(`[ProductBlank] Using user-selected apparel: ${blanks.map(b => b.label).join(', ')}`);
+  } else {
+    // Default tier system
+    blanks = [...TIER_1];
+    const tier2 = TIER_2_BY_THEME[theme] || TIER_2_BY_THEME['humor-fun'];
+    const isDupe = blanks.some(b => b.type === tier2.type && b.color === tier2.color);
+    if (!isDupe) blanks.push(tier2);
+  }
 
   // Resolve image URLs from inventory
   const inventory = await fetchInventory();
@@ -196,7 +213,7 @@ async function generateBlankMockup(blankImagePath, graphicPath, options = {}) {
  * Generate product blank mockups for a design on all its assigned blanks.
  */
 async function generateProductMockups(designId, graphicPath, theme, options = {}) {
-  const blanks = await getBlanksForDesign(theme);
+  const blanks = await getBlanksForDesign(theme, { apparelChoices: options.apparelChoices });
   const results = [];
 
   console.log(`[ProductBlank] Generating ${blanks.length} product mockups for "${designId}"`);
@@ -233,7 +250,7 @@ async function generateProductMockups(designId, graphicPath, theme, options = {}
 // ============================================================================
 
 async function generateProductMockupsBatch(designs, theme, options = {}) {
-  const { delayMs = 5000, limit } = options;
+  const { delayMs = 5000, limit, apparelChoices } = options;
   const toProcess = limit ? designs.slice(0, limit) : designs;
   const allResults = [];
 
@@ -245,7 +262,8 @@ async function generateProductMockupsBatch(designs, theme, options = {}) {
       const results = await generateProductMockups(
         design.id,
         design.graphicPath,
-        theme
+        theme,
+        { apparelChoices }
       );
       allResults.push({ designId: design.id, mockups: results });
     } catch (err) {

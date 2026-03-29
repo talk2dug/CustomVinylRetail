@@ -619,6 +619,9 @@ function escapeHtml(str) {
  * @param {boolean} [options.skipShopify] - Skip Shopify publish step
  * @param {boolean} [options.skipReels] - Skip reel generation step
  * @param {boolean} [options.notify] - Send Telegram notifications (default true)
+ * @param {Array<{type: string, color: string}>} [options.apparelChoices] -
+ *   User-selected apparel items (2 items). Overrides auto tier system.
+ *   e.g. [{type:'T-shirt',color:'Black'},{type:'Hoodie',color:'Navy'}]
  * @returns {object} Pipeline results
  */
 async function runFullPipeline(collectionCategory, options = {}) {
@@ -831,7 +834,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
           if (existingBlanks.length >= 2) continue; // already done
 
           try {
-            const blanks = await generateProductMockups(item.design.id, graphicPath, theme);
+            const blanks = await generateProductMockups(item.design.id, graphicPath, theme, { apparelChoices: options.apparelChoices });
             blankCount += blanks.length;
           } catch (err) {
             console.warn(`[ApparelPipeline] Product blank failed for ${item.design.id}: ${err.message}`);

@@ -9920,10 +9920,17 @@ Keep it concise and actionable.`;
     collectRequestBody(req, (error, body) => {
       if (error) { sendJson(res, 413, { error: error.message }); return; }
       try {
-        const { category } = JSON.parse(body || '{}');
+        const { category, apparelChoices, limit, modelFilter, size, skipShopify, skipReels } = JSON.parse(body || '{}');
         if (!category) { sendJson(res, 400, { error: 'category is required' }); return; }
         // Run pipeline in background — don't await
-        runFullPipeline(category).catch(err => {
+        const pipelineOpts = {};
+        if (apparelChoices) pipelineOpts.apparelChoices = apparelChoices;
+        if (limit) pipelineOpts.limit = limit;
+        if (modelFilter) pipelineOpts.modelFilter = modelFilter;
+        if (size) pipelineOpts.size = size;
+        if (skipShopify) pipelineOpts.skipShopify = skipShopify;
+        if (skipReels) pipelineOpts.skipReels = skipReels;
+        runFullPipeline(category, pipelineOpts).catch(err => {
           console.error('[Apparel Pipeline Error]', err);
         });
         sendJson(res, 200, { status: 'started', category });
