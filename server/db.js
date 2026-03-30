@@ -3451,6 +3451,9 @@ function initCustomArtTables() {
   ensureColumn('stl_catalog', 'tags', 'TEXT DEFAULT NULL');       // JSON array e.g. ["multiboard-remix"]
   ensureColumn('stl_catalog', 'mount_config', 'TEXT DEFAULT NULL'); // JSON: { face, gridSize, transform, mountStlId }
 
+  // Product tracking
+  ensureColumn('stl_catalog', 'is_product', 'INTEGER DEFAULT 0');   // 1 = marked as product for sale
+
   // Google Drive integration
   ensureColumn('stl_catalog', 'source', "TEXT DEFAULT 'local'");    // 'local' or 'gdrive'
   ensureColumn('stl_catalog', 'gdrive_path', 'TEXT DEFAULT NULL');   // relative path within gdrive STL folder
@@ -6748,7 +6751,7 @@ function getStlCatalogItemByGdrivePath(gdrivePath) {
   return db.prepare('SELECT * FROM stl_catalog WHERE gdrive_path = ? AND source = ?').get(gdrivePath, 'gdrive') || null;
 }
 
-function listStlCatalog({ category, search, folder } = {}) {
+function listStlCatalog({ category, search, folder, is_product } = {}) {
   const clauses = [];
   const params = {};
   if (category) {
@@ -6757,8 +6760,10 @@ function listStlCatalog({ category, search, folder } = {}) {
   }
   if (folder !== undefined) {
     if (folder === '' || folder === null) {
+      // Root level: show items with no folder AND items not in any subfolder
       clauses.push("(folder IS NULL OR folder = '')");
     } else {
+      // Show items in this exact folder (not in subfolders)
       clauses.push('folder = @folder');
       params.folder = folder;
     }
@@ -6766,6 +6771,10 @@ function listStlCatalog({ category, search, folder } = {}) {
   if (search) {
     clauses.push('(name LIKE @q OR category LIKE @q OR notes LIKE @q)');
     params.q = `%${search}%`;
+  }
+  if (is_product !== undefined) {
+    clauses.push('is_product = @is_product');
+    params.is_product = is_product ? 1 : 0;
   }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   return db.prepare(`SELECT * FROM stl_catalog ${where} ORDER BY name COLLATE NOCASE`).all(params);
@@ -6826,14 +6835,48 @@ function bulkSetCategory(stlIds, category) {
   return { updated: result.changes, category };
 }
 
-function listStlFolders(category) {
+function listStlFolders(category, parentPath) {
   if (!category) return [];
-  return db.prepare(
+  // Support nested folders — folder column stores paths like "Desk Lamps/Geometric"
+  // When parentPath is given, list immediate children of that path
+  const allFolders = db.prepare(
     `SELECT folder, COUNT(*) as count FROM stl_catalog
      WHERE category = ? AND folder IS NOT NULL AND folder != ''
      GROUP BY folder
      ORDER BY folder COLLATE NOCASE`
   ).all(category);
+
+  if (!parentPath) {
+    // Return top-level folders (first segment of each path) with aggregated counts
+    const topLevel = {};
+    for (const row of allFolders) {
+      const segments = row.folder.split('/');
+      const top = segments[0];
+      if (!topLevel[top]) topLevel[top] = { folder: top, count: 0, hasChildren: false };
+      topLevel[top].count += row.count;
+      if (segments.length > 1) topLevel[top].hasChildren = true;
+    }
+    return Object.values(topLevel).sort((a, b) => a.folder.localeCompare(b.folder, undefined, { sensitivity: 'base' }));
+  }
+
+  // Return children of parentPath
+  const prefix = parentPath + '/';
+  const children = {};
+  let rootCount = 0;
+  for (const row of allFolders) {
+    if (row.folder === parentPath) {
+      rootCount += row.count; // items directly in this folder (not in subfolder)
+    } else if (row.folder.startsWith(prefix)) {
+      const rest = row.folder.slice(prefix.length);
+      const nextSegment = rest.split('/')[0];
+      const childPath = prefix + nextSegment;
+      if (!children[childPath]) children[childPath] = { folder: nextSegment, fullPath: childPath, count: 0, hasChildren: false };
+      children[childPath].count += row.count;
+      if (rest.includes('/')) children[childPath].hasChildren = true;
+    }
+  }
+  const result = Object.values(children).sort((a, b) => a.folder.localeCompare(b.folder, undefined, { sensitivity: 'base' }));
+  return result;
 }
 
 function bulkSetFolder(stlIds, folder) {
@@ -6861,6 +6904,15 @@ function deleteStlFolder(category, folderName) {
   return { updated: result.changes };
 }
 
+function toggleStlProduct(id, isProduct) {
+  db.prepare('UPDATE stl_catalog SET is_product = ? WHERE id = ?').run(isProduct ? 1 : 0, id);
+  return getStlCatalogItem(id);
+}
+
+function listStlProductItems() {
+  return db.prepare('SELECT * FROM stl_catalog WHERE is_product = 1 ORDER BY name COLLATE NOCASE').all();
+}
+
 function updateStlCatalogItem(id, updates) {
   const allowed = ['name', 'category', 'folder', 'stl_path', 'thumbnail_path',
     'default_quality', 'default_strength', 'default_material', 'default_texture', 'default_supports',
@@ -6868,7 +6920,7 @@ function updateStlCatalogItem(id, updates) {
     'notes', 'file_size', 'triangle_count', 'dim_x', 'dim_y', 'dim_z', 'est_weight_g', 'est_time_min',
     'mb_type', 'mu_width', 'mu_height',
     'description', 'source_url', 'mount_type', 'mount_hardware', 'requires_tray', 'tray_size', 'tray_notes',
-    'mount_normal', 'default_transform'];
+    'mount_normal', 'default_transform', 'is_product'];
   const set = [];
   const params = { id };
   for (const key of allowed) {
@@ -8505,6 +8557,8 @@ module.exports = {
   bulkSetFolder,
   renameStlFolder,
   deleteStlFolder,
+  toggleStlProduct,
+  listStlProductItems,
   updateStlCatalogItem,
   deleteStlCatalogItem,
   // Multiboard metadata

@@ -7030,6 +7030,38 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
+  ipcMain.handle('slicer:catalog:toggle-product', async (_event, { id, is_product }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/toggle-product', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, is_product })
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:products', async () => {
+    const resp = await slicerFetch('/api/slicer/catalog/products');
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:create-product', async (_event, { stl_id }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/create-product', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stl_id })
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('slicer:catalog:bulk-move', async (_event, { stl_ids, category, folder }) => {
+    const resp = await slicerFetch('/api/slicer/catalog/bulk-move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stl_ids, category, folder })
+    });
+    return resp.json();
+  });
+
   ipcMain.handle('slicer:catalog:get', async (_event, id) => {
     const resp = await slicerFetch(`/api/slicer/catalog/${id}`);
     return resp.json();

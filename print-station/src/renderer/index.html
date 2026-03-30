@@ -7342,6 +7342,7 @@
         <!-- Sub-tab navigation -->
         <div id="slicerSubTabs" style="display:flex;gap:0;margin:0 16px 12px;border-bottom:2px solid var(--border,#334155);">
           <button class="slicer-sub-tab active" data-tab="catalog" style="padding:8px 20px;font-size:0.9rem;font-weight:600;background:none;border:none;color:var(--text);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.15s;">Catalog</button>
+          <button class="slicer-sub-tab" data-tab="productItems" style="padding:8px 20px;font-size:0.9rem;font-weight:600;background:none;border:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.15s;">Product Items</button>
           <button class="slicer-sub-tab" data-tab="savedPlates" style="padding:8px 20px;font-size:0.9rem;font-weight:600;background:none;border:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.15s;">Saved Plates</button>
           <button class="slicer-sub-tab" data-tab="sliceHistory" style="padding:8px 20px;font-size:0.9rem;font-weight:600;background:none;border:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.15s;">Slice History</button>
         </div>
@@ -7349,11 +7350,29 @@
         <div id="slicerContent" style="padding:0 16px 16px;">
           <!-- Catalog wrapper (contains catalog panel + settings panels) -->
           <div id="slicerCatalogWrapper">
+          <!-- Multi-select toolbar (hidden by default) -->
+          <div id="slicerMultiSelectBar" style="display:none;margin-bottom:12px;padding:10px 16px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);border-radius:8px;display:none;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span id="slicerSelectCount" style="font-weight:600;font-size:0.9rem;color:var(--accent);min-width:100px;">0 selected</span>
+            <button id="slicerMoveToBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Move To...</button>
+            <button id="slicerToggleProductBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Mark as Product</button>
+            <button id="slicerSelectAllBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Select All</button>
+            <button id="slicerDeselectAllBtn" class="secondary" style="padding:6px 14px;font-size:0.85rem;">Deselect All</button>
+          </div>
+
           <!-- Panel 1: STL Catalog Grid (shown by default) -->
           <div id="slicerCatalogPanel">
             <div id="slicerCatalogGrid" class="dashboard-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));max-height:calc(100vh - 310px);overflow-y:auto;">
               <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
                 No STL models in the catalog yet. Click <strong>+ Upload STL</strong> to add your first model.
+              </div>
+            </div>
+          </div>
+
+          <!-- Product Items Panel (hidden by default) -->
+          <div id="slicerProductItemsPanel" style="display:none;">
+            <div id="slicerProductGrid" class="dashboard-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr));max-height:calc(100vh - 310px);overflow-y:auto;">
+              <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">
+                No items marked as products yet. Use the catalog to mark items for sale.
               </div>
             </div>
           </div>
@@ -7470,6 +7489,13 @@
                   <div id="slicerMaterial" class="slicer-btn-row" data-setting="material"></div>
                 </div>
                 <div class="slicer-option-group">
+                  <label>Filament Color</label>
+                  <select id="slicerFilamentColor" style="padding:8px 12px;width:100%;font-size:0.95rem;">
+                    <option value="">No color adjustment</option>
+                  </select>
+                  <div id="slicerColorHint" style="display:none;margin-top:6px;padding:6px 10px;font-size:0.78rem;color:var(--muted);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;line-height:1.4;"></div>
+                </div>
+                <div class="slicer-option-group">
                   <label>Printer</label>
                   <select id="slicerPrinter" style="padding:8px 12px;width:100%;font-size:0.95rem;">
                     <option value="">Select a printer...</option>
@@ -7545,6 +7571,13 @@
                 <div class="slicer-option-group">
                   <label>Material</label>
                   <div id="slicerPlateMaterial" class="slicer-btn-row slicer-plate-btn-row" data-setting="material"></div>
+                </div>
+                <div class="slicer-option-group">
+                  <label>Filament Color</label>
+                  <select id="slicerPlateFilamentColor" style="padding:8px 12px;width:100%;font-size:0.95rem;">
+                    <option value="">No color adjustment</option>
+                  </select>
+                  <div id="slicerPlateColorHint" style="display:none;margin-top:6px;padding:6px 10px;font-size:0.78rem;color:var(--muted);background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;line-height:1.4;"></div>
                 </div>
                 <div class="slicer-option-group">
                   <label>Printer</label>

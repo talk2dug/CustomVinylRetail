@@ -169,14 +169,22 @@ async function handleSlicerRoute(pathname, req, res, db) {
     return true;
   }
 
-  // GET /api/slicer/catalog/folders?category=X — list folders in a category
+  // GET /api/slicer/catalog/folders?category=X&parent=path — list folders in a category
   if (req.method === 'GET' && route === '/catalog/folders') {
     try {
-      const folderRows = db.listStlFolders(query.category || '');
+      const parentPath = query.parent || undefined;
+      const folderRows = db.listStlFolders(query.category || '', parentPath);
       const folders = folderRows.map(r => r.folder);
       const folderCounts = {};
       for (const r of folderRows) folderCounts[r.folder] = r.count;
-      sendJson(res, 200, { folders, folderCounts });
+      // Include full paths and hasChildren flags for nested navigation
+      const folderDetails = folderRows.map(r => ({
+        name: r.folder,
+        fullPath: r.fullPath || r.folder,
+        count: r.count,
+        hasChildren: r.hasChildren || false
+      }));
+      sendJson(res, 200, { folders, folderCounts, folderDetails, parent: parentPath || null });
     } catch (err) {
       console.error('[Slicer] List folders error:', err);
       sendError(res, 500, err.message);
@@ -233,6 +241,77 @@ async function handleSlicerRoute(pathname, req, res, db) {
       sendJson(res, 200, result);
     } catch (err) {
       console.error('[Slicer] Remove folder error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/catalog/toggle-product — toggle is_product flag
+  if (req.method === 'POST' && route === '/catalog/toggle-product') {
+    try {
+      const body = await parseBody(req);
+      const { id, is_product } = body;
+      if (!id) { sendError(res, 400, 'id is required'); return true; }
+      const item = db.toggleStlProduct(id, !!is_product);
+      sendJson(res, 200, { success: true, item });
+    } catch (err) {
+      console.error('[Slicer] Toggle product error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // GET /api/slicer/catalog/products — list all product items
+  if (req.method === 'GET' && route === '/catalog/products') {
+    try {
+      const items = db.listStlProductItems();
+      sendJson(res, 200, { items });
+    } catch (err) {
+      console.error('[Slicer] List products error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/catalog/create-product — create a real product from STL item
+  if (req.method === 'POST' && route === '/catalog/create-product') {
+    try {
+      const body = await parseBody(req);
+      const { stl_id } = body;
+      if (!stl_id) { sendError(res, 400, 'stl_id is required'); return true; }
+      const stlItem = db.getStlCatalogItem(stl_id);
+      if (!stlItem) { sendError(res, 404, 'STL item not found'); return true; }
+      // Create product in qr_products from STL catalog data
+      const product = db.createQrProduct({
+        title: stlItem.name,
+        description: stlItem.description || stlItem.notes || '',
+        priceCents: 0,
+        category: stlItem.category || 'Uncategorized'
+      });
+      // Mark STL item as product
+      db.toggleStlProduct(stl_id, true);
+      sendJson(res, 200, { success: true, product, stl_id });
+    } catch (err) {
+      console.error('[Slicer] Create product error:', err);
+      sendError(res, 500, err.message);
+    }
+    return true;
+  }
+
+  // POST /api/slicer/catalog/bulk-move — move items to category + optional folder
+  if (req.method === 'POST' && route === '/catalog/bulk-move') {
+    try {
+      const body = await parseBody(req);
+      const { stl_ids, category, folder } = body;
+      if (!Array.isArray(stl_ids) || !stl_ids.length) { sendError(res, 400, 'stl_ids array required'); return true; }
+      if (!category) { sendError(res, 400, 'category is required'); return true; }
+      db.bulkSetCategory(stl_ids, category);
+      if (folder !== undefined) {
+        db.bulkSetFolder(stl_ids, folder || null);
+      }
+      sendJson(res, 200, { success: true, moved: stl_ids.length, category, folder: folder || null });
+    } catch (err) {
+      console.error('[Slicer] Bulk move error:', err);
       sendError(res, 500, err.message);
     }
     return true;

@@ -659,12 +659,25 @@ const SUPPORTS_MAP = {
 };
 
 const MATERIALS_MAP = {
-  pla:        { hotend: 210, bed: 60,  retract_length: 0.8, retract_speed: 60, label: 'PLA',        description: 'Standard, easy to print' },
-  petg:       { hotend: 235, bed: 80,  retract_length: 1.0, retract_speed: 50, label: 'PETG',       description: 'Durable, heat resistant' },
-  abs:        { hotend: 250, bed: 100, retract_length: 0.8, retract_speed: 60, label: 'ABS',        description: 'Strong, needs enclosure' },
-  tpu:        { hotend: 225, bed: 60,  retract_length: 1.5, retract_speed: 25, label: 'TPU',        description: 'Flexible, rubber-like' },
+  pla:        { hotend: 215, bed: 60,  retract_length: 0.8, retract_speed: 45, label: 'PLA',        description: 'Standard, easy to print' },
+  pla_plus:   { hotend: 220, bed: 60,  retract_length: 1.0, retract_speed: 40, label: 'PLA+',       description: 'Toughened PLA, better layer adhesion' },
+  pla_silk:   { hotend: 230, bed: 60,  retract_length: 1.2, retract_speed: 35, label: 'PLA Silk',   description: 'Shiny finish, slower speeds' },
+  petg:       { hotend: 235, bed: 80,  retract_length: 1.0, retract_speed: 35, label: 'PETG',       description: 'Durable, heat resistant' },
+  abs:        { hotend: 245, bed: 100, retract_length: 1.0, retract_speed: 40, label: 'ABS/ASA',    description: 'Strong, needs enclosure' },
+  tpu:        { hotend: 230, bed: 40,  retract_length: 0.5, retract_speed: 25, label: 'TPU',        description: 'Flexible, rubber-like' },
   rapid_pla:  { hotend: 220, bed: 60,  retract_length: 0.8, retract_speed: 60, label: 'Rapid PLA',  description: 'High-speed PLA' },
-  rapid_petg: { hotend: 250, bed: 80,  retract_length: 1.0, retract_speed: 50, label: 'Rapid PETG', description: 'High-speed PETG' }
+  rapid_petg: { hotend: 240, bed: 80,  retract_length: 1.2, retract_speed: 40, label: 'Rapid PETG', description: 'High-speed PETG' }
+};
+
+// Color-based temperature/flow offsets applied on top of material base values
+const COLOR_OFFSETS = {
+  black:       { nozzle_temp: -3, flow_percent: 0, label: 'Black',       description: 'Absorbs heat, runs cooler' },
+  white:       { nozzle_temp: +3, flow_percent: 0, label: 'White',       description: 'Reflects heat, needs more' },
+  red:         { nozzle_temp: +3, flow_percent: +2, label: 'Red',        description: 'Pigment-heavy, flow bump' },
+  yellow:      { nozzle_temp: +3, flow_percent: 0, label: 'Yellow',      description: 'Pigment-heavy' },
+  transparent: { nozzle_temp: 0,  flow_percent: 0, label: 'Transparent', description: 'Baseline reference color' },
+  natural:     { nozzle_temp: 0,  flow_percent: 0, label: 'Natural',     description: 'Same as transparent' },
+  multicolor:  { nozzle_temp: +2, flow_percent: 0, label: 'Multicolor',  description: 'Conservative middle ground' }
 };
 
 const PRINTERS_MAP = {
@@ -677,6 +690,8 @@ const PRINTERS_MAP = {
 // Map material key to filament profile filename
 const FILAMENT_PROFILES = {
   pla:        'filament_pla.ini',
+  pla_plus:   'filament_pla_plus.ini',
+  pla_silk:   'filament_pla_silk.ini',
   petg:       'filament_petg.ini',
   abs:        'filament_abs.ini',
   tpu:        'filament_tpu.ini',
@@ -864,13 +879,21 @@ function mapOptionsToSlicerArgs(options) {
     // Supports
     args.push('--no-support-material');
 
-    // Material (still user-selected)
-    args.push('--temperature', String(material.hotend));
-    args.push('--first-layer-temperature', String(material.hotend + 5));
+    // Material (still user-selected) + color offset
+    const colorAdj = COLOR_OFFSETS[options.filament_color] || { nozzle_temp: 0, flow_percent: 0 };
+    const nozzleTemp = material.hotend + colorAdj.nozzle_temp;
+    args.push('--temperature', String(nozzleTemp));
+    args.push('--first-layer-temperature', String(nozzleTemp + 5));
     args.push('--bed-temperature', String(material.bed));
     args.push('--first-layer-bed-temperature', String(material.bed + 5));
     args.push('--retract-length', String(material.retract_length));
     args.push('--retract-speed', String(material.retract_speed));
+    if (colorAdj.flow_percent) {
+      args.push('--extrusion-multiplier', String((100 + colorAdj.flow_percent) / 100));
+    }
+    if (options.filament_color) {
+      console.log(`[Slicer] Color offset: ${options.filament_color} → nozzle ${colorAdj.nozzle_temp >= 0 ? '+' : ''}${colorAdj.nozzle_temp}°C, flow ${colorAdj.flow_percent >= 0 ? '+' : ''}${colorAdj.flow_percent}%`);
+    }
 
     return args;
   }
@@ -944,13 +967,21 @@ function mapOptionsToSlicerArgs(options) {
     args.push('--no-support-material');
   }
 
-  // Material temperatures
-  args.push('--temperature', String(material.hotend));
-  args.push('--first-layer-temperature', String(material.hotend + 5));
+  // Material temperatures + color offset
+  const colorAdj = COLOR_OFFSETS[options.filament_color] || { nozzle_temp: 0, flow_percent: 0 };
+  const nozzleTemp = material.hotend + colorAdj.nozzle_temp;
+  args.push('--temperature', String(nozzleTemp));
+  args.push('--first-layer-temperature', String(nozzleTemp + 5));
   args.push('--bed-temperature', String(material.bed));
   args.push('--first-layer-bed-temperature', String(material.bed + 5));
   args.push('--retract-length', String(material.retract_length));
   args.push('--retract-speed', String(material.retract_speed));
+  if (colorAdj.flow_percent) {
+    args.push('--extrusion-multiplier', String((100 + colorAdj.flow_percent) / 100));
+  }
+  if (options.filament_color) {
+    console.log(`[Slicer] Color offset: ${options.filament_color} → nozzle ${colorAdj.nozzle_temp >= 0 ? '+' : ''}${colorAdj.nozzle_temp}°C, flow ${colorAdj.flow_percent >= 0 ? '+' : ''}${colorAdj.flow_percent}%`);
+  }
 
   return args;
 }
@@ -1001,6 +1032,7 @@ function generateSettingsHash(stlPath, options) {
     options.surface || 'standard',
     options.supports || 'none',
     options.auto_orient ? 'oriented' : 'raw',
+    options.filament_color || 'none',
     profileMtimes,
     transformStr,
     `copies:${parseInt(options.copies, 10) || 1}`
@@ -1036,6 +1068,7 @@ function generatePlateHash(stlPaths, options) {
     options.surface || 'standard',
     options.supports || 'none',
     options.auto_orient ? 'oriented' : 'raw',
+    options.filament_color || 'none',
     profileMtimes
   ].join('|');
 
@@ -1802,6 +1835,9 @@ function getPresets() {
     profiles: Object.entries(PRINT_PROFILE_PRESETS).map(([key, v]) => ({
       key, label: v.label, description: v.description, category: v.category,
       hint: v.hint || null, visual: v.visual || null
+    })),
+    colors: Object.entries(COLOR_OFFSETS).map(([key, v]) => ({
+      key, label: v.label, description: v.description, nozzle_temp: v.nozzle_temp, flow_percent: v.flow_percent
     }))
   };
 }
@@ -1863,6 +1899,7 @@ module.exports = {
   SURFACE_MAP,
   SUPPORTS_MAP,
   MATERIALS_MAP,
+  COLOR_OFFSETS,
   PRINTERS_MAP,
   // Paths
   SLICER_PATH,

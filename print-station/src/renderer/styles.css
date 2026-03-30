@@ -4219,6 +4219,11 @@ textarea:focus {
   border-color: var(--accent, #6366f1);
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
 }
+.slicer-catalog-card.slicer-multi-selected {
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+  background: rgba(99, 102, 241, 0.06);
+}
 
 /* Build Plate toggle button active state */
 #slicerPlateToggle.active {

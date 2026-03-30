@@ -25,6 +25,7 @@ const slicerState = {
     supports: 'none',
     surface: 'standard',
     material: 'pla',
+    filament_color: '',
     printer_model: '',
     auto_orient: false,
     copies: 1
@@ -41,7 +42,9 @@ const slicerState = {
   plateItems: [],        // array of catalog item objects on the plate
   platePreview: null,    // { renderer, scene, camera, controls, animId, resizeObs, meshes[], selectedMeshIndex, ... }
   plateTransforms: {},   // { [stlId]: { rx, ry, rz, scale, posX, posZ } } — persists rotation + scale + position across preview open/close
-  plateInstanceTransforms: null  // ordered array of per-instance { stlId, rx, ry, rz, scale, posX, posZ } from last preview — used for slicing
+  plateInstanceTransforms: null,  // ordered array of per-instance { stlId, rx, ry, rz, scale, posX, posZ } from last preview — used for slicing
+  multiSelect: false,    // multi-select mode active
+  selectedIds: new Set() // set of selected stl_catalog IDs for multi-select
 };
 
 // ============================================================================
@@ -142,6 +145,16 @@ function slicerWireEvents() {
       slicerShowSubTab(btn.dataset.tab);
     });
   });
+
+  // Multi-select toolbar buttons
+  const moveToBtn = document.getElementById('slicerMoveToBtn');
+  if (moveToBtn) moveToBtn.addEventListener('click', slicerShowMoveToModal);
+  const toggleProdBtn = document.getElementById('slicerToggleProductBtn');
+  if (toggleProdBtn) toggleProdBtn.addEventListener('click', slicerBulkToggleProduct);
+  const selectAllBtn = document.getElementById('slicerSelectAllBtn');
+  if (selectAllBtn) selectAllBtn.addEventListener('click', slicerSelectAll);
+  const deselectAllBtn = document.getElementById('slicerDeselectAllBtn');
+  if (deselectAllBtn) deselectAllBtn.addEventListener('click', slicerDeselectAll);
 
   // Upload STL
   if (uploadBtn) {
@@ -289,10 +302,21 @@ function slicerWireEvents() {
         slicerDeleteItem(id);
         return;
       }
+      // Product toggle button
+      const prodBtn = e.target.closest('.slicer-product-toggle');
+      if (prodBtn) {
+        e.stopPropagation();
+        const id = parseInt(prodBtn.dataset.stlId, 10);
+        slicerToggleProductItem(id);
+        return;
+      }
       const card = e.target.closest('[data-stl-id]');
       if (card) {
         const id = parseInt(card.dataset.stlId, 10);
-        if (slicerState.plateMode) {
+        if (slicerState.multiSelect || e.ctrlKey || e.metaKey) {
+          // Multi-select mode: toggle selection
+          slicerToggleMultiSelect(id);
+        } else if (slicerState.plateMode) {
           slicerTogglePlateItem(id);
         } else {
           slicerSelectItem(id);
@@ -742,20 +766,30 @@ async function slicerRenderCatalog() {
       ? `<img src="${cachedUrl}" style="width:120px;height:120px;border-radius:8px;object-fit:cover;background:#0a0a1a;">`
       : `<canvas class="slicer-stl-thumb" data-stl-id="${item.id}" width="240" height="240" style="width:120px;height:120px;border-radius:8px;background:#0a0a1a;"></canvas>`;
     const selected = isPlate && plateIds.has(item.id);
+    const multiSelected = slicerState.selectedIds.has(item.id);
     const checkHtml = isPlate ? `<div class="slicer-plate-check">${selected ? '✓' : ''}</div>` : '';
+    const multiCheckHtml = (!isPlate) ? `<div class="slicer-multi-check" style="position:absolute;top:8px;left:8px;width:22px;height:22px;border-radius:4px;border:2px solid ${multiSelected ? 'var(--accent)' : 'rgba(255,255,255,0.2)'};background:${multiSelected ? 'var(--accent)' : 'transparent'};display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#fff;font-weight:700;transition:all 0.15s;">${multiSelected ? '✓' : ''}</div>` : '';
     const muBadge = (item.category === 'Multiboard' && item.mu_width && item.mu_height)
       ? `<span class="badge" style="font-size:0.75rem;padding:2px 8px;background:#4f46e5;border-radius:4px;margin-left:4px;">${item.mu_width}x${item.mu_height} MU</span>`
       : '';
+    const productBadge = item.is_product
+      ? `<span class="badge" style="font-size:0.72rem;padding:2px 8px;background:#059669;border-radius:4px;margin-left:4px;">Product</span>`
+      : '';
+    const productToggle = `<button class="slicer-product-toggle" data-stl-id="${item.id}" title="${item.is_product ? 'Remove product flag' : 'Mark as product'}"
+        style="position:absolute;bottom:8px;right:8px;background:${item.is_product ? '#059669' : 'rgba(255,255,255,0.08)'};border:1px solid ${item.is_product ? '#059669' : 'rgba(255,255,255,0.15)'};color:#fff;cursor:pointer;font-size:0.7rem;padding:3px 8px;border-radius:4px;opacity:0.85;">
+        ${item.is_product ? '✓ Product' : '+ Product'}</button>`;
     const guideBtn = item.category === 'Multiboard'
       ? `<button class="slicer-guide-btn" data-guide-id="${item.id}" title="Mounting Guide"
           style="position:absolute;top:8px;right:32px;background:none;border:none;color:#818cf8;cursor:pointer;font-size:1.1rem;padding:4px 8px;opacity:0.7;">&#9432;</button>`
       : '';
     return `
-    <div class="inventory-card slicer-catalog-card${selected ? ' slicer-plate-selected' : ''}" data-stl-id="${item.id}" draggable="true" style="cursor:pointer;padding:16px;position:relative;">
+    <div class="inventory-card slicer-catalog-card${selected ? ' slicer-plate-selected' : ''}${multiSelected ? ' slicer-multi-selected' : ''}" data-stl-id="${item.id}" draggable="true" style="cursor:pointer;padding:16px;position:relative;">
       ${checkHtml}
+      ${multiCheckHtml}
       ${guideBtn}
       <button class="slicer-catalog-delete" data-stl-id="${item.id}" title="Delete"
         style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:1rem;padding:4px 8px;opacity:0.6;">&times;</button>
+      ${productToggle}
       <div style="display:flex;gap:12px;align-items:flex-start;">
         <div style="width:120px;height:120px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
           ${thumbHtml}
@@ -765,6 +799,7 @@ async function slicerRenderCatalog() {
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;">
             ${item.category ? `<span class="badge" style="font-size:0.75rem;padding:2px 8px;background:var(--accent);border-radius:4px;">${slicerEsc(item.category)}</span>` : ''}
             ${muBadge}
+            ${productBadge}
           </div>
           <div class="muted" style="font-size:0.8rem;margin-top:4px;">
             ${item.dim_x ? `${item.dim_x.toFixed(1)} x ${item.dim_y.toFixed(1)} x ${item.dim_z.toFixed(1)} mm` : ''}
@@ -1177,6 +1212,46 @@ function slicerBuildSettingsButtons() {
     });
   }
 
+  // Populate filament color dropdowns
+  if (presets.colors) {
+    ['slicerFilamentColor', 'slicerPlateFilamentColor'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      sel.innerHTML = '<option value="">No color adjustment</option>' +
+        presets.colors.map(c =>
+          `<option value="${slicerEsc(c.key)}">${slicerEsc(c.label)}</option>`
+        ).join('');
+      sel.value = slicerState.settings.filament_color || '';
+    });
+    // Wire up change handlers for color hint
+    ['slicerFilamentColor', 'slicerPlateFilamentColor'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel || sel._colorWired) return;
+      sel._colorWired = true;
+      const hintId = id === 'slicerFilamentColor' ? 'slicerColorHint' : 'slicerPlateColorHint';
+      sel.addEventListener('change', () => {
+        slicerState.settings.filament_color = sel.value || '';
+        // Sync both dropdowns
+        ['slicerFilamentColor', 'slicerPlateFilamentColor'].forEach(otherId => {
+          const other = document.getElementById(otherId);
+          if (other && other !== sel) other.value = sel.value;
+        });
+        // Show/hide hint
+        const hint = document.getElementById(hintId);
+        const colorData = (presets.colors || []).find(c => c.key === sel.value);
+        if (hint && colorData) {
+          const parts = [];
+          if (colorData.nozzle_temp) parts.push(`Nozzle: ${colorData.nozzle_temp >= 0 ? '+' : ''}${colorData.nozzle_temp}°C`);
+          if (colorData.flow_percent) parts.push(`Flow: +${colorData.flow_percent}%`);
+          hint.textContent = parts.length ? `${colorData.description} — ${parts.join(', ')}` : colorData.description;
+          hint.style.display = 'block';
+        } else if (hint) {
+          hint.style.display = 'none';
+        }
+      });
+    });
+  }
+
   const groups = {
     quality: 'slicerQuality',
     strength: 'slicerStrength',
@@ -1313,10 +1388,13 @@ function slicerShowApprovalModal({ items, settings, printerName, printerModel, i
 
     const presets = slicerState.presets || {};
 
-    // Look up nozzle and bed temperatures from the material preset
+    // Look up nozzle and bed temperatures from the material preset + color offset
     const materialKey = settings.material || 'pla';
     const materialPreset = (presets.materials || []).find(m => m.key === materialKey);
-    const nozzleTemp = materialPreset ? materialPreset.hotend : null;
+    const colorKey = settings.filament_color || '';
+    const colorPreset = colorKey ? (presets.colors || []).find(c => c.key === colorKey) : null;
+    const colorTempOffset = colorPreset ? (colorPreset.nozzle_temp || 0) : 0;
+    const nozzleTemp = materialPreset ? materialPreset.hotend + colorTempOffset : null;
     const bedTempVal = materialPreset ? materialPreset.bed : null;
 
     // Build settings rows: { category, value, valueLabel, description }
@@ -1333,6 +1411,17 @@ function slicerShowApprovalModal({ items, settings, printerName, printerModel, i
       const info = slicerGetSettingInfo(f.key, settings[f.key]);
       return { category: f.category, valueLabel: info.label || settings[f.key], description: info.description || '' };
     });
+    // Add color row if selected
+    if (colorPreset) {
+      const offsetParts = [];
+      if (colorPreset.nozzle_temp) offsetParts.push(`nozzle ${colorPreset.nozzle_temp >= 0 ? '+' : ''}${colorPreset.nozzle_temp}°C`);
+      if (colorPreset.flow_percent) offsetParts.push(`flow +${colorPreset.flow_percent}%`);
+      settingRows.splice(1, 0, {
+        category: 'Filament Color',
+        valueLabel: colorPreset.label,
+        description: offsetParts.length ? offsetParts.join(', ') : colorPreset.description
+      });
+    }
 
     const modelNames = items.map(i => slicerEsc(i.name || 'Unknown')).join(', ');
 
@@ -1913,6 +2002,7 @@ async function slicerSliceAndPrint() {
     profile: slicerState.settings.profile || 'custom',
     printer_model: printerModel || 'kobra3',
     material: slicerState.settings.material,
+    filament_color: slicerState.settings.filament_color || '',
     quality: slicerState.settings.quality,
     strength: slicerState.settings.strength,
     speed: slicerState.settings.speed,
@@ -3956,6 +4046,7 @@ async function slicerSlicePlate() {
     profile: slicerState.settings.profile || 'custom',
     printer_model: printerModel || 'kobra3',
     material: slicerState.settings.material,
+    filament_color: slicerState.settings.filament_color || '',
     quality: slicerState.settings.quality,
     strength: slicerState.settings.strength,
     speed: slicerState.settings.speed,
@@ -4191,6 +4282,7 @@ function slicerShowSubTab(tabName) {
   // Show the target panel
   const panelMap = {
     catalog: 'slicerCatalogWrapper',
+    productItems: 'slicerProductItemsPanel',
     savedPlates: 'slicerSavedPlatesPanel',
     sliceHistory: 'slicerSliceHistoryPanel'
   };
@@ -4214,6 +4306,7 @@ function slicerShowSubTab(tabName) {
   // Load data for the tab
   if (tabName === 'savedPlates') slicerLoadSavedPlates();
   if (tabName === 'sliceHistory') slicerLoadSliceHistory();
+  if (tabName === 'productItems') slicerLoadProductItems();
 }
 
 // --- Saved Plates ---
@@ -5364,6 +5457,302 @@ function slicerHideProgress() {
   slicerState.loading = false;
   slicerState._progressSteps = [];
   slicerState._progressActive = 0;
+}
+
+// ============================================================================
+// MULTI-SELECT & MOVE-TO
+// ============================================================================
+
+function slicerToggleMultiSelect(id) {
+  if (slicerState.selectedIds.has(id)) {
+    slicerState.selectedIds.delete(id);
+  } else {
+    slicerState.selectedIds.add(id);
+  }
+  slicerUpdateMultiSelectUI();
+}
+
+function slicerUpdateMultiSelectUI() {
+  const bar = document.getElementById('slicerMultiSelectBar');
+  const count = slicerState.selectedIds.size;
+  if (bar) {
+    bar.style.display = count > 0 ? 'flex' : 'none';
+    const countEl = document.getElementById('slicerSelectCount');
+    if (countEl) countEl.textContent = `${count} selected`;
+  }
+  // Update card visuals
+  const grid = document.getElementById('slicerCatalogGrid');
+  if (grid) {
+    grid.querySelectorAll('.slicer-catalog-card[data-stl-id]').forEach(card => {
+      const id = parseInt(card.dataset.stlId, 10);
+      const sel = slicerState.selectedIds.has(id);
+      card.classList.toggle('slicer-multi-selected', sel);
+      const check = card.querySelector('.slicer-multi-check');
+      if (check) {
+        check.style.borderColor = sel ? 'var(--accent)' : 'rgba(255,255,255,0.2)';
+        check.style.background = sel ? 'var(--accent)' : 'transparent';
+        check.textContent = sel ? '✓' : '';
+      }
+    });
+  }
+}
+
+function slicerSelectAll() {
+  for (const item of slicerState.catalog) {
+    slicerState.selectedIds.add(item.id);
+  }
+  slicerUpdateMultiSelectUI();
+}
+
+function slicerDeselectAll() {
+  slicerState.selectedIds.clear();
+  slicerUpdateMultiSelectUI();
+}
+
+async function slicerShowMoveToModal() {
+  const ids = Array.from(slicerState.selectedIds);
+  if (!ids.length) return;
+
+  const existing = document.getElementById('slicerMoveToModal');
+  if (existing) existing.remove();
+
+  // Load categories
+  let categories = [];
+  try {
+    const result = await printStation.slicer.getCategoriesWithCounts();
+    categories = result || [];
+  } catch (_) {}
+
+  const modal = document.createElement('div');
+  modal.id = 'slicerMoveToModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+  modal.innerHTML = `
+    <div style="background:var(--bg-secondary,#1e293b);border:1px solid var(--border);border-radius:12px;padding:24px;width:480px;max-height:80vh;display:flex;flex-direction:column;">
+      <h3 style="margin:0 0 16px;">Move ${ids.length} item${ids.length > 1 ? 's' : ''} to...</h3>
+      <div style="margin-bottom:12px;">
+        <input id="moveToSearch" type="text" placeholder="Search or type new category..." style="width:100%;padding:8px 12px;font-size:0.95rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div id="moveToCategoryList" style="flex:1;overflow-y:auto;max-height:400px;display:flex;flex-direction:column;gap:4px;margin-bottom:12px;">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.85rem;color:var(--muted);margin-bottom:4px;display:block;">Subfolder (optional)</label>
+        <input id="moveToFolder" type="text" placeholder="e.g. Large / Decorative / ..." style="width:100%;padding:8px 12px;font-size:0.95rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button id="moveToCancelBtn" class="secondary" style="padding:8px 16px;">Cancel</button>
+        <button id="moveToConfirmBtn" class="primary" style="padding:8px 16px;" disabled>Move</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  let selectedCategory = '';
+  const searchInput = document.getElementById('moveToSearch');
+  const listEl = document.getElementById('moveToCategoryList');
+  const confirmBtn = document.getElementById('moveToConfirmBtn');
+
+  function renderCategories(filter) {
+    const f = (filter || '').toLowerCase();
+    const filtered = categories.filter(c => !f || (c.category || '').toLowerCase().includes(f));
+    listEl.innerHTML = filtered.map(c => `
+      <div class="move-to-cat-item" data-cat="${slicerEsc(c.category)}"
+        style="padding:8px 12px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;
+        border:1px solid ${selectedCategory === c.category ? 'var(--accent)' : 'transparent'};
+        background:${selectedCategory === c.category ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.03)'};">
+        <span style="font-weight:500;">${slicerEsc(c.category)}</span>
+        <span class="muted" style="font-size:0.8rem;">${c.count} items</span>
+      </div>
+    `).join('');
+
+    // If the search text doesn't match any existing category, show "Create new" option
+    if (f && !categories.some(c => (c.category || '').toLowerCase() === f)) {
+      listEl.innerHTML += `
+        <div class="move-to-cat-item" data-cat="${slicerEsc(filter)}" data-new="true"
+          style="padding:8px 12px;border-radius:6px;cursor:pointer;border:1px solid ${selectedCategory === filter ? 'var(--accent)' : 'rgba(34,197,94,0.3)'};
+          background:${selectedCategory === filter ? 'rgba(99,102,241,0.15)' : 'rgba(34,197,94,0.06)'};">
+          <span style="font-weight:500;color:#4ade80;">+ Create "${slicerEsc(filter)}"</span>
+        </div>
+      `;
+    }
+  }
+
+  renderCategories('');
+
+  searchInput.addEventListener('input', () => renderCategories(searchInput.value.trim()));
+
+  listEl.addEventListener('click', (e) => {
+    const item = e.target.closest('.move-to-cat-item');
+    if (!item) return;
+    selectedCategory = item.dataset.cat;
+    confirmBtn.disabled = false;
+    renderCategories(searchInput.value.trim());
+  });
+
+  document.getElementById('moveToCancelBtn').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  confirmBtn.addEventListener('click', async () => {
+    if (!selectedCategory) return;
+    const folder = document.getElementById('moveToFolder')?.value?.trim() || undefined;
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Moving...';
+    try {
+      await printStation.slicer.bulkMove(ids, selectedCategory, folder);
+      modal.remove();
+      slicerState.selectedIds.clear();
+      slicerUpdateMultiSelectUI();
+      showToast(`Moved ${ids.length} items to "${selectedCategory}"${folder ? '/' + folder : ''}`, 'success');
+      slicerLoadCatalog();
+    } catch (err) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Move';
+      showToast('Move failed: ' + err.message, 'error');
+    }
+  });
+}
+
+// ============================================================================
+// PRODUCT TOGGLE & PRODUCT ITEMS VIEW
+// ============================================================================
+
+async function slicerToggleProductItem(id) {
+  const item = slicerState.catalog.find(i => i.id === id);
+  if (!item) return;
+  const newVal = !item.is_product;
+  try {
+    await printStation.slicer.toggleProduct(id, newVal);
+    item.is_product = newVal ? 1 : 0;
+    // Update just the card visually
+    const card = document.querySelector(`.slicer-catalog-card[data-stl-id="${id}"]`);
+    if (card) {
+      const btn = card.querySelector('.slicer-product-toggle');
+      if (btn) {
+        btn.style.background = newVal ? '#059669' : 'rgba(255,255,255,0.08)';
+        btn.style.borderColor = newVal ? '#059669' : 'rgba(255,255,255,0.15)';
+        btn.innerHTML = newVal ? '✓ Product' : '+ Product';
+        btn.title = newVal ? 'Remove product flag' : 'Mark as product';
+      }
+      // Update badge
+      const badgeContainer = card.querySelector('.badge')?.parentElement;
+      if (badgeContainer) {
+        const existingProdBadge = badgeContainer.querySelector('.badge[style*="059669"]');
+        if (newVal && !existingProdBadge) {
+          badgeContainer.insertAdjacentHTML('beforeend', '<span class="badge" style="font-size:0.72rem;padding:2px 8px;background:#059669;border-radius:4px;margin-left:4px;">Product</span>');
+        } else if (!newVal && existingProdBadge) {
+          existingProdBadge.remove();
+        }
+      }
+    }
+    showToast(newVal ? `"${item.name}" marked as product` : `"${item.name}" product flag removed`, 'success', 3000);
+  } catch (err) {
+    showToast('Failed to update product flag: ' + err.message, 'error');
+  }
+}
+
+async function slicerBulkToggleProduct() {
+  const ids = Array.from(slicerState.selectedIds);
+  if (!ids.length) return;
+  // Determine if we're marking or unmarking based on majority
+  const items = ids.map(id => slicerState.catalog.find(i => i.id === id)).filter(Boolean);
+  const markAs = items.filter(i => !i.is_product).length >= items.filter(i => i.is_product).length;
+  try {
+    for (const id of ids) {
+      await printStation.slicer.toggleProduct(id, markAs);
+      const item = slicerState.catalog.find(i => i.id === id);
+      if (item) item.is_product = markAs ? 1 : 0;
+    }
+    slicerState.selectedIds.clear();
+    slicerUpdateMultiSelectUI();
+    slicerRenderCatalog();
+    showToast(`${markAs ? 'Marked' : 'Unmarked'} ${ids.length} items as products`, 'success');
+  } catch (err) {
+    showToast('Failed to update products: ' + err.message, 'error');
+  }
+}
+
+async function slicerLoadProductItems() {
+  const grid = document.getElementById('slicerProductGrid');
+  if (!grid) return;
+  grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);">Loading product items...</div>';
+  try {
+    const result = await printStation.slicer.listProductItems();
+    const items = result.items || [];
+    if (!items.length) {
+      grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);">No items marked as products yet. Use the catalog to mark items for sale.</div>';
+      return;
+    }
+    grid.innerHTML = items.map(item => {
+      const memCached = slicerState.thumbCache[item.id];
+      const diskCached = slicerState.thumbDiskCache[item.id];
+      const cachedUrl = memCached || diskCached;
+      const thumbHtml = cachedUrl
+        ? `<img src="${cachedUrl}" style="width:100px;height:100px;border-radius:8px;object-fit:cover;background:#0a0a1a;">`
+        : `<div style="width:100px;height:100px;border-radius:8px;background:#0a0a1a;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.7rem;">No thumb</div>`;
+      return `
+      <div class="inventory-card" style="padding:14px;position:relative;cursor:pointer;" data-product-stl-id="${item.id}">
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <div style="flex-shrink:0;">${thumbHtml}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:0.95rem;margin-bottom:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${slicerEsc(item.name)}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;">
+              ${item.category ? `<span class="badge" style="font-size:0.72rem;padding:2px 6px;background:var(--accent);border-radius:4px;">${slicerEsc(item.category)}</span>` : ''}
+              <span class="badge" style="font-size:0.72rem;padding:2px 6px;background:#059669;border-radius:4px;">Product</span>
+            </div>
+            <div class="muted" style="font-size:0.78rem;">
+              ${item.dim_x ? `${item.dim_x.toFixed(1)} x ${item.dim_y.toFixed(1)} x ${item.dim_z.toFixed(1)} mm` : ''}
+            </div>
+            <div style="margin-top:8px;display:flex;gap:6px;">
+              <button class="slicer-create-real-product primary" data-stl-id="${item.id}" style="padding:4px 10px;font-size:0.78rem;">Create Product</button>
+              <button class="slicer-remove-product secondary" data-stl-id="${item.id}" style="padding:4px 10px;font-size:0.78rem;">Remove Flag</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Wire up product grid click handlers
+    grid.addEventListener('click', async (e) => {
+      const createBtn = e.target.closest('.slicer-create-real-product');
+      if (createBtn) {
+        e.stopPropagation();
+        const stlId = parseInt(createBtn.dataset.stlId, 10);
+        createBtn.disabled = true;
+        createBtn.textContent = 'Creating...';
+        try {
+          const result = await printStation.slicer.createProductFromStl(stlId);
+          if (result.success) {
+            showToast(`Product "${result.product.title}" created!`, 'success');
+            createBtn.textContent = 'Created!';
+            createBtn.style.background = '#059669';
+          } else {
+            throw new Error(result.error || 'Unknown error');
+          }
+        } catch (err) {
+          createBtn.disabled = false;
+          createBtn.textContent = 'Create Product';
+          showToast('Failed: ' + err.message, 'error');
+        }
+        return;
+      }
+      const removeBtn = e.target.closest('.slicer-remove-product');
+      if (removeBtn) {
+        e.stopPropagation();
+        const stlId = parseInt(removeBtn.dataset.stlId, 10);
+        try {
+          await printStation.slicer.toggleProduct(stlId, false);
+          showToast('Product flag removed', 'success', 3000);
+          slicerLoadProductItems();
+        } catch (err) {
+          showToast('Failed: ' + err.message, 'error');
+        }
+        return;
+      }
+    });
+  } catch (err) {
+    grid.innerHTML = `<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--danger);">Error loading products: ${slicerEsc(err.message)}</div>`;
+  }
 }
 
 // ============================================================================
