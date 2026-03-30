@@ -16,7 +16,6 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const https = require('https');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const ENV_PATH = path.join(APP_ROOT, '.env');
@@ -160,53 +159,30 @@ async function getBlankImage(imageUrl) {
 }
 
 // ============================================================================
-// MOCKUP GENERATION — Gemini compositing on product blanks
+// MOCKUP GENERATION — pixel-based compositing on product blanks
 // ============================================================================
 
 async function generateBlankMockup(blankImagePath, graphicPath, options = {}) {
   const { type = 't-shirt', color = 'white', designName = '' } = options;
 
-  // Use the apparel mockup API with direct image path
-  const resp = await fetch(`${API_BASE}/api/ai-images/apparel-mockup`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
-    body: JSON.stringify({
-      modelFrontPath: blankImagePath,
-      garmentType: type.toLowerCase(),
-      placements: [{
-        graphicPath,
-        zone: 'front-chest',
-        size: 'large'
-      }],
-      generateSideBySide: false
-    }),
-    signal: AbortSignal.timeout(120000)
+  const { compositeOnGarment } = require('../garment-compositor');
+
+  const result = await compositeOnGarment(blankImagePath, graphicPath, {
+    zone: 'front-chest',
+    size: 'large',
+    photoType: 'product',
+    blendOpacity: 0.3
   });
 
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    throw new Error(`Mockup API ${resp.status}: ${text.substring(0, 200)}`);
+  // Copy from compositor output to product blank directory
+  const destFilename = `product_${(designName || 'design').substring(0, 30)}_${type}_${color}_${Date.now()}.jpg`;
+  const destPath = path.join(OUTPUT_DIR, destFilename);
+
+  if (fs.existsSync(result.imagePath)) {
+    fs.copyFileSync(result.imagePath, destPath);
   }
 
-  const result = await resp.json();
-  if (!result.success && result.front?.imagePath) {
-    // Sometimes success is missing but front exists
-  } else if (!result.success) {
-    throw new Error(result.error || 'Generation failed');
-  }
-
-  const frontResult = result.front;
-  if (frontResult?.imagePath) {
-    const srcPath = path.join(APP_ROOT, 'web', frontResult.imagePath.replace(/^\//, ''));
-    const destFilename = `product_${(designName || 'design').substring(0, 30)}_${type}_${color}_${Date.now()}.jpg`;
-    const destPath = path.join(OUTPUT_DIR, destFilename);
-    if (fs.existsSync(srcPath)) {
-      fs.copyFileSync(srcPath, destPath);
-    }
-    return { imagePath: destPath, filename: destFilename, type, color };
-  }
-
-  throw new Error('No image in result');
+  return { imagePath: destPath, filename: destFilename, type, color };
 }
 
 /**
