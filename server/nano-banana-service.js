@@ -461,12 +461,15 @@ class NanoBananaService {
 
     const prompt = `You are given two images:
 Image 1: A photo of a person wearing a ${garmentType}
-Image 2: A graphic design
+Image 2: The EXACT graphic design to place on the garment
 
-Place the graphic design ${zoneDesc}.
+CRITICAL: You MUST use the EXACT graphic from Image 2. Do NOT create, generate, modify, or substitute any other design. The graphic in Image 2 must appear pixel-for-pixel identical on the garment — same text, same artwork, same colors, same layout. If the graphic appears to be white/light colored on a transparent background, it should show as white/light on the garment.
+
+Place this exact graphic ${zoneDesc}.
 The graphic should be ${sizeDesc}.${adjustmentLine}
 
 Requirements:
+- Use ONLY the graphic from Image 2 — do not invent or hallucinate any design
 - The graphic must look naturally printed/applied on the fabric
 - Follow the fabric's wrinkles, folds, shadows, and contours
 - Match the lighting and perspective of the garment

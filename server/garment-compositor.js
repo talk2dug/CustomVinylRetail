@@ -34,12 +34,13 @@ const ZONES_PRODUCT = {
 };
 
 const ZONES_LIFESTYLE = {
-  // Lifestyle photos (varies widely, tends to be closer crop)
-  'front-chest': { x: 0.22, y: 0.38, w: 0.56, h: 0.42 },
-  'front-center': { x: 0.20, y: 0.35, w: 0.60, h: 0.48 },
-  'back': { x: 0.20, y: 0.30, w: 0.60, h: 0.48 },
-  'left-sleeve': { x: 0.05, y: 0.32, w: 0.18, h: 0.20 },
-  'right-sleeve': { x: 0.77, y: 0.32, w: 0.18, h: 0.20 }
+  // Lifestyle photos — varied crops, generally head-to-waist or full body
+  // Chest area typically 25-40% down from top
+  'front-chest': { x: 0.25, y: 0.25, w: 0.50, h: 0.30 },
+  'front-center': { x: 0.22, y: 0.22, w: 0.56, h: 0.35 },
+  'back': { x: 0.22, y: 0.20, w: 0.56, h: 0.35 },
+  'left-sleeve': { x: 0.05, y: 0.22, w: 0.18, h: 0.18 },
+  'right-sleeve': { x: 0.77, y: 0.22, w: 0.18, h: 0.18 }
 };
 
 // Default to product zones
