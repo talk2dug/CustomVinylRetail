@@ -77,6 +77,7 @@ function onCampaignLoaded(campaign) {
 
   if (campaign.slug) {
     loadPipelineHistory(campaign.slug);
+    loadCampaignReels(campaign.slug);
     loadCampaignAnalytics(campaign.slug);
   }
 
@@ -353,15 +354,10 @@ function renderPipelineProgress(status) {
 }
 
 function onPipelineComplete(status) {
-  // Refresh pipeline history
   if (window.state?.campaign?.slug) {
     loadPipelineHistory(window.state.campaign.slug);
+    loadCampaignReels(window.state.campaign.slug);
     loadCampaignAnalytics(window.state.campaign.slug);
-  }
-
-  // Load reel results from the completed run
-  if (status.results) {
-    renderReelResults(status.results);
   }
 }
 
@@ -430,38 +426,89 @@ async function loadPipelineHistory(campaignSlug) {
 // REEL RESULTS
 // ============================================================================
 
-function renderReelResults(results) {
+async function loadCampaignReels(campaignSlug) {
   const card = document.getElementById('campaignReelResultsCard');
   const grid = document.getElementById('campaignReelGrid');
-  if (!card || !grid) return;
+  if (!card || !grid || !campaignSlug) return;
 
-  const reelUrls = results.reelUrls || [];
-  const landingPages = results.landingPages || [];
+  try {
+    // Fetch videos from managed list filtered by collection (campaign slug)
+    const data = await window.printStation.tiktokDash.managed.list({ collection: campaignSlug });
+    const videos = data.items || data.videos || data || [];
 
-  if (!reelUrls.length) {
+    if (!videos.length) {
+      card.hidden = true;
+      return;
+    }
+
+    card.hidden = false;
+    renderReelGrid(grid, videos);
+  } catch (err) {
+    console.warn('[CampaignView] Failed to load reels:', err);
     card.hidden = true;
-    return;
   }
+}
 
-  card.hidden = false;
+function renderReelGrid(grid, videos) {
+  const serverBase = window.state?.config?.serverBaseUrl || '';
 
-  grid.innerHTML = reelUrls.map((url, i) => {
-    const page = landingPages[i];
-    const pageLink = page?.pageUrl ? `<a href="${escCampaignHtml(page.pageUrl)}" target="_blank" style="font-size:11px;color:#22d3ee;">Landing Page</a>` : '';
-    const platform = page?.isTikTokShopReel ? 'TikTok Shop' : 'Shopify';
-    const platformColor = page?.isTikTokShopReel ? '#e879f9' : '#10b981';
+  grid.innerHTML = videos.map((v, i) => {
+    const videoUrl = v.url || (v.filename ? `/api/tiktok-videos/${v.filename}` : '');
+    const fullVideoUrl = videoUrl.startsWith('http') ? videoUrl : `${serverBase}${videoUrl}`;
+    const platform = v.platform || 'shopify';
+    const platformLabel = platform === 'tiktok-shop' ? 'TikTok Shop' : 'Shopify';
+    const platformColor = platform === 'tiktok-shop' ? '#e879f9' : '#10b981';
+    const statusLabel = v.status || 'draft';
+    const statusColor = statusLabel === 'approved' ? '#10b981' : statusLabel === 'published' ? '#60a5fa' : '#94a3b8';
+    const pageLink = v.shopify_page_url ? `<a href="${escCampaignHtml(v.shopify_page_url)}" target="_blank" style="font-size:11px;color:#22d3ee;">Landing Page</a>` : '';
+    const duration = v.duration ? `${v.duration}s` : '';
 
     return `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:rgba(148,163,184,0.05);">
-      <div style="aspect-ratio:9/16;background:#111;display:flex;align-items:center;justify-content:center;position:relative;">
-        <video src="${escCampaignHtml(url)}" style="width:100%;height:100%;object-fit:cover;" preload="metadata"></video>
-        <span style="position:absolute;top:6px;right:6px;background:${platformColor};color:#fff;font-size:10px;padding:2px 8px;border-radius:12px;font-weight:600;">${platform}</span>
+      <div style="aspect-ratio:9/16;background:#111;display:flex;align-items:center;justify-content:center;position:relative;max-height:280px;">
+        <video src="${escCampaignHtml(fullVideoUrl)}" style="width:100%;height:100%;object-fit:cover;" preload="metadata" controls></video>
+        <span style="position:absolute;top:6px;right:6px;background:${platformColor};color:#fff;font-size:10px;padding:2px 8px;border-radius:12px;font-weight:600;">${platformLabel}</span>
       </div>
-      <div style="padding:8px;display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:12px;">Reel ${i + 1}</span>
-        ${pageLink}
+      <div style="padding:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:12px;font-weight:600;">Reel ${i + 1}</span>
+          <span style="font-size:10px;color:${statusColor};text-transform:uppercase;font-weight:600;">${statusLabel}</span>
+        </div>
+        ${duration ? `<div class="muted" style="font-size:11px;">${duration}</div>` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+          ${pageLink}
+          ${statusLabel === 'draft' ? `<button type="button" class="secondary campaign-approve-reel" data-video-id="${escCampaignHtml(v.id)}" style="font-size:11px;padding:3px 10px;">Approve</button>` : ''}
+        </div>
+        ${v.views > 0 || v.likes > 0 ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;">${formatNum(v.views || 0)} views · ${formatNum(v.likes || 0)} likes</div>` : ''}
       </div>
     </div>`;
   }).join('');
+
+  // Wire approve buttons
+  grid.querySelectorAll('.campaign-approve-reel').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const videoId = btn.dataset.videoId;
+      if (!videoId) return;
+      btn.disabled = true;
+      btn.textContent = 'Approving...';
+      try {
+        await window.printStation.pipeline.approveReel(videoId);
+        showToast('Reel approved.', 'success');
+        // Reload reels
+        if (window.state?.campaign?.slug) loadCampaignReels(window.state.campaign.slug);
+      } catch (err) {
+        showToast('Approve failed: ' + (err.message || err), 'error');
+        btn.disabled = false;
+        btn.textContent = 'Approve';
+      }
+    });
+  });
+}
+
+function renderReelResults(results) {
+  // Called from onPipelineComplete — reload from DB for full data
+  if (window.state?.campaign?.slug) {
+    loadCampaignReels(window.state.campaign.slug);
+  }
 }
 
 // ============================================================================
@@ -496,7 +543,7 @@ async function loadCampaignAnalytics(campaignSlug) {
     // For now show what we have from the tiktok_videos table
     try {
       const videoData = await window.printStation.tiktokDash.managed.list({ collection: campaignSlug });
-      const videos = videoData.videos || videoData || [];
+      const videos = videoData.items || videoData.videos || videoData || [];
       for (const v of videos) {
         tiktokTotals.views += v.views || 0;
         tiktokTotals.likes += v.likes || 0;
