@@ -222,6 +222,11 @@ class NanoBananaAI {
     }
 
     console.log(`[NanoBanana] Compositing ${imagePaths.length} images`);
+    for (let pi = 0; pi < imagePaths.length; pi++) {
+      const sz = fs.statSync(imagePaths[pi]).size;
+      const ext = path.extname(imagePaths[pi]).toLowerCase();
+      console.log(`[NanoBanana]   Image ${pi + 1}: ${path.basename(imagePaths[pi])} (${ext}, ${Math.round(sz/1024)}KB)`);
+    }
     console.log(`[NanoBanana] Prompt: ${prompt.substring(0, 80)}...`);
 
     const genModel = this.genAI.getGenerativeModel({
