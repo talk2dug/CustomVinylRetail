@@ -803,12 +803,32 @@ async function runFullPipeline(collectionCategory, options = {}) {
     console.log('[ApparelPipeline] Step 4: Generating mockups');
     if (notify) await sendTelegram('🎨 Generating mockups...');
 
+    // Map design themes to appropriate model demographics/styles
+    const THEME_MODEL_FILTERS = {
+      'humor-fun':           { demographic: ['everyday-mom', 'millennial-parent', 'young-adult'], excludeStyle: ['pinup-retro'] },
+      'faith-inspirational': { demographic: ['everyday-mom', 'everyday-dad', 'millennial-parent'], excludeStyle: ['pinup-retro', 'edgy-urban'] },
+      'outdoor-adventure':   { style: ['casual-everyday', 'outdoor-active'], excludeStyle: ['pinup-retro'] },
+      'moto-garage':         { style: ['edgy-urban', 'casual-everyday'] },
+      'retro-vintage':       { style: ['casual-everyday', 'pinup-retro'] },
+      'edgy-urban':          { style: ['edgy-urban', 'skater-youth'] },
+      'nature-animals':      { style: ['casual-everyday', 'outdoor-active'], excludeStyle: ['pinup-retro'] },
+      'music-culture':       { style: ['casual-everyday', 'edgy-urban', 'skater-youth'] },
+      'abstract-artistic':   { style: ['casual-everyday'], excludeStyle: ['pinup-retro'] },
+      'sports-fitness':      { style: ['casual-everyday', 'fitness-athletic'] },
+      'default':             { style: ['casual-everyday'], excludeStyle: ['pinup-retro'] }
+    };
+
+    // Pick the dominant theme for model selection
+    const dominantTheme = Object.entries(themeGroups).sort((a, b) => b[1].length - a[1].length)[0]?.[0] || 'default';
+    const themeModelFilter = THEME_MODEL_FILTERS[dominantTheme] || THEME_MODEL_FILTERS['default'];
+    console.log(`[ApparelPipeline] Dominant theme: "${dominantTheme}" → model filter: ${JSON.stringify(themeModelFilter)}`);
+
     let mockupJobId = null;
     try {
       const mockupPayload = {
         category: collectionCategory || categoryLabel,
         limit: limit,
-        modelFilter: options.modelFilter || 'phoenix',
+        modelFilter: themeModelFilter,
         size: options.size || 'medium'
       };
       if (options.designIds && options.designIds.length) {

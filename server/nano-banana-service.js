@@ -419,6 +419,7 @@ class NanoBananaService {
    * Sends both images to Gemini which composites them naturally
    */
   async placeGraphicOnApparel(modelImagePath, graphicPath, options = {}) {
+    const sharp = require('sharp');
     const {
       zone = 'front-chest',
       size = 'auto',
@@ -427,6 +428,46 @@ class NanoBananaService {
       adjustY = 0,
       adjustScale = 100
     } = options;
+
+    // Pre-process: detect if graphic is white-on-transparent and flatten
+    // onto a dark background so Gemini can actually see the design
+    let processedGraphicPath = graphicPath;
+    try {
+      const meta = await sharp(graphicPath).metadata();
+      if (meta.hasAlpha) {
+        const { data, info } = await sharp(graphicPath)
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+
+        // Sample visible pixels to determine average color
+        let visR = 0, visG = 0, visB = 0, visCount = 0;
+        for (let i = 0; i < info.width * info.height; i++) {
+          const a = data[i * 4 + 3];
+          if (a > 20) {
+            visR += data[i * 4];
+            visG += data[i * 4 + 1];
+            visB += data[i * 4 + 2];
+            visCount++;
+          }
+        }
+
+        if (visCount > 0) {
+          const avgBrightness = (visR + visG + visB) / (visCount * 3);
+          // If the visible pixels are mostly white/light, flatten onto dark background
+          if (avgBrightness > 200) {
+            const tmpPath = graphicPath.replace(/\.[^.]+$/, '_flattened.png');
+            await sharp(graphicPath)
+              .flatten({ background: { r: 30, g: 30, b: 30 } })
+              .toFile(tmpPath);
+            processedGraphicPath = tmpPath;
+            console.log(`[NanoBanana] Pre-processed: white-on-transparent graphic flattened onto dark bg (brightness=${avgBrightness.toFixed(0)})`);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[NanoBanana] Graphic pre-processing failed, using original: ${err.message}`);
+    }
 
     const zoneDescriptions = {
       'front-chest': 'centered on the chest area of the front of the garment',
@@ -459,27 +500,36 @@ class NanoBananaService {
       ? `\nPosition adjustment: The graphic should be ${adjustHints.join(', ')}.`
       : '';
 
+    const isFlattened = processedGraphicPath !== graphicPath;
+    const graphicNote = isFlattened
+      ? 'The graphic has a dark background — extract just the visible design elements (the light/white artwork) and apply them to the garment. Do NOT place the dark background rectangle on the shirt.'
+      : 'Apply the graphic as-is to the garment.';
+
     const prompt = `You are given two images:
 Image 1: A photo of a person wearing a ${garmentType}
-Image 2: The EXACT graphic design to place on the garment
+Image 2: A graphic design to print on the garment
 
-CRITICAL: You MUST use the EXACT graphic from Image 2. Do NOT create, generate, modify, or substitute any other design. The graphic in Image 2 must appear pixel-for-pixel identical on the garment — same text, same artwork, same colors, same layout. If the graphic appears to be white/light colored on a transparent background, it should show as white/light on the garment.
+${graphicNote}
 
-Place this exact graphic ${zoneDesc}.
+Place the design from Image 2 ${zoneDesc}.
 The graphic should be ${sizeDesc}.${adjustmentLine}
 
-Requirements:
-- Use ONLY the graphic from Image 2 — do not invent or hallucinate any design
-- The graphic must look naturally printed/applied on the fabric
-- Follow the fabric's wrinkles, folds, shadows, and contours
-- Match the lighting and perspective of the garment
-- Preserve the person's pose, face, expression, and all other details exactly
-- The graphic should have proper opacity where fabric shadows fall
-- If the model's hair, hands, or any body part overlaps the graphic area, the graphic must appear BEHIND those elements
-- Do NOT change anything else about the image — only add the graphic to the specified zone
-- The result should look like a professional product photo`;
+CRITICAL RULES:
+- Reproduce the EXACT design from Image 2 — same text, artwork, colors, layout
+- Do NOT create, invent, or substitute a different design
+- The design must look naturally screen-printed on the fabric
+- Follow the fabric's wrinkles, folds, and shadows
+- Preserve the person's pose, face, expression exactly
+- Hair or hands overlapping the graphic area should appear IN FRONT of the design
+- Do NOT change anything else about the image
+- Result should look like a professional product photo`;
 
-    const result = await this.ai.compositeImages([modelImagePath, graphicPath], prompt);
+    const result = await this.ai.compositeImages([modelImagePath, processedGraphicPath], prompt);
+
+    // Clean up temp flattened file
+    if (processedGraphicPath !== graphicPath) {
+      try { fs.unlinkSync(processedGraphicPath); } catch (_) {}
+    }
 
     // Save the generated image
     const saved = [];

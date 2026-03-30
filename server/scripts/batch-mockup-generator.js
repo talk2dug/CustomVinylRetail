@@ -85,6 +85,23 @@ async function getModels(filter = {}) {
     const kw = filter.nameFilter.toLowerCase();
     models = models.filter(m => (m.title || '').toLowerCase().includes(kw));
   }
+  // Filter by style (casual-everyday, pinup-retro, edgy-urban, etc.)
+  if (filter.style) {
+    const styles = Array.isArray(filter.style) ? filter.style : [filter.style];
+    const styled = models.filter(m => styles.includes(m.style));
+    if (styled.length > 0) models = styled;
+  }
+  // Filter by demographic (everyday-mom, millennial-parent, young-adult, etc.)
+  if (filter.demographic) {
+    const demos = Array.isArray(filter.demographic) ? filter.demographic : [filter.demographic];
+    const matched = models.filter(m => demos.includes(m.demographic));
+    if (matched.length > 0) models = matched;
+  }
+  // Exclude styles
+  if (filter.excludeStyle) {
+    const exclude = Array.isArray(filter.excludeStyle) ? filter.excludeStyle : [filter.excludeStyle];
+    models = models.filter(m => !exclude.includes(m.style));
+  }
   // Filter by facing
   if (filter.facing) {
     models = models.filter(m => m.facing === filter.facing);
