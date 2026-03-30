@@ -961,20 +961,18 @@ async function runFullPipeline(collectionCategory, options = {}) {
       if (notify) await sendTelegram('🛍 Publishing to Shopify...');
 
       try {
-        const shopifyPayload = {
+        // Call publishBatch directly (not via HTTP) so we can await completion
+        const { publishBatch } = require('../scripts/shopify-apparel-publisher');
+        const shopifyOpts = {
           category: collectionCategory || categoryLabel,
           limit: limit
         };
-        // In campaign/designIds mode, pass specific IDs so publisher finds the right designs
         if (options.designIds && options.designIds.length) {
-          shopifyPayload.designIds = options.designIds;
+          shopifyOpts.designIds = options.designIds;
         }
-        const shopifyResp = await apiFetch('/api/shopify-apparel/publish', {
-          method: 'POST',
-          body: JSON.stringify(shopifyPayload),
-          timeout: 300000 // 5 min for Shopify
-        });
-        results.shopifyPublished = shopifyResp.published || shopifyResp.count || 0;
+        const shopifyResult = await publishBatch(shopifyOpts);
+        results.shopifyPublished = shopifyResult.success || 0;
+        results.shopifyManifest = shopifyResult.results || [];
         console.log(`[ApparelPipeline] Published ${results.shopifyPublished} to Shopify`);
         reportProgress('shopify-publish', { progress: results.shopifyPublished, total: designsToProcess.length });
 
@@ -1004,20 +1002,23 @@ async function runFullPipeline(collectionCategory, options = {}) {
 
       const mockupDir = '/mnt/dbFiles/apparel-mockups';
 
-      // Load the latest Shopify publish manifest once for product ID lookups
-      let publishManifest = [];
-      const manifestDir = '/mnt/dbFiles/apparel-mockups';
-      if (fs.existsSync(manifestDir)) {
-        const manifests = fs.readdirSync(manifestDir)
-          .filter(f => f.startsWith('shopify_publish_'))
-          .sort().reverse();
-        if (manifests.length) {
-          try {
-            const mf = JSON.parse(fs.readFileSync(path.join(manifestDir, manifests[0]), 'utf8'));
-            publishManifest = mf.results || [];
-          } catch (_) {}
+      // Use Shopify manifest from direct publishBatch call, or fall back to disk
+      let publishManifest = results.shopifyManifest || [];
+      if (!publishManifest.length) {
+        const manifestDir = '/mnt/dbFiles/apparel-mockups';
+        if (fs.existsSync(manifestDir)) {
+          const manifests = fs.readdirSync(manifestDir)
+            .filter(f => f.startsWith('shopify_publish_'))
+            .sort().reverse();
+          if (manifests.length) {
+            try {
+              const mf = JSON.parse(fs.readFileSync(path.join(manifestDir, manifests[0]), 'utf8'));
+              publishManifest = mf.results || [];
+            } catch (_) {}
+          }
         }
       }
+      console.log(`[ApparelPipeline] Shopify manifest: ${publishManifest.filter(r => r.shopifyId).length} products with IDs`);
 
       for (const [theme, items] of Object.entries(themeGroups)) {
         // Gather all mockup paths + design info for this theme
