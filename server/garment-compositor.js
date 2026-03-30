@@ -25,11 +25,12 @@ fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 // Zone presets for different photo types
 const ZONES_PRODUCT = {
   // Product catalog shots (head-to-hip, white background, centered model)
-  'front-chest': { x: 0.25, y: 0.28, w: 0.50, h: 0.38 },
-  'front-center': { x: 0.22, y: 0.25, w: 0.56, h: 0.42 },
-  'back': { x: 0.22, y: 0.22, w: 0.56, h: 0.42 },
-  'left-sleeve': { x: 0.08, y: 0.25, w: 0.16, h: 0.18 },
-  'right-sleeve': { x: 0.76, y: 0.25, w: 0.16, h: 0.18 }
+  // Chest zone starts below the collar (~35% down) with moderate width
+  'front-chest': { x: 0.27, y: 0.35, w: 0.46, h: 0.32 },
+  'front-center': { x: 0.25, y: 0.32, w: 0.50, h: 0.36 },
+  'back': { x: 0.25, y: 0.28, w: 0.50, h: 0.38 },
+  'left-sleeve': { x: 0.08, y: 0.28, w: 0.16, h: 0.18 },
+  'right-sleeve': { x: 0.76, y: 0.28, w: 0.16, h: 0.18 }
 };
 
 const ZONES_LIFESTYLE = {

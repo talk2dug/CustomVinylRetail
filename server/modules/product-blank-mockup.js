@@ -171,7 +171,10 @@ async function generateBlankMockup(blankImagePath, graphicPath, options = {}) {
     zone: 'front-chest',
     size: 'large',
     photoType: 'product',
-    blendOpacity: 0.3
+    blendOpacity: 0.3,
+    adjustScale: 90,
+    adjustY: -12,
+    adjustX: 3
   });
 
   // Copy from compositor output to product blank directory
