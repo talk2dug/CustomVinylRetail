@@ -316,15 +316,17 @@ async function publishBatch(options = {}) {
   // Load catalog
   const catalog = loadCatalog();
   let designs = [];
+  let catName = category;
 
   if (designIds && Array.isArray(designIds) && designIds.length) {
     // Campaign mode — find specific designs across all categories
     const idSet = new Set(designIds.map(id => String(id)));
-    for (const cat of (catalog.categories || [])) {
-      for (const design of (cat.designs || [])) {
+    for (const c of (catalog.categories || [])) {
+      for (const design of (c.designs || [])) {
         if (idSet.has(String(design.id))) {
           designs.push(design);
           idSet.delete(String(design.id));
+          if (!catName || catName === category) catName = c.name;
         }
       }
       if (idSet.size === 0) break;
@@ -339,8 +341,9 @@ async function publishBatch(options = {}) {
       console.error(`Category not found: "${category}"`);
       return { success: 0, failed: 0 };
     }
+    catName = cat.name;
     designs = cat.designs || [];
-    console.log(`Found ${designs.length} designs in "${cat.name}"`);
+    console.log(`Found ${designs.length} designs in "${catName}"`);
   }
 
   // Find/create Apparel collection
@@ -387,7 +390,7 @@ async function publishBatch(options = {}) {
     console.log(`  Lifestyle: ${mockupImageUrl ? 'YES' : 'NO'} | Product blanks: ${productBlankUrls.length} | Design: ${designImageUrl ? 'YES' : 'NO'}`);
 
     // Generate AI description
-    const description = await generateProductDescription(cleanName, cat.name);
+    const description = await generateProductDescription(cleanName, catName);
     const descriptionHtml = description.split('\n').filter(Boolean).map(p => `<p>${p}</p>`).join('\n');
 
     // Build tags
@@ -468,7 +471,7 @@ async function publishBatch(options = {}) {
 
   // Save manifest
   const manifest = {
-    category: cat.name,
+    category: catName,
     publishedAt: new Date().toISOString(),
     total: designs.length,
     success, failed, skipped,
