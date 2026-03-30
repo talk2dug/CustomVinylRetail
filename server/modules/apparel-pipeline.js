@@ -827,47 +827,66 @@ async function runFullPipeline(collectionCategory, options = {}) {
     }
 
     // ------------------------------------------------------------------
-    // Step 5: Poll for mockup completion
+    // Step 5: Poll for mockup completion (or check disk for existing mockups)
     // ------------------------------------------------------------------
     if (mockupJobId) {
       console.log('[ApparelPipeline] Step 5: Waiting for mockups to complete');
-      const maxPolls = 60; // 10 minutes max
+
+      // Smart check: count mockups already on disk for our designs
+      const mockupDir = '/mnt/dbFiles/apparel-mockups';
+      const countMockupsOnDisk = () => {
+        if (!fs.existsSync(mockupDir)) return 0;
+        const files = fs.readdirSync(mockupDir).filter(f => f.startsWith('mockup_') && f.endsWith('.jpg'));
+        return designsToProcess.filter(d => files.some(f => f.includes(d.id.substring(0, 30)))).length;
+      };
+
+      const maxPolls = 90; // 15 minutes max (10s each)
       let completed = false;
+      let pollFailed = false;
 
       for (let i = 0; i < maxPolls; i++) {
-        await sleep(10000); // 10s between polls
-        try {
-          const status = await apiFetch(`/api/batch-mockups/${mockupJobId || ''}`, {
-            timeout: 15000
-          });
-          const progress = status.completed || status.progress || 0;
-          const total = status.total || results.mockupsGenerated || 1;
+        await sleep(10000);
 
-          if (status.status === 'complete' || status.done || progress >= total) {
-            results.mockupsGenerated = progress;
-            completed = true;
-            console.log(`[ApparelPipeline] Mockups complete: ${progress}/${total}`);
-            break;
+        // Check disk — if all mockups exist, we're done regardless of poll status
+        const diskCount = countMockupsOnDisk();
+        reportProgress('lifestyle-mockups', { progress: diskCount, total: designsToProcess.length });
+
+        if (diskCount >= designsToProcess.length) {
+          results.mockupsGenerated = diskCount;
+          completed = true;
+          console.log(`[ApparelPipeline] All ${diskCount} mockups found on disk — done`);
+          break;
+        }
+
+        // Also try the poll endpoint
+        if (!pollFailed) {
+          try {
+            const status = await apiFetch(`/api/batch-mockups/${mockupJobId || ''}`, { timeout: 15000 });
+            const progress = status.completed || status.progress || 0;
+            const total = status.total || results.mockupsGenerated || 1;
+            if (status.status === 'complete' || status.done || progress >= total) {
+              results.mockupsGenerated = progress;
+              completed = true;
+              console.log(`[ApparelPipeline] Mockups complete via poll: ${progress}/${total}`);
+              break;
+            }
+          } catch (err) {
+            if (i === 3) {
+              console.warn('[ApparelPipeline] Mockup poll endpoint unavailable, relying on disk check');
+              pollFailed = true;
+            }
           }
-          if (status.status === 'error' || status.failed) {
-            results.errors.push('Mockup job failed: ' + (status.error || 'unknown'));
-            break;
-          }
-          if (i % 6 === 5) {
-            console.log(`[ApparelPipeline] Mockup progress: ${progress}/${total}`);
-          }
-          reportProgress('lifestyle-mockups', { progress, total });
-        } catch (err) {
-          // Poll endpoint might not exist as a GET — that's ok, just wait
-          if (i === 5) console.warn('[ApparelPipeline] Mockup poll failed, will assume done after timeout');
-          // Still report progress so UI knows we're working (estimate based on time elapsed)
-          const estimatedProgress = Math.min(Math.round((i / maxPolls) * results.mockupsGenerated), results.mockupsGenerated - 1);
-          reportProgress('lifestyle-mockups', { progress: estimatedProgress, total: results.mockupsGenerated || designsToProcess.length });
+        }
+
+        if (i % 6 === 5) {
+          console.log(`[ApparelPipeline] Mockup progress: ${diskCount}/${designsToProcess.length} on disk`);
         }
       }
 
       if (!completed) {
-        console.log('[ApparelPipeline] Mockup poll timed out, proceeding anyway');
+        const finalCount = countMockupsOnDisk();
+        results.mockupsGenerated = finalCount;
+        console.log(`[ApparelPipeline] Mockup poll timed out, ${finalCount}/${designsToProcess.length} on disk, proceeding`);
       }
     }
 
