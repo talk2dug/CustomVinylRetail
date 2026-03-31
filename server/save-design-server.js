@@ -10061,6 +10061,18 @@ Keep it concise and actionable.`;
       return;
     }
 
+    // POST /api/tiktok-videos/managed/:id/approve
+    const approveMatch = parsedUrl.pathname.match(/\/api\/tiktok-videos\/managed\/([^/]+)\/approve$/);
+    if (req.method === 'POST' && approveMatch) {
+      const videoId = approveMatch[1];
+      const record = db.getTiktokVideo(videoId);
+      if (!record) { sendJson(res, 404, { error: 'Video not found' }); return; }
+      const updated = db.updateTiktokVideo(videoId, { status: 'approved' });
+      console.log(`[TikTok] Reel ${videoId} approved`);
+      sendJson(res, 200, updated);
+      return;
+    }
+
     // PATCH /api/tiktok-videos/managed/:id
     if (req.method === 'PATCH' && idMatch) {
       collectRequestBody(req, (error, body) => {
