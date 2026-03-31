@@ -97,6 +97,7 @@ const { runFullPipeline } = require('./modules/apparel-pipeline');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
+const { categorizeDesign } = require('./modules/design-categorizer');
 const stickerSheets = require('./sticker-sheet-generator');
 const taskTracker = require('./task-tracker');
 const kioskManager = require('./modules/kiosk-manager');
@@ -18574,11 +18575,13 @@ Return ONLY valid JSON, no markdown or explanation.`;
       const activeOnly = parsedUrl.query?.activeOnly !== 'false';
       const status = parsedUrl.query?.status || null;
       const category = parsedUrl.query?.category || null;
+      const theme = parsedUrl.query?.theme || null;
+      const mood = parsedUrl.query?.mood || null;
       const search = parsedUrl.query?.search || null;
       const limit = Number(parsedUrl.query?.limit) || 100;
       const offset = Number(parsedUrl.query?.offset) || 0;
-      console.log('[Custom Art API] listArtwork query:', { activeOnly, status, category, search, limit, offset, rawActiveOnly: parsedUrl.query?.activeOnly });
-      const artwork = db.listCustomArtArtwork({ activeOnly, status, category, search, limit, offset });
+      console.log('[Custom Art API] listArtwork query:', { activeOnly, status, category, theme, mood, search, limit, offset, rawActiveOnly: parsedUrl.query?.activeOnly });
+      const artwork = db.listCustomArtArtwork({ activeOnly, status, category, theme, mood, search, limit, offset });
       console.log('[Custom Art API] listArtwork returned', artwork?.length || 0, 'items');
       sendJson(res, 200, { success: true, artwork });
     } catch (e) {
@@ -18741,6 +18744,132 @@ Return ONLY valid JSON, no markdown or explanation.`;
     } catch (e) {
       console.error('AI metadata error:', e);
       sendJson(res, 500, { error: e?.message || 'Unable to generate AI metadata.' });
+    }
+    return;
+  }
+
+  // Visual identification for artwork — uses Gemini design categorizer
+  if (req.method === 'POST' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'artwork' && segments[3] && segments[4] === 'identify') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const artworkId = segments[3];
+      const body = await getReqBodyJson(req) || {};
+      const artwork = db.getCustomArtArtworkById(artworkId);
+      if (!artwork) {
+        sendJson(res, 404, { error: 'Artwork not found.' });
+        return;
+      }
+
+      // Resolve image path
+      let imagePath = null;
+      if (artwork.filePath) {
+        const webPath = path.resolve(__dirname, '..', 'web', artwork.filePath.replace(/^\//, ''));
+        if (fs.existsSync(webPath)) {
+          imagePath = webPath;
+        } else if (fs.existsSync(artwork.filePath)) {
+          imagePath = artwork.filePath;
+        }
+      }
+
+      if (!imagePath) {
+        sendJson(res, 400, { error: 'Artwork image file not found on server.' });
+        return;
+      }
+
+      // Run Gemini visual analysis via design-categorizer
+      console.log('[Artwork Identify] Running visual analysis for:', artworkId, imagePath);
+      const result = await categorizeDesign(imagePath, { skipCache: !!body.skipCache });
+
+      // Save identification to artwork record
+      const updates = {
+        theme: result.theme,
+        mood: result.mood,
+        colors: result.colors,
+        keywords: result.keywords,
+        suggestedShirtColors: result.suggestedShirtColors,
+        identifiedAt: new Date().toISOString()
+      };
+
+      // Also update category/tags if not already set
+      if (!artwork.category && result.theme) {
+        updates.category = result.theme;
+      }
+      if (!artwork.tags && result.keywords && result.keywords.length) {
+        updates.tags = result.keywords.join(', ');
+      }
+      if (!artwork.style && result.mood) {
+        updates.style = result.mood;
+      }
+
+      const updated = db.updateCustomArtArtwork(artworkId, updates);
+      console.log('[Artwork Identify] Saved identification for:', artworkId, result.theme, result.mood);
+      sendJson(res, 200, { success: true, artwork: updated, identification: result });
+    } catch (e) {
+      console.error('[Artwork Identify] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Visual identification failed.' });
+    }
+    return;
+  }
+
+  // Batch identify all unidentified artwork
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/artwork/identify-all') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req) || {};
+      const allArtwork = db.listCustomArtArtwork({ activeOnly: false, limit: 9999 });
+      const unidentified = body.force
+        ? allArtwork
+        : allArtwork.filter(a => !a.identifiedAt);
+
+      console.log(`[Artwork Identify] Batch: ${unidentified.length} of ${allArtwork.length} to process`);
+
+      let succeeded = 0;
+      let failed = 0;
+      const errors = [];
+
+      for (const artwork of unidentified) {
+        try {
+          let imagePath = null;
+          if (artwork.filePath) {
+            const webPath = path.resolve(__dirname, '..', 'web', artwork.filePath.replace(/^\//, ''));
+            if (fs.existsSync(webPath)) imagePath = webPath;
+            else if (fs.existsSync(artwork.filePath)) imagePath = artwork.filePath;
+          }
+          if (!imagePath) {
+            failed++;
+            errors.push({ id: artwork.id, error: 'File not found' });
+            continue;
+          }
+
+          const result = await categorizeDesign(imagePath, { skipCache: !!body.skipCache });
+          const updates = {
+            theme: result.theme,
+            mood: result.mood,
+            colors: result.colors,
+            keywords: result.keywords,
+            suggestedShirtColors: result.suggestedShirtColors,
+            identifiedAt: new Date().toISOString()
+          };
+          if (!artwork.category && result.theme) updates.category = result.theme;
+          if (!artwork.tags && result.keywords?.length) updates.tags = result.keywords.join(', ');
+          if (!artwork.style && result.mood) updates.style = result.mood;
+
+          db.updateCustomArtArtwork(artwork.id, updates);
+          succeeded++;
+
+          // Rate limit between items
+          await new Promise(r => setTimeout(r, 300));
+        } catch (e) {
+          failed++;
+          errors.push({ id: artwork.id, error: e.message });
+        }
+      }
+
+      console.log(`[Artwork Identify] Batch complete: ${succeeded} ok, ${failed} failed`);
+      sendJson(res, 200, { success: true, total: unidentified.length, succeeded, failed, errors: errors.slice(0, 20) });
+    } catch (e) {
+      console.error('[Artwork Identify] Batch error:', e);
+      sendJson(res, 500, { error: e?.message || 'Batch identification failed.' });
     }
     return;
   }

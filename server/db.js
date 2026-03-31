@@ -2803,6 +2803,14 @@ function initCustomArtTables() {
     // Column already exists, ignore
   }
 
+  // Migration: Add visual identification columns for design categorizer
+  ensureColumn('custom_art_artwork', 'theme', 'TEXT');
+  ensureColumn('custom_art_artwork', 'mood', 'TEXT');
+  ensureColumn('custom_art_artwork', 'colors', 'TEXT');       // JSON array
+  ensureColumn('custom_art_artwork', 'keywords', 'TEXT');     // JSON array
+  ensureColumn('custom_art_artwork', 'suggested_shirt_colors', 'TEXT'); // JSON array
+  ensureColumn('custom_art_artwork', 'identified_at', 'TEXT');
+
   // Human Models (for mockups)
   db.exec(`
     CREATE TABLE IF NOT EXISTS human_models (
@@ -3942,6 +3950,12 @@ function updateCustomArtArtwork(id, updates) {
   if (updates.active !== undefined) { fields.push('active = @active'); params.active = updates.active ? 1 : 0; }
   if (updates.sortOrder !== undefined) { fields.push('sort_order = @sortOrder'); params.sortOrder = updates.sortOrder; }
   if (updates.seoFilename !== undefined) { fields.push('seo_filename = @seoFilename'); params.seoFilename = updates.seoFilename; }
+  if (updates.theme !== undefined) { fields.push('theme = @theme'); params.theme = updates.theme; }
+  if (updates.mood !== undefined) { fields.push('mood = @mood'); params.mood = updates.mood; }
+  if (updates.colors !== undefined) { fields.push('colors = @colors'); params.colors = typeof updates.colors === 'string' ? updates.colors : JSON.stringify(updates.colors); }
+  if (updates.keywords !== undefined) { fields.push('keywords = @keywords'); params.keywords = typeof updates.keywords === 'string' ? updates.keywords : JSON.stringify(updates.keywords); }
+  if (updates.suggestedShirtColors !== undefined) { fields.push('suggested_shirt_colors = @suggestedShirtColors'); params.suggestedShirtColors = typeof updates.suggestedShirtColors === 'string' ? updates.suggestedShirtColors : JSON.stringify(updates.suggestedShirtColors); }
+  if (updates.identifiedAt !== undefined) { fields.push('identified_at = @identifiedAt'); params.identifiedAt = updates.identifiedAt; }
 
   if (!fields.length) return getCustomArtArtworkById(id);
 
@@ -3959,13 +3973,15 @@ function getCustomArtArtworkById(id) {
   return row ? mapCustomArtArtwork(row) : null;
 }
 
-function listCustomArtArtwork({ activeOnly = true, status, category, search, limit = 100, offset = 0 } = {}) {
+function listCustomArtArtwork({ activeOnly = true, status, category, theme, mood, search, limit = 100, offset = 0 } = {}) {
   let query = 'SELECT * FROM custom_art_artwork WHERE 1=1';
   const params = [];
   if (activeOnly) { query += ' AND active = 1'; }
   if (status) { query += ' AND status = ?'; params.push(status); }
   if (category) { query += ' AND category = ?'; params.push(category); }
-  if (search) { query += ' AND (title LIKE ? OR tags LIKE ? OR description LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  if (theme) { query += ' AND theme = ?'; params.push(theme); }
+  if (mood) { query += ' AND mood = ?'; params.push(mood); }
+  if (search) { query += ' AND (title LIKE ? OR tags LIKE ? OR description LIKE ? OR theme LIKE ? OR mood LIKE ? OR keywords LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); }
   query += ' ORDER BY sort_order ASC, created_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
   return db.prepare(query).all(...params).map(mapCustomArtArtwork);
@@ -4006,6 +4022,12 @@ function mapCustomArtArtwork(row) {
     status: row.status,
     active: Boolean(row.active),
     sortOrder: row.sort_order,
+    theme: row.theme || null,
+    mood: row.mood || null,
+    colors: row.colors ? JSON.parse(row.colors) : [],
+    keywords: row.keywords ? JSON.parse(row.keywords) : [],
+    suggestedShirtColors: row.suggested_shirt_colors ? JSON.parse(row.suggested_shirt_colors) : [],
+    identifiedAt: row.identified_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
