@@ -358,7 +358,10 @@ contextBridge.exposeInMainWorld('printStation', {
     exportToShopify: (payload) => ipcRenderer.invoke('custom-art:shopify:export', payload || {}),
 
     // Metal print sublimation filter
-    applyMetalPrintFilter: (payload) => ipcRenderer.invoke('metal-print:apply-filter', payload || {})
+    applyMetalPrintFilter: (payload) => ipcRenderer.invoke('metal-print:apply-filter', payload || {}),
+
+    // Sublimation print preparation (mirror + bleed + resize)
+    prepareSublimation: (payload) => ipcRenderer.invoke('custom-art:prepare-sublimation', payload || {})
   },
 
   // Campaign API (for campaign mockups and other campaign-specific operations)

@@ -21589,6 +21589,21 @@ function createProductFromArtwork(artworkId) {
 }
 
 // Print artwork directly from the artwork card
+// =============== SUBLIMATION PRINT ===============
+
+const SUBLIMATION_BLANK_SIZES = [
+  { label: '5 × 7"', width: 5, height: 7 },
+  { label: '8 × 10"', width: 8, height: 10 },
+  { label: '11 × 14"', width: 11, height: 14 },
+  { label: '11 × 17"', width: 11, height: 17 }
+];
+
+const SUBLIMATION_PAPER_SIZES = [
+  { label: '8.5 × 11" (Letter)', value: 'Letter', width: 8.5, height: 11 },
+  { label: '11 × 17" (Tabloid)', value: 'Tabloid', width: 11, height: 17 },
+  { label: '13 × 19"', value: '13x19', width: 13, height: 19 }
+];
+
 async function printArtworkFromCard(artworkId, artworkPath) {
   const artwork = customArtState.artwork.find(a => String(a.id) === artworkId);
   if (!artwork) {
@@ -21596,35 +21611,346 @@ async function printArtworkFromCard(artworkId, artworkPath) {
     return;
   }
 
-  // Get the full file path - prefer original file, fall back to optimized
-  let filePath = artwork.filePath || artwork.optimizedPath || artworkPath;
-
-  if (!filePath) {
+  if (!(artwork.filePath || artwork.optimizedPath || artworkPath)) {
     showToast('No image file available for this artwork', 'error');
     return;
   }
 
-  // If it's a server URL, we need to download it first or use the local path
-  // The artwork database stores paths like /uploads/custom-art/artwork/...
-  // We need to resolve this to a local file path on the server
-
+  // Load inkjet printers + source image dimensions in parallel
+  let printers = [];
+  let srcInfo = null;
   try {
-    showToast('Opening print dialog...', 'info');
-
-    // Use print with dialog so user can select printer and settings
-    const result = await printStation.printer.printWithDialog({
-      imagePath: filePath
-    });
-
-    if (result.success) {
-      showToast('Print job sent successfully', 'success');
-    } else if (result.error && !result.error.includes('cancel')) {
-      showToast(`Print failed: ${result.error}`, 'error');
-    }
-  } catch (error) {
-    console.error('[Custom Art] Print error:', error);
-    showToast('Print failed: ' + error.message, 'error');
+    const [p, info] = await Promise.all([
+      printStation.inkjetFleet.listPrinters().catch(() => []),
+      printStation.customArt.prepareSublimation({ artworkId, infoOnly: true }).catch(() => null)
+    ]);
+    printers = p || [];
+    srcInfo = info;
+  } catch (e) {
+    console.warn('[Sublimation] Init error:', e.message);
   }
+
+  const srcW = srcInfo?.sourceWidth || 0;
+  const srcH = srcInfo?.sourceHeight || 0;
+  const srcAspect = srcW && srcH ? srcW / srcH : 1;
+
+  const cleanedTitle = cleanAiGeneratedName(artwork.title) || artwork.title || 'Untitled';
+  const previewUrl = resolveArtworkUrl(artwork.thumbnailPath || artwork.optimizedPath || artwork.filePath, { width: 600, quality: 85 });
+  const previewSrc = getCachedPreviewUrl(previewUrl);
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:10px;padding:24px;width:600px;max-height:92vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3 style="margin:0;">Sublimation Print</h3>
+        <button id="subPrintClose" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text);">✕</button>
+      </div>
+
+      <div style="display:flex;gap:16px;margin-bottom:16px;">
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:1rem;margin-bottom:4px;">${escapeHtml(cleanedTitle)}</div>
+          <div class="muted" style="font-size:0.85rem;">Source: ${srcW}×${srcH}px${srcW && srcH ? ` (${srcAspect.toFixed(2)}:1)` : ''}</div>
+          <div style="margin-top:6px;font-size:0.8rem;color:var(--accent);">Mirrored + bleed for sublimation transfer</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Blank Size</label>
+          <select id="subPrintBlankSize" style="width:100%;padding:8px;border-radius:6px;">
+            ${SUBLIMATION_BLANK_SIZES.map((s, i) => `<option value="${i}">${s.label}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Paper Loaded</label>
+          <select id="subPrintPaperSize" style="width:100%;padding:8px;border-radius:6px;">
+            ${SUBLIMATION_PAPER_SIZES.map((s, i) => `<option value="${i}">${s.label}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Bleed (per side)</label>
+          <select id="subPrintBleed" style="width:100%;padding:8px;border-radius:6px;">
+            <option value="0.125">1/8"</option>
+            <option value="0.25" selected>1/4"</option>
+            <option value="0.375">3/8"</option>
+            <option value="0.5">1/2"</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600;">Printer</label>
+          <select id="subPrintPrinter" style="width:100%;padding:8px;border-radius:6px;">
+            ${printers.length
+              ? printers.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')
+              : '<option value="">No inkjet printers found</option>'}
+          </select>
+        </div>
+      </div>
+
+      <!-- Crop position (shown only when aspect ratios mismatch) -->
+      <div id="subPrintCropSection" style="margin-top:14px;display:none;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <label style="font-size:0.85rem;font-weight:600;">Crop Position</label>
+          <span id="subPrintCropWarning" style="font-size:0.8rem;color:var(--warning,#f59e0b);"></span>
+        </div>
+        <div style="display:flex;gap:16px;align-items:flex-start;">
+          <!-- Position grid (3x3) -->
+          <div id="subPrintCropGrid" style="display:grid;grid-template-columns:repeat(3,32px);grid-template-rows:repeat(3,32px);gap:3px;flex-shrink:0;">
+            <button class="sub-crop-pos secondary" data-pos="top-left" style="padding:0;font-size:16px;" title="Top Left">&#8598;</button>
+            <button class="sub-crop-pos secondary" data-pos="top" style="padding:0;font-size:16px;" title="Top">&#8593;</button>
+            <button class="sub-crop-pos secondary" data-pos="top-right" style="padding:0;font-size:16px;" title="Top Right">&#8599;</button>
+            <button class="sub-crop-pos secondary" data-pos="left" style="padding:0;font-size:16px;" title="Left">&#8592;</button>
+            <button class="sub-crop-pos secondary" data-pos="center" style="padding:0;font-size:16px;background:var(--accent);color:#fff;" title="Center">&#9679;</button>
+            <button class="sub-crop-pos secondary" data-pos="right" style="padding:0;font-size:16px;" title="Right">&#8594;</button>
+            <button class="sub-crop-pos secondary" data-pos="bottom-left" style="padding:0;font-size:16px;" title="Bottom Left">&#8601;</button>
+            <button class="sub-crop-pos secondary" data-pos="bottom" style="padding:0;font-size:16px;" title="Bottom">&#8595;</button>
+            <button class="sub-crop-pos secondary" data-pos="bottom-right" style="padding:0;font-size:16px;" title="Bottom Right">&#8600;</button>
+          </div>
+          <!-- Crop preview canvas -->
+          <div style="flex:1;position:relative;overflow:hidden;border-radius:6px;border:1px solid var(--border);background:#111;">
+            <div id="subPrintCropPreview" style="position:relative;width:100%;overflow:hidden;">
+              <img id="subPrintCropImg" src="${previewSrc}" style="display:block;width:100%;"/>
+              <div id="subPrintCropOverlay" style="position:absolute;border:2px dashed #4a9;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.5);"></div>
+            </div>
+          </div>
+        </div>
+        <div id="subPrintCropInfo" style="margin-top:6px;font-size:0.8rem;color:var(--muted);"></div>
+      </div>
+
+      <!-- Aspect match message -->
+      <div id="subPrintAspectOk" style="margin-top:14px;padding:10px;background:var(--bg);border-radius:6px;font-size:0.85rem;color:var(--success);display:none;">
+        Aspect ratio matches — no cropping needed
+      </div>
+
+      <div id="subPrintInfo" style="margin-top:14px;padding:10px;background:var(--bg);border-radius:6px;font-size:0.85rem;"></div>
+
+      <div id="subPrintFinalPreviewWrap" style="margin-top:14px;text-align:center;display:none;">
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:6px;">Final output (mirrored)</div>
+        <img id="subPrintFinalPreviewImg" style="max-width:100%;max-height:180px;border-radius:6px;border:1px solid var(--border);"/>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+        <button id="subPrintCancel" class="secondary" style="padding:8px 18px;">Cancel</button>
+        <button id="subPrintSubmit" class="primary" style="padding:8px 18px;" ${!printers.length ? 'disabled' : ''}>Print</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+
+  // --- State ---
+  let selectedCropPos = 'center';
+
+  // --- Crop position buttons ---
+  modal.querySelectorAll('.sub-crop-pos').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedCropPos = btn.dataset.pos;
+      modal.querySelectorAll('.sub-crop-pos').forEach(b => {
+        b.style.background = '';
+        b.style.color = '';
+      });
+      btn.style.background = 'var(--accent)';
+      btn.style.color = '#fff';
+      updateCropPreview();
+    });
+  });
+
+  // --- Crop preview logic (client-side, purely visual) ---
+  function updateCropPreview() {
+    const blankIdx = parseInt(modal.querySelector('#subPrintBlankSize').value);
+    const bleed = parseFloat(modal.querySelector('#subPrintBleed').value);
+    const blank = SUBLIMATION_BLANK_SIZES[blankIdx];
+    const targetW = blank.width + bleed * 2;
+    const targetH = blank.height + bleed * 2;
+    const targetAspect = targetW / targetH;
+
+    const cropSection = modal.querySelector('#subPrintCropSection');
+    const aspectOk = modal.querySelector('#subPrintAspectOk');
+    const tolerance = 0.02;
+    const needsCrop = Math.abs(srcAspect - targetAspect) > tolerance;
+
+    if (!needsCrop || !srcW) {
+      cropSection.style.display = 'none';
+      aspectOk.style.display = srcW ? 'block' : 'none';
+      return;
+    }
+
+    cropSection.style.display = 'block';
+    aspectOk.style.display = 'none';
+
+    // Figure out which axis gets cropped
+    const croppedAxis = srcAspect > targetAspect ? 'width' : 'height';
+    const cropWarning = modal.querySelector('#subPrintCropWarning');
+    const cropInfoEl = modal.querySelector('#subPrintCropInfo');
+
+    if (croppedAxis === 'width') {
+      // Image is wider than target — sides get cropped
+      const visibleFraction = targetAspect / srcAspect;
+      const cropPercent = Math.round((1 - visibleFraction) * 100);
+      cropWarning.textContent = `${cropPercent}% of width will be cropped`;
+      cropInfoEl.textContent = 'Image is wider than the blank — sides will be trimmed. Use arrows to shift the crop window.';
+    } else {
+      // Image is taller than target — top/bottom get cropped
+      const visibleFraction = srcAspect / targetAspect;
+      const cropPercent = Math.round((1 - visibleFraction) * 100);
+      cropWarning.textContent = `${cropPercent}% of height will be cropped`;
+      cropInfoEl.textContent = 'Image is taller than the blank — top/bottom will be trimmed. Use arrows to shift the crop window.';
+    }
+
+    // Position the overlay on the preview image
+    const img = modal.querySelector('#subPrintCropImg');
+    const imgRect = img.getBoundingClientRect();
+    const previewW = img.offsetWidth;
+    const previewH = img.offsetHeight || (previewW / srcAspect);
+    const overlay = modal.querySelector('#subPrintCropOverlay');
+
+    let cropW, cropH;
+    if (croppedAxis === 'width') {
+      // Full height visible, partial width
+      cropH = previewH;
+      cropW = previewH * targetAspect;
+    } else {
+      // Full width visible, partial height
+      cropW = previewW;
+      cropH = previewW / targetAspect;
+    }
+
+    // Clamp to image bounds
+    cropW = Math.min(cropW, previewW);
+    cropH = Math.min(cropH, previewH);
+
+    // Position based on selected crop position
+    let left = 0, top = 0;
+    const hPos = selectedCropPos.includes('left') ? 'left' : selectedCropPos.includes('right') ? 'right' : 'center';
+    const vPos = selectedCropPos.includes('top') ? 'top' : selectedCropPos.includes('bottom') ? 'bottom' : 'center';
+
+    if (hPos === 'left') left = 0;
+    else if (hPos === 'right') left = previewW - cropW;
+    else left = (previewW - cropW) / 2;
+
+    if (vPos === 'top') top = 0;
+    else if (vPos === 'bottom') top = previewH - cropH;
+    else top = (previewH - cropH) / 2;
+
+    overlay.style.left = `${Math.max(0, left)}px`;
+    overlay.style.top = `${Math.max(0, top)}px`;
+    overlay.style.width = `${cropW}px`;
+    overlay.style.height = `${cropH}px`;
+  }
+
+  // Wait for the preview image to load before computing overlay dimensions
+  const cropImg = modal.querySelector('#subPrintCropImg');
+  cropImg.addEventListener('load', () => updateCropPreview());
+
+  // --- Info display ---
+  function updateInfo() {
+    const blankIdx = parseInt(modal.querySelector('#subPrintBlankSize').value);
+    const paperIdx = parseInt(modal.querySelector('#subPrintPaperSize').value);
+    const bleed = parseFloat(modal.querySelector('#subPrintBleed').value);
+    const blank = SUBLIMATION_BLANK_SIZES[blankIdx];
+    const paper = SUBLIMATION_PAPER_SIZES[paperIdx];
+    const totalW = blank.width + bleed * 2;
+    const totalH = blank.height + bleed * 2;
+    const fits = totalW <= paper.width && totalH <= paper.height;
+    const fitsRotated = totalW <= paper.height && totalH <= paper.width;
+    const willFit = fits || fitsRotated;
+    const orientation = fits ? 'Portrait' : fitsRotated ? 'Landscape' : 'N/A';
+
+    const infoEl = modal.querySelector('#subPrintInfo');
+    infoEl.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;">
+        <span>Print size:</span><strong>${totalW}" × ${totalH}"</strong>
+        <span>Paper:</span><strong>${paper.label}</strong>
+        <span>Orientation:</span><strong>${orientation}</strong>
+        <span>Fits on paper:</span><strong style="color:${willFit ? 'var(--success)' : 'var(--danger)'};">${willFit ? 'Yes' : 'NO — choose larger paper'}</strong>
+      </div>
+      <div style="margin-top:6px;color:var(--muted);font-size:0.8rem;">300 DPI · Mirrored · Photo/Glossy · Borderless · Max Quality</div>`;
+
+    const submitBtn = modal.querySelector('#subPrintSubmit');
+    submitBtn.disabled = !willFit || !printers.length;
+
+    updateCropPreview();
+  }
+
+  modal.querySelector('#subPrintBlankSize').addEventListener('change', updateInfo);
+  modal.querySelector('#subPrintPaperSize').addEventListener('change', updateInfo);
+  modal.querySelector('#subPrintBleed').addEventListener('change', updateInfo);
+  updateInfo();
+
+  // --- Close handlers ---
+  modal.querySelector('#subPrintClose').addEventListener('click', () => modal.remove());
+  modal.querySelector('#subPrintCancel').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  // --- Submit ---
+  modal.querySelector('#subPrintSubmit').addEventListener('click', async () => {
+    const blankIdx = parseInt(modal.querySelector('#subPrintBlankSize').value);
+    const paperIdx = parseInt(modal.querySelector('#subPrintPaperSize').value);
+    const bleed = parseFloat(modal.querySelector('#subPrintBleed').value);
+    const printerId = parseInt(modal.querySelector('#subPrintPrinter').value);
+    const blank = SUBLIMATION_BLANK_SIZES[blankIdx];
+    const paper = SUBLIMATION_PAPER_SIZES[paperIdx];
+
+    const totalW = blank.width + bleed * 2;
+    const totalH = blank.height + bleed * 2;
+    const fits = totalW <= paper.width && totalH <= paper.height;
+    const orientation = fits ? 'Portrait' : 'Landscape';
+
+    const submitBtn = modal.querySelector('#subPrintSubmit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Preparing image...';
+
+    try {
+      // Step 1: Server prepares the image (resize + crop + mirror + bleed)
+      const prepared = await printStation.customArt.prepareSublimation({
+        artworkId,
+        blankWidth: blank.width,
+        blankHeight: blank.height,
+        bleedInches: bleed,
+        cropPosition: selectedCropPos
+      });
+
+      if (!prepared?.success || !prepared?.base64) {
+        throw new Error(prepared?.error || 'Server failed to prepare sublimation image');
+      }
+
+      // Show final mirrored preview
+      const previewWrap = modal.querySelector('#subPrintFinalPreviewWrap');
+      const previewImg = modal.querySelector('#subPrintFinalPreviewImg');
+      previewImg.src = `data:image/png;base64,${prepared.base64}`;
+      previewWrap.style.display = 'block';
+
+      // Step 2: Submit to inkjet printer via fleet
+      submitBtn.textContent = 'Sending to printer...';
+
+      const job = {
+        printer_id: printerId,
+        filename: `sublimation_${cleanedTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_${blank.width}x${blank.height}.png`,
+        title: `Sublimation: ${cleanedTitle} (${blank.label})`,
+        copies: 1,
+        page_size: paper.value,
+        color_mode: 'Color',
+        media_type: 'Photo',
+        print_quality: '1200dpi',
+        duplex: 'None',
+        orientation: orientation,
+        borders: 'none',
+        custom_options: {},
+        file_base64: prepared.base64,
+        submitted_by: 'sublimation-print'
+      };
+
+      await printStation.inkjetFleet.submitJob(job);
+
+      showToast(`Sublimation print sent: ${blank.label} on ${paper.label}`, 'success', 5000);
+      modal.remove();
+    } catch (err) {
+      console.error('[Sublimation] Print error:', err);
+      showToast('Sublimation print failed: ' + err.message, 'error', 8000);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Print';
+    }
+  });
 }
 
 // Download artwork directly from the artwork card

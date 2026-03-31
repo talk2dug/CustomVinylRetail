@@ -5301,6 +5301,11 @@ Return ONLY valid JSON, nothing else:
     httpRequest('/api/custom-art/shopify/export', { method: 'POST', body: payload || {} })
   );
 
+  // Sublimation print preparation (mirror + bleed + resize on server via Sharp)
+  ipcMain.handle('custom-art:prepare-sublimation', (_event, payload) =>
+    httpRequest('/api/custom-art/prepare-sublimation', { method: 'POST', body: payload || {}, timeout: 60000 })
+  );
+
   // Metal Print Filter and Campaign Export
   ipcMain.handle('metal-print:apply-filter', (_event, payload) =>
     httpRequest('/api/metal-print/apply-filter', { method: 'POST', body: payload || {} })
