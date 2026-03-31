@@ -564,47 +564,70 @@ function formatThemeName(theme) {
 /**
  * Build responsive HTML for a reel landing page showing featured products.
  */
-function buildReelLandingPageHtml({ title, hook, body, products, collectionHandle, reelUrl, theme, isTikTokShopReel }) {
+function buildReelLandingPageHtml({ title, hook, body, products, collectionHandle, reelUrl, theme, isTikTokShopReel, apparelChoices }) {
+  // Build color label from apparel choices
+  const colorNames = (apparelChoices || [])
+    .filter(Boolean)
+    .map(a => a.color || a.colorName || '')
+    .filter(Boolean);
+  const colorLabel = colorNames.length > 1
+    ? colorNames.slice(0, -1).join(', ') + ' & ' + colorNames[colorNames.length - 1]
+    : colorNames[0] || 'multiple colors';
+
   const productGridHtml = products.map(p => {
-    const imgTag = p.image
-      ? `<img src="${escapeHtml(p.image)}" alt="${escapeHtml(p.title)}" style="width:100%;height:auto;border-radius:8px;aspect-ratio:1/1;object-fit:cover;" loading="lazy">`
-      : '<div style="width:100%;aspect-ratio:1/1;background:#f0f0f0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#999;">No image</div>';
     const productUrl = p.handle ? `/products/${p.handle}` : '#';
+
+    // Hero image (lifestyle mockup) — first image
+    const heroImg = p.image
+      ? `<img src="${escapeHtml(p.image)}" alt="${escapeHtml(p.title)}" style="width:100%;height:auto;border-radius:8px;aspect-ratio:3/4;object-fit:cover;" loading="lazy">`
+      : '';
+
+    // Product blank images (the actual shirt colors)
+    const blankImgs = (p.images || []).slice(1, 3).map(img =>
+      `<img src="${escapeHtml(img)}" alt="${escapeHtml(p.title)}" style="width:100%;height:auto;border-radius:6px;aspect-ratio:1/1;object-fit:cover;" loading="lazy">`
+    ).join('');
+
     return `
-      <div style="text-align:center;">
+      <div style="text-align:center;border:1px solid #eee;border-radius:12px;overflow:hidden;background:#fff;">
         <a href="${productUrl}" style="text-decoration:none;color:inherit;">
-          ${imgTag}
-          <h3 style="margin:12px 0 4px;font-size:16px;font-weight:600;color:#1a1a1a;">${escapeHtml(p.title)}</h3>
-          <p style="margin:0;font-size:18px;font-weight:700;color:#2d2d2d;">$${escapeHtml(p.price)}</p>
+          ${heroImg}
         </a>
-        <a href="${productUrl}" style="display:inline-block;margin-top:10px;padding:10px 24px;background:#1a1a1a;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;letter-spacing:0.5px;">Shop Now</a>
+        <div style="padding:12px 16px;">
+          <h3 style="margin:0 0 4px;font-size:15px;font-weight:600;color:#1a1a1a;">${escapeHtml(p.title)}</h3>
+          <p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#2d2d2d;">From $${escapeHtml(p.price)}</p>
+          ${blankImgs ? `
+          <p style="font-size:12px;color:#888;margin:0 0 8px;">Available in ${escapeHtml(colorLabel)}</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+            ${blankImgs}
+          </div>` : ''}
+          <a href="${productUrl}" style="display:inline-block;width:100%;padding:10px 0;background:#1a1a1a;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Choose Color &amp; Size</a>
+        </div>
       </div>`;
   }).join('\n');
 
-  const destination = isTikTokShopReel ? 'TikTok Shop' : 'our store';
-
   return `
-<div style="max-width:800px;margin:0 auto;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:900px;margin:0 auto;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <!-- Hero Section -->
   <div style="text-align:center;margin-bottom:32px;">
     <h1 style="font-size:28px;font-weight:800;margin:0 0 8px;color:#1a1a1a;">${escapeHtml(hook || title)}</h1>
-    <p style="font-size:16px;color:#555;margin:0 0 16px;max-width:600px;display:inline-block;">${escapeHtml(body || '')}</p>
-    <p style="font-size:13px;color:#888;margin:0;">Handmade in Asheville, NC | Blue Ridge Custom Co</p>
+    <p style="font-size:16px;color:#555;margin:0 0 12px;max-width:600px;display:inline-block;">${escapeHtml(body || '')}</p>
+    <p style="font-size:14px;color:#1a1a1a;margin:0 0 4px;font-weight:600;">Each design is available in ${escapeHtml(colorLabel)}.</p>
+    <p style="font-size:13px;color:#888;margin:0;">Select your color and size on the product page. Printed locally in Asheville, NC.</p>
   </div>
 
   <!-- Product Grid -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:24px;margin-bottom:40px;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px;margin-bottom:40px;">
     ${productGridHtml}
   </div>
 
   <!-- See More Button -->
   <div style="text-align:center;margin:40px 0;">
-    <a href="/collections/${escapeHtml(collectionHandle)}" style="display:inline-block;padding:16px 48px;background:#2d2d2d;color:#fff;text-decoration:none;border-radius:8px;font-size:18px;font-weight:700;letter-spacing:0.5px;transition:background 0.2s;">See More Designs</a>
+    <a href="/collections/${escapeHtml(collectionHandle)}" style="display:inline-block;padding:16px 48px;background:#2d2d2d;color:#fff;text-decoration:none;border-radius:8px;font-size:18px;font-weight:700;letter-spacing:0.5px;">See More Designs</a>
   </div>
 
   <!-- Footer -->
   <div style="text-align:center;padding:24px 0;border-top:1px solid #eee;margin-top:20px;">
-    <p style="font-size:13px;color:#999;margin:0;">As seen on ${escapeHtml(destination)} | Printed locally in Asheville, NC</p>
+    <p style="font-size:13px;color:#999;margin:0;">Handmade in Asheville, NC | Blue Ridge Custom Co</p>
   </div>
 </div>`;
 }
@@ -1260,13 +1283,14 @@ async function runFullPipeline(collectionCategory, options = {}) {
               try {
                 const product = await shopify.getProduct(pid);
                 if (product) {
-                  const heroImage = (product.images || product.image) ?
-                    (Array.isArray(product.images) && product.images.length ? product.images[0].src : (product.image?.src || '')) : '';
+                  const allImages = Array.isArray(product.images) ? product.images.map(img => img.src) : [];
+                  const heroImage = allImages[0] || (product.image?.src || '');
                   const price = product.variants?.[0]?.price || '24.99';
                   const handle = product.handle || '';
                   productCards.push({
                     title: product.title || 'Custom Tee',
                     image: heroImage,
+                    images: allImages,
                     price,
                     handle,
                     id: pid
@@ -1296,7 +1320,8 @@ async function runFullPipeline(collectionCategory, options = {}) {
               collectionHandle,
               reelUrl: rec.reel.outputUrl,
               theme: rec.theme,
-              isTikTokShopReel: rec.isTikTokShopReel
+              isTikTokShopReel: rec.isTikTokShopReel,
+              apparelChoices: options.apparelChoices
             });
 
             // Check if page already exists (avoid duplicates)
