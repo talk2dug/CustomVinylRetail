@@ -19876,9 +19876,89 @@ Return ONLY valid JSON, no markdown or explanation.`;
       fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
 
       const relativePath = `library/uploads/custom-art/${safeFilename}`;
-      sendJson(res, 200, { success: true, filePath: relativePath, absolutePath: filePath });
+
+      // Generate thumbnail (400px wide JPEG) for fast grid loading
+      let thumbnailPath = null;
+      try {
+        const sharp = require('sharp');
+        const thumbDir = path.join(LIBRARY_ROOT, 'uploads', 'custom-art', 'thumbs');
+        fs.mkdirSync(thumbDir, { recursive: true });
+        const thumbFilename = `thumb_${safeFilename.replace(/\.[^.]+$/, '.jpg')}`;
+        const thumbAbsPath = path.join(thumbDir, thumbFilename);
+        await sharp(filePath)
+          .resize(400, null, { withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toFile(thumbAbsPath);
+        thumbnailPath = `library/uploads/custom-art/thumbs/${thumbFilename}`;
+      } catch (thumbErr) {
+        console.warn('[CustomArt Upload] Thumbnail generation failed:', thumbErr.message);
+      }
+
+      sendJson(res, 200, { success: true, filePath: relativePath, absolutePath: filePath, thumbnailPath });
     } catch (e) {
       sendJson(res, 500, { error: e?.message || 'Unable to upload file.' });
+    }
+    return;
+  }
+
+  // --- BATCH GENERATE THUMBNAILS FOR EXISTING ARTWORK ---
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/artwork/generate-thumbnails') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const sharp = require('sharp');
+      const allArtwork = db.listCustomArtArtwork({ activeOnly: false, limit: 9999 });
+      const needsThumbnail = allArtwork.filter(a => !a.thumbnailPath && a.filePath);
+
+      console.log(`[CustomArt Thumbs] Generating thumbnails for ${needsThumbnail.length} of ${allArtwork.length} artwork`);
+
+      const thumbDir = path.join(LIBRARY_ROOT, 'uploads', 'custom-art', 'thumbs');
+      fs.mkdirSync(thumbDir, { recursive: true });
+
+      let succeeded = 0, failed = 0;
+      const errors = [];
+
+      for (const art of needsThumbnail) {
+        try {
+          // Resolve source file
+          let absPath = art.filePath;
+          if (!path.isAbsolute(absPath)) {
+            absPath = path.join(LIBRARY_ROOT, '..', absPath);
+          }
+          if (!fs.existsSync(absPath)) {
+            absPath = path.join(LIBRARY_ROOT, art.filePath.replace(/^library\/?/, ''));
+          }
+          // Also try under web/ directory
+          if (!fs.existsSync(absPath)) {
+            absPath = path.resolve(__dirname, '..', 'web', art.filePath.replace(/^\//, ''));
+          }
+          if (!fs.existsSync(absPath)) {
+            failed++;
+            errors.push({ id: art.id, error: 'Source file not found' });
+            continue;
+          }
+
+          const thumbFilename = `thumb_${art.id}.jpg`;
+          const thumbAbsPath = path.join(thumbDir, thumbFilename);
+
+          await sharp(absPath)
+            .resize(400, null, { withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toFile(thumbAbsPath);
+
+          const thumbnailPath = `library/uploads/custom-art/thumbs/${thumbFilename}`;
+          db.updateCustomArtArtwork(art.id, { thumbnailPath });
+          succeeded++;
+        } catch (e) {
+          failed++;
+          errors.push({ id: art.id, error: e.message });
+        }
+      }
+
+      console.log(`[CustomArt Thumbs] Done: ${succeeded} ok, ${failed} failed`);
+      sendJson(res, 200, { success: true, total: needsThumbnail.length, succeeded, failed, errors: errors.slice(0, 20) });
+    } catch (e) {
+      console.error('[CustomArt Thumbs] Error:', e);
+      sendJson(res, 500, { error: e?.message || 'Thumbnail generation failed.' });
     }
     return;
   }

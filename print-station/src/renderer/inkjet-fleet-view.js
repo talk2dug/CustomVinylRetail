@@ -485,9 +485,16 @@ async function discoverInkjetPrinters() {
 
     if (confirm(msg)) {
       for (const p of newPrinters) {
+        // CUPS names must be printable ASCII, no spaces or special chars
+        const safeCupsName = (p.cups_name || p.name || 'printer')
+          .replace(/[^\x20-\x7E]/g, '')
+          .replace(/\s+/g, '_')
+          .replace(/[^a-zA-Z0-9_-]/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '');
         await printStation.inkjetFleet.addPrinter({
           name: p.name || p.cups_name,
-          cups_name: p.cups_name,
+          cups_name: safeCupsName,
           uri: p.uri,
           add_to_cups: true
         });

@@ -361,7 +361,10 @@ contextBridge.exposeInMainWorld('printStation', {
     applyMetalPrintFilter: (payload) => ipcRenderer.invoke('metal-print:apply-filter', payload || {}),
 
     // Sublimation print preparation (mirror + bleed + resize)
-    prepareSublimation: (payload) => ipcRenderer.invoke('custom-art:prepare-sublimation', payload || {})
+    prepareSublimation: (payload) => ipcRenderer.invoke('custom-art:prepare-sublimation', payload || {}),
+
+    // Batch generate thumbnails for all artwork missing them
+    generateThumbnails: () => ipcRenderer.invoke('custom-art:generate-thumbnails')
   },
 
   // Campaign API (for campaign mockups and other campaign-specific operations)

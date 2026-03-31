@@ -4929,11 +4929,11 @@ Return ONLY valid JSON, nothing else:
 
       console.log('[Custom Art Upload] Success:', result.filePath);
 
-      // Return server-relative path
+      // Return server-relative path (server now generates a real thumbnail)
       return {
         success: true,
         filePath: result.filePath,
-        thumbnailPath: result.filePath, // Server doesn't generate thumbnails yet, use same path
+        thumbnailPath: result.thumbnailPath || result.filePath,
         filename: path.basename(result.filePath)
       };
     } catch (e) {
@@ -5304,6 +5304,11 @@ Return ONLY valid JSON, nothing else:
   // Sublimation print preparation (mirror + bleed + resize on server via Sharp)
   ipcMain.handle('custom-art:prepare-sublimation', (_event, payload) =>
     httpRequest('/api/custom-art/prepare-sublimation', { method: 'POST', body: payload || {}, timeout: 60000 })
+  );
+
+  // Batch generate thumbnails for all artwork missing them
+  ipcMain.handle('custom-art:generate-thumbnails', () =>
+    httpRequest('/api/custom-art/artwork/generate-thumbnails', { method: 'POST', body: {}, timeout: 300000 })
   );
 
   // Metal Print Filter and Campaign Export
