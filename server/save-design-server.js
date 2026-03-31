@@ -18748,9 +18748,16 @@ Return ONLY valid JSON, no markdown or explanation.`;
 
       let imagePath = null;
       if (artwork.filePath) {
-        const webPath = path.resolve(__dirname, '..', 'web', artwork.filePath.replace(/^\//, ''));
-        if (fs.existsSync(webPath)) imagePath = webPath;
-        else if (fs.existsSync(artwork.filePath)) imagePath = artwork.filePath;
+        const fp = artwork.filePath.replace(/^\//, '');
+        const candidates = [
+          path.resolve(__dirname, '..', 'web', fp),
+          artwork.filePath,
+          path.resolve('/mnt/dbFiles', fp.replace(/^library\//, '')),
+          path.resolve('/mnt/dbFiles', fp),
+        ];
+        for (const c of candidates) {
+          if (fs.existsSync(c)) { imagePath = c; break; }
+        }
       }
       if (!imagePath) {
         sendJson(res, 400, { error: 'Artwork image file not found on server.' });
@@ -18758,7 +18765,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       }
 
       console.log('[Artwork Identify] Running visual analysis for:', artworkId, imagePath);
-      const result = await identifyArtwork(imagePath, { skipCache: !!body.skipCache });
+      const result = await identifyArtwork(imagePath, { skipCache: !!body.skipCache, hint: body.hint || null });
 
       const updates = {
         theme: result.theme,
@@ -18807,9 +18814,16 @@ Return ONLY valid JSON, no markdown or explanation.`;
         try {
           let imagePath = null;
           if (artwork.filePath) {
-            const webPath = path.resolve(__dirname, '..', 'web', artwork.filePath.replace(/^\//, ''));
-            if (fs.existsSync(webPath)) imagePath = webPath;
-            else if (fs.existsSync(artwork.filePath)) imagePath = artwork.filePath;
+            const fp = artwork.filePath.replace(/^\//, '');
+            const candidates = [
+              path.resolve(__dirname, '..', 'web', fp),
+              artwork.filePath,
+              path.resolve('/mnt/dbFiles', fp.replace(/^library\//, '')),
+              path.resolve('/mnt/dbFiles', fp),
+            ];
+            for (const c of candidates) {
+              if (fs.existsSync(c)) { imagePath = c; break; }
+            }
           }
           if (!imagePath) {
             failed++;
@@ -19987,17 +20001,23 @@ Return ONLY valid JSON, no markdown or explanation.`;
         return;
       }
 
-      // Resolve absolute path
-      let absPath = filePath;
-      if (!path.isAbsolute(filePath)) {
-        absPath = path.join(LIBRARY_ROOT, '..', filePath);
+      // Resolve absolute path — try multiple known locations
+      let absPath = null;
+      const relPath = filePath.replace(/^library\/?/, '');
+      const candidates = [
+        path.isAbsolute(filePath) ? filePath : null,
+        path.join(LIBRARY_ROOT, '..', filePath),
+        path.join(LIBRARY_ROOT, relPath),
+        path.join('/mnt/dbFiles', relPath),
+        path.resolve(__dirname, '..', 'web', filePath),
+        path.resolve(__dirname, '..', 'web', relPath)
+      ].filter(Boolean);
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) { absPath = candidate; break; }
       }
-      if (!fs.existsSync(absPath)) {
-        absPath = path.join(LIBRARY_ROOT, filePath.replace(/^library\/?/, ''));
-        if (!fs.existsSync(absPath)) {
-          sendJson(res, 404, { error: `Image file not found: ${filePath}` });
-          return;
-        }
+      if (!absPath) {
+        sendJson(res, 404, { error: `Image file not found: ${filePath}` });
+        return;
       }
 
       const sharp = require('sharp');
