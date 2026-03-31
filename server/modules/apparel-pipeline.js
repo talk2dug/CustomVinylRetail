@@ -1130,7 +1130,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
                 filename: path.basename(reel.outputPath || reel.outputUrl),
                 url: reel.outputUrl,
                 template: theme,
-                collection: collectionCategory || categoryLabel,
+                collection: options.campaignSlug || collectionCategory || categoryLabel,
                 designs: JSON.stringify(chunkDesignIds),
                 shopifyProductIds: JSON.stringify(shopifyProductIds),
                 duration: reel.duration || null,
