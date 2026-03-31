@@ -386,9 +386,141 @@ function getDesignCategory(imagePathOrUrl) {
   return cache[cacheKey(imagePathOrUrl)] || null;
 }
 
+// ---------------------------------------------------------------------------
+// Artwork identification — includes human-friendly title generation
+// ---------------------------------------------------------------------------
+
+const ARTWORK_IDENTIFY_PROMPT = `You are naming and categorizing artwork for a custom art and apparel shop in Asheville, NC.
+
+Look at this image and return a JSON object with these exact fields:
+
+{
+  "title": "Short, natural artwork title",
+  "theme": one of: ${JSON.stringify(THEMES)},
+  "mood": one of: ${JSON.stringify(MOODS)},
+  "colors": ["color1", "color2", ...] — dominant colors (2-5, simple names),
+  "keywords": ["kw1", "kw2", "kw3"] — 3 to 5 descriptive keywords,
+  "suggestedShirtColors": ["color1", "color2"] — 2-3 from ${JSON.stringify(SHIRT_COLORS)}
+}
+
+Title rules:
+- Write a short, evocative title a real artist or gallery would use (2-6 words)
+- Examples of good titles: "Morning Fog Over the Ridgeline", "Highland Cow at Dawn", "Neon Diner Glow", "Mushroom Forest Floor"
+- NO technical terms, NO photography jargon, NO AI-sounding phrases
+- Do NOT include words like: "ultra-wide", "panoramic", "cinematic", "photography of", "hyper-realistic", "8k", "generated", "prompt", "render"
+- Do NOT start with "A" or "The" unless it sounds natural
+- Make it sound like something you'd see on a gallery wall or a product listing
+- Return ONLY valid JSON, no markdown fences, no extra text`;
+
+const ARTWORK_CACHE_PATH = '/mnt/dbFiles/artwork-identifications.json';
+let _artworkCache = null;
+
+function loadArtworkCache() {
+  if (_artworkCache) return _artworkCache;
+  try {
+    if (fs.existsSync(ARTWORK_CACHE_PATH)) {
+      _artworkCache = JSON.parse(fs.readFileSync(ARTWORK_CACHE_PATH, 'utf8'));
+    } else {
+      _artworkCache = {};
+    }
+  } catch (err) {
+    console.error('[design-categorizer] Failed to load artwork cache:', err.message);
+    _artworkCache = {};
+  }
+  return _artworkCache;
+}
+
+function saveArtworkCache() {
+  try {
+    const dir = path.dirname(ARTWORK_CACHE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(ARTWORK_CACHE_PATH, JSON.stringify(_artworkCache, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[design-categorizer] Failed to save artwork cache:', err.message);
+  }
+}
+
+/**
+ * Identify artwork — categorize + generate human-friendly title.
+ * @param {string} imagePathOrUrl - Local file path or HTTP(S) URL
+ * @param {object} [opts]
+ * @param {boolean} [opts.skipCache=false]
+ * @returns {Promise<object>} Identification with title
+ */
+async function identifyArtwork(imagePathOrUrl, opts = {}) {
+  const cache = loadArtworkCache();
+  const key = cacheKey(imagePathOrUrl);
+
+  if (!opts.skipCache && cache[key]) {
+    return cache[key];
+  }
+
+  const img = await loadImage(imagePathOrUrl);
+
+  const payload = {
+    contents: [{
+      parts: [
+        {
+          inlineData: {
+            mimeType: img.mimeType,
+            data: img.base64
+          }
+        },
+        {
+          text: ARTWORK_IDENTIFY_PROMPT
+        }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0.5,
+      maxOutputTokens: 1024,
+      thinkingConfig: {
+        thinkingBudget: 0
+      }
+    }
+  };
+
+  const response = await geminiRequest(payload);
+
+  const text = response.candidates?.[0]?.content?.parts
+    ?.filter(p => p.text)
+    ?.map(p => p.text)
+    ?.join('') || '';
+
+  const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (e) {
+    console.error('[design-categorizer] Failed to parse artwork identify response:', text.slice(0, 500));
+    throw new Error('Failed to parse artwork identification response');
+  }
+
+  const result = {
+    title: (parsed.title || '').trim(),
+    theme: THEMES.includes(parsed.theme) ? parsed.theme : 'abstract-artistic',
+    mood: MOODS.includes(parsed.mood) ? parsed.mood : 'bold',
+    colors: Array.isArray(parsed.colors) ? parsed.colors.slice(0, 5) : [],
+    keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 5) : [],
+    suggestedShirtColors: Array.isArray(parsed.suggestedShirtColors)
+      ? parsed.suggestedShirtColors.filter(c => SHIRT_COLORS.includes(c))
+      : ['black', 'white'],
+    reelCopy: REEL_COPY[THEMES.includes(parsed.theme) ? parsed.theme : 'abstract-artistic'],
+    analyzedAt: new Date().toISOString(),
+    source: imagePathOrUrl
+  };
+
+  cache[key] = result;
+  _artworkCache = cache;
+  saveArtworkCache();
+
+  return result;
+}
+
 module.exports = {
   categorizeDesign,
   categorizeCollection,
   getDesignCategory,
+  identifyArtwork,
   THEMES
 };

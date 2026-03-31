@@ -97,7 +97,7 @@ const { runFullPipeline } = require('./modules/apparel-pipeline');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
-const { categorizeDesign } = require('./modules/design-categorizer');
+const { identifyArtwork } = require('./modules/design-categorizer');
 const stickerSheets = require('./sticker-sheet-generator');
 const taskTracker = require('./task-tracker');
 const kioskManager = require('./modules/kiosk-manager');
@@ -10062,18 +10062,6 @@ Keep it concise and actionable.`;
       return;
     }
 
-    // POST /api/tiktok-videos/managed/:id/approve
-    const approveMatch = parsedUrl.pathname.match(/\/api\/tiktok-videos\/managed\/([^/]+)\/approve$/);
-    if (req.method === 'POST' && approveMatch) {
-      const videoId = approveMatch[1];
-      const record = db.getTiktokVideo(videoId);
-      if (!record) { sendJson(res, 404, { error: 'Video not found' }); return; }
-      const updated = db.updateTiktokVideo(videoId, { status: 'approved' });
-      console.log(`[TikTok] Reel ${videoId} approved`);
-      sendJson(res, 200, updated);
-      return;
-    }
-
     // PATCH /api/tiktok-videos/managed/:id
     if (req.method === 'PATCH' && idMatch) {
       collectRequestBody(req, (error, body) => {
@@ -18575,13 +18563,11 @@ Return ONLY valid JSON, no markdown or explanation.`;
       const activeOnly = parsedUrl.query?.activeOnly !== 'false';
       const status = parsedUrl.query?.status || null;
       const category = parsedUrl.query?.category || null;
-      const theme = parsedUrl.query?.theme || null;
-      const mood = parsedUrl.query?.mood || null;
       const search = parsedUrl.query?.search || null;
       const limit = Number(parsedUrl.query?.limit) || 100;
       const offset = Number(parsedUrl.query?.offset) || 0;
-      console.log('[Custom Art API] listArtwork query:', { activeOnly, status, category, theme, mood, search, limit, offset, rawActiveOnly: parsedUrl.query?.activeOnly });
-      const artwork = db.listCustomArtArtwork({ activeOnly, status, category, theme, mood, search, limit, offset });
+      console.log('[Custom Art API] listArtwork query:', { activeOnly, status, category, search, limit, offset, rawActiveOnly: parsedUrl.query?.activeOnly });
+      const artwork = db.listCustomArtArtwork({ activeOnly, status, category, search, limit, offset });
       console.log('[Custom Art API] listArtwork returned', artwork?.length || 0, 'items');
       sendJson(res, 200, { success: true, artwork });
     } catch (e) {
@@ -18748,7 +18734,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
     return;
   }
 
-  // Visual identification for artwork — uses Gemini design categorizer
+  // Visual identification for artwork — uses Gemini to categorize + generate human-friendly title
   if (req.method === 'POST' && segments[0] === 'api' && segments[1] === 'custom-art' && segments[2] === 'artwork' && segments[3] && segments[4] === 'identify') {
     if (!requireInternalKey(req, res)) return;
     try {
@@ -18760,27 +18746,20 @@ Return ONLY valid JSON, no markdown or explanation.`;
         return;
       }
 
-      // Resolve image path
       let imagePath = null;
       if (artwork.filePath) {
         const webPath = path.resolve(__dirname, '..', 'web', artwork.filePath.replace(/^\//, ''));
-        if (fs.existsSync(webPath)) {
-          imagePath = webPath;
-        } else if (fs.existsSync(artwork.filePath)) {
-          imagePath = artwork.filePath;
-        }
+        if (fs.existsSync(webPath)) imagePath = webPath;
+        else if (fs.existsSync(artwork.filePath)) imagePath = artwork.filePath;
       }
-
       if (!imagePath) {
         sendJson(res, 400, { error: 'Artwork image file not found on server.' });
         return;
       }
 
-      // Run Gemini visual analysis via design-categorizer
       console.log('[Artwork Identify] Running visual analysis for:', artworkId, imagePath);
-      const result = await categorizeDesign(imagePath, { skipCache: !!body.skipCache });
+      const result = await identifyArtwork(imagePath, { skipCache: !!body.skipCache });
 
-      // Save identification to artwork record
       const updates = {
         theme: result.theme,
         mood: result.mood,
@@ -18790,19 +18769,16 @@ Return ONLY valid JSON, no markdown or explanation.`;
         identifiedAt: new Date().toISOString()
       };
 
-      // Also update category/tags if not already set
-      if (!artwork.category && result.theme) {
-        updates.category = result.theme;
+      // Update title with the generated human-friendly name
+      if (result.title) {
+        updates.title = result.title;
       }
-      if (!artwork.tags && result.keywords && result.keywords.length) {
-        updates.tags = result.keywords.join(', ');
-      }
-      if (!artwork.style && result.mood) {
-        updates.style = result.mood;
-      }
+      if (!artwork.category && result.theme) updates.category = result.theme;
+      if (!artwork.tags && result.keywords?.length) updates.tags = result.keywords.join(', ');
+      if (!artwork.style && result.mood) updates.style = result.mood;
 
       const updated = db.updateCustomArtArtwork(artworkId, updates);
-      console.log('[Artwork Identify] Saved identification for:', artworkId, result.theme, result.mood);
+      console.log('[Artwork Identify] Saved:', artworkId, `"${result.title}"`, result.theme, result.mood);
       sendJson(res, 200, { success: true, artwork: updated, identification: result });
     } catch (e) {
       console.error('[Artwork Identify] Error:', e);
@@ -18841,7 +18817,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
             continue;
           }
 
-          const result = await categorizeDesign(imagePath, { skipCache: !!body.skipCache });
+          const result = await identifyArtwork(imagePath, { skipCache: !!body.skipCache });
           const updates = {
             theme: result.theme,
             mood: result.mood,
@@ -18850,14 +18826,13 @@ Return ONLY valid JSON, no markdown or explanation.`;
             suggestedShirtColors: result.suggestedShirtColors,
             identifiedAt: new Date().toISOString()
           };
+          if (result.title) updates.title = result.title;
           if (!artwork.category && result.theme) updates.category = result.theme;
           if (!artwork.tags && result.keywords?.length) updates.tags = result.keywords.join(', ');
           if (!artwork.style && result.mood) updates.style = result.mood;
 
           db.updateCustomArtArtwork(artwork.id, updates);
           succeeded++;
-
-          // Rate limit between items
           await new Promise(r => setTimeout(r, 300));
         } catch (e) {
           failed++;
@@ -19904,6 +19879,130 @@ Return ONLY valid JSON, no markdown or explanation.`;
       sendJson(res, 200, { success: true, filePath: relativePath, absolutePath: filePath });
     } catch (e) {
       sendJson(res, 500, { error: e?.message || 'Unable to upload file.' });
+    }
+    return;
+  }
+
+  // --- PREPARE SUBLIMATION PRINT (mirror + bleed + resize + crop position) ---
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/custom-art/prepare-sublimation') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const body = await getReqBodyJson(req);
+      const { artworkId, blankWidth, blankHeight, bleedInches, cropPosition, infoOnly } = body;
+      if (!artworkId) {
+        sendJson(res, 400, { error: 'artworkId is required.' });
+        return;
+      }
+
+      // Look up artwork file path
+      const artwork = db.prepare('SELECT * FROM custom_art_artwork WHERE id = ?').get(artworkId);
+      if (!artwork) {
+        sendJson(res, 404, { error: 'Artwork not found.' });
+        return;
+      }
+
+      const filePath = artwork.file_path || artwork.optimized_path;
+      if (!filePath) {
+        sendJson(res, 400, { error: 'No image file for this artwork.' });
+        return;
+      }
+
+      // Resolve absolute path
+      let absPath = filePath;
+      if (!path.isAbsolute(filePath)) {
+        absPath = path.join(LIBRARY_ROOT, '..', filePath);
+      }
+      if (!fs.existsSync(absPath)) {
+        absPath = path.join(LIBRARY_ROOT, filePath.replace(/^library\/?/, ''));
+        if (!fs.existsSync(absPath)) {
+          sendJson(res, 404, { error: `Image file not found: ${filePath}` });
+          return;
+        }
+      }
+
+      const sharp = require('sharp');
+      const meta = await sharp(absPath).metadata();
+      const srcW = meta.width;
+      const srcH = meta.height;
+      const srcAspect = srcW / srcH;
+
+      // Info-only mode: just return source dimensions for client-side preview
+      if (infoOnly) {
+        sendJson(res, 200, { success: true, sourceWidth: srcW, sourceHeight: srcH, sourceAspect: srcAspect });
+        return;
+      }
+
+      if (!blankWidth || !blankHeight) {
+        sendJson(res, 400, { error: 'blankWidth and blankHeight are required.' });
+        return;
+      }
+
+      const bleed = typeof bleedInches === 'number' ? bleedInches : 0.25;
+      const printDpi = 300;
+
+      // Calculate pixel dimensions: blank size + bleed on each side
+      const totalWidth = blankWidth + bleed * 2;
+      const totalHeight = blankHeight + bleed * 2;
+      const pxW = Math.round(totalWidth * printDpi);
+      const pxH = Math.round(totalHeight * printDpi);
+      const targetAspect = pxW / pxH;
+
+      // Map cropPosition to Sharp position values
+      const positionMap = {
+        'center': 'centre',
+        'top': 'top',
+        'bottom': 'bottom',
+        'left': 'left',
+        'right': 'right',
+        'top-left': 'northwest',
+        'top-right': 'northeast',
+        'bottom-left': 'southwest',
+        'bottom-right': 'southeast'
+      };
+      const sharpPosition = positionMap[cropPosition] || 'centre';
+
+      // Resize to cover (fill) the target area, then mirror horizontally
+      const processed = await sharp(absPath)
+        .resize(pxW, pxH, { fit: 'cover', position: sharpPosition })
+        .flop()  // horizontal mirror for sublimation
+        .png({ quality: 100 })
+        .toBuffer();
+
+      const base64 = processed.toString('base64');
+
+      // Calculate how much was cropped for the response
+      const scaleToFillW = pxW / srcW;
+      const scaleToFillH = pxH / srcH;
+      const scale = Math.max(scaleToFillW, scaleToFillH);
+      const croppedAxis = srcAspect > targetAspect ? 'width' : srcAspect < targetAspect ? 'height' : 'none';
+      const overflowPx = croppedAxis === 'width'
+        ? Math.round(srcW * scale - pxW)
+        : croppedAxis === 'height'
+          ? Math.round(srcH * scale - pxH)
+          : 0;
+
+      sendJson(res, 200, {
+        success: true,
+        base64,
+        mimeType: 'image/png',
+        widthInches: totalWidth,
+        heightInches: totalHeight,
+        widthPx: pxW,
+        heightPx: pxH,
+        dpi: printDpi,
+        bleedInches: bleed,
+        mirrored: true,
+        cropPosition: cropPosition || 'center',
+        sourceWidth: srcW,
+        sourceHeight: srcH,
+        sourceAspect: srcAspect,
+        targetAspect,
+        croppedAxis,
+        overflowPx
+      });
+    } catch (e) {
+      console.error('[CustomArt] Sublimation prep error:', e);
+      sendJson(res, 500, { error: e?.message || 'Failed to prepare sublimation image.' });
     }
     return;
   }
