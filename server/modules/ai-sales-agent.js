@@ -1217,6 +1217,15 @@ async function selectProduct(category, catConfig, preferredUid) {
 
   if (products.length === 0) return null;
 
+  // Safety-net: filter to only products whose product_type matches this category
+  const typeSet = new Set(productTypes.map(t => t.toLowerCase()));
+  const typeMatched = products.filter(p => p.product_type && typeSet.has(p.product_type.toLowerCase()));
+  if (typeMatched.length > 0) {
+    products = typeMatched;
+  } else {
+    console.warn(`[AI Agent] No products matched types ${JSON.stringify(productTypes)} — using unfiltered pool (${products.length})`);
+  }
+
   // Filter out recently posted
   const candidates = products.filter(p => !recentlyPosted.includes(String(p.id)));
 

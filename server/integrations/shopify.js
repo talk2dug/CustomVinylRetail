@@ -1112,7 +1112,7 @@ async function updateVariantInventoryManagement(variantId, management) {
   return res?.variant || res;
 }
 
-async function listProducts({ limit = 50, since_id } = {}) {
+async function listProducts({ limit = 50, since_id, product_type, status } = {}) {
   if (!isConfigured()) throw new Error('Shopify not configured');
   const lim = Math.max(1, Math.min(250, Number(limit) || 50));
   let url = adminUrl(`/products.json?limit=${lim}`);
@@ -1120,6 +1120,16 @@ async function listProducts({ limit = 50, since_id } = {}) {
   // Use cursor-based pagination with since_id if provided
   if (since_id) {
     url += `&since_id=${encodeURIComponent(since_id)}`;
+  }
+
+  // Filter by product_type if provided
+  if (product_type) {
+    url += `&product_type=${encodeURIComponent(product_type)}`;
+  }
+
+  // Filter by status if provided (active, draft, archived)
+  if (status) {
+    url += `&status=${encodeURIComponent(status)}`;
   }
 
   const res = await httpJson('GET', url);
