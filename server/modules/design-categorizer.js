@@ -445,6 +445,7 @@ function saveArtworkCache() {
  * @param {string} imagePathOrUrl - Local file path or HTTP(S) URL
  * @param {object} [opts]
  * @param {boolean} [opts.skipCache=false]
+ * @param {string} [opts.hint] - Extra context to help with identification (e.g. partial name, location)
  * @returns {Promise<object>} Identification with title
  */
 async function identifyArtwork(imagePathOrUrl, opts = {}) {
@@ -457,6 +458,11 @@ async function identifyArtwork(imagePathOrUrl, opts = {}) {
 
   const img = await loadImage(imagePathOrUrl);
 
+  let prompt = ARTWORK_IDENTIFY_PROMPT;
+  if (opts.hint) {
+    prompt += `\n\nAdditional context: ${opts.hint}`;
+  }
+
   const payload = {
     contents: [{
       parts: [
@@ -467,7 +473,7 @@ async function identifyArtwork(imagePathOrUrl, opts = {}) {
           }
         },
         {
-          text: ARTWORK_IDENTIFY_PROMPT
+          text: prompt
         }
       ]
     }],

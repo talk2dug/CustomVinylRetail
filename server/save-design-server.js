@@ -19975,13 +19975,13 @@ Return ONLY valid JSON, no markdown or explanation.`;
       }
 
       // Look up artwork file path
-      const artwork = db.prepare('SELECT * FROM custom_art_artwork WHERE id = ?').get(artworkId);
+      const artwork = db.getCustomArtArtworkById(artworkId);
       if (!artwork) {
         sendJson(res, 404, { error: 'Artwork not found.' });
         return;
       }
 
-      const filePath = artwork.file_path || artwork.optimized_path;
+      const filePath = artwork.filePath || artwork.optimizedPath;
       if (!filePath) {
         sendJson(res, 400, { error: 'No image file for this artwork.' });
         return;
@@ -20018,7 +20018,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       }
 
       const bleed = typeof bleedInches === 'number' ? bleedInches : 0.25;
-      const printDpi = 300;
+      const printDpi = body.dpi || 600;
 
       // Calculate pixel dimensions: blank size + bleed on each side
       const totalWidth = blankWidth + bleed * 2;
@@ -20041,11 +20041,18 @@ Return ONLY valid JSON, no markdown or explanation.`;
       };
       const sharpPosition = positionMap[cropPosition] || 'centre';
 
-      // Resize to cover (fill) the target area, then mirror horizontally
-      const processed = await sharp(absPath)
+      // Resize to cover (fill) the target area, mirror, and rotate if landscape
+      // Embed DPI metadata so CUPS/printer knows the exact physical size
+      const isLandscape = body.orientation === 'Landscape';
+      let pipeline = sharp(absPath)
         .resize(pxW, pxH, { fit: 'cover', position: sharpPosition })
         .flop()  // horizontal mirror for sublimation
-        .png({ quality: 100 })
+        .withMetadata({ density: printDpi });
+      if (isLandscape) {
+        pipeline = pipeline.rotate(90);
+      }
+      const processed = await pipeline
+        .png()
         .toBuffer();
 
       const base64 = processed.toString('base64');
