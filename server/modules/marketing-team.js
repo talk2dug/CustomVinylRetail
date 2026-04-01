@@ -1152,6 +1152,23 @@ async function generateDailyTikTok(db) {
           rawDb.prepare('UPDATE tiktok_briefs SET render_status = ?, render_output = ? WHERE id = ?')
             .run('rendered', JSON.stringify(renderResult), brief.id);
 
+          // Create draft tiktok_video for approval workflow
+          const fs = require('fs');
+          const path = require('path');
+          const vidFilename = path.basename(renderResult.outputPath);
+          const vidStat = fs.existsSync(renderResult.outputPath) ? fs.statSync(renderResult.outputPath) : null;
+          db.createTiktokVideo({
+            filename: vidFilename,
+            url: renderResult.outputUrl,
+            template: `AI: ${brief.contentType}`,
+            collection: brief.contentType,
+            duration: renderResult.duration || null,
+            file_size: vidStat ? vidStat.size : null,
+            status: 'draft',
+            caption: brief.rationale,
+            platform: 'tiktok'
+          });
+
           result = {
             outputUrl: renderResult.outputUrl,
             outputPath: renderResult.outputPath,

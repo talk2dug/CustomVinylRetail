@@ -63,6 +63,26 @@ async function handleTikTokStudioRoute(pathname, req, res, db) {
       rawDb.prepare('UPDATE tiktok_briefs SET render_status = ?, render_output = ? WHERE id = ?')
         .run(renderResult.success ? 'rendered' : 'failed', JSON.stringify(renderResult), brief.id);
 
+      // Step 4: If render succeeded, create a draft tiktok_video for approval
+      let draftVideo = null;
+      if (renderResult.success) {
+        const fs = require('fs');
+        const path = require('path');
+        const filename = path.basename(renderResult.outputPath);
+        const stat = fs.existsSync(renderResult.outputPath) ? fs.statSync(renderResult.outputPath) : null;
+        draftVideo = db.createTiktokVideo({
+          filename,
+          url: renderResult.outputUrl,
+          template: `AI: ${brief.contentType}`,
+          collection: brief.contentType,
+          duration: renderResult.duration || null,
+          file_size: stat ? stat.size : null,
+          status: 'draft',
+          caption: brief.rationale,
+          platform: 'tiktok'
+        });
+      }
+
       return sendJson({
         brief: {
           id: brief.id,
@@ -70,7 +90,8 @@ async function handleTikTokStudioRoute(pathname, req, res, db) {
           rationale: brief.rationale,
           sceneCount: brief.props.scenes.length
         },
-        render: renderResult
+        render: renderResult,
+        draft: draftVideo
       }, 201);
     } catch (err) {
       console.error('[TikTok Studio] Generate error:', err);
@@ -149,7 +170,7 @@ async function handleTikTokStudioRoute(pathname, req, res, db) {
   if (videoMatch && req.method === 'GET') {
     const fs = require('fs');
     const path = require('path');
-    const filePath = path.join('/mnt/stlFiles/footage-library/rendered', videoMatch[1]);
+    const filePath = path.join('/mnt/websit/tiktok-videos', videoMatch[1]);
     if (!fs.existsSync(filePath)) return sendError('Video not found', 404);
     const stat = fs.statSync(filePath);
     res.writeHead(200, {
