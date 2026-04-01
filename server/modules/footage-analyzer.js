@@ -32,7 +32,7 @@ const GEMINI_API_KEY = cleanKey(process.env.GEMINI_API_KEY || '');
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=`;
 
-const ANALYSIS_PROMPT = `You are analyzing raw video footage for TikTok content creation. Analyze these keyframes from a video clip and provide a structured assessment.
+const ANALYSIS_PROMPT = `You are analyzing raw video footage for TikTok content creation. Each keyframe is labeled with its timestamp in the video (e.g. "Frame at 12.5s"). Use these timestamps to identify WHEN things happen.
 
 Return JSON with this exact structure:
 {
@@ -41,9 +41,11 @@ Return JSON with this exact structure:
   "scenes": [
     {
       "frame_index": 0,
+      "timestamp_seconds": 0,
       "description": "What's shown in this frame",
       "subjects": ["person", "product", "tool"],
       "action": "pressing vinyl onto shirt",
+      "visible_product": "description of the specific print/design visible, or null if none",
       "quality_score": 0.8,
       "lighting": "good|fair|poor",
       "focus": "sharp|soft|blurry",
@@ -52,16 +54,32 @@ Return JSON with this exact structure:
       "role_suggestion": "hook|process|reveal|cta|b-roll|transition"
     }
   ],
+  "product_segments": [
+    {
+      "product_description": "Mushroom print on metal blank",
+      "start_seconds": 10,
+      "end_seconds": 45,
+      "phases": {
+        "setup_start": 10,
+        "setup_end": 15,
+        "process_start": 15,
+        "process_end": 35,
+        "reveal_start": 35,
+        "reveal_end": 45
+      }
+    }
+  ],
   "best_moments": {
-    "hook": { "frame_index": 0, "reason": "Dramatic close-up of pressing" },
-    "reveal": { "frame_index": 4, "reason": "Finished product shown clearly" },
-    "cta": { "frame_index": 5, "reason": "Product displayed against clean background" }
+    "hook": { "frame_index": 0, "timestamp_seconds": 0, "reason": "Dramatic close-up" },
+    "reveal": { "frame_index": 4, "timestamp_seconds": 30, "reason": "Finished product shown clearly" },
+    "cta": { "frame_index": 5, "timestamp_seconds": 40, "reason": "Product displayed" }
   },
   "overall_quality": 0.75,
   "usable_for_tiktok": true,
-  "suggested_trim": { "start_seconds": 0, "end_seconds": 15 },
   "tags": ["vinyl", "heat-press", "custom", "satisfying"]
-}`;
+}
+
+IMPORTANT: The "product_segments" array should identify each distinct print/product being worked on in the video, with timestamps for each phase (setup, process/pressing, reveal/peel). This is critical for editing — we need to know exactly when each product appears and what happens to it.`;
 
 /**
  * Parse Gemini response text into structured analysis JSON.
@@ -102,7 +120,7 @@ function parseAnalysisResponse(text) {
  * @param {number} count - Target number of keyframes (default 6)
  * @returns {{ frames: string[], tmpDir: string, cleanup: Function }}
  */
-function extractKeyframes(clipPath, count = 6) {
+function extractKeyframes(clipPath, count = 15) {
   if (!fs.existsSync(clipPath)) {
     throw new Error(`Clip not found: ${clipPath}`);
   }
@@ -193,11 +211,18 @@ function extractKeyframes(clipPath, count = 6) {
     frames = kept;
   }
 
+  // Calculate timestamp for each frame based on its position
+  const frameTimestamps = frames.map((f, i) => {
+    // For evenly-spaced frames, timestamp = index * interval
+    const interval = duration / frames.length;
+    return Math.round(i * interval * 10) / 10;
+  });
+
   const cleanup = () => {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
   };
 
-  return { frames, tmpDir, cleanup };
+  return { frames, frameTimestamps, duration, tmpDir, cleanup };
 }
 
 /**
@@ -223,21 +248,24 @@ async function analyzeClip(db, clipId) {
   console.log(`[FootageAnalyzer] Analyzing clip ${clipId}: ${clipPath}`);
 
   // Extract keyframes
-  const { frames, cleanup } = extractKeyframes(clipPath);
+  const { frames, frameTimestamps, duration: clipDuration, cleanup } = extractKeyframes(clipPath);
 
   try {
-    // Read frames as base64
-    const imageParts = frames.map(framePath => {
-      const data = fs.readFileSync(framePath).toString('base64');
-      return { inlineData: { mimeType: 'image/jpeg', data } };
-    });
+    // Read frames as base64, interleave with timestamp labels
+    const contentParts = [];
+    for (let i = 0; i < frames.length; i++) {
+      const data = fs.readFileSync(frames[i]).toString('base64');
+      contentParts.push({ text: `Frame ${i} at ${frameTimestamps[i]}s:` });
+      contentParts.push({ inlineData: { mimeType: 'image/jpeg', data } });
+    }
 
-    console.log(`[FootageAnalyzer] Sending ${imageParts.length} frames to Gemini (${imageParts.reduce((sum, p) => sum + p.inlineData.data.length, 0) / 1024 | 0}KB total)`);
+    const totalKB = contentParts.filter(p => p.inlineData).reduce((sum, p) => sum + p.inlineData.data.length, 0) / 1024 | 0;
+    console.log(`[FootageAnalyzer] Sending ${frames.length} frames to Gemini (${totalKB}KB total, clip duration: ${clipDuration}s)`);
 
     // Build Gemini request with all frames + prompt
     const parts = [
-      ...imageParts,
-      { text: ANALYSIS_PROMPT + `\n\nAnalyze these ${imageParts.length} keyframes from a video clip. Frame indices are 0 through ${imageParts.length - 1} in the order provided.` }
+      ...contentParts,
+      { text: ANALYSIS_PROMPT + `\n\nThis clip is ${clipDuration} seconds long. Analyze these ${frames.length} keyframes. Each frame is labeled with its timestamp. Use the timestamps to identify when each product/print appears and what phase it's in (setup, pressing, reveal).` }
     ];
 
     const url = GEMINI_URL + GEMINI_API_KEY;
@@ -245,7 +273,7 @@ async function analyzeClip(db, clipId) {
       contents: [{ parts }],
       generationConfig: {
         temperature: 0.1,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 8192,
         thinkingConfig: { thinkingBudget: 0 }
       }
     };
@@ -256,7 +284,7 @@ async function analyzeClip(db, clipId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(30000)
+        signal: AbortSignal.timeout(60000)
       });
     } catch (fetchErr) {
       console.error(`[FootageAnalyzer] Gemini fetch error: ${fetchErr.message}`);

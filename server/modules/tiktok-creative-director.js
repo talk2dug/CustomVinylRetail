@@ -275,13 +275,17 @@ function getRandomMusicTrack() {
 function buildGeminiPrompt(selectedClips, contentType, creatorPrompt, maxDuration) {
   const clipAnalyses = selectedClips.map((clip, i) => {
     const a = clip.parsedAnalysis || {};
-    return `Clip ${i + 1} (filename: ${clip.filename || clip.id}):
+    const segments = a.product_segments ? `\n  - Product Segments: ${JSON.stringify(a.product_segments)}` : '';
+    const scenes = (a.scenes || []).map(s => {
+      const ts = s.timestamp_seconds != null ? ` @${s.timestamp_seconds}s` : '';
+      return `    [${s.frame_index}${ts}] ${s.action || s.description || 'N/A'} (${s.role_suggestion}, hook=${s.hook_potential})${s.visible_product ? ' — product: ' + s.visible_product : ''}`;
+    }).join('\n');
+    return `Clip ${i + 1} (filename: ${clip.filename || clip.id}, duration: ${clip.duration_seconds || clip.duration || 'unknown'}s):
   - Summary: ${a.summary || 'N/A'}
-  - Scenes: ${JSON.stringify(a.scenes || [])}
   - Quality: ${a.overall_quality || 'N/A'}
-  - Content Type: ${a.content_type || 'N/A'}
-  - Hook Potential: ${a.hook_potential || 'N/A'}
-  - Duration: ${clip.duration_seconds || clip.duration || 'unknown'}s`;
+  - Content Type: ${a.content_type || 'N/A'}${segments}
+  - Scenes by timestamp:
+${scenes}`;
   }).join('\n\n');
 
   const creatorSection = creatorPrompt ? `
@@ -517,6 +521,24 @@ async function generateCreativeBrief(db, options = {}) {
   const rationale = geminiResult.rationale || 'AI-generated creative brief';
   delete geminiResult.rationale;
   const props = validateProps(geminiResult);
+
+  // 6b. Fix hallucinated filenames — map any unrecognized clipFilename to the closest valid clip
+  const validFilenames = new Set(selectedClips.map(c => c.filename));
+  for (const scene of props.scenes) {
+    if (!validFilenames.has(scene.clipFilename)) {
+      console.warn(`[CreativeDirector] Fixing hallucinated filename: ${scene.clipFilename}`);
+      // Try to match by partial UUID
+      const partial = scene.clipFilename.replace(/\.[^.]+$/, ''); // strip extension
+      const match = selectedClips.find(c => c.filename && c.filename.includes(partial));
+      if (match) {
+        scene.clipFilename = match.filename;
+      } else {
+        // Fall back to first clip
+        scene.clipFilename = selectedClips[0].filename;
+        console.warn(`[CreativeDirector] No match found, using fallback: ${scene.clipFilename}`);
+      }
+    }
+  }
 
   // Check for music tracks
   if (!props.musicTrack) {
