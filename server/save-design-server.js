@@ -91,6 +91,7 @@ const { handleQuoteRoute } = require('./quote-server');
 const { handleFinanceRoute } = require('./finance-server');
 const { handleFootageRoute } = require('./footage-server');
 const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
+const { handleTikTokStudioRoute } = require('./modules/tiktok-studio-routes');
 const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
 const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
 const { runFullPipeline } = require('./modules/apparel-pipeline');
@@ -10095,6 +10096,16 @@ Keep it concise and actionable.`;
     if (!isServe && !requireInternalKey(req, res)) return;
     handleTikTokVideoRoute(parsedUrl.pathname, req, res, db).catch(err => {
       console.error('[TikTok Video API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // TikTok Studio API (AI-driven video creation)
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/tiktok-studio')) {
+    if (!requireInternalKey(req, res)) return;
+    handleTikTokStudioRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[TikTok Studio API Error]', err);
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;

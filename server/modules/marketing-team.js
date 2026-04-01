@@ -18,6 +18,8 @@ const Database = require('better-sqlite3');
 const shopifyAnalytics = require('./shopify-analytics');
 const ollamaClient = require('../lib/ollama-client');
 const tiktokAssembler = require('./tiktok-video-assembler');
+const creativeDirector = require('./tiktok-creative-director');
+const remotionRenderer = require('./remotion-renderer');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const DATA_DIR = path.join(APP_ROOT, 'data');
@@ -1124,40 +1126,91 @@ async function generateDailyTikTok(db) {
       return null;
     }
 
-    // Rotate through templates based on day
-    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
-    const templateKey = TIKTOK_TEMPLATES_ROTATION[dayOfYear % TIKTOK_TEMPLATES_ROTATION.length];
+    // ── Try AI Creative Director + Remotion pipeline first ──
+    let result = null;
+    let usedAIPipeline = false;
 
-    // Hook/CTA text variations
-    const hooks = [
-      'Watch this transform...',
-      'How we make custom prints',
-      'From blank to beautiful',
-      'The process is satisfying',
-      'Handmade in Asheville, NC',
-      'Small batch. Big quality.',
-      'See how it\'s made'
-    ];
-    const ctas = [
-      'BlueRidgeCustomCo.com',
-      'Link in bio!',
-      'Shop the collection',
-      'Order yours today',
-      'Made in Asheville, NC'
-    ];
+    try {
+      // Check if we have enough analyzed footage (>= 3 clips)
+      const analyzedCount = db.prepare('SELECT COUNT(*) as cnt FROM footage_library WHERE analyzed_at IS NOT NULL').get().cnt;
 
-    const hookText = hooks[dayOfYear % hooks.length];
-    const ctaText = ctas[dayOfYear % ctas.length];
+      if (analyzedCount >= 3) {
+        console.log(`[MarketingTeam] AI pipeline: ${analyzedCount} analyzed clips available`);
 
-    console.log(`[MarketingTeam] Generating daily TikTok — template: ${templateKey}`);
+        // Step 1: Generate creative brief via AI Creative Director
+        const brief = await creativeDirector.generateCreativeBrief(db);
+        console.log(`[MarketingTeam] AI brief generated: ${brief.contentType} — ${brief.rationale}`);
 
-    const result = tiktokAssembler.assembleVideo(db, {
-      template: templateKey,
-      texts: {
-        hook: hookText,
-        cta: ctaText
+        // Step 2: Render via Remotion
+        const renderResult = await remotionRenderer.queueRender(brief.props);
+
+        if (renderResult.success) {
+          usedAIPipeline = true;
+
+          // Update brief render status
+          const rawDb = db.db || db;
+          rawDb.prepare('UPDATE tiktok_briefs SET render_status = ?, render_output = ? WHERE id = ?')
+            .run('rendered', JSON.stringify(renderResult), brief.id);
+
+          result = {
+            outputUrl: renderResult.outputUrl,
+            outputPath: renderResult.outputPath,
+            duration: renderResult.duration || 0,
+            templateName: `AI: ${brief.contentType}`,
+            product: 'AI-selected',
+            segments: brief.props.scenes.map(s => ({
+              role: s.role,
+              clipName: s.clipFilename,
+              duration: s.trimEnd - s.trimStart,
+              text: null
+            })),
+            aiRationale: brief.rationale,
+            contentType: brief.contentType
+          };
+
+          console.log(`[MarketingTeam] AI TikTok rendered: ${renderResult.outputUrl}`);
+        } else {
+          console.warn(`[MarketingTeam] Remotion render failed: ${renderResult.error}, falling back to FFmpeg`);
+        }
+      } else {
+        console.log(`[MarketingTeam] Only ${analyzedCount} analyzed clips, need >= 3, falling back to FFmpeg`);
       }
-    });
+    } catch (aiErr) {
+      console.warn(`[MarketingTeam] AI pipeline failed: ${aiErr.message}, falling back to FFmpeg`);
+    }
+
+    // ── Fallback: original FFmpeg pipeline ──
+    if (!result) {
+      const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+      const templateKey = TIKTOK_TEMPLATES_ROTATION[dayOfYear % TIKTOK_TEMPLATES_ROTATION.length];
+
+      const hooks = [
+        'Watch this transform...',
+        'How we make custom prints',
+        'From blank to beautiful',
+        'The process is satisfying',
+        'Handmade in Asheville, NC',
+        'Small batch. Big quality.',
+        'See how it\'s made'
+      ];
+      const ctas = [
+        'BlueRidgeCustomCo.com',
+        'Link in bio!',
+        'Shop the collection',
+        'Order yours today',
+        'Made in Asheville, NC'
+      ];
+
+      const hookText = hooks[dayOfYear % hooks.length];
+      const ctaText = ctas[dayOfYear % ctas.length];
+
+      console.log(`[MarketingTeam] FFmpeg fallback — template: ${templateKey}`);
+
+      result = tiktokAssembler.assembleVideo(db, {
+        template: templateKey,
+        texts: { hook: hookText, cta: ctaText }
+      });
+    }
 
     _lastTikTokDate = today;
 
@@ -1168,12 +1221,13 @@ async function generateDailyTikTok(db) {
     saveState();
 
     // Journal entry
+    const pipeline = usedAIPipeline ? 'AI Remotion' : 'FFmpeg';
     addJournalEntry({
       type: 'action',
       category: 'content',
-      action: `Generated TikTok video: ${result.templateName} for "${result.product || 'auto'}" (${result.duration}s, ${result.segments.length} segments)`,
-      context: `Template: ${templateKey}, URL: ${result.outputUrl}`,
-      tags: ['tiktok', 'video', 'content']
+      action: `Generated TikTok video (${pipeline}): ${result.templateName} for "${result.product || 'auto'}" (${result.duration}s, ${result.segments.length} segments)`,
+      context: `Pipeline: ${pipeline}, URL: ${result.outputUrl}`,
+      tags: ['tiktok', 'video', 'content', pipeline.toLowerCase()]
     });
 
     // Build Telegram notification
@@ -1182,12 +1236,20 @@ async function generateDailyTikTok(db) {
       `  • ${s.role}: ${s.clipName} (${s.duration}s)${s.text ? ' — "' + s.text + '"' : ''}`
     ).join('\n');
 
-    const notification = [
+    const notificationParts = [
       `🎬 <b>Daily TikTok Generated</b>`,
       ``,
+      `<b>Pipeline:</b> ${pipeline}`,
       `<b>Template:</b> ${result.templateName}`,
       `<b>Product:</b> ${result.product || 'Auto-selected'}`,
       `<b>Duration:</b> ${result.duration}s`,
+    ];
+
+    if (result.aiRationale) {
+      notificationParts.push(``, `<b>AI Rationale:</b> ${result.aiRationale}`);
+    }
+
+    notificationParts.push(
       ``,
       `<b>Segments:</b>`,
       segList,
@@ -1195,13 +1257,13 @@ async function generateDailyTikTok(db) {
       `<b>Review:</b> ${videoUrl}`,
       ``,
       `<i>Ready for posting — approve or regenerate via /code</i>`
-    ].join('\n');
+    );
 
-    await sendTelegram(notification, 'HTML').catch(e =>
+    await sendTelegram(notificationParts.join('\n'), 'HTML').catch(e =>
       console.error('[MarketingTeam] Failed to send TikTok notification:', e.message)
     );
 
-    console.log(`[MarketingTeam] TikTok generated: ${result.outputUrl} (${result.duration}s)`);
+    console.log(`[MarketingTeam] TikTok generated (${pipeline}): ${result.outputUrl} (${result.duration}s)`);
     return result;
   } catch (err) {
     console.error('[MarketingTeam] TikTok generation error:', err.message);

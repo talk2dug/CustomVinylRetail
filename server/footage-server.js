@@ -215,6 +215,18 @@ async function handleFootageRoute(pathname, req, res, db) {
       });
 
       sendJson(res, 201, record);
+
+      // Fire-and-forget: trigger AI analysis on the uploaded clip
+      try {
+        const { analyzeClip } = require('./modules/footage-analyzer');
+        analyzeClip(db, record.id).then(() => {
+          console.log(`[Footage] AI analysis complete for ${record.id}`);
+        }).catch(e => {
+          console.error(`[Footage] AI analysis failed for ${record.id}:`, e.message);
+        });
+      } catch (e) {
+        console.error('[Footage] Could not load footage-analyzer:', e.message);
+      }
     } catch (err) {
       console.error('[Footage] Upload error:', err);
       sendError(res, 500, err.message);

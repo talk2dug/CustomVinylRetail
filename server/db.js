@@ -3780,6 +3780,25 @@ function initCustomArtTables() {
   ensureColumn('tiktok_videos', 'shopify_page_id', 'TEXT');
   ensureColumn('tiktok_videos', 'shopify_page_url', 'TEXT');
 
+  // Footage Library — AI analysis columns
+  ensureColumn('footage_library', 'ai_analysis', 'TEXT');
+  ensureColumn('footage_library', 'ai_scenes', 'TEXT');
+  ensureColumn('footage_library', 'analyzed_at', 'TEXT');
+
+  // TikTok Studio — AI creative briefs
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tiktok_briefs (
+      id TEXT PRIMARY KEY,
+      content_type TEXT,
+      props TEXT,
+      rationale TEXT,
+      clip_ids TEXT,
+      render_status TEXT DEFAULT 'pending',
+      render_output TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   // Pipeline Runs — tracks apparel pipeline executions linked to campaigns
   db.exec(`
     CREATE TABLE IF NOT EXISTS pipeline_runs (
