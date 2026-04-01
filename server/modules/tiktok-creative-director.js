@@ -262,7 +262,7 @@ function getRandomMusicTrack() {
     );
     if (files.length === 0) return null;
     const pick = files[Math.floor(Math.random() * files.length)];
-    return path.join(MUSIC_DIR, pick);
+    return pick; // just the filename — Remotion resolves via public/music/ symlink
   } catch (_) {
     return null;
   }
@@ -281,7 +281,7 @@ function buildGeminiPrompt(selectedClips, contentType) {
   - Quality: ${a.overall_quality || 'N/A'}
   - Content Type: ${a.content_type || 'N/A'}
   - Hook Potential: ${a.hook_potential || 'N/A'}
-  - Duration: ${clip.duration || 'unknown'}s`;
+  - Duration: ${clip.duration_seconds || clip.duration || 'unknown'}s`;
   }).join('\n\n');
 
   return `You are an AI Creative Director for TikTok. Given analyzed footage clips, create a complete video assembly plan.
