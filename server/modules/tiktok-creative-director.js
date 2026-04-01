@@ -272,7 +272,7 @@ function getRandomMusicTrack() {
 // Gemini API call
 // ============================================================================
 
-function buildGeminiPrompt(selectedClips, contentType) {
+function buildGeminiPrompt(selectedClips, contentType, creatorPrompt) {
   const clipAnalyses = selectedClips.map((clip, i) => {
     const a = clip.parsedAnalysis || {};
     return `Clip ${i + 1} (filename: ${clip.filename || clip.id}):
@@ -284,8 +284,14 @@ function buildGeminiPrompt(selectedClips, contentType) {
   - Duration: ${clip.duration_seconds || clip.duration || 'unknown'}s`;
   }).join('\n\n');
 
-  return `You are an AI Creative Director for TikTok. Given analyzed footage clips, create a complete video assembly plan.
+  const creatorSection = creatorPrompt ? `
+CREATOR'S DIRECTION (follow these instructions closely — they override default rules):
+${creatorPrompt}
 
+` : '';
+
+  return `You are an AI Creative Director for TikTok. Given analyzed footage clips, create a complete video assembly plan.
+${creatorSection}
 RULES:
 - Hook in first 1-3 seconds: Use the clip/moment with highest hook_potential
 - Pattern interrupt every 3-5 seconds: speed change, angle switch, text pop
@@ -295,13 +301,16 @@ RULES:
 - Prefer clips with quality_score > 0.7
 - Match the content type: ${contentType}
 - Brand: Blue Ridge Custom Co, Asheville NC — locally handmade
+- playbackRate above 1 creates a timelapse/speed-up effect (e.g. 4 = 4x speed). Use this when the creator asks for timelapse.
+- playbackRate below 1 creates slow motion (e.g. 0.5 = half speed). Use for dramatic reveals.
+- You can use the SAME clip multiple times with different trimStart/trimEnd to show different moments.
 
 AVAILABLE CLIPS:
 ${clipAnalyses}
 
 OUTPUT FORMAT (JSON only, no extra text):
 {
-  "rationale": "Brief explanation of creative choices",
+  "rationale": "Brief explanation of creative choices and how creator's direction was applied",
   "scenes": [
     { "clipFilename": "uuid.mp4", "trimStart": 0, "trimEnd": 3, "playbackRate": 1, "role": "hook" }
   ],
@@ -436,14 +445,31 @@ function validateProps(props) {
 async function generateCreativeBrief(db, options = {}) {
   const rawDb = getRawDb(db);
 
-  // 1. Gather analyzed clips
+  // 1. Gather analyzed clips (optionally filtered to specific IDs)
   let clips;
   try {
-    clips = rawDb.prepare(
-      `SELECT * FROM footage_library
-       WHERE analyzed_at IS NOT NULL AND ai_analysis IS NOT NULL
-       ORDER BY used_in_count ASC, created_at DESC`
-    ).all();
+    if (options.clipIds && options.clipIds.length > 0) {
+      const placeholders = options.clipIds.map(() => '?').join(',');
+      clips = rawDb.prepare(
+        `SELECT * FROM footage_library
+         WHERE id IN (${placeholders}) AND analyzed_at IS NOT NULL AND ai_analysis IS NOT NULL
+         ORDER BY used_in_count ASC, created_at DESC`
+      ).all(...options.clipIds);
+      // Also include unanalyzed clips from the selection — analyze them inline
+      const unanalyzed = rawDb.prepare(
+        `SELECT * FROM footage_library
+         WHERE id IN (${placeholders}) AND (analyzed_at IS NULL OR ai_analysis IS NULL)`
+      ).all(...options.clipIds);
+      if (unanalyzed.length > 0) {
+        console.log(`[CreativeDirector] ${unanalyzed.length} selected clips not yet analyzed — skipping them`);
+      }
+    } else {
+      clips = rawDb.prepare(
+        `SELECT * FROM footage_library
+         WHERE analyzed_at IS NOT NULL AND ai_analysis IS NOT NULL
+         ORDER BY used_in_count ASC, created_at DESC`
+      ).all();
+    }
   } catch (err) {
     console.error('[CreativeDirector] DB query error:', err.message);
     throw new Error('Failed to query footage library: ' + err.message);
@@ -484,7 +510,7 @@ async function generateCreativeBrief(db, options = {}) {
   console.log(`[CreativeDirector] Selected ${selectedClips.length} clips: ${selectedClips.map(c => c.filename || c.id).join(', ')}`);
 
   // 5. Build prompt and call Gemini
-  const prompt = buildGeminiPrompt(selectedClips, contentType);
+  const prompt = buildGeminiPrompt(selectedClips, contentType, options.prompt || null);
   let geminiResult = await callGemini(prompt);
 
   // 6. Extract and validate props

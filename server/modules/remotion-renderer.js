@@ -7,7 +7,7 @@ const crypto = require('crypto');
 
 const TIKTOK_STUDIO_DIR = path.join(__dirname, '..', '..', 'tiktok-studio');
 const OUTPUT_DIR = '/mnt/stlFiles/footage-library/rendered';
-const RENDER_TIMEOUT = 300000; // 5 min
+const RENDER_TIMEOUT = 600000; // 10 min
 
 // Ensure output dir exists
 if (!fs.existsSync(OUTPUT_DIR)) {
