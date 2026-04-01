@@ -10103,7 +10103,8 @@ Keep it concise and actionable.`;
 
   // TikTok Studio API (AI-driven video creation)
   if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/tiktok-studio')) {
-    if (!requireInternalKey(req, res)) return;
+    const isVideoServe = parsedUrl.pathname.match(/\/api\/tiktok-studio\/video\/.+\.mp4$/);
+    if (!isVideoServe && !requireInternalKey(req, res)) return;
     handleTikTokStudioRoute(parsedUrl.pathname, req, res, db).catch(err => {
       console.error('[TikTok Studio API Error]', err);
       sendJson(res, 500, { error: err.message || 'Internal server error' });

@@ -51,7 +51,8 @@ async function handleTikTokStudioRoute(pathname, req, res, db) {
       const brief = await creativeDirector.generateCreativeBrief(db, {
         contentType: body.contentType || null,
         prompt: body.prompt || null,
-        clipIds: body.clipIds || null
+        clipIds: body.clipIds || null,
+        maxDuration: body.maxDuration || null
       });
 
       // Step 2: Queue render
@@ -84,7 +85,8 @@ async function handleTikTokStudioRoute(pathname, req, res, db) {
       const brief = await creativeDirector.generateCreativeBrief(db, {
         contentType: body.contentType || null,
         prompt: body.prompt || null,
-        clipIds: body.clipIds || null
+        clipIds: body.clipIds || null,
+        maxDuration: body.maxDuration || null
       });
       return sendJson(brief, 201);
     } catch (err) {

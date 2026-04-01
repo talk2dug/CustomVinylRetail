@@ -272,7 +272,7 @@ function getRandomMusicTrack() {
 // Gemini API call
 // ============================================================================
 
-function buildGeminiPrompt(selectedClips, contentType, creatorPrompt) {
+function buildGeminiPrompt(selectedClips, contentType, creatorPrompt, maxDuration) {
   const clipAnalyses = selectedClips.map((clip, i) => {
     const a = clip.parsedAnalysis || {};
     return `Clip ${i + 1} (filename: ${clip.filename || clip.id}):
@@ -295,7 +295,7 @@ ${creatorSection}
 RULES:
 - Hook in first 1-3 seconds: Use the clip/moment with highest hook_potential
 - Pattern interrupt every 3-5 seconds: speed change, angle switch, text pop
-- Total video: 15-30 seconds for best completion rate
+- Total video: MUST be ${maxDuration || 30} seconds or less. Aim for ${Math.round((maxDuration || 30) * 0.8)}-${maxDuration || 30} seconds for best completion rate
 - Text overlays: MAX 6 words each, bold and readable
 - CTA only in last 2 seconds
 - Prefer clips with quality_score > 0.7
@@ -510,7 +510,7 @@ async function generateCreativeBrief(db, options = {}) {
   console.log(`[CreativeDirector] Selected ${selectedClips.length} clips: ${selectedClips.map(c => c.filename || c.id).join(', ')}`);
 
   // 5. Build prompt and call Gemini
-  const prompt = buildGeminiPrompt(selectedClips, contentType, options.prompt || null);
+  const prompt = buildGeminiPrompt(selectedClips, contentType, options.prompt || null, options.maxDuration || null);
   let geminiResult = await callGemini(prompt);
 
   // 6. Extract and validate props
