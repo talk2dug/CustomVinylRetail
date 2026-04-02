@@ -124,6 +124,7 @@ const salesTeam = require('./modules/sales-team');
 const fbMarketplaceLister = require('./modules/fb-marketplace-lister');
 const utmAttribution = require('./modules/utm-attribution');
 const fbEngagementBot = require('./modules/fb-engagement-bot');
+const marketFinder = require('./modules/market-finder');
 const etsyListingGenerator = require('./modules/etsy-listing-generator');
 // Shared utilities
 const { slugify, escapeHtml, sanitizeUrl } = require('./utils/string');
@@ -3683,6 +3684,10 @@ const requestHandler = async (req, res) => {
   // Sales Analytics API
   if (parsedUrl.pathname.startsWith('/api/analytics/')) {
     if (salesAnalytics.handleAnalyticsRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data))) return;
+  }
+  // Market Finder API
+  if (parsedUrl.pathname.startsWith('/api/market-finder')) {
+    if (marketFinder.handleMarketFinderRoute(req, res, parsedUrl, (r, data, code) => sendJson(r, code || 200, data), db)) return;
   }
   // Trend Monitor API
   if (parsedUrl.pathname.startsWith('/api/trends')) {
@@ -21996,6 +22001,14 @@ if (require.main === module) {
       console.log('[Server] AI Sales Agent started');
     } catch (error) {
       console.error('[Server] Failed to start AI Sales Agent:', error.message);
+    }
+
+    // Start Market Finder scheduler (weekly scan)
+    try {
+      marketFinder.startScheduler(db);
+      console.log('[Server] Market Finder scheduler started');
+    } catch (error) {
+      console.error('[Server] Failed to start Market Finder:', error.message);
     }
 
     // Initialize Marketing Team
