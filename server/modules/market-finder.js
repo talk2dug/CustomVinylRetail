@@ -544,25 +544,90 @@ Score guide:
   }
 }
 
+// ─── Geo pre-filter for large pages ───────────────────────────────────────────
+
+// Cities within ~60mi of Asheville we care about
+const NEARBY_CITIES = [
+  'asheville', 'hendersonville', 'brevard', 'waynesville', 'black mountain',
+  'weaverville', 'arden', 'fletcher', 'flat rock', 'mars hill', 'canton',
+  'sylva', 'maggie valley', 'burnsville', 'marion', 'morganton', 'spruce pine',
+  'lake lure', 'chimney rock', 'saluda', 'tryon', 'columbus', 'rutherfordton',
+  'forest city', 'old fort', 'swannanoa', 'montreat', 'woodfin', 'enka',
+  'river arts', 'pack square', 'biltmore', 'west asheville', 'north asheville',
+  'leicester', 'fairview', 'bat cave', 'mills river', 'pisgah', 'etowah',
+  'greenville', 'spartanburg', 'greer', // SC within range
+  'highlands', 'franklin', 'cashiers', 'bryson city', 'cherokee', 'murphy',
+  'wnc', 'western north carolina', 'blue ridge', 'appalachian', 'smoky',
+];
+
+function geoFilterContent(rawHtml) {
+  // Strip scripts/styles first
+  let html = rawHtml
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '');
+
+  // Split into sections by common delimiters (divs, table rows, list items, headings)
+  // Use a generous split to get event-sized chunks
+  const sections = html.split(/(?=<(?:div|tr|li|article|section|h[1-6])\b)/i);
+
+  const relevantSections = [];
+  const lowerCities = NEARBY_CITIES; // already lowercase
+
+  for (const section of sections) {
+    const lower = section.toLowerCase();
+    if (lowerCities.some(city => lower.includes(city))) {
+      // Strip HTML tags from this section
+      const text = section
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (text.length > 20) {
+        relevantSections.push(text);
+      }
+    }
+  }
+
+  if (relevantSections.length === 0) return null;
+
+  const filtered = relevantSections.join('\n---\n').slice(0, 15000);
+  return filtered;
+}
+
+function stripHtml(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // ─── Batch analyze web results ────────────────────────────────────────────────
 
 async function analyzeWebResults(webResults) {
   const leads = [];
 
   for (const result of webResults) {
-    // Use pre-fetched body or fetch fresh
     let content;
     if (result._body) {
-      content = result._body
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[\s\S]*?<\/style>/gi, '')
-        .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-        .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 15000);
+      const fullText = stripHtml(result._body);
+      // If the page is large (statewide listing), geo-filter to nearby cities
+      if (fullText.length > 20000) {
+        content = geoFilterContent(result._body);
+        if (content) {
+          console.log(`[MarketFinder] Geo-filtered ${result.title}: ${(fullText.length/1024).toFixed(0)}KB → ${(content.length/1024).toFixed(0)}KB`);
+        } else {
+          // No local matches found, use truncated full text
+          content = fullText.slice(0, 15000);
+          console.log(`[MarketFinder] No local matches in ${result.title}, using first 15KB`);
+        }
+      } else {
+        content = fullText.slice(0, 15000);
+      }
     } else {
       content = await fetchPageContent(result.url);
     }
@@ -573,14 +638,14 @@ async function analyzeWebResults(webResults) {
 
     try {
       const extractPrompt = `Extract vendor market/event information from this web page content.
-This page was found searching for craft fairs and vendor markets near Asheville, NC.
+We ONLY want events within 60 miles of Asheville, NC (including Hendersonville, Brevard, Waynesville, Black Mountain, Greenville SC, etc). Skip events in other parts of NC (Raleigh, Charlotte, Wilmington, etc).
 
 PAGE TITLE: ${result.title}
 PAGE URL: ${result.url}
-PAGE CONTENT (truncated):
+PAGE CONTENT (pre-filtered to local area):
 ${content}
 
-If this page describes one or more vendor markets, craft fairs, or events where a maker/crafter could rent a booth, extract them. If it's not about vendor events, return an empty events array.
+Extract all vendor markets, craft fairs, maker markets, or events where a maker/crafter could rent a booth. Only include events near Asheville (within ~60 miles). If none found, return an empty events array.
 
 Respond in EXACTLY this JSON format (no markdown fences):
 {
