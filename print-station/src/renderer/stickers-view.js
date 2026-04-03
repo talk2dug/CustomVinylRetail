@@ -587,6 +587,7 @@ async function generateStickersSheets() {
   if (statusEl) statusEl.textContent = 'Generating sheets...';
 
   try {
+    const useAi = document.getElementById('stickersUseAiToggle')?.checked ?? true;
     const payload = {
       designs,
       stickerSizeInches: size,
@@ -595,7 +596,8 @@ async function generateStickersSheets() {
         ? `order-${stickersState.currentOrderNumber}`
         : 'sticker-sheet',
       scaleByLargestDimension: stickersState.mode === 'manual', // New flag
-      useRotationPacking: true // Enable rotation-aware packing
+      useRotationPacking: true, // Enable rotation-aware packing
+      useAiContour: useAi // Use Gemini AI for contour generation
     };
 
     // If order mode with order number, save to order folder

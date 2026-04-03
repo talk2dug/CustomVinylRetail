@@ -5373,13 +5373,46 @@ Return ONLY valid JSON, nothing else:
   );
 
   // Get contour for a sticker (lazy generation with caching)
-  ipcMain.handle('sticker-sheets:get-contour', async (_event, { imagePath }) => {
+  // Supports useAi flag to route through Gemini AI vectorizer
+  ipcMain.handle('sticker-sheets:get-contour', async (_event, { imagePath, useAi = true, strategy = 'direct-svg' }) => {
     if (!imagePath) {
       return { success: false, error: 'Image path is required' };
     }
-    // Encode path as base64 for URL safety
+    if (useAi) {
+      // Use AI-powered contour generation
+      return httpRequest('/api/vinyl-cutter/ai-contour', {
+        method: 'POST',
+        body: { imagePath, strategy }
+      }).then(result => {
+        if (!result || !result.success) {
+          // Fallback to legacy potrace
+          const encodedPath = Buffer.from(imagePath).toString('base64');
+          return httpRequest(`/api/stickers/contour/${encodedPath}`, { method: 'GET' });
+        }
+        return {
+          success: true,
+          contourPath: result.svgPath,
+          width: result.width,
+          height: result.height,
+          cached: false,
+          strategy: result.strategy
+        };
+      }).catch(() => {
+        // Fallback to legacy
+        const encodedPath = Buffer.from(imagePath).toString('base64');
+        return httpRequest(`/api/stickers/contour/${encodedPath}`, { method: 'GET' });
+      });
+    }
     const encodedPath = Buffer.from(imagePath).toString('base64');
     return httpRequest(`/api/stickers/contour/${encodedPath}`, { method: 'GET' });
+  });
+
+  // AI-powered sticker sheet generation
+  ipcMain.handle('sticker-sheets:ai-generate', async (_event, payload) => {
+    return httpRequest('/api/sticker-sheets/ai-generate', {
+      method: 'POST',
+      body: payload || {}
+    });
   });
 
   // ============================================================================
@@ -5387,13 +5420,77 @@ Return ONLY valid JSON, nothing else:
   // ============================================================================
 
   // Vectorize an image for vinyl cutting (with color detection)
-  ipcMain.handle('vinyl-cutter:vectorize', async (_event, { imagePath }) => {
+  // Supports useAi flag to route through Gemini AI vectorizer
+  ipcMain.handle('vinyl-cutter:vectorize', async (_event, { imagePath, useAi = true, strategy = 'direct-svg' }) => {
     if (!imagePath) {
       return { success: false, error: 'Image path is required' };
+    }
+    if (useAi) {
+      // Use AI-powered vectorization (Gemini)
+      return httpRequest('/api/vinyl-cutter/ai-color-separate', {
+        method: 'POST',
+        body: { imagePath, maxColors: 6 }
+      }).then(result => {
+        if (!result || !result.success) {
+          // Fallback to legacy potrace if AI fails
+          console.log('[IPC] AI vectorize failed, falling back to potrace');
+          return httpRequest('/api/vinyl-cutter/vectorize', {
+            method: 'POST',
+            body: { imagePath }
+          });
+        }
+        // Transform AI result to match legacy format expected by frontend
+        return {
+          success: true,
+          colors: (result.colors || []).map(c => ({
+            hex: c.hex,
+            name: c.name,
+            contourPath: (c.svgPaths || []).join(' '),
+            contourPaths: c.svgPaths || [],
+            count: Math.round((c.percentage || 0) * 100),
+            percentage: c.percentage || 0
+          })),
+          width: result.width,
+          height: result.height,
+          strategy: 'ai-color-separate'
+        };
+      }).catch(err => {
+        console.error('[IPC] AI vectorize error, falling back:', err.message);
+        return httpRequest('/api/vinyl-cutter/vectorize', {
+          method: 'POST',
+          body: { imagePath }
+        });
+      });
     }
     return httpRequest('/api/vinyl-cutter/vectorize', {
       method: 'POST',
       body: { imagePath }
+    });
+  });
+
+  // AI contour generation (direct)
+  ipcMain.handle('vinyl-cutter:ai-contour', async (_event, { imagePath, strategy = 'direct-svg', offset = 1.0 }) => {
+    if (!imagePath) return { success: false, error: 'Image path is required' };
+    return httpRequest('/api/vinyl-cutter/ai-contour', {
+      method: 'POST',
+      body: { imagePath, strategy, offset }
+    });
+  });
+
+  // AI color separation
+  ipcMain.handle('vinyl-cutter:ai-color-separate', async (_event, { imagePath, maxColors = 6 }) => {
+    if (!imagePath) return { success: false, error: 'Image path is required' };
+    return httpRequest('/api/vinyl-cutter/ai-color-separate', {
+      method: 'POST',
+      body: { imagePath, maxColors }
+    });
+  });
+
+  // AI vinyl cut file generation
+  ipcMain.handle('vinyl-cutter:ai-generate', async (_event, data) => {
+    return httpRequest('/api/vinyl-cutter/ai-generate', {
+      method: 'POST',
+      body: data || {}
     });
   });
 

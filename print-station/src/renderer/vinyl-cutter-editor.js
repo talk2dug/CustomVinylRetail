@@ -786,7 +786,9 @@ function loadVinylImage(url) {
 async function vectorizeVinylItem(imagePath) {
   // Use IPC bridge to vectorize
   if (typeof printStation !== 'undefined' && printStation.vinylCutter) {
-    return await printStation.vinylCutter.vectorize(imagePath);
+    const useAi = document.getElementById('vinylUseAiToggle')?.checked ?? true;
+    console.log('[VinylCutter] Vectorizing with', useAi ? 'AI (Gemini)' : 'legacy (potrace)');
+    return await printStation.vinylCutter.vectorize(imagePath, { useAi });
   }
   throw new Error('Vinyl cutter IPC not available');
 }

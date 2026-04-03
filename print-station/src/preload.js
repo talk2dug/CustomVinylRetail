@@ -393,19 +393,25 @@ contextBridge.exposeInMainWorld('printStation', {
     getOrderSheets: (orderNumber) => ipcRenderer.invoke('sticker-sheets:get-order-sheets', { orderNumber }),
     sendToCameo: (payload) => ipcRenderer.invoke('sticker-sheets:send-to-cameo', payload || {}),
     // Lazy contour generation
-    getContour: (imagePath) => ipcRenderer.invoke('sticker-sheets:get-contour', { imagePath }),
+    getContour: (imagePath, options) => ipcRenderer.invoke('sticker-sheets:get-contour', { imagePath, ...(options || {}) }),
+    // AI-powered sticker sheet generation
+    aiGenerate: (payload) => ipcRenderer.invoke('sticker-sheets:ai-generate', payload || {}),
     // Delete a batch
     deleteBatch: (batchName) => ipcRenderer.invoke('sticker-sheets:delete-batch', { batchName })
   },
 
   // Vinyl Cutter API
   vinylCutter: {
-    vectorize: (imagePath) => ipcRenderer.invoke('vinyl-cutter:vectorize', { imagePath }),
+    vectorize: (imagePath, options) => ipcRenderer.invoke('vinyl-cutter:vectorize', { imagePath, ...(options || {}) }),
     generate: (data) => ipcRenderer.invoke('vinyl-cutter:generate', data || {}),
     list: () => ipcRenderer.invoke('vinyl-cutter:list'),
     delete: (batchName) => ipcRenderer.invoke('vinyl-cutter:delete', { batchName }),
     sendToSilhouette: (payload) => ipcRenderer.invoke('vinyl-cutter:send-to-silhouette', payload || {}),
-    generateDriverNames: (data) => ipcRenderer.invoke('vinyl-cutter:driver-names', data || {})
+    generateDriverNames: (data) => ipcRenderer.invoke('vinyl-cutter:driver-names', data || {}),
+    // AI-powered methods
+    aiContour: (imagePath, options) => ipcRenderer.invoke('vinyl-cutter:ai-contour', { imagePath, ...(options || {}) }),
+    aiColorSeparate: (imagePath, options) => ipcRenderer.invoke('vinyl-cutter:ai-color-separate', { imagePath, ...(options || {}) }),
+    aiGenerate: (data) => ipcRenderer.invoke('vinyl-cutter:ai-generate', data || {})
   },
 
   // Silhouette Cameo API (local cutting via sendto_silhouette.py)

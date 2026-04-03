@@ -8443,6 +8443,48 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // ===== GEMINI AI VECTORIZER API =====
+
+  // AI-powered contour generation (replaces potrace)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/ai-contour') {
+    if (!requireInternalKey(req, res)) return;
+    handleAiContour(req, res).catch(err => {
+      console.error('[AI Contour Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // AI-powered color separation for vinyl
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/ai-color-separate') {
+    if (!requireInternalKey(req, res)) return;
+    handleAiColorSeparate(req, res).catch(err => {
+      console.error('[AI Color Separate Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // AI-powered sticker sheet generation
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/sticker-sheets/ai-generate') {
+    if (!requireInternalKey(req, res)) return;
+    handleAiStickerSheet(req, res).catch(err => {
+      console.error('[AI Sticker Sheet Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // AI vinyl cut file generation (full pipeline)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/ai-generate') {
+    if (!requireInternalKey(req, res)) return;
+    handleAiVinylGenerate(req, res).catch(err => {
+      console.error('[AI Vinyl Generate Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
   // ===== STUDIO3 CATALOG API =====
   // Store parsed Studio3 file data for catalog/training purposes
   if (req.method === 'POST' && parsedUrl.pathname === '/api/studio3/catalog') {
@@ -22866,7 +22908,8 @@ async function handleStickerSheetGenerate(req, res) {
       stickerSizeInches = 3,
       offsetMm = 3,
       filenamePrefix = 'sticker-sheet',
-      removeBackgrounds = true
+      removeBackgrounds = true,
+      useAiContour = false
     } = body;
 
     if (!designs || !Array.isArray(designs) || designs.length === 0) {
@@ -22880,9 +22923,7 @@ async function handleStickerSheetGenerate(req, res) {
       if (design.imagePath && design.imagePath.startsWith('http')) {
         try {
           const imageUrl = new URL(design.imagePath);
-          // Extract path after domain (e.g., /library/Category/...)
           const urlPath = imageUrl.pathname;
-          // Map to local WEB_DIR
           localPath = path.join(WEB_DIR, urlPath);
           console.log(`[Sticker Generate] URL -> Local: ${localPath}`);
         } catch (e) {
@@ -22892,6 +22933,31 @@ async function handleStickerSheetGenerate(req, res) {
       return { ...design, imagePath: localPath };
     });
     console.log('[Sticker Generate] Resolved designs:', resolvedDesigns.slice(0, 2).map(d => ({ title: d.title, imagePath: d.imagePath })));
+
+    // If AI contour requested, use GeminiVectorizer pipeline
+    if (useAiContour) {
+      console.log('[Sticker Generate] Using AI (Gemini) contour generation');
+      try {
+        const vectorizer = getGeminiVectorizer();
+        const aiResult = await vectorizer.generateStickerSheet(resolvedDesigns, {
+          stickerSizeInches,
+          offsetMm,
+          strategy: 'direct-svg',
+        });
+
+        return sendJson(res, 200, {
+          success: true,
+          totalStickers: aiResult.totalStickers,
+          totalSheets: aiResult.totalSheets,
+          outputDir: aiResult.outputDir,
+          strategy: 'ai-contour',
+          sheets: aiResult.sheets,
+        });
+      } catch (aiErr) {
+        console.warn('[Sticker Generate] AI contour failed, falling back to potrace:', aiErr.message);
+        // Fall through to legacy path
+      }
+    }
 
     // Ensure output directory exists
     await fs.promises.mkdir(STICKER_OUTPUT_DIR, { recursive: true });
@@ -24716,6 +24782,171 @@ async function doVinylVectorize(fullPath) {
     width: colorContoursResult.width || width,
     height: colorContoursResult.height || height
   };
+}
+
+// =============================================================================
+// GEMINI AI VECTORIZER HANDLERS
+// =============================================================================
+
+let _geminiVectorizer = null;
+function getGeminiVectorizer() {
+  if (!_geminiVectorizer) {
+    const { GeminiVectorizer } = require('./gemini-vectorizer');
+    _geminiVectorizer = new GeminiVectorizer();
+  }
+  return _geminiVectorizer;
+}
+
+/**
+ * AI-powered contour generation
+ * POST /api/vinyl-cutter/ai-contour
+ * Body: { imagePath, strategy?: "direct-svg"|"clean-trace"|"hybrid", offset?: mm }
+ */
+async function handleAiContour(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { imagePath, strategy = 'direct-svg', offset = 1.0 } = body;
+
+    if (!imagePath) {
+      return sendJson(res, 400, { success: false, error: 'imagePath is required' });
+    }
+
+    let fullPath = imagePath;
+    if (!path.isAbsolute(imagePath)) {
+      fullPath = path.join(LIBRARY_ROOT, imagePath);
+    }
+
+    if (!fs.existsSync(fullPath)) {
+      return sendJson(res, 404, { success: false, error: 'Image file not found' });
+    }
+
+    console.log(`[AI Contour] Strategy=${strategy}, Image=${path.basename(fullPath)}`);
+    const vectorizer = getGeminiVectorizer();
+
+    let result;
+    if (strategy === 'direct-svg') {
+      result = await vectorizer.generateContourSVG(fullPath, { offset });
+    } else if (strategy === 'clean-trace') {
+      result = await vectorizer.cleanAndTrace(fullPath, { offset });
+    } else {
+      result = await vectorizer.generateContour(fullPath, { offset });
+    }
+
+    sendJson(res, 200, { success: true, ...result });
+  } catch (err) {
+    console.error('[AI Contour Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * AI-powered color separation for vinyl cutting
+ * POST /api/vinyl-cutter/ai-color-separate
+ * Body: { imagePath, maxColors?: number }
+ */
+async function handleAiColorSeparate(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { imagePath, maxColors = 6 } = body;
+
+    if (!imagePath) {
+      return sendJson(res, 400, { success: false, error: 'imagePath is required' });
+    }
+
+    let fullPath = imagePath;
+    if (!path.isAbsolute(imagePath)) {
+      fullPath = path.join(LIBRARY_ROOT, imagePath);
+    }
+
+    if (!fs.existsSync(fullPath)) {
+      return sendJson(res, 404, { success: false, error: 'Image file not found' });
+    }
+
+    console.log(`[AI Color Separate] maxColors=${maxColors}, Image=${path.basename(fullPath)}`);
+    const vectorizer = getGeminiVectorizer();
+    const result = await vectorizer.separateColors(fullPath, { maxColors });
+
+    sendJson(res, 200, { success: true, ...result });
+  } catch (err) {
+    console.error('[AI Color Separate Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * AI-powered sticker sheet generation
+ * POST /api/sticker-sheets/ai-generate
+ * Body: { designs: [{imagePath, title, quantity}], stickerSizeInches?, offsetMm?, strategy? }
+ */
+async function handleAiStickerSheet(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { designs, stickerSizeInches, offsetMm, strategy } = body;
+
+    if (!designs || !Array.isArray(designs) || designs.length === 0) {
+      return sendJson(res, 400, { success: false, error: 'designs array is required' });
+    }
+
+    // Resolve image paths
+    for (const d of designs) {
+      if (!d.imagePath) {
+        return sendJson(res, 400, { success: false, error: 'Each design must have imagePath' });
+      }
+      if (!path.isAbsolute(d.imagePath)) {
+        d.imagePath = path.join(LIBRARY_ROOT, d.imagePath);
+      }
+      if (!fs.existsSync(d.imagePath)) {
+        return sendJson(res, 404, { success: false, error: `Image not found: ${d.imagePath}` });
+      }
+    }
+
+    console.log(`[AI Sticker Sheet] ${designs.length} designs, strategy=${strategy || 'clean-trace'}`);
+    const vectorizer = getGeminiVectorizer();
+    const result = await vectorizer.generateStickerSheet(designs, {
+      stickerSizeInches, offsetMm, strategy,
+    });
+
+    sendJson(res, 200, { success: true, ...result });
+  } catch (err) {
+    console.error('[AI Sticker Sheet Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * AI-powered vinyl cut file generation (full pipeline)
+ * POST /api/vinyl-cutter/ai-generate
+ * Body: { imagePath, maxColors?, canvasWidthMm?, canvasHeightMm? }
+ */
+async function handleAiVinylGenerate(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { imagePath, maxColors, canvasWidthMm, canvasHeightMm } = body;
+
+    if (!imagePath) {
+      return sendJson(res, 400, { success: false, error: 'imagePath is required' });
+    }
+
+    let fullPath = imagePath;
+    if (!path.isAbsolute(imagePath)) {
+      fullPath = path.join(LIBRARY_ROOT, imagePath);
+    }
+
+    if (!fs.existsSync(fullPath)) {
+      return sendJson(res, 404, { success: false, error: 'Image file not found' });
+    }
+
+    console.log(`[AI Vinyl Generate] Image=${path.basename(fullPath)}, maxColors=${maxColors || 6}`);
+    const vectorizer = getGeminiVectorizer();
+    const result = await vectorizer.generateVinylCutFiles(fullPath, {
+      maxColors, canvasWidthMm, canvasHeightMm,
+    });
+
+    sendJson(res, 200, { success: true, ...result });
+  } catch (err) {
+    console.error('[AI Vinyl Generate Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
 }
 
 /**

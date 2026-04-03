@@ -23,6 +23,11 @@
               <button id="vinylApplyCanvasSizeBtn" class="secondary" style="font-size:11px;padding:4px 10px;">Apply</button>
             </div>
             <span style="color:#555;">|</span>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;" title="Use Gemini AI for vectorization (better quality contours)">
+              <input type="checkbox" id="vinylUseAiToggle" checked />
+              <span style="color:#10b981;">AI Contour</span>
+            </label>
+            <span style="color:#555;">|</span>
             <button id="vinylImportStudio3Btn" class="secondary" style="background:#8b5cf6;color:white;border-color:#8b5cf6;" onclick="importStudio3Files()">Import .studio3</button>
             <button id="vinylClearCanvasBtn" class="secondary">Clear Canvas</button>
             <button id="vinylGenerateCutFilesBtn" class="primary" disabled>Generate Cut Files</button>
