@@ -841,7 +841,17 @@ async function runScan(db) {
 
     // Save to DB
     try {
-      saveLead(db, lead);
+      const result = saveLead(db, lead);
+      const leadId = result.lastInsertRowid;
+
+      // Auto-promote to eventCal calendar
+      try {
+        await promoteToEventCal(lead);
+        const rawDb = getRawDb(db);
+        rawDb.prepare("UPDATE market_leads SET status = 'promoted', promoted_at = CURRENT_TIMESTAMP WHERE id = ?").run(leadId);
+      } catch (promErr) {
+        console.error(`[MarketFinder] Auto-promote failed for "${lead.name}":`, promErr.message);
+      }
     } catch (err) {
       console.error(`[MarketFinder] Failed to save lead "${lead.name}":`, err.message);
     }
@@ -1034,6 +1044,29 @@ function handleMarketFinderRoute(req, res, parsedUrl, sendJsonFn, db) {
     return true;
   }
 
+  // POST /api/market-finder/promote-all — bulk promote all unpromoted leads to eventCal
+  if (pathname === '/api/market-finder/promote-all' && req.method === 'POST') {
+    const unpromoted = rawDb.prepare("SELECT * FROM market_leads WHERE status != 'promoted' AND status != 'dismissed'").all();
+    sendJsonFn(res, { success: true, message: `Promoting ${unpromoted.length} leads...` });
+
+    // Run async
+    (async () => {
+      let promoted = 0;
+      for (const lead of unpromoted) {
+        try {
+          await promoteToEventCal(lead);
+          rawDb.prepare("UPDATE market_leads SET status = 'promoted', promoted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(lead.id);
+          promoted++;
+        } catch (err) {
+          console.error(`[MarketFinder] Bulk promote failed for "${lead.name}":`, err.message);
+        }
+        await new Promise(r => setTimeout(r, 200));
+      }
+      console.log(`[MarketFinder] Bulk promote complete: ${promoted}/${unpromoted.length}`);
+    })();
+    return true;
+  }
+
   // GET /api/market-finder/settings
   if (pathname === '/api/market-finder/settings' && req.method === 'GET') {
     const state = loadState();
@@ -1065,12 +1098,12 @@ function handleMarketFinderRoute(req, res, parsedUrl, sendJsonFn, db) {
 // ─── Promote to EventCal ─────────────────────────────────────────────────────
 
 async function promoteToEventCal(lead) {
-  // Create market in eventCal
+  // 1. Create market in eventCal
   const marketData = {
     market_name: lead.name,
     location: lead.location || lead.address || '',
     distance: lead.distance_miles ? `${lead.distance_miles} mi` : '',
-    schedule: lead.recurrence === 'weekly' ? `Weekly` : lead.recurrence === 'monthly' ? 'Monthly' : lead.date_start || '',
+    schedule: lead.recurrence === 'weekly' ? 'Weekly' : lead.recurrence === 'monthly' ? 'Monthly' : lead.date_start || '',
     season: '',
     weekly_visitors: lead.weekly_visitors || '',
     vendor_count: lead.vendor_count || '',
@@ -1081,11 +1114,86 @@ async function promoteToEventCal(lead) {
     notes: `Source: ${lead.source_url || lead.source}\nRestrictions: ${lead.restrictions || 'None noted'}\nOrganizer: ${lead.organizer || 'Unknown'}\nContact: ${lead.organizer_contact || 'Unknown'}`
   };
 
-  const resp = await httpPost('http://localhost:3000/calendar/api/markets', marketData);
-  if (resp.status >= 200 && resp.status < 300) {
-    return JSON.parse(resp.body);
+  const marketResp = await httpPost('http://localhost:3000/calendar/api/markets', marketData);
+  let marketId = null;
+  if (marketResp.status >= 200 && marketResp.status < 300) {
+    const marketResult = JSON.parse(marketResp.body);
+    marketId = marketResult.id;
+  } else {
+    console.error(`[MarketFinder] Failed to create market "${lead.name}": HTTP ${marketResp.status}`);
   }
-  throw new Error(`EventCal API error: HTTP ${resp.status} — ${resp.body}`);
+
+  // 2. Create event(s) for the specific date(s)
+  const eventResults = [];
+  const dates = parseDateRange(lead.date_start, lead.date_end);
+
+  // Color based on fit score
+  const color = lead.fit_score >= 70 ? '#2d8a4e' : lead.fit_score >= 50 ? '#d4790e' : '#95a5a6';
+
+  for (const date of dates) {
+    const eventData = {
+      market_id: marketId,
+      title: lead.name,
+      date: date,
+      start_time: null,
+      end_time: null,
+      status: 'planned',
+      notes: `Fit: ${lead.fit_score}/100 | ${lead.fit_reasoning || ''}\n${lead.restrictions ? 'Restrictions: ' + lead.restrictions : ''}`,
+      color: color
+    };
+
+    try {
+      const eventResp = await httpPost('http://localhost:3000/calendar/api/events', eventData);
+      if (eventResp.status >= 200 && eventResp.status < 300) {
+        eventResults.push(JSON.parse(eventResp.body));
+      }
+    } catch (err) {
+      console.error(`[MarketFinder] Failed to create event for "${lead.name}" on ${date}:`, err.message);
+    }
+  }
+
+  console.log(`[MarketFinder] Promoted "${lead.name}" → market #${marketId}, ${eventResults.length} event(s)`);
+  return { marketId, events: eventResults };
+}
+
+/**
+ * Parse date_start/date_end into an array of YYYY-MM-DD strings.
+ * Handles: "2026-06-13", "June 13, 2026", "October 15, 2026", multi-day ranges, etc.
+ */
+function parseDateRange(dateStart, dateEnd) {
+  if (!dateStart) return [];
+
+  // Try parsing as ISO date
+  function toIso(str) {
+    if (!str) return null;
+    // Already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    // Try native Date parse
+    const d = new Date(str);
+    if (!isNaN(d.getTime()) && d.getFullYear() >= 2025) {
+      return d.toISOString().split('T')[0];
+    }
+    return null;
+  }
+
+  const start = toIso(dateStart);
+  const end = toIso(dateEnd);
+
+  if (!start) return []; // Can't parse the date at all
+
+  if (!end || end === start) return [start];
+
+  // Multi-day range: generate each day
+  const dates = [];
+  const cur = new Date(start);
+  const last = new Date(end);
+  // Cap at 7 days to avoid huge ranges
+  let maxDays = 7;
+  while (cur <= last && maxDays-- > 0) {
+    dates.push(cur.toISOString().split('T')[0]);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates.length > 0 ? dates : [start];
 }
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
