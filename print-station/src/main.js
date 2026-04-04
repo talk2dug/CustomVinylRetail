@@ -6947,7 +6947,7 @@ Return ONLY valid JSON, nothing else:
 
   ipcMain.handle('inkjet:jobs:submit', async (_event, job) => {
     return fleetFetch('/inkjet/jobs', {
-      method: 'POST', body: JSON.stringify(job), timeout: 60000
+      method: 'POST', body: JSON.stringify(job), timeout: 180000  // 3 min — sublimation files can be 150MB+
     });
   });
 
