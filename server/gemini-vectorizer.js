@@ -203,128 +203,142 @@ The confidence should be 0.0-1.0 indicating how well you could identify the desi
    */
   async vectorizeForVinyl(imagePath, options = {}) {
     const { maxColors = 6 } = options;
+    const potrace = require('potrace');
 
     const metadata = await sharp(imagePath).metadata();
     const { width, height } = metadata;
 
-    // Scale for processing
-    const MAX_DIM = 1024;
+    // Scale for Gemini
+    const MAX_DIM = 800;
     let processPath = imagePath;
-    let scale = 1;
     if (width > MAX_DIM || height > MAX_DIM) {
-      scale = MAX_DIM / Math.max(width, height);
+      const s = MAX_DIM / Math.max(width, height);
       processPath = path.join(TEMP_DIR, `vinyl_input_${Date.now()}.png`);
-      await sharp(imagePath)
-        .resize(Math.round(width * scale), Math.round(height * scale))
-        .png()
-        .toFile(processPath);
+      await sharp(imagePath).resize(Math.round(width * s), Math.round(height * s)).png().toFile(processPath);
     }
-
-    const pMeta = await sharp(processPath).metadata();
-    const pW = pMeta.width;
-    const pH = pMeta.height;
 
     const imagePart = this._loadImagePart(processPath);
-    const model = this._getTextModel();
+    const imageModel = this._getImageModel();
 
-    // STEP 1: Identify colors (same as before)
-    const colorPrompt = `Analyze this image for vinyl cutting.
-Identify the distinct colors in the DESIGN (not background). Merge similar shades.
-Image: ${pW}x${pH} pixels.
-
-Return ONLY JSON (no markdown):
-{"colors":[{"name":"Red","hex":"#FF0000","percentage":35}],"confidence":0.9}`;
-
-    console.log(`[GeminiVectorizer] Vinyl vectorize step 1: colors in ${path.basename(imagePath)}`);
-
-    const colorResult = await model.generateContent([{ text: colorPrompt }, imagePart]);
-    const colorText = colorResult.response.candidates[0].content.parts
-      .filter(p => p.text).map(p => p.text).join('');
-    const colorData = this._parseJsonResponse(colorText);
-
-    if (!colorData || !colorData.colors || colorData.colors.length === 0) {
-      throw new Error(`No colors identified. Response: ${colorText.substring(0, 200)}`);
-    }
-
-    const colors = colorData.colors.slice(0, maxColors);
-    console.log(`[GeminiVectorizer] Found ${colors.length} colors: ${colors.map(c => `${c.name} (${c.hex})`).join(', ')}`);
-
-    // STEP 2: For each color, generate actual VECTOR SHAPES (not contours)
-    const resultColors = [];
-    for (const color of colors) {
-      try {
-        console.log(`[GeminiVectorizer] Vinyl vectorize step 2: shapes for ${color.name} (${color.hex})`);
-
-        const vectorPrompt = `You are converting a raster image to precise SVG vector paths for a VINYL CUTTER.
-Image dimensions: ${pW}x${pH} pixels (coordinate space).
-
-CRITICAL: This is VINYL CUTTING, not sticker die-cutting.
-- A vinyl cutter cuts shapes OUT OF a sheet of colored vinyl
-- The paths you generate are the EXACT SHAPES to cut — letters, graphics, icons, shapes
-- These are NOT outlines/contours around the design — they ARE the design
-- Each path must be a precise, clean vector representation of the actual shape
-
-Look at the "${color.name}" (${color.hex}) areas in this image and create SVG paths that represent those shapes exactly.
-
-Examples of what to produce:
-- Text "HELLO" → 5 separate paths, one for each letter outline
-- A star shape → 1 path that IS the star
-- A circle with text → paths for the circle + paths for each letter
-- A logo → paths for each distinct shape in the logo
+    // STEP 1: Gemini creates a CLEAN flat-color version (image output — reliable)
+    const cleanPrompt = `Convert this image into a CLEAN, FLAT vector-style version for vinyl cutting.
 
 RULES:
-- Use closed SVG paths (M...C...Z or M...L...Z)
-- Each distinct shape/letter/element should be its own separate path
-- Paths should be FILLED shapes, not outlines — they represent the vinyl to keep
-- For text, convert each letter to its outline path
-- Use cubic bezier curves (C) for curves, straight lines (L) for straight edges
-- Be precise — the cutter follows these paths exactly
-- Holes in shapes (like the inside of letters O, D, A, etc.) need separate inner paths
-- KEEP PATHS CONCISE — use as few control points as possible while maintaining shape accuracy
-- Use integer coordinates where possible to keep the output short
-- Maximum 15 paths total, combine tiny details into larger shapes
-- Each path should be under 500 characters — simplify curves if needed
+- Replace ALL gradients, shadows, anti-aliasing with SOLID FLAT colors
+- Each color area must be PURE SOLID — no blending, no transparency
+- Edges must be CRISP and SHARP — hard pixel boundaries, no feathering
+- Preserve the exact SHAPES — every letter, curve, and detail
+- Background should be PURE WHITE (#FFFFFF)
+- Reduce to maximum ${maxColors} distinct colors (merge similar shades)
+- Keep SAME dimensions as input
+- Think of it as converting to a high-quality vinyl-ready design`;
 
-Return ONLY JSON (no markdown):
-{"svgPaths":["M 10 20 L 30 20 L 30 50 L 10 50 Z","M 40 20 C 50 20 60 30 60 40 Z"]}`;
+    console.log(`[GeminiVectorizer] Vinyl: creating clean flat image for ${path.basename(imagePath)}`);
 
-        const pathResult = await model.generateContent([{ text: vectorPrompt }, imagePart]);
-        const pathText = pathResult.response.candidates[0].content.parts
-          .filter(p => p.text).map(p => p.text).join('');
+    const cleanResult = await imageModel.generateContent([{ text: cleanPrompt }, imagePart]);
+    let cleanImageData = null;
+    for (const part of cleanResult.response.candidates[0].content.parts) {
+      if (part.inlineData) { cleanImageData = part.inlineData; break; }
+    }
+    if (!cleanImageData) throw new Error('Gemini did not return a cleaned image');
 
-        const pathData = this._parseJsonResponse(pathText);
-        if (pathData && pathData.svgPaths && pathData.svgPaths.length > 0) {
-          let paths = pathData.svgPaths;
-          if (scale !== 1) {
-            paths = paths.map(p => this._scaleSvgPath(p, 1 / scale));
-          }
-          resultColors.push({ ...color, svgPaths: paths });
-          console.log(`[GeminiVectorizer] ${color.name}: ${paths.length} vector shapes`);
-        } else {
-          console.warn(`[GeminiVectorizer] No shapes returned for ${color.name}`);
-          resultColors.push({ ...color, svgPaths: [] });
+    const cleanPath = path.join(TEMP_DIR, `vinyl_clean_${Date.now()}.png`);
+    await sharp(Buffer.from(cleanImageData.data, 'base64'))
+      .resize(width, height, { fit: 'fill' })
+      .png()
+      .toFile(cleanPath);
+
+    console.log(`[GeminiVectorizer] Vinyl: clean image saved (${width}x${height}), extracting colors`);
+
+    // STEP 2: Detect colors in the cleaned image via pixel analysis
+    const { data, info } = await sharp(cleanPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+    const colorCounts = new Map();
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+      if (a < 128) continue;
+      if (r > 240 && g > 240 && b > 240) continue; // skip white bg
+
+      // Quantize to nearest 32 to cluster similar colors
+      const key = `${Math.round(r / 32) * 32},${Math.round(g / 32) * 32},${Math.round(b / 32) * 32}`;
+      colorCounts.set(key, (colorCounts.get(key) || 0) + 1);
+    }
+
+    const sortedColors = Array.from(colorCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, maxColors);
+    const totalPixels = sortedColors.reduce((s, [, c]) => s + c, 0);
+
+    console.log(`[GeminiVectorizer] Vinyl: ${sortedColors.length} colors detected`);
+
+    // STEP 3: For each color, create mask → potrace trace
+    const resultColors = [];
+    for (const [colorKey, count] of sortedColors) {
+      const [qr, qg, qb] = colorKey.split(',').map(Number);
+      const hex = '#' + [qr, qg, qb].map(v => Math.min(255, v).toString(16).padStart(2, '0')).join('');
+      const pct = Math.round((count / totalPixels) * 100);
+
+      // Simple color naming
+      const br = (qr + qg + qb) / 3;
+      let name = br < 40 ? 'Black' : br > 220 ? 'White' :
+        qr > qg + 50 && qr > qb + 50 ? 'Red' :
+        qg > qr + 50 && qg > qb + 50 ? 'Green' :
+        qb > qr + 50 && qb > qg + 50 ? 'Blue' :
+        qr > 150 && qg > 150 && qb < 100 ? 'Yellow' :
+        qr > 150 && qg > 80 && qb < 80 ? 'Orange' :
+        qr > 150 && qg < 100 && qb > 150 ? 'Purple' : 'Gray';
+
+      console.log(`[GeminiVectorizer] Vinyl: tracing ${name} (${hex}, ${pct}%)`);
+
+      // Create binary mask
+      const maskData = Buffer.alloc(info.width * info.height);
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+        if (a < 128) continue;
+        if (Math.round(r / 32) * 32 === qr && Math.round(g / 32) * 32 === qg && Math.round(b / 32) * 32 === qb) {
+          maskData[i / 4] = 255;
         }
+      }
 
-        await new Promise(r => setTimeout(r, 1000));
-      } catch (err) {
-        console.warn(`[GeminiVectorizer] Vector generation failed for ${color.name}: ${err.message}`);
-        resultColors.push({ ...color, svgPaths: [] });
+      const maskPath = path.join(TEMP_DIR, `vinyl_mask_${Date.now()}_${name}.png`);
+      await sharp(maskData, { raw: { width: info.width, height: info.height, channels: 1 } }).png().toFile(maskPath);
+
+      try {
+        const svgPath = await new Promise((resolve, reject) => {
+          potrace.trace(maskPath, {
+            turdSize: 5, alphaMax: 1.0, optCurve: true, optTolerance: 0.2, threshold: 128, blackOnWhite: false,
+          }, (err, svg) => {
+            try { fs.unlinkSync(maskPath); } catch (_) {}
+            if (err) return reject(err);
+            const m = svg.match(/d="([^"]+)"/);
+            if (!m) return reject(new Error('No path'));
+            resolve(m[1]);
+          });
+        });
+
+        const paths = svgPath.split(/(?=M)/).filter(p => p.trim().length > 5);
+        console.log(`[GeminiVectorizer] Vinyl: ${name} → ${paths.length} paths`);
+
+        resultColors.push({
+          name, hex, percentage: pct, count,
+          svgPaths: paths, contourPath: svgPath, contourPaths: paths,
+        });
+      } catch (e) {
+        console.warn(`[GeminiVectorizer] Vinyl: trace failed for ${name}: ${e.message}`);
+        try { fs.unlinkSync(maskPath); } catch (_) {}
       }
     }
 
-    if (processPath !== imagePath) {
-      try { fs.unlinkSync(processPath); } catch (_) {}
-    }
+    // Cleanup
+    if (processPath !== imagePath) try { fs.unlinkSync(processPath); } catch (_) {}
+    try { fs.unlinkSync(cleanPath); } catch (_) {}
 
-    console.log(`[GeminiVectorizer] Vinyl vectorize complete: ${resultColors.filter(c => c.svgPaths.length > 0).length}/${resultColors.length} colors with shapes`);
+    console.log(`[GeminiVectorizer] Vinyl complete: ${resultColors.length} colors`);
 
     return {
-      colors: resultColors,
-      width,
-      height,
+      colors: resultColors, width, height,
       viewBox: `0 0 ${width} ${height}`,
-      confidence: colorData.confidence || 0,
-      strategy: 'vinyl-vector',
+      confidence: 0.9, strategy: 'vinyl-clean-trace',
     };
   }
 
