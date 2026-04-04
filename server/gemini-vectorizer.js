@@ -184,6 +184,148 @@ The confidence should be 0.0-1.0 indicating how well you could identify the desi
   }
 
   // ==========================================================================
+  // VINYL VECTORIZATION — Convert raster to cut-ready vector shapes
+  // This is fundamentally different from contour tracing.
+  // Contour = outline AROUND a design (for stickers)
+  // Vinyl vector = the actual SHAPES of the design (for cutting FROM vinyl)
+  // ==========================================================================
+
+  /**
+   * Convert a raster image into clean SVG vector shapes for vinyl cutting.
+   * NOT a contour/outline — this produces the actual shapes to cut FROM vinyl.
+   *
+   * For example: text "HELLO" → cut paths for each letter H, E, L, L, O
+   * A logo → cut paths for each shape in the logo
+   *
+   * @param {string} imagePath
+   * @param {object} options - { maxColors }
+   * @returns {Promise<{colors: Array<{name, hex, svgPaths}>, width, height, svgContent}>}
+   */
+  async vectorizeForVinyl(imagePath, options = {}) {
+    const { maxColors = 6 } = options;
+
+    const metadata = await sharp(imagePath).metadata();
+    const { width, height } = metadata;
+
+    // Scale for processing
+    const MAX_DIM = 1024;
+    let processPath = imagePath;
+    let scale = 1;
+    if (width > MAX_DIM || height > MAX_DIM) {
+      scale = MAX_DIM / Math.max(width, height);
+      processPath = path.join(TEMP_DIR, `vinyl_input_${Date.now()}.png`);
+      await sharp(imagePath)
+        .resize(Math.round(width * scale), Math.round(height * scale))
+        .png()
+        .toFile(processPath);
+    }
+
+    const pMeta = await sharp(processPath).metadata();
+    const pW = pMeta.width;
+    const pH = pMeta.height;
+
+    const imagePart = this._loadImagePart(processPath);
+    const model = this._getTextModel();
+
+    // STEP 1: Identify colors (same as before)
+    const colorPrompt = `Analyze this image for vinyl cutting.
+Identify the distinct colors in the DESIGN (not background). Merge similar shades.
+Image: ${pW}x${pH} pixels.
+
+Return ONLY JSON (no markdown):
+{"colors":[{"name":"Red","hex":"#FF0000","percentage":35}],"confidence":0.9}`;
+
+    console.log(`[GeminiVectorizer] Vinyl vectorize step 1: colors in ${path.basename(imagePath)}`);
+
+    const colorResult = await model.generateContent([{ text: colorPrompt }, imagePart]);
+    const colorText = colorResult.response.candidates[0].content.parts
+      .filter(p => p.text).map(p => p.text).join('');
+    const colorData = this._parseJsonResponse(colorText);
+
+    if (!colorData || !colorData.colors || colorData.colors.length === 0) {
+      throw new Error(`No colors identified. Response: ${colorText.substring(0, 200)}`);
+    }
+
+    const colors = colorData.colors.slice(0, maxColors);
+    console.log(`[GeminiVectorizer] Found ${colors.length} colors: ${colors.map(c => `${c.name} (${c.hex})`).join(', ')}`);
+
+    // STEP 2: For each color, generate actual VECTOR SHAPES (not contours)
+    const resultColors = [];
+    for (const color of colors) {
+      try {
+        console.log(`[GeminiVectorizer] Vinyl vectorize step 2: shapes for ${color.name} (${color.hex})`);
+
+        const vectorPrompt = `You are converting a raster image to precise SVG vector paths for a VINYL CUTTER.
+Image dimensions: ${pW}x${pH} pixels (coordinate space).
+
+CRITICAL: This is VINYL CUTTING, not sticker die-cutting.
+- A vinyl cutter cuts shapes OUT OF a sheet of colored vinyl
+- The paths you generate are the EXACT SHAPES to cut — letters, graphics, icons, shapes
+- These are NOT outlines/contours around the design — they ARE the design
+- Each path must be a precise, clean vector representation of the actual shape
+
+Look at the "${color.name}" (${color.hex}) areas in this image and create SVG paths that represent those shapes exactly.
+
+Examples of what to produce:
+- Text "HELLO" → 5 separate paths, one for each letter outline
+- A star shape → 1 path that IS the star
+- A circle with text → paths for the circle + paths for each letter
+- A logo → paths for each distinct shape in the logo
+
+RULES:
+- Use closed SVG paths (M...C...Z or M...L...Z)
+- Each distinct shape/letter/element should be its own separate path
+- Paths should be FILLED shapes, not outlines — they represent the vinyl to keep
+- For text, convert each letter to its outline path
+- Use cubic bezier curves (C) for curves, straight lines (L) for straight edges
+- Be precise — the cutter follows these paths exactly
+- Holes in shapes (like the inside of letters O, D, A, etc.) need separate inner paths
+- Keep paths clean and efficient
+
+Return ONLY JSON (no markdown):
+{"svgPaths":["M 10 20 L 30 20 L 30 50 L 10 50 Z","M 40 20 C 50 20 60 30 60 40 Z"]}`;
+
+        const pathResult = await model.generateContent([{ text: vectorPrompt }, imagePart]);
+        const pathText = pathResult.response.candidates[0].content.parts
+          .filter(p => p.text).map(p => p.text).join('');
+
+        const pathData = this._parseJsonResponse(pathText);
+        if (pathData && pathData.svgPaths && pathData.svgPaths.length > 0) {
+          let paths = pathData.svgPaths;
+          if (scale !== 1) {
+            paths = paths.map(p => this._scaleSvgPath(p, 1 / scale));
+          }
+          resultColors.push({ ...color, svgPaths: paths });
+          console.log(`[GeminiVectorizer] ${color.name}: ${paths.length} vector shapes`);
+        } else {
+          console.warn(`[GeminiVectorizer] No shapes returned for ${color.name}`);
+          resultColors.push({ ...color, svgPaths: [] });
+        }
+
+        await new Promise(r => setTimeout(r, 1000));
+      } catch (err) {
+        console.warn(`[GeminiVectorizer] Vector generation failed for ${color.name}: ${err.message}`);
+        resultColors.push({ ...color, svgPaths: [] });
+      }
+    }
+
+    if (processPath !== imagePath) {
+      try { fs.unlinkSync(processPath); } catch (_) {}
+    }
+
+    console.log(`[GeminiVectorizer] Vinyl vectorize complete: ${resultColors.filter(c => c.svgPaths.length > 0).length}/${resultColors.length} colors with shapes`);
+
+    return {
+      colors: resultColors,
+      width,
+      height,
+      viewBox: `0 0 ${width} ${height}`,
+      confidence: colorData.confidence || 0,
+      strategy: 'vinyl-vector',
+    };
+  }
+
+  // ==========================================================================
   // STRATEGY 2: AI Clean + Trace
   // Gemini creates a clean black/white mask, then potrace traces it
   // ==========================================================================

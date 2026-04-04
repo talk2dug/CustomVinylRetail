@@ -284,6 +284,56 @@ if (process.env.LIBRARY_ROOT) {
 
 const LIBRARY_WEB_DIR = path.join(LIBRARY_ROOT, 'web');
 const WEB_DIR = fs.existsSync(LIBRARY_WEB_DIR) ? LIBRARY_WEB_DIR : path.join(APP_ROOT, 'web');
+
+/**
+ * Resolve an image path that may be a full URL, server-relative path, or absolute path
+ * to a local filesystem path the server can read.
+ *
+ * Nginx mappings:
+ *   /library/      → /mnt/websit/
+ *   /web/library/  → /mnt/websit/
+ *   /dbFiles/      → /home/ubuntu/vinylApp/dbFiles/
+ *   /web/          → /home/ubuntu/vinylApp/web/
+ */
+const URL_PATH_MAPPINGS = [
+  { prefix: '/library/',     localRoot: '/mnt/websit/' },
+  { prefix: '/web/library/', localRoot: '/mnt/websit/' },
+  { prefix: '/api/library/', localRoot: '/mnt/websit/' },
+  { prefix: '/dbFiles/',     localRoot: path.join(APP_ROOT, 'dbFiles') + '/' },
+  { prefix: '/web/',         localRoot: path.join(APP_ROOT, 'web') + '/' },
+];
+
+function resolveImageToLocalPath(imagePath) {
+  if (!imagePath) return null;
+
+  // Full URL → extract pathname and map via nginx rules
+  let pathname = null;
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    try {
+      const url = new URL(imagePath);
+      pathname = decodeURIComponent(url.pathname);
+    } catch (_) { /* not a valid URL, fall through */ }
+  } else if (imagePath.startsWith('/') && !path.isAbsolute(imagePath.replace(/^\//, ''))) {
+    // Server-relative path like /library/foo/bar.jpg
+    pathname = imagePath;
+  }
+
+  if (pathname) {
+    for (const { prefix, localRoot } of URL_PATH_MAPPINGS) {
+      if (pathname.startsWith(prefix)) {
+        const resolved = path.join(localRoot, pathname.slice(prefix.length));
+        console.log(`[resolveImageToLocalPath] ${imagePath} → ${resolved}`);
+        return resolved;
+      }
+    }
+  }
+
+  // Already an absolute filesystem path
+  if (path.isAbsolute(imagePath)) return imagePath;
+
+  // Relative — join with LIBRARY_ROOT
+  return path.join(LIBRARY_ROOT, imagePath);
+}
 const DATA_DIR = path.join(LIBRARY_ROOT, 'data');
 const OUTPUT_DIR = path.join(LIBRARY_ROOT, 'saved-designs');
 const RACE_QUOTE_FILES_DIR = path.join(DATA_DIR, 'race-quote-files');
@@ -8445,7 +8495,17 @@ Keep it concise and actionable.`;
 
   // ===== GEMINI AI VECTORIZER API =====
 
-  // AI-powered contour generation (replaces potrace)
+  // AI-powered vinyl vectorization (raster → cut-ready vector shapes)
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/ai-vinyl-vectorize') {
+    if (!requireInternalKey(req, res)) return;
+    handleAiVinylVectorize(req, res).catch(err => {
+      console.error('[AI Vinyl Vectorize Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // AI-powered contour generation (for stickers — trace around design)
   if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/ai-contour') {
     if (!requireInternalKey(req, res)) return;
     handleAiContour(req, res).catch(err => {
@@ -24798,14 +24858,14 @@ function getGeminiVectorizer() {
 }
 
 /**
- * AI-powered contour generation
- * POST /api/vinyl-cutter/ai-contour
- * Body: { imagePath, strategy?: "direct-svg"|"clean-trace"|"hybrid", offset?: mm }
+ * AI-powered vinyl vectorization — converts raster to actual cut shapes
+ * POST /api/vinyl-cutter/ai-vinyl-vectorize
+ * Body: { imagePath, maxColors?: number }
  */
-async function handleAiContour(req, res) {
+async function handleAiVinylVectorize(req, res) {
   try {
     const body = await getReqBodyJson(req);
-    const { imagePath, strategy = 'direct-svg', offset = 1.0 } = body;
+    const { imagePath, maxColors = 6 } = body;
 
     if (!imagePath) {
       return sendJson(res, 400, { success: false, error: 'imagePath is required' });
@@ -24818,6 +24878,38 @@ async function handleAiContour(req, res) {
 
     if (!fs.existsSync(fullPath)) {
       return sendJson(res, 404, { success: false, error: 'Image file not found' });
+    }
+
+    console.log(`[AI Vinyl Vectorize] Image=${path.basename(fullPath)}, maxColors=${maxColors}`);
+    const vectorizer = getGeminiVectorizer();
+    const result = await vectorizer.vectorizeForVinyl(fullPath, { maxColors });
+
+    sendJson(res, 200, { success: true, ...result });
+  } catch (err) {
+    console.error('[AI Vinyl Vectorize Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
+}
+
+/**
+ * AI-powered contour generation (for stickers — traces around design)
+ * POST /api/vinyl-cutter/ai-contour
+ * Body: { imagePath, strategy?: "direct-svg"|"clean-trace"|"hybrid", offset?: mm }
+ */
+async function handleAiContour(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { imagePath, strategy = 'direct-svg', offset = 1.0 } = body;
+
+    if (!imagePath) {
+      return sendJson(res, 400, { success: false, error: 'imagePath is required' });
+    }
+
+    let fullPath = resolveImageToLocalPath(imagePath);
+
+    if (!fs.existsSync(fullPath)) {
+      console.error(`[AI Contour] File not found: ${fullPath} (from imagePath: ${imagePath})`);
+      return sendJson(res, 404, { success: false, error: `Image file not found: ${fullPath}` });
     }
 
     console.log(`[AI Contour] Strategy=${strategy}, Image=${path.basename(fullPath)}`);
@@ -24853,13 +24945,11 @@ async function handleAiColorSeparate(req, res) {
       return sendJson(res, 400, { success: false, error: 'imagePath is required' });
     }
 
-    let fullPath = imagePath;
-    if (!path.isAbsolute(imagePath)) {
-      fullPath = path.join(LIBRARY_ROOT, imagePath);
-    }
+    let fullPath = resolveImageToLocalPath(imagePath);
 
     if (!fs.existsSync(fullPath)) {
-      return sendJson(res, 404, { success: false, error: 'Image file not found' });
+      console.error(`[AI Color Separate] File not found: ${fullPath} (from imagePath: ${imagePath})`);
+      return sendJson(res, 404, { success: false, error: `Image file not found: ${fullPath}` });
     }
 
     console.log(`[AI Color Separate] maxColors=${maxColors}, Image=${path.basename(fullPath)}`);
@@ -24962,11 +25052,8 @@ async function handleVinylVectorize(req, res) {
       return sendJson(res, 400, { success: false, error: 'imagePath is required' });
     }
 
-    // Get full path
-    let fullPath = imagePath;
-    if (!path.isAbsolute(imagePath)) {
-      fullPath = path.join(LIBRARY_ROOT, imagePath);
-    }
+    // Get full path (handles URLs, absolute paths, and relative paths)
+    let fullPath = resolveImageToLocalPath(imagePath);
 
     // Check if file exists
     try {

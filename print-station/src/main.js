@@ -5426,14 +5426,14 @@ Return ONLY valid JSON, nothing else:
       return { success: false, error: 'Image path is required' };
     }
     if (useAi) {
-      // Use AI-powered vectorization (Gemini)
-      return httpRequest('/api/vinyl-cutter/ai-color-separate', {
+      // Use AI-powered vinyl vectorization (Gemini)
+      // This generates actual CUT SHAPES, not contours
+      return httpRequest('/api/vinyl-cutter/ai-vinyl-vectorize', {
         method: 'POST',
         body: { imagePath, maxColors: 6 }
       }).then(result => {
         if (!result || !result.success) {
-          // Fallback to legacy potrace if AI fails
-          console.log('[IPC] AI vectorize failed, falling back to potrace');
+          console.log('[IPC] AI vinyl vectorize failed, falling back to potrace');
           return httpRequest('/api/vinyl-cutter/vectorize', {
             method: 'POST',
             body: { imagePath }
@@ -5452,10 +5452,10 @@ Return ONLY valid JSON, nothing else:
           })),
           width: result.width,
           height: result.height,
-          strategy: 'ai-color-separate'
+          strategy: result.strategy || 'ai-vinyl-vector'
         };
       }).catch(err => {
-        console.error('[IPC] AI vectorize error, falling back:', err.message);
+        console.error('[IPC] AI vinyl vectorize error, falling back:', err.message);
         return httpRequest('/api/vinyl-cutter/vectorize', {
           method: 'POST',
           body: { imagePath }
