@@ -18239,6 +18239,13 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // Serve /library/... directly (same as /api/library/ — needed for vinyl cut file downloads)
+  if ((req.method === 'GET' || req.method === 'HEAD') && segments[0] === 'library' && segments.length > 1) {
+    const assetPath = decodeURIComponent(segments.slice(1).join('/'));
+    serveLibraryAsset(req, res, assetPath);
+    return;
+  }
+
   if (
     req.method === 'POST' &&
     segments[0] === 'api' &&
