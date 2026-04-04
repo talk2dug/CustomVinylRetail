@@ -280,7 +280,10 @@ RULES:
 - Use cubic bezier curves (C) for curves, straight lines (L) for straight edges
 - Be precise — the cutter follows these paths exactly
 - Holes in shapes (like the inside of letters O, D, A, etc.) need separate inner paths
-- Keep paths clean and efficient
+- KEEP PATHS CONCISE — use as few control points as possible while maintaining shape accuracy
+- Use integer coordinates where possible to keep the output short
+- Maximum 15 paths total, combine tiny details into larger shapes
+- Each path should be under 500 characters — simplify curves if needed
 
 Return ONLY JSON (no markdown):
 {"svgPaths":["M 10 20 L 30 20 L 30 50 L 10 50 Z","M 40 20 C 50 20 60 30 60 40 Z"]}`;
@@ -550,7 +553,11 @@ Return ONLY JSON (no markdown):
         const pathText = pathResult.response.candidates[0].content.parts
           .filter(p => p.text).map(p => p.text).join('');
 
-        const pathData = this._parseJsonResponse(pathText);
+        let pathData = this._parseJsonResponse(pathText);
+        // If JSON parsing failed, try to recover truncated SVG paths
+        if (!pathData || !pathData.svgPaths) {
+          pathData = this._recoverTruncatedPaths(pathText);
+        }
         if (pathData && pathData.svgPaths && pathData.svgPaths.length > 0) {
           let paths = pathData.svgPaths;
           if (scale !== 1) {
@@ -904,6 +911,30 @@ ${scaledPaths.map(p => `    <path d="${p}"/>`).join('\n')}
       console.error('[GeminiVectorizer] Failed to parse JSON:', clean.substring(0, 200));
       return null;
     }
+  }
+
+  /**
+   * Recover SVG paths from truncated JSON response.
+   * Gemini sometimes returns JSON that gets cut off mid-path.
+   * We extract whatever complete paths we can find.
+   */
+  _recoverTruncatedPaths(text) {
+    const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+    // Find all complete SVG path strings (start with M, end with Z)
+    const pathRegex = /M\s[^"]*?Z/g;
+    const matches = clean.match(pathRegex);
+
+    if (matches && matches.length > 0) {
+      // Filter to only paths that look valid (have reasonable length and content)
+      const validPaths = matches.filter(p => p.length > 10 && p.length < 2000);
+      if (validPaths.length > 0) {
+        console.log(`[GeminiVectorizer] Recovered ${validPaths.length} paths from truncated JSON`);
+        return { svgPaths: validPaths };
+      }
+    }
+
+    return null;
   }
 
   /**
