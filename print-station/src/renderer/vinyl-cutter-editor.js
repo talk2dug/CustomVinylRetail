@@ -1357,7 +1357,18 @@ function previewVinylCutFile(batchName, fileName) {
 async function sendVinylToSilhouette(batchName, fileName) {
   vinylShowToast('Sending to Silhouette...', 'info');
   try {
-    const result = await printStation.vinylCutter.sendToSilhouette({ batchName, fileName });
+    // Read cut settings from UI
+    const cutSettings = {
+      speed: parseInt(document.getElementById('vinylCutSpeed')?.value) || 3,
+      pressure: parseInt(document.getElementById('vinylCutPressure')?.value) || 10,
+      depth: parseInt(document.getElementById('vinylCutDepth')?.value) || 2,
+      tool: document.getElementById('vinylCutTool')?.value || 'autoblade',
+      xOffset: parseInt(document.getElementById('vinylCutXOffset')?.value) || 0,
+      yOffset: parseInt(document.getElementById('vinylCutYOffset')?.value) || 0,
+    };
+    console.log('[VinylCutter] Sending with settings:', cutSettings);
+
+    const result = await printStation.vinylCutter.sendToSilhouette({ batchName, fileName, cutSettings });
     if (result && result.success) {
       vinylShowToast('Sent to Silhouette successfully!', 'success');
     } else {

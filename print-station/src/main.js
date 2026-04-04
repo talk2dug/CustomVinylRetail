@@ -5540,9 +5540,10 @@ Return ONLY valid JSON, nothing else:
       // Build command with settings for vinyl cutting
       // For vinyl cutting, we DON'T use registration marks - just cut from origin
       // This is different from sticker print-and-cut which needs regmarks
-      const speed = cutSettings.speed || 4;
-      const pressure = cutSettings.pressure || 15;
-      const depth = cutSettings.depth || 6;
+      const speed = cutSettings.speed || 3;
+      const pressure = cutSettings.pressure || 10;
+      const depth = cutSettings.depth || 2;
+      const tool = cutSettings.tool || 'autoblade';
       const xOffset = cutSettings.xOffset || 0;
       const yOffset = cutSettings.yOffset || 0;
 
@@ -5554,7 +5555,7 @@ Return ONLY valid JSON, nothing else:
         `--speed=${speed}`,
         `--pressure=${pressure}`,
         `--depth=${depth}`,
-        '--tool=autoblade',
+        `--tool=${tool}`,
         `--x_off=${xOffset}`,
         `--y_off=${yOffset}`
       ];

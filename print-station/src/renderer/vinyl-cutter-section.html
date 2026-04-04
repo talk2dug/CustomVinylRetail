@@ -156,6 +156,43 @@
               </label>
             </div>
 
+            <!-- Cutter Settings -->
+            <div class="inventory-card" style="flex-shrink:0;">
+              <h4 style="margin:0 0 10px 0;">Cutter Settings</h4>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <label style="font-size:12px;">
+                  <span style="color:#aaa;">Speed</span>
+                  <input type="number" id="vinylCutSpeed" value="3" min="1" max="10" step="1" style="width:100%;margin-top:2px;" />
+                </label>
+                <label style="font-size:12px;">
+                  <span style="color:#aaa;">Pressure</span>
+                  <input type="number" id="vinylCutPressure" value="10" min="1" max="33" step="1" style="width:100%;margin-top:2px;" />
+                </label>
+                <label style="font-size:12px;">
+                  <span style="color:#aaa;">Blade Depth</span>
+                  <input type="number" id="vinylCutDepth" value="2" min="1" max="10" step="1" style="width:100%;margin-top:2px;" />
+                </label>
+                <label style="font-size:12px;">
+                  <span style="color:#aaa;">Tool</span>
+                  <select id="vinylCutTool" style="width:100%;margin-top:2px;">
+                    <option value="autoblade" selected>AutoBlade</option>
+                    <option value="cb09">CB09 Blade</option>
+                    <option value="pen">Pen</option>
+                  </select>
+                </label>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+                <label style="font-size:12px;">
+                  <span style="color:#aaa;">X Offset (mm)</span>
+                  <input type="number" id="vinylCutXOffset" value="0" min="0" max="100" step="1" style="width:100%;margin-top:2px;" />
+                </label>
+                <label style="font-size:12px;">
+                  <span style="color:#aaa;">Y Offset (mm)</span>
+                  <input type="number" id="vinylCutYOffset" value="0" min="0" max="100" step="1" style="width:100%;margin-top:2px;" />
+                </label>
+              </div>
+            </div>
+
             <!-- Generate Button -->
             <div class="inventory-card" style="flex-shrink:0;">
               <button id="vinylGenerateBtn" class="primary" style="width:100%;padding:12px;" onclick="generateVinylCutFiles()" disabled>
