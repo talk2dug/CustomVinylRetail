@@ -20004,7 +20004,9 @@ Return ONLY valid JSON, no markdown or explanation.`;
         sendJson(res, 400, { error: 'imageData (base64) and filename are required.' });
         return;
       }
-      const uploadDir = path.join(LIBRARY_ROOT, 'uploads', 'custom-art');
+      // Write to /mnt/websit/ so nginx can serve over HTTPS via /library/ URL
+      const UPLOADS_ROOT = fs.existsSync('/mnt/websit/uploads') ? '/mnt/websit' : LIBRARY_ROOT;
+      const uploadDir = path.join(UPLOADS_ROOT, 'uploads', 'custom-art');
       fs.mkdirSync(uploadDir, { recursive: true });
 
       const ext = path.extname(body.filename) || '.png';
@@ -20021,7 +20023,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       let thumbnailPath = null;
       try {
         const sharp = require('sharp');
-        const thumbDir = path.join(LIBRARY_ROOT, 'uploads', 'custom-art', 'thumbs');
+        const thumbDir = path.join(UPLOADS_ROOT, 'uploads', 'custom-art', 'thumbs');
         fs.mkdirSync(thumbDir, { recursive: true });
         const thumbFilename = `thumb_${safeFilename.replace(/\.[^.]+$/, '.jpg')}`;
         const thumbAbsPath = path.join(thumbDir, thumbFilename);
