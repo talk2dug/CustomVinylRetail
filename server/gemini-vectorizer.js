@@ -221,17 +221,19 @@ The confidence should be 0.0-1.0 indicating how well you could identify the desi
     const imageModel = this._getImageModel();
 
     // STEP 1: Gemini creates a CLEAN flat-color version (image output — reliable)
-    const cleanPrompt = `Convert this image into a CLEAN, FLAT vector-style version for vinyl cutting.
+    const cleanPrompt = `Convert this image into a PURE FLAT COLOR version for vinyl cutting. This will be traced by software.
 
-RULES:
-- Replace ALL gradients, shadows, anti-aliasing with SOLID FLAT colors
-- Each color area must be PURE SOLID — no blending, no transparency
-- Edges must be CRISP and SHARP — hard pixel boundaries, no feathering
-- Preserve the exact SHAPES — every letter, curve, and detail
-- Background should be PURE WHITE (#FFFFFF)
-- Reduce to maximum ${maxColors} distinct colors (merge similar shades)
-- Keep SAME dimensions as input
-- Think of it as converting to a high-quality vinyl-ready design`;
+CRITICAL — the output MUST have:
+- ONLY ${maxColors} or fewer PURE SOLID colors plus white background
+- ZERO gradients, ZERO shading, ZERO anti-aliasing, ZERO blending
+- Every pixel must be one of the exact solid colors — no in-between values
+- Edges between colors must be HARD 1-pixel boundaries — like a GIF, not a JPEG
+- Background = PURE WHITE (#FFFFFF)
+- Black areas = PURE BLACK (#000000) — not dark gray, not #333, but #000000
+- Same dimensions as input
+- Preserve all shapes, letters, and design details accurately
+
+Think: posterize to ${maxColors} colors with no dithering.`;
 
     console.log(`[GeminiVectorizer] Vinyl: creating clean flat image for ${path.basename(imagePath)}`);
 
@@ -243,24 +245,37 @@ RULES:
     if (!cleanImageData) throw new Error('Gemini did not return a cleaned image');
 
     const cleanPath = path.join(TEMP_DIR, `vinyl_clean_${Date.now()}.png`);
+
+    // Force posterize the cleaned image to eliminate any remaining gradients/AA
+    // normalize → posterize to few levels → resize to target
     await sharp(Buffer.from(cleanImageData.data, 'base64'))
       .resize(width, height, { fit: 'fill' })
+      .normalise()
       .png()
       .toFile(cleanPath);
 
     console.log(`[GeminiVectorizer] Vinyl: clean image saved (${width}x${height}), extracting colors`);
 
     // STEP 2: Detect colors in the cleaned image via pixel analysis
+    // Use aggressive quantization (nearest 64) to merge similar shades
     const { data, info } = await sharp(cleanPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 
     const colorCounts = new Map();
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
       if (a < 128) continue;
-      if (r > 240 && g > 240 && b > 240) continue; // skip white bg
+      if (r > 230 && g > 230 && b > 230) continue; // skip white/near-white bg
 
-      // Quantize to nearest 32 to cluster similar colors
-      const key = `${Math.round(r / 32) * 32},${Math.round(g / 32) * 32},${Math.round(b / 32) * 32}`;
+      // Aggressive quantize: round to nearest 64 (only 5 levels: 0, 64, 128, 192, 256)
+      // Then snap very dark colors to pure black
+      let qr = Math.round(r / 64) * 64;
+      let qg = Math.round(g / 64) * 64;
+      let qb = Math.round(b / 64) * 64;
+
+      // Snap near-black to pure black (the most common vinyl case)
+      if (qr <= 64 && qg <= 64 && qb <= 64) { qr = 0; qg = 0; qb = 0; }
+
+      const key = `${qr},${qg},${qb}`;
       colorCounts.set(key, (colorCounts.get(key) || 0) + 1);
     }
 
@@ -290,12 +305,16 @@ RULES:
 
       console.log(`[GeminiVectorizer] Vinyl: tracing ${name} (${hex}, ${pct}%)`);
 
-      // Create binary mask
+      // Create binary mask using same quantization
       const maskData = Buffer.alloc(info.width * info.height);
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
         if (a < 128) continue;
-        if (Math.round(r / 32) * 32 === qr && Math.round(g / 32) * 32 === qg && Math.round(b / 32) * 32 === qb) {
+        let mr = Math.round(r / 64) * 64;
+        let mg = Math.round(g / 64) * 64;
+        let mb = Math.round(b / 64) * 64;
+        if (mr <= 64 && mg <= 64 && mb <= 64) { mr = 0; mg = 0; mb = 0; }
+        if (mr === qr && mg === qg && mb === qb) {
           maskData[i / 4] = 255;
         }
       }
