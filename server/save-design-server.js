@@ -25041,12 +25041,13 @@ async function handleAiVinylGenerate(req, res) {
 
 /**
  * Vectorize an image for vinyl cutting with color detection
- * Uses request queuing (sequential processing) and caching
+ * Now defaults to AI (Gemini) vectorization which produces actual cut shapes,
+ * not contour traces. Falls back to legacy potrace on failure.
  */
 async function handleVinylVectorize(req, res) {
   try {
     const body = await getReqBodyJson(req);
-    const { imagePath } = body;
+    const { imagePath, useAi = true } = body;
 
     if (!imagePath) {
       return sendJson(res, 400, { success: false, error: 'imagePath is required' });
@@ -25062,25 +25063,58 @@ async function handleVinylVectorize(req, res) {
       return sendJson(res, 404, { success: false, error: 'Image file not found' });
     }
 
+    // Try AI vectorization first (produces actual cut shapes, not contours)
+    if (useAi) {
+      try {
+        console.log(`[Vinyl Cutter] Using AI vectorization for: ${path.basename(fullPath)}`);
+        const vectorizer = getGeminiVectorizer();
+        const aiResult = await vectorizer.vectorizeForVinyl(fullPath, { maxColors: 6 });
+
+        if (aiResult && aiResult.colors && aiResult.colors.length > 0) {
+          // Transform to match legacy format expected by frontend
+          const result = {
+            colors: aiResult.colors.map(c => ({
+              hex: c.hex,
+              name: c.name,
+              contourPath: (c.svgPaths || []).join(' '),
+              contourPaths: c.svgPaths || [],
+              count: Math.round((c.percentage || 0) * 100),
+              percentage: c.percentage || 0
+            })),
+            width: aiResult.width,
+            height: aiResult.height,
+            strategy: 'ai-vinyl-vector'
+          };
+
+          console.log(`[Vinyl Cutter] AI vectorization success: ${result.colors.length} colors, ${result.colors.reduce((s, c) => s + (c.contourPaths?.length || 0), 0)} shapes`);
+          return sendJson(res, 200, { success: true, ...result });
+        }
+      } catch (aiErr) {
+        console.warn(`[Vinyl Cutter] AI vectorization failed, falling back to potrace: ${aiErr.message}`);
+      }
+    }
+
+    // Legacy potrace fallback
     // Check cache first
     const cacheKey = await getVinylCacheKey(fullPath);
     const cached = vinylVectorizeCache.get(cacheKey);
     if (cached) {
-      console.log('[Vinyl Cutter] Cache hit for:', path.basename(fullPath));
+      console.log('[Vinyl Cutter] Cache hit (potrace) for:', path.basename(fullPath));
       return sendJson(res, 200, {
         success: true,
         ...cached.data,
-        fromCache: true
+        fromCache: true,
+        strategy: 'potrace'
       });
     }
 
     // Queue the request for sequential processing
     vinylQueueLength++;
-    console.log(`[Vinyl Cutter] Queuing vectorization (queue length: ${vinylQueueLength}):`, path.basename(fullPath));
+    console.log(`[Vinyl Cutter] Queuing potrace vectorization (queue length: ${vinylQueueLength}):`, path.basename(fullPath));
 
     // Add to queue - each request waits for previous ones to complete
     const resultPromise = vinylVectorizeQueue.then(async () => {
-      console.log('[Vinyl Cutter] Processing:', path.basename(fullPath));
+      console.log('[Vinyl Cutter] Processing (potrace):', path.basename(fullPath));
       const result = await doVinylVectorize(fullPath);
 
       // Cache the result
@@ -25089,7 +25123,7 @@ async function handleVinylVectorize(req, res) {
         data: result,
         timestamp: Date.now()
       });
-      console.log(`[Vinyl Cutter] Cached result (cache size: ${vinylVectorizeCache.size})`);
+      console.log(`[Vinyl Cutter] Cached potrace result (cache size: ${vinylVectorizeCache.size})`);
 
       return result;
     }).finally(() => {
