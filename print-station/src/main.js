@@ -5379,10 +5379,11 @@ Return ONLY valid JSON, nothing else:
       return { success: false, error: 'Image path is required' };
     }
     if (useAi) {
-      // Use AI-powered contour generation
+      // Use AI-powered contour generation (60s timeout for Gemini)
       return httpRequest('/api/vinyl-cutter/ai-contour', {
         method: 'POST',
-        body: { imagePath, strategy }
+        body: { imagePath, strategy },
+        timeout: 60000
       }).then(result => {
         if (!result || !result.success) {
           // Fallback to legacy potrace
@@ -5421,50 +5422,16 @@ Return ONLY valid JSON, nothing else:
 
   // Vectorize an image for vinyl cutting (with color detection)
   // Supports useAi flag to route through Gemini AI vectorizer
-  ipcMain.handle('vinyl-cutter:vectorize', async (_event, { imagePath, useAi = true, strategy = 'direct-svg' }) => {
+  // Vectorize for vinyl cutting — server handles AI vs potrace decision
+  // 120s timeout because Gemini AI vectorization takes 30-60s (2 API calls)
+  ipcMain.handle('vinyl-cutter:vectorize', async (_event, { imagePath, useAi = true }) => {
     if (!imagePath) {
       return { success: false, error: 'Image path is required' };
     }
-    if (useAi) {
-      // Use AI-powered vinyl vectorization (Gemini)
-      // This generates actual CUT SHAPES, not contours
-      return httpRequest('/api/vinyl-cutter/ai-vinyl-vectorize', {
-        method: 'POST',
-        body: { imagePath, maxColors: 6 }
-      }).then(result => {
-        if (!result || !result.success) {
-          console.log('[IPC] AI vinyl vectorize failed, falling back to potrace');
-          return httpRequest('/api/vinyl-cutter/vectorize', {
-            method: 'POST',
-            body: { imagePath }
-          });
-        }
-        // Transform AI result to match legacy format expected by frontend
-        return {
-          success: true,
-          colors: (result.colors || []).map(c => ({
-            hex: c.hex,
-            name: c.name,
-            contourPath: (c.svgPaths || []).join(' '),
-            contourPaths: c.svgPaths || [],
-            count: Math.round((c.percentage || 0) * 100),
-            percentage: c.percentage || 0
-          })),
-          width: result.width,
-          height: result.height,
-          strategy: result.strategy || 'ai-vinyl-vector'
-        };
-      }).catch(err => {
-        console.error('[IPC] AI vinyl vectorize error, falling back:', err.message);
-        return httpRequest('/api/vinyl-cutter/vectorize', {
-          method: 'POST',
-          body: { imagePath }
-        });
-      });
-    }
     return httpRequest('/api/vinyl-cutter/vectorize', {
       method: 'POST',
-      body: { imagePath }
+      body: { imagePath, useAi },
+      timeout: 120000
     });
   });
 
@@ -5473,7 +5440,8 @@ Return ONLY valid JSON, nothing else:
     if (!imagePath) return { success: false, error: 'Image path is required' };
     return httpRequest('/api/vinyl-cutter/ai-contour', {
       method: 'POST',
-      body: { imagePath, strategy, offset }
+      body: { imagePath, strategy, offset },
+      timeout: 120000
     });
   });
 
