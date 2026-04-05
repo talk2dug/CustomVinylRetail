@@ -620,18 +620,44 @@ function mergeSTLFiles(stlPaths) {
 
   for (const p of stlPaths) {
     const buf = fs.readFileSync(p);
-    if (buf.length < 84) {
+    if (buf.length < 20) {
       console.warn(`[Slicer] mergeSTL: skipping too-small file ${path.basename(p)}`);
       continue;
     }
-    const triCount = buf.readUInt32LE(80);
-    const expectedSize = 84 + triCount * 50;
-    if (buf.length < expectedSize) {
-      console.warn(`[Slicer] mergeSTL: file truncated ${path.basename(p)} (expected ${expectedSize}, got ${buf.length})`);
-      continue;
+
+    let triData;
+    if (isAsciiSTL(buf)) {
+      // Convert ASCII STL to binary triangle data for merging
+      const parsed = parseSTLAscii(buf.toString('utf8'));
+      if (parsed.triangleCount < 1) {
+        console.warn(`[Slicer] mergeSTL: ASCII STL has no triangles ${path.basename(p)}`);
+        continue;
+      }
+      // Build binary triangle data (50 bytes per triangle: normal(12) + 3 vertices(36) + attr(2))
+      const binData = Buffer.alloc(parsed.triangleCount * 50);
+      for (let i = 0; i < parsed.triangleCount; i++) {
+        const off = i * 50;
+        binData.writeFloatLE(parsed.normals[i * 3], off);
+        binData.writeFloatLE(parsed.normals[i * 3 + 1], off + 4);
+        binData.writeFloatLE(parsed.normals[i * 3 + 2], off + 8);
+        for (let v = 0; v < 9; v++) {
+          binData.writeFloatLE(parsed.vertices[i * 9 + v], off + 12 + v * 4);
+        }
+        binData.writeUInt16LE(0, off + 48); // attribute byte count
+      }
+      totalTriangles += parsed.triangleCount;
+      allTriangleData.push(binData);
+      console.log(`[Slicer] mergeSTL: converted ASCII ${path.basename(p)} (${parsed.triangleCount} triangles)`);
+    } else {
+      const triCount = buf.readUInt32LE(80);
+      const expectedSize = 84 + triCount * 50;
+      if (buf.length < expectedSize) {
+        console.warn(`[Slicer] mergeSTL: file truncated ${path.basename(p)} (expected ${expectedSize}, got ${buf.length})`);
+        continue;
+      }
+      totalTriangles += triCount;
+      allTriangleData.push(buf.slice(84, 84 + triCount * 50));
     }
-    totalTriangles += triCount;
-    allTriangleData.push(buf.slice(84, 84 + triCount * 50));
   }
 
   const outputSize = 84 + totalTriangles * 50;
