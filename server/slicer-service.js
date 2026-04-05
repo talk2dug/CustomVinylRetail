@@ -97,6 +97,42 @@ function parseSTLBinary(buffer) {
 }
 
 /**
+ * Parse an ASCII STL file into the same format as parseSTLBinary
+ */
+function parseSTLAscii(text) {
+  const facetRegex = /facet\s+normal\s+([\-\d.e+]+)\s+([\-\d.e+]+)\s+([\-\d.e+]+)\s+outer\s+loop\s+vertex\s+([\-\d.e+]+)\s+([\-\d.e+]+)\s+([\-\d.e+]+)\s+vertex\s+([\-\d.e+]+)\s+([\-\d.e+]+)\s+([\-\d.e+]+)\s+vertex\s+([\-\d.e+]+)\s+([\-\d.e+]+)\s+([\-\d.e+]+)\s+endloop\s+endfacet/gi;
+
+  const norms = [];
+  const verts = [];
+  let match;
+  while ((match = facetRegex.exec(text)) !== null) {
+    norms.push(parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3]));
+    verts.push(
+      parseFloat(match[4]), parseFloat(match[5]), parseFloat(match[6]),
+      parseFloat(match[7]), parseFloat(match[8]), parseFloat(match[9]),
+      parseFloat(match[10]), parseFloat(match[11]), parseFloat(match[12])
+    );
+  }
+
+  return {
+    triangleCount: norms.length / 3,
+    normals: new Float32Array(norms),
+    vertices: new Float32Array(verts),
+  };
+}
+
+/**
+ * Detect if a buffer is an ASCII STL (vs binary)
+ */
+function isAsciiSTL(buffer) {
+  if (buffer.length < 84) return true;
+  const header5 = buffer.slice(0, 5).toString('ascii');
+  if (header5 !== 'solid') return false;
+  const expectedBinarySize = 84 + buffer.readUInt32LE(80) * 50;
+  return buffer.length !== expectedBinarySize;
+}
+
+/**
  * Compute the area of a triangle given 3 vertices (9 floats: v0x,v0y,v0z,v1x,v1y,v1z,v2x,v2y,v2z)
  */
 function triangleArea(v, offset) {
@@ -216,14 +252,19 @@ function rotationMatrixFromTo(from, to) {
 function autoOrientSTL(stlPath) {
   const fileBuffer = fs.readFileSync(stlPath);
 
-  // Check if ASCII STL (starts with "solid")
-  const header = fileBuffer.slice(0, 5).toString('ascii');
-  if (header === 'solid' && fileBuffer.indexOf(0x00, 0, 80) === -1) {
-    console.log('[Slicer] Auto-orient: ASCII STL detected, skipping (binary only)');
-    return null;
+  // Parse ASCII or binary STL
+  let triangleCount, normals, vertices;
+  if (isAsciiSTL(fileBuffer)) {
+    const parsed = parseSTLAscii(fileBuffer.toString('utf8'));
+    triangleCount = parsed.triangleCount;
+    normals = parsed.normals;
+    vertices = parsed.vertices;
+  } else {
+    const parsed = parseSTLBinary(fileBuffer);
+    triangleCount = parsed.triangleCount;
+    normals = parsed.normals;
+    vertices = parsed.vertices;
   }
-
-  const { triangleCount, normals, vertices } = parseSTLBinary(fileBuffer);
   if (triangleCount < 4) return null;
 
   // Find the dominant flat face normal
@@ -402,23 +443,25 @@ function bakeTransformToSTL(stlPath, transform, stlId) {
 
   const fileBuffer = fs.readFileSync(stlPath);
 
-  // Check if ASCII STL. Use size-based validation: binary STLs have
-  // exactly 84 + triangleCount * 50 bytes, where triangleCount is at offset 80.
-  // Many binary STLs start with "solid" in their text header — don't rely on
-  // null-byte detection which produces false positives for those files.
-  if (fileBuffer.length >= 84) {
-    const expectedBinarySize = 84 + fileBuffer.readUInt32LE(80) * 50;
-    const header5 = fileBuffer.slice(0, 5).toString('ascii');
-    if (header5 === 'solid' && fileBuffer.length !== expectedBinarySize) {
-      console.log('[Slicer] Transform bake: ASCII STL detected (size mismatch), skipping');
-      return null;
-    }
-  } else {
+  if (fileBuffer.length < 20) {
     console.log('[Slicer] Transform bake: file too small to be valid STL, skipping');
     return null;
   }
 
-  const { triangleCount, normals, vertices } = parseSTLBinary(fileBuffer);
+  // Parse ASCII or binary STL
+  let triangleCount, normals, vertices;
+  if (isAsciiSTL(fileBuffer)) {
+    const parsed = parseSTLAscii(fileBuffer.toString('utf8'));
+    triangleCount = parsed.triangleCount;
+    normals = parsed.normals;
+    vertices = parsed.vertices;
+    console.log(`[Slicer] Transform bake: ASCII STL parsed (${triangleCount} triangles)`);
+  } else {
+    const parsed = parseSTLBinary(fileBuffer);
+    triangleCount = parsed.triangleCount;
+    normals = parsed.normals;
+    vertices = parsed.vertices;
+  }
   if (triangleCount < 1) return null;
 
   const rx = transform.rx || 0;
