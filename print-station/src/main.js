@@ -7461,7 +7461,7 @@ Return ONLY valid JSON, nothing else:
   });
 
   // Slice plate + Download + Upload to printer + Start print (via print server)
-  ipcMain.handle('slicer:slicePlateAndPrint', async (_event, { sliceOptions, printerId } = {}) => {
+  ipcMain.handle('slicer:slicePlateAndPrint', async (_event, { sliceOptions, printerId, timelapse = false } = {}) => {
     if (!printerId) throw new Error('printerId is required');
 
     // Step 1: Slice plate on vinylApp server
@@ -7493,7 +7493,7 @@ Return ONLY valid JSON, nothing else:
         method: 'POST',
         body: JSON.stringify({
           printer_id: printerId, filename: sliceResult.gcode_filename,
-          file_path: tmpPath, level_bed: true
+          file_path: tmpPath, level_bed: true, timelapse
         }),
         timeout: 600000
       });
@@ -7534,7 +7534,7 @@ Return ONLY valid JSON, nothing else:
         method: 'POST',
         body: JSON.stringify({
           printer_id: printerId, filename: sliceResult.gcode_filename,
-          file_path: tmpPath, level_bed: true
+          file_path: tmpPath, level_bed: true, timelapse
         }),
         timeout: 600000
       });
@@ -7547,7 +7547,7 @@ Return ONLY valid JSON, nothing else:
   });
 
   // Print existing G-code (download from server + upload to printer via print server)
-  ipcMain.handle('slicer:printGcode', async (event, { gcodeId, printerId } = {}) => {
+  ipcMain.handle('slicer:printGcode', async (event, { gcodeId, printerId, timelapse = false } = {}) => {
     if (!gcodeId || !printerId) throw new Error('gcodeId and printerId required');
 
     const sendProgress = (step, detail) => {
@@ -7584,7 +7584,7 @@ Return ONLY valid JSON, nothing else:
       const job = await fleetFetch('/3d/print/start', {
         method: 'POST',
         body: JSON.stringify({
-          printer_id: printerId, filename, file_path: tmpPath, level_bed: true
+          printer_id: printerId, filename, file_path: tmpPath, level_bed: true, timelapse
         }),
         timeout: 600000
       });

@@ -2087,7 +2087,7 @@ async function slicerSliceAndPrint() {
       });
 
       try {
-        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10));
+        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10), { timelapse: document.getElementById('slicerTimelapse')?.checked || false });
         offProgress();
         slicerHideProgress();
         if (result.success) {
@@ -2124,7 +2124,7 @@ async function slicerPrintExistingGcode(gcodeId) {
   });
 
   try {
-    const result = await printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10));
+    const result = await printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10), { timelapse: document.getElementById('slicerTimelapse')?.checked || false });
     offProgress();
     slicerHideProgress();
     if (result.success) {
@@ -4123,7 +4123,7 @@ async function slicerSlicePlate() {
       });
 
       try {
-        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10));
+        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10), { timelapse: document.getElementById('slicerTimelapse')?.checked || false });
         offProgress();
         slicerHideProgress();
         if (result.success) {
@@ -4545,7 +4545,7 @@ async function slicerSliceSavedPlate(plate) {
         slicerUpdateProgress(step - 1, detail);
       });
       try {
-        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10));
+        const result = await printStation.slicer.printGcode(sliceResult.gcode_id, parseInt(printerId, 10), { timelapse: document.getElementById('slicerTimelapse')?.checked || false });
         offProgress();
         slicerHideProgress();
         if (result.success) showToast(`Print started on ${printerName}!`, 'success', 6000);
@@ -4795,7 +4795,7 @@ async function slicerPrintFromHistory(gcodeId) {
     });
 
     try {
-      const result = await printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10));
+      const result = await printStation.slicer.printGcode(gcodeId, parseInt(printerId, 10), { timelapse: document.getElementById('slicerTimelapse')?.checked || false });
       offProgress();
       slicerHideProgress();
       if (result.success) showToast(`Print started on ${printer ? printer.name : 'printer'}!`, 'success', 6000);

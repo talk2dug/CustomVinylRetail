@@ -674,8 +674,8 @@ contextBridge.exposeInMainWorld('printStation', {
     slice: (options) => ipcRenderer.invoke('slicer:slice', options),
     sliceAndPrint: (sliceOptions, printerId) => ipcRenderer.invoke('slicer:sliceAndPrint', { sliceOptions, printerId }),
     slicePlate: (options) => ipcRenderer.invoke('slicer:slicePlate', options),
-    slicePlateAndPrint: (sliceOptions, printerId) => ipcRenderer.invoke('slicer:slicePlateAndPrint', { sliceOptions, printerId }),
-    printGcode: (gcodeId, printerId) => ipcRenderer.invoke('slicer:printGcode', { gcodeId, printerId }),
+    slicePlateAndPrint: (sliceOptions, printerId, opts) => ipcRenderer.invoke('slicer:slicePlateAndPrint', { sliceOptions, printerId, ...(opts || {}) }),
+    printGcode: (gcodeId, printerId, opts) => ipcRenderer.invoke('slicer:printGcode', { gcodeId, printerId, ...(opts || {}) }),
     fetchGcodeText: (gcodeId) => ipcRenderer.invoke('slicer:gcode:fetchText', gcodeId),
 
     // Progress events from main process (step-by-step print progress)

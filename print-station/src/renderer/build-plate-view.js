@@ -614,11 +614,12 @@
         name: it.name
       }));
 
+      const timelapse = document.getElementById('bpTimelapse')?.checked || false;
       const result = await window.printStation.slicer.slicePlateAndPrint({
         items,
         material: el.plateMaterial.value,
         printerModel: el.platePrinter.value
-      }, printerId);
+      }, printerId, { timelapse });
 
       el.sliceStatus.textContent = result.success ? 'Sent to printer!' : 'Failed: ' + (result.error || 'Unknown');
       loadQueue();

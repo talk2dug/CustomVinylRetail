@@ -7501,6 +7501,13 @@
                     <option value="">Select a printer...</option>
                   </select>
                 </div>
+                <div class="slicer-option-group" style="margin-top:8px;">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem;">
+                    <input type="checkbox" id="slicerTimelapse" />
+                    <span>Timelapse</span>
+                    <span style="font-size:0.75rem;color:var(--muted);">(pauses each layer for snapshot)</span>
+                  </label>
+                </div>
               </div>
 
               <div style="display:flex;gap:12px;margin-top:20px;">
@@ -8183,6 +8190,10 @@
                 <select id="bpTargetPrinter" style="width:160px;">
                   <option value="">Select printer…</option>
                 </select>
+                <label style="display:flex;align-items:center;gap:4px;font-size:0.85em;cursor:pointer;">
+                  <input type="checkbox" id="bpTimelapse" />
+                  <span>Timelapse</span>
+                </label>
                 <div style="flex:1;"></div>
                 <span id="bpSliceStatus" style="font-size:0.85em;color:#888;"></span>
               </div>
