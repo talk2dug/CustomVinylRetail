@@ -69,7 +69,7 @@ Return JSON:
 
 Return ONLY valid JSON, no markdown fences.`;
 
-async function callGemini(parts) {
+async function callGemini(parts, { thinking = false } = {}) {
   if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
 
   const url = GEMINI_URL + GEMINI_API_KEY;
@@ -77,16 +77,17 @@ async function callGemini(parts) {
     contents: [{ parts }],
     generationConfig: {
       temperature: 0.1,
-      maxOutputTokens: 1024,
-      thinkingConfig: { thinkingBudget: 0 }
+      maxOutputTokens: thinking ? 4096 : 1024,
+      thinkingConfig: { thinkingBudget: thinking ? 2048 : 0 }
     }
   };
 
+  const timeoutMs = thinking ? 60000 : 30000;
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30000)
+    signal: AbortSignal.timeout(timeoutMs)
   });
 
   if (!resp.ok) {
@@ -125,8 +126,9 @@ async function handleInventoryInputRoute(pathname, req, res, db) {
       { text: ANALYZE_PROMPT }
     ];
 
-    const text = await callGemini(parts);
+    const text = await callGemini(parts, { thinking: true });
     const result = parseJsonResponse(text);
+    console.log(`[Inventory Input] Analysis: ${result.widthInches}x${result.heightInches}" (longest: ${result.longestDimensionInches}") ${result.colorCount} colors, type: ${result.itemType}, confidence: ${result.confidence}`);
     return sendJson(res, 200, { ok: true, analysis: result });
   }
 

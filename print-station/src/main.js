@@ -8105,7 +8105,7 @@ Return ONLY valid JSON, nothing else:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      timeout: 45000
+      timeout: 90000
     });
     return resp.json();
   });
