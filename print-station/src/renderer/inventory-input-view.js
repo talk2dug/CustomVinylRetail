@@ -177,6 +177,9 @@
       const base64 = state.lastPreviewFrame;
       if (!base64) throw new Error('No preview frame available — wait for camera to load');
 
+      // Store snapshot for saving later (lastPreviewFrame may get overwritten)
+      state.snapshotBase64 = base64;
+
       // Stop preview while analyzing
       await printStation.inventoryInput.stopPreview(state.currentCameraId);
 
@@ -372,7 +375,7 @@
       title,
       description: analysis.description || '',
       priceCents,
-      photoBase64: state.lastPreviewFrame || null,
+      photoBase64: state.snapshotBase64 || null,
       category,
       size,
       color: (analysis.colors || []).join(', '),

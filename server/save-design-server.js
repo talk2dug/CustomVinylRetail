@@ -9628,6 +9628,7 @@ Keep it concise and actionable.`;
         }
         let photoPath = null;
         // Save base64 photo if provided
+        console.log(`[Products] Create: photoBase64=${body.photoBase64 ? body.photoBase64.length + ' chars' : 'MISSING'}, keys=${Object.keys(body).join(',')}`);
         if (body.photoBase64) {
           const productsDir = path.join(LIBRARY_ROOT, 'uploads', 'products');
           if (!fs.existsSync(productsDir)) fs.mkdirSync(productsDir, { recursive: true });

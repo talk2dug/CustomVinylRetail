@@ -8147,13 +8147,14 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
-  // Save product to qr_products via server API
+  // Save product to qr_products via server API (large payload due to photo base64)
   ipcMain.handle('inventory:input:saveProduct', async (_event, payload) => {
+    console.log(`[InvInput] saveProduct: photoBase64=${payload.photoBase64 ? payload.photoBase64.length + ' chars' : 'MISSING'}`);
     const resp = await slicerFetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      timeout: 15000
+      timeout: 30000
     });
     return resp.json();
   });
