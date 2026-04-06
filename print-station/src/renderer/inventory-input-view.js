@@ -243,7 +243,7 @@
 
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;">
-        <strong>Size:</strong> <span>${analysis.longestDimensionInches || '?'}" (${analysis.widthInches || '?'}" x ${analysis.heightInches || '?'}")</span>
+        <strong>Size:</strong> <span>${analysis.printSize || (analysis.widthInches + 'x' + analysis.heightInches)}" ${analysis.rawWidthInches ? '<span style="color:var(--muted);font-size:11px;">(measured ' + analysis.rawWidthInches + 'x' + analysis.rawHeightInches + ')</span>' : ''}</span>
         <strong>Colors:</strong> <span>${analysis.colorCount || '?'} — ${(analysis.colors || []).join(', ') || 'N/A'}</span>
         <strong>Type:</strong> <span>${analysis.itemType || 'unknown'}</span>
         <strong>Description:</strong> <span>${analysis.description || 'N/A'}</span>

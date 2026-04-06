@@ -112,6 +112,28 @@ function parseJsonResponse(text) {
   return JSON.parse(cleaned);
 }
 
+// Standard print sizes — snap raw measurements to the closest match
+const PRINT_SIZES = [
+  [5, 7], [8, 10], [11, 14], [11, 17]
+];
+
+function snapToNearestSize(rawW, rawH) {
+  // Ensure w <= h for comparison (portrait orientation)
+  const [short, long] = rawW <= rawH ? [rawW, rawH] : [rawH, rawW];
+  let best = null;
+  let bestDist = Infinity;
+  for (const [sw, lw] of PRINT_SIZES) {
+    const dist = Math.abs(short - sw) + Math.abs(long - lw);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = [sw, lw];
+    }
+  }
+  // Return in original orientation
+  if (rawW <= rawH) return { width: best[0], height: best[1] };
+  return { width: best[1], height: best[0] };
+}
+
 async function handleInventoryInputRoute(pathname, req, res, db) {
   const method = req.method;
 
@@ -128,7 +150,19 @@ async function handleInventoryInputRoute(pathname, req, res, db) {
 
     const text = await callGemini(parts, { thinking: true });
     const result = parseJsonResponse(text);
-    console.log(`[Inventory Input] Analysis: ${result.widthInches}x${result.heightInches}" (longest: ${result.longestDimensionInches}") ${result.colorCount} colors, type: ${result.itemType}, confidence: ${result.confidence}`);
+    const rawW = result.widthInches;
+    const rawH = result.heightInches;
+
+    // Snap to nearest standard print size
+    const snapped = snapToNearestSize(rawW, rawH);
+    result.rawWidthInches = rawW;
+    result.rawHeightInches = rawH;
+    result.widthInches = snapped.width;
+    result.heightInches = snapped.height;
+    result.longestDimensionInches = Math.max(snapped.width, snapped.height);
+    result.printSize = `${Math.min(snapped.width, snapped.height)}x${Math.max(snapped.width, snapped.height)}`;
+
+    console.log(`[Inventory Input] Analysis: raw ${rawW}x${rawH}" → snapped ${result.printSize}" | ${result.colorCount} colors, type: ${result.itemType}, confidence: ${result.confidence}`);
     return sendJson(res, 200, { ok: true, analysis: result });
   }
 
