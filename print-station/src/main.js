@@ -8075,25 +8075,27 @@ Return ONLY valid JSON, nothing else:
     const rtspUrl = await cameraRecorder.getRtspUrl(cam);
     if (!rtspUrl) throw new Error('Camera has no RTSP URL');
 
-    const tick = async () => {
-      if (invPreviewCameraId !== cameraId) return;
-      try {
-        const frame = await cameraRecorder.grabSnapshot(rtspUrl, 0);
-        const bw = BrowserWindow.getAllWindows()[0];
-        if (bw && frame) bw.webContents.send('inventory:preview:frame', { cameraId, frame });
-      } catch (e) {
-        const bw = BrowserWindow.getAllWindows()[0];
-        if (bw) bw.webContents.send('inventory:preview:frame', { cameraId, error: e.message });
+    let running = true;
+    invPreviewTimer = { stop: () => { running = false; } };
+    (async () => {
+      while (running && invPreviewCameraId === cameraId) {
+        try {
+          const frame = await cameraRecorder.grabSnapshot(rtspUrl, 0);
+          const bw = BrowserWindow.getAllWindows()[0];
+          if (bw && frame) bw.webContents.send('inventory:preview:frame', { cameraId, frame });
+        } catch (e) {
+          const bw = BrowserWindow.getAllWindows()[0];
+          if (bw) bw.webContents.send('inventory:preview:frame', { cameraId, error: e.message });
+        }
+        if (running) await new Promise(r => setTimeout(r, 1500));
       }
-    };
-    tick(); // first frame immediately
-    invPreviewTimer = setInterval(tick, 800);
+    })();
     return { ok: true };
   });
 
   ipcMain.handle('inventory:preview:stop', (_event, cameraId) => {
     if (invPreviewCameraId === cameraId || !cameraId) {
-      if (invPreviewTimer) { clearInterval(invPreviewTimer); invPreviewTimer = null; }
+      if (invPreviewTimer) { invPreviewTimer.stop(); invPreviewTimer = null; }
       invPreviewCameraId = null;
     }
     return { ok: true };
