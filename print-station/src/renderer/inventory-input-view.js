@@ -168,7 +168,10 @@
     showAnalyzing(true);
 
     try {
-      // 1. Grab hi-res snapshot
+      // 1. Stop preview to free the RTSP stream, then grab hi-res snapshot
+      await printStation.inventoryInput.stopPreview(state.currentCameraId);
+      // Small delay to let ffmpeg release the stream
+      await new Promise(r => setTimeout(r, 300));
       const base64 = await printStation.inventoryInput.snapshot(state.currentCameraId);
       if (!base64) throw new Error('Failed to capture image');
 
