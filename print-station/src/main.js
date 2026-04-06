@@ -8087,7 +8087,7 @@ Return ONLY valid JSON, nothing else:
           const bw = BrowserWindow.getAllWindows()[0];
           if (bw) bw.webContents.send('inventory:preview:frame', { cameraId, error: e.message });
         }
-        if (running) await new Promise(r => setTimeout(r, 1500));
+        if (running) await new Promise(r => setTimeout(r, 500));
       }
     })();
     return { ok: true };
