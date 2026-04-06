@@ -9626,10 +9626,20 @@ Keep it concise and actionable.`;
           sendJson(res, 400, { error: 'Title is required' });
           return;
         }
+        let photoPath = null;
+        // Save base64 photo if provided
+        if (body.photoBase64) {
+          const productsDir = path.join(LIBRARY_ROOT, 'uploads', 'products');
+          if (!fs.existsSync(productsDir)) fs.mkdirSync(productsDir, { recursive: true });
+          const finalName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`;
+          photoPath = path.join(productsDir, finalName);
+          fs.writeFileSync(photoPath, Buffer.from(body.photoBase64, 'base64'));
+        }
         const product = db.createQrProduct({
           title: body.title,
           description: body.description || '',
           priceCents: parseInt(body.priceCents, 10) || 0,
+          photoPath,
           category: body.category || '',
           size: body.size || '',
           color: body.color || '',
@@ -9637,7 +9647,8 @@ Keep it concise and actionable.`;
           isHeatTransfer: !!body.isHeatTransfer,
           quantity: parseInt(body.quantity, 10) || 1
         });
-        sendJson(res, 201, { success: true, product });
+        const photoUrl = photoPath ? `/product-photos/${path.basename(photoPath)}` : null;
+        sendJson(res, 201, { success: true, product: { ...product, photoUrl } });
       } catch (err) {
         sendJson(res, 500, { error: err.message });
       }

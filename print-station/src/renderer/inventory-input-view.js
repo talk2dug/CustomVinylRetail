@@ -363,11 +363,12 @@
     const title = analysis.description || `${category} item`;
     const size = getSelectedSize();
 
-    // Save as qr_product via server API
+    // Save as qr_product via server API (include captured photo)
     const resp = await window.printStation.inventoryInput.saveProduct({
       title,
       description: analysis.description || '',
       priceCents,
+      photoBase64: state.lastPreviewFrame || null,
       category,
       size,
       color: (analysis.colors || []).join(', '),
