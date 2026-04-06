@@ -255,7 +255,7 @@
     // If no pricing, show add-pricing form
     if (!pricing.found) {
       body.innerHTML += `
-        <div style="margin-top:10px;padding:8px;background:#fff3cd;border-radius:4px;">
+        <div style="margin-top:10px;padding:8px;background:rgba(255,243,205,0.1);border:1px solid var(--border);border-radius:4px;color:var(--text);">
           <strong style="font-size:12px;">Set price for "${category}":</strong>
           <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
             <span>$</span>
@@ -388,7 +388,7 @@
 
     for (const item of state.recentItems) {
       const el = document.createElement('div');
-      el.style.cssText = 'padding:8px;background:#f0f0f0;border-radius:6px;font-size:12px;';
+      el.style.cssText = 'padding:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);';
       el.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">${escapeHtml(item.title)}</strong>
