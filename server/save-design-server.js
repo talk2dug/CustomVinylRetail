@@ -90,6 +90,7 @@ const { handleSlicerRoute } = require('./slicer-server');
 const { handleQuoteRoute } = require('./quote-server');
 const { handleFinanceRoute } = require('./finance-server');
 const { handleFootageRoute } = require('./footage-server');
+const { handleInventoryInputRoute } = require('./inventory-input-server');
 const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
 const { handleTikTokStudioRoute } = require('./modules/tiktok-studio-routes');
 const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
@@ -9956,6 +9957,16 @@ Keep it concise and actionable.`;
     if (!isImageReq && !requireInternalKey(req, res)) return;
     handleHowtoRoute(parsedUrl.pathname, req, res, db).catch(err => {
       console.error('[Howtos API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Inventory Input API (AI-powered rapid product entry)
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/inventory-input')) {
+    if (!requireInternalKey(req, res)) return;
+    handleInventoryInputRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Inventory Input API Error]', err);
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;

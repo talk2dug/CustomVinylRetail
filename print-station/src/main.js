@@ -8049,6 +8049,66 @@ Return ONLY valid JSON, nothing else:
   });
 
   // ==========================================================================
+  // INVENTORY INPUT (AI-powered rapid product entry)
+  // ==========================================================================
+
+  // Grab a single hi-res snapshot from an RTSP camera
+  ipcMain.handle('inventory:snapshot', async (_event, cameraId) => {
+    const cam = cameraRecorder.getCamera(cameraId);
+    if (!cam) throw new Error(`Camera not found: ${cameraId}`);
+    const rtspUrl = cam.rtsp_url || cam.url;
+    if (!rtspUrl) throw new Error('Camera has no RTSP URL');
+    const base64 = await cameraRecorder.grabSnapshot(rtspUrl, cam.rotation || 0);
+    return base64; // JPEG base64
+  });
+
+  // Proxy analyze request to server
+  ipcMain.handle('inventory:analyze', async (_event, payload) => {
+    const resp = await slicerFetch('/api/inventory-input/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      timeout: 45000
+    });
+    return resp.json();
+  });
+
+  // Proxy match-design request to server
+  ipcMain.handle('inventory:matchDesign', async (_event, payload) => {
+    const resp = await slicerFetch('/api/inventory-input/match-design', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      timeout: 45000
+    });
+    return resp.json();
+  });
+
+  // Proxy pricing lookup to server
+  ipcMain.handle('inventory:pricing', async (_event, params) => {
+    const qs = new URLSearchParams(params).toString();
+    const resp = await slicerFetch(`/api/inventory-input/pricing?${qs}`, { timeout: 10000 });
+    return resp.json();
+  });
+
+  // Proxy categories to server
+  ipcMain.handle('inventory:input:categories', async () => {
+    const resp = await slicerFetch('/api/inventory-input/categories', { timeout: 10000 });
+    return resp.json();
+  });
+
+  // Proxy add/update category pricing
+  ipcMain.handle('inventory:input:categories:save', async (_event, payload) => {
+    const resp = await slicerFetch('/api/inventory-input/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      timeout: 10000
+    });
+    return resp.json();
+  });
+
+  // ==========================================================================
   // PRINT QUOTES
   // ==========================================================================
 

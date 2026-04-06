@@ -1651,6 +1651,10 @@ function switchView(viewId) {
     if (['catalogView', 'customArtView', 'fbScheduleManagerView'].includes(previousView)) {
       clearPreviewCache();
     }
+    // Stop camera preview when leaving inventory input
+    if (previousView === 'inventoryInputView' && typeof window.cleanupInventoryInputView === 'function') {
+      window.cleanupInventoryInputView();
+    }
   }
 
   elements.views.forEach((view) => {
@@ -1757,6 +1761,9 @@ function switchView(viewId) {
   }
   if (viewId === 'tiktokMarketingView') {
     if (typeof window.initTiktokMarketingView === 'function') window.initTiktokMarketingView();
+  }
+  if (viewId === 'inventoryInputView') {
+    if (typeof window.initInventoryInputView === 'function') window.initInventoryInputView();
   }
   if (viewId === 'printerView') {
     // Initialize Printer view - load printers

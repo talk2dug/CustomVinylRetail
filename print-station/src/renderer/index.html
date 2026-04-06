@@ -84,6 +84,7 @@
           <button class="dropdown-item" data-view="skuCatalogView">SKU Catalog</button>
           <button class="dropdown-item" data-view="qrScannerView">Scanner</button>
           <button class="dropdown-item" data-view="productCatalogView">Products</button>
+          <button class="dropdown-item" data-view="inventoryInputView">Inventory Input</button>
         </div>
       </div>
 
@@ -6842,6 +6843,93 @@
       </section>
 
       <!-- ================================================================== -->
+      <!-- INVENTORY INPUT VIEW - AI-powered rapid product entry              -->
+      <!-- ================================================================== -->
+      <section id="inventoryInputView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Inventory Input</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="invInputAutoAccept"> Auto-Accept
+            </label>
+            <span id="invInputStatus" style="font-size:12px;color:#888;"></span>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;padding:12px;height:calc(100vh - 140px);">
+          <!-- Left column: controls -->
+          <div style="width:280px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;">
+            <!-- Camera selector -->
+            <div>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Camera</label>
+              <select id="invInputCameraSelect" style="width:100%;padding:6px;">
+                <option value="">Select camera...</option>
+              </select>
+            </div>
+            <!-- Category -->
+            <div>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Category</label>
+              <select id="invInputCategory" style="width:100%;padding:6px;">
+                <option value="">Select category...</option>
+              </select>
+              <div style="margin-top:4px;">
+                <input type="text" id="invInputNewCategory" placeholder="Or type new category..." style="width:100%;padding:4px;font-size:12px;box-sizing:border-box;">
+              </div>
+            </div>
+            <!-- Subcategory -->
+            <div>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Subcategory</label>
+              <select id="invInputSubcategory" style="width:100%;padding:6px;">
+                <option value="">None</option>
+              </select>
+              <div style="margin-top:4px;">
+                <input type="text" id="invInputNewSubcategory" placeholder="Or type new..." style="width:100%;padding:4px;font-size:12px;box-sizing:border-box;">
+              </div>
+            </div>
+            <!-- Quantity -->
+            <div>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Quantity</label>
+              <input type="number" id="invInputQuantity" value="1" min="1" style="width:80px;padding:6px;">
+            </div>
+            <!-- SNAP button -->
+            <button id="invInputSnapBtn" class="primary" disabled style="padding:16px;font-size:18px;font-weight:700;letter-spacing:1px;">
+              SNAP
+            </button>
+          </div>
+
+          <!-- Center: camera preview + captured image -->
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;">
+            <div id="invInputPreviewContainer" style="flex:1;background:#1a1a2e;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;">
+              <div id="invInputPreviewPlaceholder" style="color:#666;text-align:center;padding:20px;">
+                <div style="font-size:48px;margin-bottom:8px;">&#128247;</div>
+                <span>Select a camera to start preview</span>
+              </div>
+              <img id="invInputPreviewImg" style="max-width:100%;max-height:100%;display:none;object-fit:contain;">
+              <div id="invInputAnalyzing" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.7);color:white;display:none;align-items:center;justify-content:center;font-size:20px;">
+                Analyzing...
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: results panel -->
+          <div style="width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;overflow-y:auto;">
+            <div id="invInputResultPanel" style="background:#f8f9fa;border-radius:8px;padding:12px;display:none;">
+              <h4 style="margin:0 0 8px;">Analysis Results</h4>
+              <div id="invInputResultBody"></div>
+              <div style="display:flex;gap:8px;margin-top:12px;">
+                <button id="invInputConfirmBtn" class="primary" style="flex:1;">Confirm & Save</button>
+                <button id="invInputRetryBtn" class="secondary" style="flex:0;">Retry</button>
+              </div>
+            </div>
+            <!-- Recent items -->
+            <div style="flex:1;overflow-y:auto;">
+              <h4 style="margin:0 0 8px;font-size:13px;">Recent Items</h4>
+              <div id="invInputRecentItems" style="display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
       <!-- SKU CATALOG VIEW - POS System                                      -->
       <!-- ================================================================== -->
       <section id="skuCatalogView" class="view">
@@ -8553,6 +8641,7 @@
     <script src="./build-plate-view.js"></script>
     <script src="./etsy-listings-view.js"></script>
     <script src="./dog-tag-view.js"></script>
+    <script src="./inventory-input-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>

@@ -3194,6 +3194,25 @@ function initCustomArtTables() {
   }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_qr_products_shopify ON qr_products(shopify_product_id)`); } catch (e) { /* ignore */ }
 
+  // Add design_match_id + subcategory columns to qr_products for inventory input linking
+  ensureColumn('qr_products', 'subcategory', "TEXT DEFAULT ''");
+  ensureColumn('qr_products', 'design_match_id', 'TEXT');
+  ensureColumn('qr_products', 'ai_description', 'TEXT');
+  ensureColumn('qr_products', 'color_count', 'INTEGER DEFAULT 1');
+  ensureColumn('qr_products', 'longest_dimension', 'REAL');
+
+  // Category Pricing (for non-decal categories)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS category_pricing (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      subcategory TEXT DEFAULT '',
+      base_price_cents INTEGER NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(category, subcategory)
+    )
+  `);
+
   // Seed default materials
   seedCustomArtMaterials();
 
@@ -8319,6 +8338,28 @@ function getLatestPipelineRun(campaignSlug) {
     .get(campaignSlug) || null;
 }
 
+// ============================================================================
+// CATEGORY PRICING (Inventory Input System)
+// ============================================================================
+
+function getCategoryPricing(category, subcategory = '') {
+  return db.prepare('SELECT * FROM category_pricing WHERE category = ? AND subcategory = ?')
+    .get(category, subcategory) || null;
+}
+
+function upsertCategoryPricing(category, subcategory = '', basePriceCents) {
+  db.prepare(`
+    INSERT INTO category_pricing (category, subcategory, base_price_cents)
+    VALUES (?, ?, ?)
+    ON CONFLICT(category, subcategory) DO UPDATE SET base_price_cents = excluded.base_price_cents
+  `).run(category, subcategory, basePriceCents);
+  return getCategoryPricing(category, subcategory);
+}
+
+function listCategoryPricing() {
+  return db.prepare('SELECT * FROM category_pricing ORDER BY category, subcategory').all();
+}
+
 module.exports = {
   initDatabase,
   normalizeEmail,
@@ -8700,5 +8741,10 @@ module.exports = {
   getPipelineRun,
   updatePipelineRun,
   listPipelineRuns,
-  getLatestPipelineRun
+  getLatestPipelineRun,
+  // Category Pricing (Inventory Input)
+  getCategoryPricing,
+  upsertCategoryPricing,
+  listCategoryPricing,
+  STICKER_PRICE_TABLE
 };

@@ -193,6 +193,16 @@ contextBridge.exposeInMainWorld('printStation', {
   listScheduledPosts: () => ipcRenderer.invoke('social:fb:scheduled:list'),
   cancelScheduledPost: (id) => ipcRenderer.invoke('social:fb:scheduled:cancel', id),
 
+  // Inventory Input (AI-powered rapid product entry)
+  inventoryInput: {
+    snapshot: (cameraId) => ipcRenderer.invoke('inventory:snapshot', cameraId),
+    analyze: (payload) => ipcRenderer.invoke('inventory:analyze', payload || {}),
+    matchDesign: (payload) => ipcRenderer.invoke('inventory:matchDesign', payload || {}),
+    pricing: (params) => ipcRenderer.invoke('inventory:pricing', params || {}),
+    categories: () => ipcRenderer.invoke('inventory:input:categories'),
+    saveCategory: (payload) => ipcRenderer.invoke('inventory:input:categories:save', payload || {}),
+  },
+
   // Social Marketing - TikTok Posts
   tiktok: {
     getAuthUrl: () => ipcRenderer.invoke('social:tiktok:authUrl'),
