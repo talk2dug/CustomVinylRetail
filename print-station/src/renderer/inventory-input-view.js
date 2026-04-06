@@ -70,7 +70,11 @@
         img.style.display = 'block';
         placeholder.style.display = 'none';
       } else if (error) {
-        placeholder.querySelector('span').textContent = `Preview error: ${error}`;
+        // Only show error if we never got a frame (still on placeholder)
+        if (img.style.display === 'none') {
+          placeholder.querySelector('span').textContent = `Connecting...`;
+        }
+        // Otherwise silently retry — RTSP timeouts are transient
       }
     });
 
