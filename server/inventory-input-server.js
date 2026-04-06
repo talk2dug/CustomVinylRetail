@@ -29,19 +29,27 @@ const GEMINI_API_KEY = cleanKey(process.env.GEMINI_API_KEY || '');
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=`;
 
-const ANALYZE_PROMPT = `Analyze this product photo on a cutting mat with a 1-inch grid.
+const ANALYZE_PROMPT = `Analyze this product photo sitting on a self-healing cutting mat. The mat has a printed grid where each small square is exactly 1 inch x 1 inch.
+
+MEASURING INSTRUCTIONS — this is critical, take your time:
+1. Find the LEFT edge of the item. Identify the nearest vertical grid line.
+2. Find the RIGHT edge of the item. Identify the nearest vertical grid line.
+3. Count the number of 1-inch grid squares between those two grid lines. That is the WIDTH in inches.
+4. Do the same for the TOP and BOTTOM edges to get the HEIGHT in inches.
+5. The grid lines are the thin lines forming the squares — count the spaces between lines, not the lines themselves.
+6. If the item extends past a grid line by roughly half a square or more, round up. Otherwise round down.
+7. Double-check your count. A common mistake is undercounting the width by 1-2 inches.
 
 Return JSON with these fields:
-- longestDimensionInches: number (count grid squares along the longest side of the item)
-- widthInches: number (horizontal measurement in grid squares)
-- heightInches: number (vertical measurement in grid squares)
+- widthInches: number (horizontal span in inches, measured by counting grid squares as described above)
+- heightInches: number (vertical span in inches, measured by counting grid squares as described above)
+- longestDimensionInches: number (the larger of widthInches and heightInches)
 - colorCount: number (distinct vinyl/print colors in the design, NOT counting the mat, background, or transfer tape)
-- colors: string[] (names of the distinct design colors)
+- colors: string[] (color names of the design colors only)
 - description: string (brief description of the design — what is it a picture of, what text does it contain)
 - itemType: string (one of: "vinyl-decal", "heat-transfer", "sticker", "keychain", "magnet", "metal-print", "3d-print", "laser-engrave", "other")
 - confidence: number 0-1 (how confident you are in the measurements)
 
-Grid squares are exactly 1 inch. Count carefully by looking at gridlines.
 Return ONLY valid JSON, no markdown fences.`;
 
 const MATCH_PROMPT = `You are comparing a product photo against a set of catalog design thumbnails.
