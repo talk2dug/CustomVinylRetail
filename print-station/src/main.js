@@ -8056,7 +8056,7 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('inventory:snapshot', async (_event, cameraId) => {
     const cam = cameraRecorder.getCamera(cameraId);
     if (!cam) throw new Error(`Camera not found: ${cameraId}`);
-    const rtspUrl = cam.rtsp_url || cam.url;
+    const rtspUrl = await cameraRecorder.getRtspUrl(cam);
     if (!rtspUrl) throw new Error('Camera has no RTSP URL');
     const base64 = await cameraRecorder.grabSnapshot(rtspUrl, 0);
     return base64; // JPEG base64
@@ -8072,7 +8072,7 @@ Return ONLY valid JSON, nothing else:
     invPreviewCameraId = cameraId;
     const cam = cameraRecorder.getCamera(cameraId);
     if (!cam) throw new Error(`Camera not found: ${cameraId}`);
-    const rtspUrl = cam.rtsp_url || cam.url;
+    const rtspUrl = await cameraRecorder.getRtspUrl(cam);
     if (!rtspUrl) throw new Error('Camera has no RTSP URL');
 
     const tick = async () => {
