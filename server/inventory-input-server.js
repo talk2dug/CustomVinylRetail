@@ -150,19 +150,8 @@ async function handleInventoryInputRoute(pathname, req, res, db) {
 
     const text = await callGemini(parts, { thinking: true });
     const result = parseJsonResponse(text);
-    const rawW = result.widthInches;
-    const rawH = result.heightInches;
 
-    // Snap to nearest standard print size
-    const snapped = snapToNearestSize(rawW, rawH);
-    result.rawWidthInches = rawW;
-    result.rawHeightInches = rawH;
-    result.widthInches = snapped.width;
-    result.heightInches = snapped.height;
-    result.longestDimensionInches = Math.max(snapped.width, snapped.height);
-    result.printSize = `${Math.min(snapped.width, snapped.height)}x${Math.max(snapped.width, snapped.height)}`;
-
-    console.log(`[Inventory Input] Analysis: raw ${rawW}x${rawH}" → snapped ${result.printSize}" | ${result.colorCount} colors, type: ${result.itemType}, confidence: ${result.confidence}`);
+    console.log(`[Inventory Input] Analysis: ${result.widthInches}x${result.heightInches}" | ${result.colorCount} colors, type: ${result.itemType}, confidence: ${result.confidence}`);
     return sendJson(res, 200, { ok: true, analysis: result });
   }
 

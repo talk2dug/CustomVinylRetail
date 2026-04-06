@@ -243,7 +243,10 @@
 
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;">
-        <strong>Size:</strong> <span>${analysis.printSize || (analysis.widthInches + 'x' + analysis.heightInches)}" ${analysis.rawWidthInches ? '<span style="color:var(--muted);font-size:11px;">(measured ' + analysis.rawWidthInches + 'x' + analysis.rawHeightInches + ')</span>' : ''}</span>
+        <strong>Measured:</strong> <span>${analysis.widthInches || '?'}" x ${analysis.heightInches || '?'}"</span>
+        <strong>Size:</strong> <span><select id="invInputSizeSelect" style="padding:2px 4px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+          <option value="5x7">5x7</option><option value="8x10">8x10</option><option value="11x14">11x14</option><option value="11x17">11x17</option>
+        </select></span>
         <strong>Colors:</strong> <span>${analysis.colorCount || '?'} — ${(analysis.colors || []).join(', ') || 'N/A'}</span>
         <strong>Type:</strong> <span>${analysis.itemType || 'unknown'}</span>
         <strong>Description:</strong> <span>${analysis.description || 'N/A'}</span>
@@ -296,6 +299,23 @@
 
     panel.style.display = 'block';
     document.getElementById('invInputConfirmBtn').disabled = !pricing.found;
+
+    // Auto-select closest print size in dropdown
+    const sizeSel = document.getElementById('invInputSizeSelect');
+    if (sizeSel && analysis.widthInches && analysis.heightInches) {
+      const short = Math.min(analysis.widthInches, analysis.heightInches);
+      const long = Math.max(analysis.widthInches, analysis.heightInches);
+      const sizes = [
+        { val: '5x7', s: 5, l: 7 }, { val: '8x10', s: 8, l: 10 },
+        { val: '11x14', s: 11, l: 14 }, { val: '11x17', s: 11, l: 17 }
+      ];
+      let best = '11x14', bestDist = Infinity;
+      for (const sz of sizes) {
+        const d = Math.abs(short - sz.s) + Math.abs(long - sz.l);
+        if (d < bestDist) { bestDist = d; best = sz.val; }
+      }
+      sizeSel.value = best;
+    }
   }
 
   function hideResults() {
@@ -344,7 +364,7 @@
       description: analysis.description || '',
       priceCents,
       category,
-      size: `${analysis.longestDimensionInches || 0}"`,
+      size: getSelectedSize(),
       color: (analysis.colors || []).join(', '),
       quantity
     };
@@ -372,6 +392,7 @@
       subcategory,
       priceCents,
       size: analysis.longestDimensionInches,
+      size: getSelectedSize(),
       colors: analysis.colorCount,
       quantity,
       timestamp: new Date().toLocaleTimeString()
@@ -395,7 +416,7 @@
           <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">${escapeHtml(item.title)}</strong>
           <span style="color:#2196F3;font-weight:600;">$${(item.priceCents / 100).toFixed(2)}</span>
         </div>
-        <div style="color:#888;margin-top:2px;">${escapeHtml(item.category)}${item.subcategory ? ' / ' + escapeHtml(item.subcategory) : ''} &middot; ${item.size}" &middot; ${item.colors} color${item.colors !== 1 ? 's' : ''} &middot; qty ${item.quantity} &middot; ${item.timestamp}</div>
+        <div style="color:#888;margin-top:2px;">${escapeHtml(item.category)}${item.subcategory ? ' / ' + escapeHtml(item.subcategory) : ''} &middot; ${item.size} &middot; ${item.colors} color${item.colors !== 1 ? 's' : ''} &middot; qty ${item.quantity} &middot; ${item.timestamp}</div>
       `;
       container.appendChild(el);
     }
@@ -408,6 +429,11 @@
 
   function getSelectedSubcategory() {
     return document.getElementById('invInputNewSubcategory').value.trim() || document.getElementById('invInputSubcategory').value;
+  }
+
+  function getSelectedSize() {
+    const sel = document.getElementById('invInputSizeSelect');
+    return sel ? sel.value : '';
   }
 
   function setStatus(msg) {
