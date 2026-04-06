@@ -212,13 +212,24 @@ async function handleInventoryInputRoute(pathname, req, res, db) {
     }
 
     // Other categories use category_pricing table
+    const printSize = url.searchParams.get('printSize') || ''; // e.g. "11x14"
+
+    // Try exact subcategory first
     const pricing = db.getCategoryPricing(category, subcategory);
     if (pricing) {
       return sendJson(res, 200, { ok: true, found: true, priceCents: pricing.base_price_cents, source: 'category_pricing' });
     }
 
+    // Try print size as subcategory (e.g. Metal Prints → 11x14)
+    if (printSize) {
+      const sizePricing = db.getCategoryPricing(category, printSize);
+      if (sizePricing) {
+        return sendJson(res, 200, { ok: true, found: true, priceCents: sizePricing.base_price_cents, source: 'category_pricing_size' });
+      }
+    }
+
     // Try without subcategory
-    if (subcategory) {
+    if (subcategory || printSize) {
       const fallback = db.getCategoryPricing(category, '');
       if (fallback) {
         return sendJson(res, 200, { ok: true, found: true, priceCents: fallback.base_price_cents, source: 'category_pricing_fallback' });

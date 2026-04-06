@@ -3213,6 +3213,15 @@ function initCustomArtTables() {
     )
   `);
 
+  // Seed metal print pricing
+  const seedPricing = db.prepare(`
+    INSERT OR IGNORE INTO category_pricing (category, subcategory, base_price_cents) VALUES (?, ?, ?)
+  `);
+  seedPricing.run('Metal Prints', '5x7', 1500);
+  seedPricing.run('Metal Prints', '8x10', 2200);
+  seedPricing.run('Metal Prints', '11x14', 3200);
+  seedPricing.run('Metal Prints', '11x17', 3500);
+
   // Seed default materials
   seedCustomArtMaterials();
 
@@ -6119,7 +6128,8 @@ function listStickerContours(limit = 100) {
 const B2B_METAL_PRINT_PRICING = {
   '5x7': 1500,    // $15.00
   '8x10': 2200,   // $22.00
-  '11x14': 3200   // $32.00
+  '11x14': 3200,  // $32.00
+  '11x17': 3500   // $35.00
 };
 
 function getB2BWholesalePrice(size) {

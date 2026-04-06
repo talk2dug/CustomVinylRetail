@@ -201,6 +201,7 @@
         pricingResp = await printStation.inventoryInput.pricing({
           category,
           subcategory,
+          printSize: getSelectedSize(),
           size: String(analysis.longestDimensionInches || 0),
           colorCount: String(analysis.colorCount || 1)
         });
@@ -284,6 +285,7 @@
               await loadCategories();
               const newPricing = await printStation.inventoryInput.pricing({
                 category, subcategory,
+                printSize: getSelectedSize(),
                 size: String(analysis.longestDimensionInches || 0),
                 colorCount: String(analysis.colorCount || 1)
               });
@@ -332,6 +334,7 @@
     try {
       const pricingResp = await printStation.inventoryInput.pricing({
         category, subcategory,
+        printSize: getSelectedSize(),
         size: String(state.lastAnalysis.longestDimensionInches || 0),
         colorCount: String(state.lastAnalysis.colorCount || 1)
       });
