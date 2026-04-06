@@ -371,11 +371,14 @@
     const size = getSelectedSize();
 
     // Save as qr_product via server API (include captured photo)
+    const photo = state.snapshotBase64 || state.lastPreviewFrame || state.lastImageBase64 || null;
+    console.log('[InvInput] saveItem photoBase64:', photo ? photo.length + ' chars' : 'NONE',
+      'snapshotBase64:', !!state.snapshotBase64, 'lastPreviewFrame:', !!state.lastPreviewFrame, 'lastImageBase64:', !!state.lastImageBase64);
     const resp = await window.printStation.inventoryInput.saveProduct({
       title,
       description: analysis.description || '',
       priceCents,
-      photoBase64: state.snapshotBase64 || null,
+      photoBase64: photo,
       category,
       size,
       color: (analysis.colors || []).join(', '),
