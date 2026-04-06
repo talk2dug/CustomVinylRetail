@@ -8052,14 +8052,51 @@ Return ONLY valid JSON, nothing else:
   // INVENTORY INPUT (AI-powered rapid product entry)
   // ==========================================================================
 
-  // Grab a single hi-res snapshot from an RTSP camera
+  // Grab a single hi-res snapshot from an RTSP camera (no rotation for inventory)
   ipcMain.handle('inventory:snapshot', async (_event, cameraId) => {
     const cam = cameraRecorder.getCamera(cameraId);
     if (!cam) throw new Error(`Camera not found: ${cameraId}`);
     const rtspUrl = cam.rtsp_url || cam.url;
     if (!rtspUrl) throw new Error('Camera has no RTSP URL');
-    const base64 = await cameraRecorder.grabSnapshot(rtspUrl, cam.rotation || 0);
+    const base64 = await cameraRecorder.grabSnapshot(rtspUrl, 0);
     return base64; // JPEG base64
+  });
+
+  // Inventory preview loop — same as footage preview but with rotation=0
+  let invPreviewTimer = null;
+  let invPreviewCameraId = null;
+
+  ipcMain.handle('inventory:preview:start', async (_event, cameraId) => {
+    // Stop any existing inventory preview
+    if (invPreviewTimer) { clearInterval(invPreviewTimer); invPreviewTimer = null; }
+    invPreviewCameraId = cameraId;
+    const cam = cameraRecorder.getCamera(cameraId);
+    if (!cam) throw new Error(`Camera not found: ${cameraId}`);
+    const rtspUrl = cam.rtsp_url || cam.url;
+    if (!rtspUrl) throw new Error('Camera has no RTSP URL');
+
+    const tick = async () => {
+      if (invPreviewCameraId !== cameraId) return;
+      try {
+        const frame = await cameraRecorder.grabSnapshot(rtspUrl, 0);
+        const bw = BrowserWindow.getAllWindows()[0];
+        if (bw && frame) bw.webContents.send('inventory:preview:frame', { cameraId, frame });
+      } catch (e) {
+        const bw = BrowserWindow.getAllWindows()[0];
+        if (bw) bw.webContents.send('inventory:preview:frame', { cameraId, error: e.message });
+      }
+    };
+    tick(); // first frame immediately
+    invPreviewTimer = setInterval(tick, 800);
+    return { ok: true };
+  });
+
+  ipcMain.handle('inventory:preview:stop', (_event, cameraId) => {
+    if (invPreviewCameraId === cameraId || !cameraId) {
+      if (invPreviewTimer) { clearInterval(invPreviewTimer); invPreviewTimer = null; }
+      invPreviewCameraId = null;
+    }
+    return { ok: true };
   });
 
   // Proxy analyze request to server

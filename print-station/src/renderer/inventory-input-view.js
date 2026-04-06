@@ -62,7 +62,7 @@
     placeholder.style.display = 'flex';
     img.style.display = 'none';
 
-    state.previewUnsub = printStation.footage.onPreviewFrame(({ cameraId: cid, frame, error }) => {
+    state.previewUnsub = printStation.inventoryInput.onPreviewFrame(({ cameraId: cid, frame, error }) => {
       if (cid !== state.currentCameraId) return;
       if (frame) {
         img.src = `data:image/jpeg;base64,${frame}`;
@@ -73,13 +73,13 @@
       }
     });
 
-    printStation.footage.startPreview(cameraId);
+    printStation.inventoryInput.startPreview(cameraId);
     updateSnapButton();
   }
 
   function stopPreview() {
     if (state.currentCameraId) {
-      printStation.footage.stopPreview(state.currentCameraId);
+      printStation.inventoryInput.stopPreview(state.currentCameraId);
     }
     if (state.previewUnsub) {
       state.previewUnsub();

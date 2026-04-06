@@ -201,6 +201,14 @@ contextBridge.exposeInMainWorld('printStation', {
     pricing: (params) => ipcRenderer.invoke('inventory:pricing', params || {}),
     categories: () => ipcRenderer.invoke('inventory:input:categories'),
     saveCategory: (payload) => ipcRenderer.invoke('inventory:input:categories:save', payload || {}),
+    startPreview: (cameraId) => ipcRenderer.invoke('inventory:preview:start', cameraId),
+    stopPreview: (cameraId) => ipcRenderer.invoke('inventory:preview:stop', cameraId),
+    onPreviewFrame: (cb) => {
+      if (typeof cb !== 'function') return () => {};
+      const handler = (_e, data) => cb(data || {});
+      ipcRenderer.on('inventory:preview:frame', handler);
+      return () => ipcRenderer.off('inventory:preview:frame', handler);
+    },
   },
 
   // Social Marketing - TikTok Posts
