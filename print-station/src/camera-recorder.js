@@ -500,7 +500,7 @@ function grabSnapshot(rtspUrl, rotation = 0) {
     const chunks = [];
     proc.stdout.on('data', d => chunks.push(d));
 
-    const timer = setTimeout(() => { proc.kill(); reject(new Error('snapshot timeout')); }, 8000);
+    const timer = setTimeout(() => { proc.kill(); reject(new Error('snapshot timeout')); }, 15000);
 
     proc.on('close', code => {
       clearTimeout(timer);
