@@ -361,32 +361,18 @@
   async function saveItem(analysis, priceCents, category, subcategory) {
     const quantity = parseInt(document.getElementById('invInputQuantity').value, 10) || 1;
     const title = analysis.description || `${category} item`;
+    const size = getSelectedSize();
 
-    const product = {
+    // Save as qr_product via server API
+    const resp = await window.printStation.inventoryInput.saveProduct({
       title,
       description: analysis.description || '',
       priceCents,
       category,
-      size: getSelectedSize(),
+      size,
       color: (analysis.colors || []).join(', '),
       quantity
-    };
-
-    // Save via existing createQrProduct (through IPC)
-    const saved = await printStation.createInventoryItem({
-      name: title,
-      category,
-      quantity,
-      unitPriceCents: priceCents,
-      description: analysis.description || '',
     });
-
-    // Also save as qr_product for POS
-    try {
-      const qrResp = await printStation.fetchQueue({ _action: 'noop' }).catch(() => null);
-      // Use server API to create qr_product directly via apiFetch
-      await window.printStation.inventoryInput.analyze({ _saveProduct: false }); // no-op, just ensuring connection
-    } catch (_) { /* optional */ }
 
     // Add to recent items
     state.recentItems.unshift({
@@ -394,8 +380,7 @@
       category,
       subcategory,
       priceCents,
-      size: analysis.longestDimensionInches,
-      size: getSelectedSize(),
+      size,
       colors: analysis.colorCount,
       quantity,
       timestamp: new Date().toLocaleTimeString()
@@ -403,7 +388,7 @@
     if (state.recentItems.length > 20) state.recentItems.pop();
     renderRecentItems();
 
-    return saved;
+    return resp;
   }
 
   // ── Recent Items ──────────────────────────────────────────────────────────

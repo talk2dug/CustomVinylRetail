@@ -201,6 +201,7 @@ contextBridge.exposeInMainWorld('printStation', {
     pricing: (params) => ipcRenderer.invoke('inventory:pricing', params || {}),
     categories: () => ipcRenderer.invoke('inventory:input:categories'),
     saveCategory: (payload) => ipcRenderer.invoke('inventory:input:categories:save', payload || {}),
+    saveProduct: (payload) => ipcRenderer.invoke('inventory:input:saveProduct', payload || {}),
     startPreview: (cameraId) => ipcRenderer.invoke('inventory:preview:start', cameraId),
     stopPreview: (cameraId) => ipcRenderer.invoke('inventory:preview:stop', cameraId),
     onPreviewFrame: (cb) => {

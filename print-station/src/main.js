@@ -8145,6 +8145,17 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
+  // Save product to qr_products via server API
+  ipcMain.handle('inventory:input:saveProduct', async (_event, payload) => {
+    const resp = await slicerFetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      timeout: 15000
+    });
+    return resp.json();
+  });
+
   // ==========================================================================
   // PRINT QUOTES
   // ==========================================================================
