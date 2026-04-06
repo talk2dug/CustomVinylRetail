@@ -65,6 +65,7 @@
     state.previewUnsub = printStation.inventoryInput.onPreviewFrame(({ cameraId: cid, frame, error }) => {
       if (cid !== state.currentCameraId) return;
       if (frame) {
+        state.lastPreviewFrame = frame;
         img.src = `data:image/jpeg;base64,${frame}`;
         img.style.display = 'block';
         placeholder.style.display = 'none';
@@ -168,12 +169,12 @@
     showAnalyzing(true);
 
     try {
-      // 1. Stop preview to free the RTSP stream, then grab hi-res snapshot
+      // 1. Use the last preview frame (avoids opening a second ffmpeg RTSP connection)
+      const base64 = state.lastPreviewFrame;
+      if (!base64) throw new Error('No preview frame available — wait for camera to load');
+
+      // Stop preview while analyzing
       await printStation.inventoryInput.stopPreview(state.currentCameraId);
-      // Small delay to let ffmpeg release the stream
-      await new Promise(r => setTimeout(r, 300));
-      const base64 = await printStation.inventoryInput.snapshot(state.currentCameraId);
-      if (!base64) throw new Error('Failed to capture image');
 
       state.lastImageBase64 = base64;
 
