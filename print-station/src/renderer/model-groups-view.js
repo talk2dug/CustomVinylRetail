@@ -20,8 +20,10 @@
   function getThumbUrl(model) {
     const p = model.thumbnailPath || model.thumbnail_path || model.optimizedPath || model.optimized_path || model.filePath || model.file_path || '';
     if (!p) return NO_IMG;
-    if (p.startsWith('http') || p.startsWith('data:') || p.startsWith('file:')) return p;
-    return typeof resolveAssetUrl === 'function' ? resolveAssetUrl(p, { width: 200, quality: 75 }) : p;
+    // Use resolveArtworkUrl (same as Human Models view) to handle server-relative paths like /library/human-models/...
+    if (typeof resolveArtworkUrl === 'function') return resolveArtworkUrl(p, { width: 200, quality: 75 }) || NO_IMG;
+    if (typeof resolveAssetUrl === 'function') return resolveAssetUrl(p, { width: 200, quality: 75 }) || NO_IMG;
+    return p;
   }
 
   function esc(str) {
