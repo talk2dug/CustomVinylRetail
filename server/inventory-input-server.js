@@ -226,7 +226,8 @@ async function handleInventoryInputRoute(pathname, req, res, db) {
 
     // Decals/stickers/heat transfer use the sticker price table
     const isDecal = /decal|sticker|vinyl|heat.?transfer|bumper/i.test(category);
-    const effectiveSize = size > 0 ? size : parseFloat(subcategory) || parseFloat(url.searchParams.get('printSize') || '') || 0;
+    // User-selected subcategory (e.g. "4" for 4-inch) takes priority over AI-measured size
+    const effectiveSize = parseFloat(subcategory) || parseFloat(url.searchParams.get('printSize') || '') || (size > 0 ? size : 0);
     if (isDecal && effectiveSize > 0) {
       const priceCents = db.calculateStickerPrice(effectiveSize, colorCount);
       return sendJson(res, 200, { ok: true, found: true, priceCents, source: 'sticker_price_table' });
