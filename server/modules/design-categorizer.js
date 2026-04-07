@@ -261,36 +261,52 @@ async function categorizeDesign(imagePathOrUrl, opts = {}) {
 
   const img = await loadImage(imagePathOrUrl);
 
-  const payload = {
-    contents: [{
-      parts: [
-        {
-          inlineData: {
-            mimeType: img.mimeType,
-            data: img.base64
-          }
-        },
-        {
-          text: SYSTEM_PROMPT
-        }
-      ]
-    }],
-    generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 1024,
-      thinkingConfig: {
-        thinkingBudget: 0
-      }
+  let text;
+
+  // Try Ollama vision first, fall back to Gemini
+  try {
+    const ollamaClient = require('../lib/ollama-client');
+    text = await ollamaClient.vision(SYSTEM_PROMPT, [img.base64], { temperature: 0.3, maxTokens: 1024, timeout: 60000 });
+    if (text) {
+      console.log('[design-categorizer] AI response via Ollama vision');
     }
-  };
+  } catch (ollamaErr) {
+    console.warn('[design-categorizer] Ollama vision failed, falling back to Gemini:', ollamaErr.message);
+  }
 
-  const response = await geminiRequest(payload);
+  // Gemini fallback
+  if (!text) {
+    const payload = {
+      contents: [{
+        parts: [
+          {
+            inlineData: {
+              mimeType: img.mimeType,
+              data: img.base64
+            }
+          },
+          {
+            text: SYSTEM_PROMPT
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 1024,
+        thinkingConfig: {
+          thinkingBudget: 0
+        }
+      }
+    };
 
-  // Extract text from response
-  const text = response.candidates?.[0]?.content?.parts
-    ?.filter(p => p.text)
-    ?.map(p => p.text)
-    ?.join('') || '';
+    const response = await geminiRequest(payload);
+
+    // Extract text from response
+    text = response.candidates?.[0]?.content?.parts
+      ?.filter(p => p.text)
+      ?.map(p => p.text)
+      ?.join('') || '';
+  }
 
   // Parse JSON from response (strip markdown fences if present)
   const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
@@ -298,8 +314,8 @@ async function categorizeDesign(imagePathOrUrl, opts = {}) {
   try {
     parsed = JSON.parse(cleaned);
   } catch (e) {
-    console.error('[design-categorizer] Failed to parse Gemini response:', text.slice(0, 500));
-    throw new Error('Failed to parse Gemini categorization response');
+    console.error('[design-categorizer] Failed to parse AI response:', text.slice(0, 500));
+    throw new Error('Failed to parse categorization response');
   }
 
   // Validate and normalize

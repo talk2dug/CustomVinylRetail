@@ -61,10 +61,6 @@ const GEMINI_API_KEY = cleanKey(process.env.GEMINI_API_KEY || '');
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=';
 
 async function generateProductDescription(designName, designCategory) {
-  if (!GEMINI_API_KEY) {
-    return buildFallbackDescription(designName);
-  }
-
   const prompt = `Write a compelling Shopify product description for a custom graphic t-shirt.
 
 Design name: "${designName}"
@@ -86,23 +82,38 @@ Requirements:
 
 Return ONLY the product description text, nothing else.`;
 
+  // Try Ollama first, fall back to Gemini
   try {
-    const resp = await fetch(GEMINI_URL + GEMINI_API_KEY, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } }
-      }),
-      signal: AbortSignal.timeout(20000)
-    });
+    const ollamaClient = require('../lib/ollama-client');
+    const text = await ollamaClient.generate(prompt, { temperature: 0.7, maxTokens: 500, timeout: 30000 });
+    if (text && text.length > 20) {
+      console.log(`[ShopifyApparel] AI description via Ollama for "${designName}"`);
+      return text.trim();
+    }
+  } catch (ollamaErr) {
+    console.warn(`[ShopifyApparel] Ollama failed, falling back to Gemini: ${ollamaErr.message}`);
+  }
 
-    if (!resp.ok) throw new Error(`Gemini ${resp.status}`);
-    const data = await resp.json();
-    const text = data.candidates?.[0]?.content?.parts?.filter(p => p.text && !p.thought).map(p => p.text).join('\n');
-    if (text && text.length > 20) return text.trim();
-  } catch (err) {
-    console.warn(`[ShopifyApparel] AI description failed for "${designName}": ${err.message}`);
+  // Gemini fallback
+  if (GEMINI_API_KEY) {
+    try {
+      const resp = await fetch(GEMINI_URL + GEMINI_API_KEY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } }
+        }),
+        signal: AbortSignal.timeout(20000)
+      });
+
+      if (!resp.ok) throw new Error(`Gemini ${resp.status}`);
+      const data = await resp.json();
+      const text = data.candidates?.[0]?.content?.parts?.filter(p => p.text && !p.thought).map(p => p.text).join('\n');
+      if (text && text.length > 20) return text.trim();
+    } catch (err) {
+      console.warn(`[ShopifyApparel] Gemini fallback failed for "${designName}": ${err.message}`);
+    }
   }
 
   return buildFallbackDescription(designName);

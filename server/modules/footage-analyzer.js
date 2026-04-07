@@ -233,7 +233,6 @@ function extractKeyframes(clipPath, count = 15) {
  * @returns {Object} The analysis object from Gemini
  */
 async function analyzeClip(db, clipId) {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
 
   // Get clip from DB
   const rawDb = db.db || db;
@@ -251,69 +250,94 @@ async function analyzeClip(db, clipId) {
   const { frames, frameTimestamps, duration: clipDuration, cleanup } = extractKeyframes(clipPath);
 
   try {
-    // Read frames as base64, interleave with timestamp labels
-    const contentParts = [];
+    // Read frames as base64
+    const framesBase64 = [];
+    const frameLabels = [];
     for (let i = 0; i < frames.length; i++) {
       const data = fs.readFileSync(frames[i]).toString('base64');
-      contentParts.push({ text: `Frame ${i} at ${frameTimestamps[i]}s:` });
-      contentParts.push({ inlineData: { mimeType: 'image/jpeg', data } });
+      framesBase64.push(data);
+      frameLabels.push(`Frame ${i} at ${frameTimestamps[i]}s`);
     }
 
-    const totalKB = contentParts.filter(p => p.inlineData).reduce((sum, p) => sum + p.inlineData.data.length, 0) / 1024 | 0;
-    console.log(`[FootageAnalyzer] Sending ${frames.length} frames to Gemini (${totalKB}KB total, clip duration: ${clipDuration}s)`);
+    const totalKB = framesBase64.reduce((sum, d) => sum + d.length, 0) / 1024 | 0;
+    console.log(`[FootageAnalyzer] Analyzing ${frames.length} frames (${totalKB}KB total, clip duration: ${clipDuration}s)`);
 
-    // Build Gemini request with all frames + prompt
-    const parts = [
-      ...contentParts,
-      { text: ANALYSIS_PROMPT + `\n\nThis clip is ${clipDuration} seconds long. Analyze these ${frames.length} keyframes. Each frame is labeled with its timestamp. Use the timestamps to identify when each product/print appears and what phase it's in (setup, pressing, reveal).` }
-    ];
+    const analysisPrompt = ANALYSIS_PROMPT + `\n\nThis clip is ${clipDuration} seconds long. Analyze these ${frames.length} keyframes. Each frame is labeled with its timestamp. Use the timestamps to identify when each product/print appears and what phase it's in (setup, pressing, reveal).\n\nFrame labels: ${frameLabels.join(', ')}`;
 
-    const url = GEMINI_URL + GEMINI_API_KEY;
-    const body = {
-      contents: [{ parts }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 0 }
-      }
-    };
+    let text;
 
-    let resp;
+    // Try Ollama vision first
     try {
-      resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(60000)
-      });
-    } catch (fetchErr) {
-      console.error(`[FootageAnalyzer] Gemini fetch error: ${fetchErr.message}`);
-      throw fetchErr;
+      const ollamaClient = require('../lib/ollama-client');
+      text = await ollamaClient.vision(analysisPrompt, framesBase64, { temperature: 0.1, maxTokens: 8192, timeout: 120000 });
+      if (text) {
+        console.log(`[FootageAnalyzer] Ollama vision response (${text.length} chars): ${text.substring(0, 300)}`);
+      }
+    } catch (ollamaErr) {
+      console.warn(`[FootageAnalyzer] Ollama vision failed, falling back to Gemini: ${ollamaErr.message}`);
     }
 
-    console.log(`[FootageAnalyzer] Gemini response status: ${resp.status}`);
-
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => '');
-      console.error(`[FootageAnalyzer] Gemini API error: ${resp.status} ${errText.substring(0, 300)}`);
-      throw new Error(`Gemini API ${resp.status}: ${errText.substring(0, 200)}`);
-    }
-
-    const data = await resp.json();
-
-    // Handle thinking parts vs text parts (same as human-model-analyzer.js)
-    const responseParts = data.candidates?.[0]?.content?.parts || [];
-    console.log(`[FootageAnalyzer] Gemini parts count: ${responseParts.length}, types: ${responseParts.map(p => p.thought ? 'thought' : 'text').join(',')}`);
-
-    // Concatenate all text parts (skip thought parts)
-    let text = responseParts.filter(p => p.text && !p.thought).map(p => p.text).join('\n');
-    if (!text) text = responseParts.map(p => p.text || '').join('\n'); // fallback: include everything
+    // Gemini fallback
     if (!text) {
-      console.error('[FootageAnalyzer] No text in Gemini response:', JSON.stringify(data).substring(0, 300));
-      throw new Error('No text in Gemini response');
-    }
+      if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set and Ollama failed');
 
-    console.log(`[FootageAnalyzer] Gemini raw response (${text.length} chars): ${text.substring(0, 300)}`);
+      // Build Gemini content parts with interleaved labels and images
+      const contentParts = [];
+      for (let i = 0; i < framesBase64.length; i++) {
+        contentParts.push({ text: `${frameLabels[i]}:` });
+        contentParts.push({ inlineData: { mimeType: 'image/jpeg', data: framesBase64[i] } });
+      }
+
+      const parts = [
+        ...contentParts,
+        { text: analysisPrompt }
+      ];
+
+      const url = GEMINI_URL + GEMINI_API_KEY;
+      const body = {
+        contents: [{ parts }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 8192,
+          thinkingConfig: { thinkingBudget: 0 }
+        }
+      };
+
+      let resp;
+      try {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(60000)
+        });
+      } catch (fetchErr) {
+        console.error(`[FootageAnalyzer] Gemini fetch error: ${fetchErr.message}`);
+        throw fetchErr;
+      }
+
+      console.log(`[FootageAnalyzer] Gemini response status: ${resp.status}`);
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        console.error(`[FootageAnalyzer] Gemini API error: ${resp.status} ${errText.substring(0, 300)}`);
+        throw new Error(`Gemini API ${resp.status}: ${errText.substring(0, 200)}`);
+      }
+
+      const data = await resp.json();
+
+      const responseParts = data.candidates?.[0]?.content?.parts || [];
+      console.log(`[FootageAnalyzer] Gemini parts count: ${responseParts.length}, types: ${responseParts.map(p => p.thought ? 'thought' : 'text').join(',')}`);
+
+      text = responseParts.filter(p => p.text && !p.thought).map(p => p.text).join('\n');
+      if (!text) text = responseParts.map(p => p.text || '').join('\n');
+      if (!text) {
+        console.error('[FootageAnalyzer] No text in Gemini response:', JSON.stringify(data).substring(0, 300));
+        throw new Error('No text in Gemini response');
+      }
+
+      console.log(`[FootageAnalyzer] Gemini raw response (${text.length} chars): ${text.substring(0, 300)}`);
+    }
 
     // Parse analysis
     const analysis = parseAnalysisResponse(text);

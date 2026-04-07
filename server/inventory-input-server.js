@@ -70,19 +70,39 @@ Return JSON:
 Return ONLY valid JSON, no markdown fences.`;
 
 async function callGemini(parts, { thinking = false } = {}) {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
+  const timeoutMs = thinking ? 60000 : 30000;
+  const maxTokens = thinking ? 4096 : 1024;
+
+  // Extract images and prompt text from Gemini-format parts for Ollama
+  try {
+    const ollamaClient = require('./lib/ollama-client');
+    const imagesBase64 = parts.filter(p => p.inlineData).map(p => p.inlineData.data);
+    const promptText = parts.filter(p => p.text).map(p => p.text).join('\n');
+
+    if (imagesBase64.length > 0 && promptText) {
+      const text = await ollamaClient.vision(promptText, imagesBase64, { temperature: 0.1, maxTokens, timeout: timeoutMs });
+      if (text) {
+        console.log('[Inventory Input] AI response via Ollama vision');
+        return text;
+      }
+    }
+  } catch (ollamaErr) {
+    console.warn('[Inventory Input] Ollama vision failed, falling back to Gemini:', ollamaErr.message);
+  }
+
+  // Gemini fallback
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set and Ollama failed');
 
   const url = GEMINI_URL + GEMINI_API_KEY;
   const body = {
     contents: [{ parts }],
     generationConfig: {
       temperature: 0.1,
-      maxOutputTokens: thinking ? 4096 : 1024,
+      maxOutputTokens: maxTokens,
       thinkingConfig: { thinkingBudget: thinking ? 2048 : 0 }
     }
   };
 
-  const timeoutMs = thinking ? 60000 : 30000;
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

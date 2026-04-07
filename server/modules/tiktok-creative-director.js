@@ -331,56 +331,72 @@ OUTPUT FORMAT (JSON only, no extra text):
 }
 
 async function callGemini(prompt) {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
+  console.log(`[CreativeDirector] Calling AI (prompt: ${prompt.length} chars)`);
 
-  const url = GEMINI_URL + GEMINI_API_KEY;
-  console.log(`[CreativeDirector] Calling Gemini (prompt: ${prompt.length} chars)`);
+  let text;
 
-  const body = {
-    contents: [{
-      parts: [{ text: prompt }]
-    }],
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 4096,
-      thinkingConfig: { thinkingBudget: 0 }
-    }
-  };
-
-  let resp;
+  // Try Ollama first
   try {
-    resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(45000)
-    });
-  } catch (fetchErr) {
-    console.error(`[CreativeDirector] Gemini fetch error: ${fetchErr.message}`);
-    throw fetchErr;
+    const ollamaClient = require('../lib/ollama-client');
+    text = await ollamaClient.generate(prompt, { temperature: 0.7, maxTokens: 2048, timeout: 120000 });
+    if (text) {
+      console.log(`[CreativeDirector] Ollama response (${text.length} chars): ${text.substring(0, 300)}`);
+    }
+  } catch (ollamaErr) {
+    console.warn(`[CreativeDirector] Ollama failed, falling back to Gemini: ${ollamaErr.message}`);
   }
 
-  console.log(`[CreativeDirector] Gemini response status: ${resp.status}`);
-
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '');
-    console.error(`[CreativeDirector] Gemini API error: ${resp.status} ${errText.substring(0, 300)}`);
-    throw new Error(`Gemini API ${resp.status}: ${errText.substring(0, 200)}`);
-  }
-
-  const data = await resp.json();
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  console.log(`[CreativeDirector] Gemini parts count: ${parts.length}, types: ${parts.map(p => p.thought ? 'thought' : 'text').join(',')}`);
-
-  // Filter out thought parts, find text parts
-  let text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('\n');
-  if (!text) text = parts.map(p => p.text || '').join('\n');
+  // Gemini fallback
   if (!text) {
-    console.error('[CreativeDirector] No text in Gemini response:', JSON.stringify(data).substring(0, 300));
-    throw new Error('No text in Gemini response');
-  }
+    if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set and Ollama failed');
 
-  console.log(`[CreativeDirector] Gemini raw response (${text.length} chars): ${text.substring(0, 300)}`);
+    const url = GEMINI_URL + GEMINI_API_KEY;
+
+    const body = {
+      contents: [{
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 4096,
+        thinkingConfig: { thinkingBudget: 0 }
+      }
+    };
+
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(45000)
+      });
+    } catch (fetchErr) {
+      console.error(`[CreativeDirector] Gemini fetch error: ${fetchErr.message}`);
+      throw fetchErr;
+    }
+
+    console.log(`[CreativeDirector] Gemini response status: ${resp.status}`);
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      console.error(`[CreativeDirector] Gemini API error: ${resp.status} ${errText.substring(0, 300)}`);
+      throw new Error(`Gemini API ${resp.status}: ${errText.substring(0, 200)}`);
+    }
+
+    const data = await resp.json();
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    console.log(`[CreativeDirector] Gemini parts count: ${parts.length}, types: ${parts.map(p => p.thought ? 'thought' : 'text').join(',')}`);
+
+    text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('\n');
+    if (!text) text = parts.map(p => p.text || '').join('\n');
+    if (!text) {
+      console.error('[CreativeDirector] No text in Gemini response:', JSON.stringify(data).substring(0, 300));
+      throw new Error('No text in Gemini response');
+    }
+
+    console.log(`[CreativeDirector] Gemini raw response (${text.length} chars): ${text.substring(0, 300)}`);
+  }
 
   // Strip code fences
   let jsonStr = text.trim();

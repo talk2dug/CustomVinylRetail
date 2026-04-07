@@ -385,10 +385,22 @@ async function fetchPageContent(url) {
   }
 }
 
-// ─── AI helpers (Gemini primary, Ollama fallback) ─────────────────────────────
+// ─── AI helpers (Ollama primary, Gemini fallback) ─────────────────────────────
 
 async function aiChat(prompt) {
-  // Try Gemini first (free, fast, good at extraction)
+  // Try Ollama first (local, free)
+  try {
+    const ollama = require('../lib/ollama-client');
+    const text = await ollama.generate(prompt, { temperature: 0.3, maxTokens: 8192, timeout: 120000 });
+    if (text) {
+      console.log('[MarketFinder] AI response via Ollama');
+      return text;
+    }
+  } catch (err) {
+    console.warn('[MarketFinder] Ollama failed, falling back to Gemini:', err.message);
+  }
+
+  // Fallback: Gemini
   const geminiKey = process.env.GEMINI_API_KEY;
   if (geminiKey) {
     try {
@@ -407,20 +419,8 @@ async function aiChat(prompt) {
         console.warn(`[MarketFinder] Gemini HTTP ${resp.status}: ${resp.body.slice(0, 200)}`);
       }
     } catch (err) {
-      console.warn('[MarketFinder] Gemini error, falling back to Ollama:', err.message);
+      console.error('[MarketFinder] Gemini fallback error:', err.message);
     }
-  }
-
-  // Fallback: Ollama (local, free)
-  try {
-    const ollama = require('../lib/ollama-client');
-    if (ollama.isConfigured()) {
-      const text = await ollama.generate(prompt, { temperature: 0.3, timeout: 120000 });
-      console.log('[MarketFinder] AI response via Ollama');
-      return text;
-    }
-  } catch (err) {
-    console.error('[MarketFinder] Ollama fallback error:', err.message);
   }
 
   return null;
