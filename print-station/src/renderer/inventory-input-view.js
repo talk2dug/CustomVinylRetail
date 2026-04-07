@@ -113,9 +113,40 @@
     }
   }
 
+  // Category-specific size options
+  const CATEGORY_SIZES = {
+    'Metal Prints': ['5x7', '8x10', '11x14', '11x17'],
+    'Decals': ['2', '3', '4', '6', '8', '10', '12'],
+    'Bumper Stickers': ['3', '4', '6', '8', '10', '12'],
+    'Heat Transfer Decals': ['2', '3', '4', '6', '8', '10', '12'],
+  };
+
+  // Categories where subcategory represents a single longest-dimension in inches
+  const SINGLE_DIM_CATEGORIES = ['Decals', 'Bumper Stickers', 'Heat Transfer Decals'];
+
+  // Categories with a price surcharge (in cents)
+  const CATEGORY_SURCHARGE = {
+    'Heat Transfer Decals': 100, // +$1.00
+  };
+
   function updateSubcategories(categoryName) {
     const sel = document.getElementById('invInputSubcategory');
-    sel.innerHTML = '<option value="">None</option>';
+    sel.innerHTML = '<option value="">Select size...</option>';
+
+    // Use predefined sizes if available
+    const sizes = CATEGORY_SIZES[categoryName];
+    if (sizes) {
+      const isSingleDim = SINGLE_DIM_CATEGORIES.includes(categoryName);
+      for (const sz of sizes) {
+        const opt = document.createElement('option');
+        opt.value = sz;
+        opt.textContent = isSingleDim ? `${sz}"` : sz;
+        sel.appendChild(opt);
+      }
+      return;
+    }
+
+    // Fallback: use server-provided subcategories
     const cat = state.categories.find(c => c.name === categoryName);
     if (cat && cat.subcategories) {
       for (const sub of cat.subcategories) {
@@ -222,7 +253,8 @@
       // 5. Auto-accept?
       const autoAccept = document.getElementById('invInputAutoAccept').checked;
       if (autoAccept && pricingResp.found) {
-        await saveItem(analysis, pricingResp.priceCents, category, subcategory);
+        const autoSurcharge = CATEGORY_SURCHARGE[category] || 0;
+        await saveItem(analysis, pricingResp.priceCents + autoSurcharge, category, subcategory);
         setStatus('Auto-saved! Ready for next.');
         hideResults();
         // Resume preview
@@ -245,8 +277,10 @@
     const panel = document.getElementById('invInputResultPanel');
     const body = document.getElementById('invInputResultBody');
 
+    const surcharge = CATEGORY_SURCHARGE[category] || 0;
+    const totalPriceCents = pricing.found ? pricing.priceCents + surcharge : 0;
     const priceStr = pricing.found
-      ? `$${(pricing.priceCents / 100).toFixed(2)}`
+      ? `$${(totalPriceCents / 100).toFixed(2)}${surcharge ? ' <span style="color:var(--muted);font-size:11px;">(+$' + (surcharge/100).toFixed(2) + ' heat transfer)</span>' : ''}`
       : '<span style="color:#c00;">No pricing set</span>';
 
     body.innerHTML = `
@@ -330,7 +364,8 @@
         setStatus('Set pricing first!');
         return;
       }
-      await saveItem(state.lastAnalysis, pricingResp.priceCents, category, subcategory);
+      const surcharge = CATEGORY_SURCHARGE[category] || 0;
+      await saveItem(state.lastAnalysis, pricingResp.priceCents + surcharge, category, subcategory);
       setStatus('Saved! Ready for next.');
       hideResults();
       // Resume preview

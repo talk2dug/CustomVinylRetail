@@ -204,10 +204,11 @@ async function handleInventoryInputRoute(pathname, req, res, db) {
     const size = parseFloat(url.searchParams.get('size') || '0');
     const colorCount = parseInt(url.searchParams.get('colorCount') || '1', 10);
 
-    // Decals use the sticker price table
-    const isDecal = /decal|sticker|vinyl/i.test(category);
-    if (isDecal && size > 0) {
-      const priceCents = db.calculateStickerPrice(size, colorCount);
+    // Decals/stickers/heat transfer use the sticker price table
+    const isDecal = /decal|sticker|vinyl|heat.?transfer|bumper/i.test(category);
+    const effectiveSize = size > 0 ? size : parseFloat(subcategory) || parseFloat(url.searchParams.get('printSize') || '') || 0;
+    if (isDecal && effectiveSize > 0) {
+      const priceCents = db.calculateStickerPrice(effectiveSize, colorCount);
       return sendJson(res, 200, { ok: true, found: true, priceCents, source: 'sticker_price_table' });
     }
 
@@ -262,8 +263,10 @@ async function handleInventoryInputRoute(pathname, req, res, db) {
       }
     }
 
-    // Add built-in decal category
-    if (!catMap['Decals']) catMap['Decals'] = { subcategories: [], hasPricing: true, builtIn: true };
+    // Add built-in sticker/decal categories (priced via STICKER_PRICE_TABLE)
+    for (const name of ['Decals', 'Bumper Stickers', 'Heat Transfer Decals']) {
+      if (!catMap[name]) catMap[name] = { subcategories: [], hasPricing: true, builtIn: true };
+    }
 
     const categories = Object.entries(catMap).map(([name, data]) => ({ name, ...data })).sort((a, b) => a.name.localeCompare(b.name));
     return sendJson(res, 200, { ok: true, categories });
