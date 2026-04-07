@@ -5956,6 +5956,29 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('human-models:delete', (_event, id) =>
     httpRequest(`/api/human-models/${encodeURIComponent(id)}`, { method: 'DELETE' })
   );
+  // Model Groups
+  ipcMain.handle('model-groups:list', () =>
+    httpRequest('/api/model-groups', { method: 'GET' })
+  );
+  ipcMain.handle('model-groups:get', (_event, id) =>
+    httpRequest(`/api/model-groups/${encodeURIComponent(id)}`, { method: 'GET' })
+  );
+  ipcMain.handle('model-groups:create', (_event, payload) =>
+    httpRequest('/api/model-groups', { method: 'POST', body: payload })
+  );
+  ipcMain.handle('model-groups:update', (_event, { id, payload }) =>
+    httpRequest(`/api/model-groups/${encodeURIComponent(id)}`, { method: 'PUT', body: payload })
+  );
+  ipcMain.handle('model-groups:delete', (_event, id) =>
+    httpRequest(`/api/model-groups/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  );
+  ipcMain.handle('model-groups:add-models', (_event, { groupId, modelIds }) =>
+    httpRequest(`/api/model-groups/${encodeURIComponent(groupId)}/models`, { method: 'POST', body: { modelIds } })
+  );
+  ipcMain.handle('model-groups:remove-models', (_event, { groupId, modelIds }) =>
+    httpRequest(`/api/model-groups/${encodeURIComponent(groupId)}/models/remove`, { method: 'POST', body: { modelIds } })
+  );
+
   ipcMain.handle('human-models:select-file', async (_event, options) => {
     const result = await dialog.showOpenDialog({
       title: options?.title || 'Select Model Image',

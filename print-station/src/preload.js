@@ -490,6 +490,17 @@ contextBridge.exposeInMainWorld('printStation', {
     listColorVariants: (modelId) => ipcRenderer.invoke('human-models:color-variants', modelId)
   },
 
+  // Model Groups API
+  modelGroups: {
+    list: () => ipcRenderer.invoke('model-groups:list'),
+    get: (id) => ipcRenderer.invoke('model-groups:get', id),
+    create: (payload) => ipcRenderer.invoke('model-groups:create', payload),
+    update: (id, payload) => ipcRenderer.invoke('model-groups:update', { id, payload }),
+    delete: (id) => ipcRenderer.invoke('model-groups:delete', id),
+    addModels: (groupId, modelIds) => ipcRenderer.invoke('model-groups:add-models', { groupId, modelIds }),
+    removeModels: (groupId, modelIds) => ipcRenderer.invoke('model-groups:remove-models', { groupId, modelIds })
+  },
+
   // Mockup Backgrounds API (for decal mockups)
   mockupBackgrounds: {
     list: (query) => ipcRenderer.invoke('mockup-backgrounds:list', query || {}),

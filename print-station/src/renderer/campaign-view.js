@@ -45,6 +45,9 @@ function initCampaignView() {
   const clear2 = document.getElementById('campaignApparel2ClearBtn');
   if (clear2) clear2.addEventListener('click', () => clearApparelSlot(1));
 
+  // Model group dropdown
+  loadModelGroupDropdown();
+
   // Pipeline run button
   const runBtn = document.getElementById('campaignRunPipelineBtn');
   if (runBtn) runBtn.addEventListener('click', handleRunPipeline);
@@ -55,6 +58,12 @@ function initCampaignView() {
     if (window.state?.campaign?.slug) loadPipelineHistory(window.state.campaign.slug);
   });
 
+  // Pipeline view link to model groups
+  const mgSelect = document.getElementById('campaignModelGroupSelect');
+  if (mgSelect) {
+    mgSelect.addEventListener('focus', loadModelGroupDropdown);
+  }
+
   // Analytics refresh
   const analyticsRefresh = document.getElementById('campaignAnalyticsRefresh');
   if (analyticsRefresh) analyticsRefresh.addEventListener('click', () => {
@@ -62,6 +71,28 @@ function initCampaignView() {
   });
 }
 window.initCampaignView = initCampaignView;
+
+async function loadModelGroupDropdown() {
+  const select = document.getElementById('campaignModelGroupSelect');
+  if (!select) return;
+  try {
+    const resp = await window.printStation.modelGroups.list();
+    const groups = resp.groups || resp || [];
+    // Preserve current selection
+    const current = select.value;
+    select.innerHTML = '<option value="">Auto model selection</option>';
+    for (const g of groups) {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = `${g.name} (${g.member_count || 0})`;
+      select.appendChild(opt);
+    }
+    if (current) select.value = current;
+  } catch (err) {
+    console.warn('[Campaign] model groups load failed:', err.message);
+  }
+}
+window.loadModelGroupDropdown = loadModelGroupDropdown;
 
 // Called when a campaign is loaded — refresh pipeline-specific data
 function onCampaignLoaded(campaign) {
@@ -221,11 +252,13 @@ async function handleRunPipeline() {
       await window.handleCampaignSaveSilently();
     }
 
+    const modelGroupId = document.getElementById('campaignModelGroupSelect')?.value || undefined;
     const result = await window.printStation.pipeline.run({
       designIds,
       campaignSlug: campaign.slug,
       campaignTitle: campaign.title || campaign.slug,
-      apparelChoices
+      apparelChoices,
+      modelGroupId
     });
 
     if (result.runId) {

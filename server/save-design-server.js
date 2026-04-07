@@ -95,6 +95,7 @@ const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
 const { handleTikTokStudioRoute } = require('./modules/tiktok-studio-routes');
 const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
 const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
+const { handleModelGroupsRoute } = require('./model-groups');
 const { runFullPipeline } = require('./modules/apparel-pipeline');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
@@ -10026,6 +10027,16 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // Model Groups API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/model-groups')) {
+    if (!requireInternalKey(req, res)) return;
+    handleModelGroupsRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Model Groups API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
   // Batch Mockup Generator API
   if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/batch-mockups')) {
     if (!requireInternalKey(req, res)) return;
@@ -10052,7 +10063,7 @@ Keep it concise and actionable.`;
     collectRequestBody(req, (error, body) => {
       if (error) { sendJson(res, 413, { error: error.message }); return; }
       try {
-        const { category, designIds, campaignSlug, campaignTitle, apparelChoices, limit, modelFilter, size, skipShopify, skipReels } = JSON.parse(body || '{}');
+        const { category, designIds, campaignSlug, campaignTitle, apparelChoices, limit, modelFilter, size, skipShopify, skipReels, modelGroupId } = JSON.parse(body || '{}');
         if (!category && (!designIds || !designIds.length)) {
           sendJson(res, 400, { error: 'category or designIds is required' }); return;
         }
@@ -10072,7 +10083,7 @@ Keep it concise and actionable.`;
 
         const pipelineOpts = {
           designIds, campaignSlug, campaignTitle,
-          apparelChoices, limit, modelFilter, size, skipShopify, skipReels,
+          apparelChoices, limit, modelFilter, size, skipShopify, skipReels, modelGroupId,
           onProgress: ({ step, stepIndex, stepLabel, progress, total }) => {
             try {
               db.updatePipelineRun(runId, {

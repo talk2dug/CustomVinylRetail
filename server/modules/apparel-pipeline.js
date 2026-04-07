@@ -841,6 +841,23 @@ async function runFullPipeline(collectionCategory, options = {}) {
       results.errors.push('Model fetch failed: ' + err.message);
     }
 
+    // Filter to a specific model group if requested
+    if (models.length && options.modelGroupId) {
+      try {
+        const groupData = await apiFetch(`/api/model-groups/${encodeURIComponent(options.modelGroupId)}`);
+        const memberIds = new Set((groupData.members || []).map(m => m.id));
+        const filtered = models.filter(m => memberIds.has(m.id));
+        if (filtered.length) {
+          console.log(`[ApparelPipeline] Filtered to model group "${groupData.group?.name}": ${filtered.length} of ${models.length} models`);
+          models = filtered;
+        } else {
+          console.warn(`[ApparelPipeline] Model group "${options.modelGroupId}" has no matching models, using all ${models.length}`);
+        }
+      } catch (err) {
+        console.warn('[ApparelPipeline] Model group filter failed, using all models:', err.message);
+      }
+    }
+
     if (models.length) {
       for (const theme of Object.keys(themeGroups)) {
         for (const item of themeGroups[theme]) {

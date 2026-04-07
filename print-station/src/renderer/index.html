@@ -43,6 +43,7 @@
           <button class="dropdown-item" data-view="catalogManagerView">Manage Catalog</button>
           <button class="dropdown-item" data-view="uploadView">Upload Artwork</button>
           <button class="dropdown-item" data-view="humanModelsView">Human Models</button>
+          <button class="dropdown-item" data-view="modelGroupsView">Model Groups</button>
         </div>
       </div>
 
@@ -1809,6 +1810,9 @@
         <div class="inventory-card" id="campaignPipelineCard">
           <h3>Pipeline</h3>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="campaignModelGroupSelect" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:12px;">
+              <option value="">Auto model selection</option>
+            </select>
             <button id="campaignRunPipelineBtn" class="primary" type="button">Run Pipeline</button>
             <span id="campaignPipelineStatus" class="muted">Ready</span>
           </div>
@@ -6586,6 +6590,84 @@
       </div>
 
       <!-- ================================================================== -->
+      <!-- MODEL GROUPS VIEW                                                   -->
+      <!-- ================================================================== -->
+      <section id="modelGroupsView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Model Groups</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="mgNewGroupBtn" class="btn btn-primary" style="padding:6px 14px;">+ New Group</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:16px;margin-top:12px;height:calc(100vh - 140px);">
+          <!-- Left: Group List -->
+          <div id="mgGroupList" style="width:280px;min-width:280px;overflow-y:auto;border-right:1px solid var(--border);padding-right:12px;">
+            <div id="mgGroupCards" style="display:flex;flex-direction:column;gap:8px;"></div>
+          </div>
+
+          <!-- Right: Group Detail -->
+          <div id="mgGroupDetail" style="flex:1;overflow-y:auto;padding:0 8px;">
+            <div id="mgDetailPlaceholder" style="text-align:center;color:var(--text-secondary);padding:60px 20px;">
+              <p style="font-size:18px;">Select a group or create a new one</p>
+              <p style="font-size:13px;margin-top:8px;">Model groups let you curate specific sets of models for the apparel pipeline</p>
+            </div>
+            <div id="mgDetailContent" style="display:none;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div>
+                  <h3 id="mgDetailName" style="margin:0;"></h3>
+                  <p id="mgDetailDesc" style="margin:4px 0 0;color:var(--text-secondary);font-size:13px;"></p>
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button id="mgEditGroupBtn" class="btn" style="padding:4px 12px;">Edit</button>
+                  <button id="mgAddModelsBtn" class="btn btn-primary" style="padding:4px 12px;">+ Add Models</button>
+                  <button id="mgDeleteGroupBtn" class="btn btn-danger" style="padding:4px 12px;">Delete</button>
+                </div>
+              </div>
+              <div id="mgMemberCount" style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;"></div>
+              <div id="mgMemberGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Models Modal -->
+        <div id="mgAddModelsModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:1000;justify-content:center;align-items:center;">
+          <div style="background:var(--bg-primary);border-radius:12px;width:80%;max-width:900px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);">
+              <h3 style="margin:0;">Add Models to Group</h3>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input id="mgModelSearch" type="text" placeholder="Search models..." style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);width:200px;">
+                <select id="mgModelStyleFilter" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);">
+                  <option value="">All Styles</option>
+                  <option value="casual-everyday">Casual Everyday</option>
+                  <option value="pinup-retro">Pinup Retro</option>
+                  <option value="edgy-urban">Edgy Urban</option>
+                  <option value="outdoor-active">Outdoor Active</option>
+                  <option value="skater-youth">Skater Youth</option>
+                  <option value="bohemian-artsy">Bohemian Artsy</option>
+                  <option value="fitness-athletic">Fitness Athletic</option>
+                  <option value="preppy-clean">Preppy Clean</option>
+                  <option value="professional-minimal">Professional Minimal</option>
+                  <option value="country-southern">Country Southern</option>
+                </select>
+                <select id="mgModelGenderFilter" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);">
+                  <option value="">All Genders</option>
+                  <option value="female">Female</option>
+                  <option value="male">Male</option>
+                </select>
+                <button id="mgModalCloseBtn" class="btn" style="padding:4px 10px;">Close</button>
+              </div>
+            </div>
+            <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+              <span id="mgModalSelectedCount" style="font-size:13px;color:var(--text-secondary);">0 selected</span>
+              <button id="mgModalAddBtn" class="btn btn-primary" style="padding:6px 16px;" disabled>Add Selected</button>
+            </div>
+            <div id="mgModalGrid" style="flex:1;overflow-y:auto;padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
       <!-- MOCKUP BACKGROUNDS VIEW                                             -->
       <!-- ================================================================== -->
       <section id="mockupBackgroundsView" class="view">
@@ -8642,6 +8724,7 @@
     <script src="./etsy-listings-view.js"></script>
     <script src="./dog-tag-view.js"></script>
     <script src="./inventory-input-view.js"></script>
+    <script src="./model-groups-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>

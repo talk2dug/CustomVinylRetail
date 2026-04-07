@@ -1814,6 +1814,11 @@ function switchView(viewId) {
     initHumanModelsView();
   }
 
+  // Model Groups view
+  if (viewId === 'modelGroupsView') {
+    if (typeof window.initModelGroupsView === 'function') window.initModelGroupsView();
+  }
+
   // Sticker Sheets view
   if (viewId === 'stickerSheetsView') {
     initStickerSheetsView();
