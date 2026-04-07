@@ -19295,17 +19295,8 @@ Return ONLY valid JSON, no markdown or explanation.`;
         sendJson(res, 400, { error: 'Model has no file path.' });
         return;
       }
-      // Resolve the path - models are stored under /web/library/human-models/
-      let imagePath;
-      if (modelFilePath.startsWith('/')) {
-        imagePath = path.resolve(__dirname, '..', 'web', modelFilePath.replace(/^\//, ''));
-      } else {
-        imagePath = modelFilePath;
-      }
-      // Fallback: check if it exists as-is
-      if (!fs.existsSync(imagePath) && fs.existsSync(modelFilePath)) {
-        imagePath = modelFilePath;
-      }
+      // Resolve the path - /library/human-models/x.jpg → /mnt/websit/human-models/x.jpg
+      let imagePath = resolveImageToLocalPath(modelFilePath) || modelFilePath;
 
       console.log('[Human Model AI] Analyzing:', modelId, imagePath);
 

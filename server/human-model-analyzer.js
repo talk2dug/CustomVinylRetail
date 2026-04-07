@@ -77,6 +77,7 @@ Analyze and return:
 10. **age_range**: Approximate age (teens, early-20s, mid-20s, late-20s, early-30s, mid-30s, 40s, 50s+)
 11. **sells_best_with**: What TYPES of graphic designs would look best on this model? List 2-3:
    - vintage-pinup, retro-americana, sarcastic-humor, skull-dark, nature-outdoor, faith-scripture, motorcycle-garage, abstract-art, pop-culture, animal-nature, music-band, sports, political, cute-kawaii, typography-quote, military-patriotic
+12. **has_graphics**: Does the garment already have visible graphics, logos, text, or printed designs on it? (true or false) — We need BLANK garments for placing our own designs. If there is ANY visible print/graphic/logo/text on the shirt/hoodie, answer true.
 
 If there are multiple people, profile the PRIMARY subject (most centered/prominent).
 
@@ -119,8 +120,62 @@ function parseAnalysisResponse(responseText) {
     garment_color: m.garment_color?.toLowerCase() || null,
     age_range: m.age_range || null,
     sells_best_with: sellsBestWith.slice(0, 5),
+    has_graphics: m.has_graphics === true || m.has_graphics === 'true',
     confidence: typeof m.confidence === 'number' ? m.confidence : 0.8
   };
+}
+
+// Ollama config
+const OLLAMA_HOST = process.env.OLLAMA_HOST || '127.0.0.1';
+const OLLAMA_PORT = process.env.OLLAMA_PORT || '11434';
+const OLLAMA_VISION_MODEL = process.env.OLLAMA_VISION_MODEL || 'gemma3:12b';
+const OLLAMA_FALLBACK_HOST = process.env.OLLAMA_FALLBACK_HOST || '127.0.0.1';
+
+/**
+ * Analyze via Ollama vision model (free — runs locally)
+ */
+async function analyzeWithOllama(base64Image) {
+  const hosts = [
+    `http://${OLLAMA_HOST}:${OLLAMA_PORT}`,
+    `http://${OLLAMA_FALLBACK_HOST}:${OLLAMA_PORT}`
+  ];
+
+  let lastErr;
+  for (const host of hosts) {
+    try {
+      console.log(`[HumanModelAnalyzer] Trying Ollama at ${host} with ${OLLAMA_VISION_MODEL}...`);
+      const resp = await fetch(`${host}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: OLLAMA_VISION_MODEL,
+          prompt: ANALYSIS_PROMPT + '\n\nAnalyze this human model image and provide the metadata as JSON only.',
+          images: [base64Image],
+          stream: false,
+          options: { temperature: 0.1 }
+        }),
+        signal: AbortSignal.timeout(120000) // 2 min timeout for local inference
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        throw new Error(`Ollama ${resp.status}: ${errText.substring(0, 200)}`);
+      }
+
+      const data = await resp.json();
+      const text = data.response || '';
+      if (!text) throw new Error('Empty Ollama response');
+
+      console.log(`[HumanModelAnalyzer] Ollama response (${text.length} chars): ${text.substring(0, 200)}`);
+      const result = parseAnalysisResponse(text);
+      console.log(`[HumanModelAnalyzer] Ollama parsed OK:`, JSON.stringify(result));
+      return result;
+    } catch (err) {
+      console.warn(`[HumanModelAnalyzer] Ollama at ${host} failed: ${err.message}`);
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('All Ollama hosts failed');
 }
 
 /**
@@ -229,17 +284,28 @@ async function analyzeHumanModel(imagePath) {
 
   const base64Image = resized.toString('base64');
 
-  // Try Gemini first, fall back to Claude
-  console.log(`[HumanModelAnalyzer] GEMINI_API_KEY set: ${!!GEMINI_API_KEY}, Anthropic set: ${!!anthropicClient}`);
+  // Priority: Ollama (free) → Gemini (cheap) → Claude (expensive)
+  console.log(`[HumanModelAnalyzer] Ollama: ${OLLAMA_HOST}:${OLLAMA_PORT}/${OLLAMA_VISION_MODEL}, Gemini: ${!!GEMINI_API_KEY}, Claude: ${!!anthropicClient}`);
+
+  // 1. Try Ollama first (free, local)
+  try {
+    console.log('[HumanModelAnalyzer] Attempting Ollama analysis...');
+    return await analyzeWithOllama(base64Image);
+  } catch (err) {
+    console.warn('[HumanModelAnalyzer] Ollama failed:', err.message);
+  }
+
+  // 2. Try Gemini (cheap API)
   if (GEMINI_API_KEY) {
     try {
       console.log('[HumanModelAnalyzer] Attempting Gemini analysis...');
       return await analyzeWithGemini(base64Image);
     } catch (err) {
-      console.warn('[HumanModelAnalyzer] Gemini failed, trying Claude:', err.message, err.stack?.split('\n')[1]);
+      console.warn('[HumanModelAnalyzer] Gemini failed, trying Claude:', err.message);
     }
   }
 
+  // 3. Try Claude (most expensive)
   if (anthropicClient) {
     try {
       return await analyzeWithClaude(base64Image);
