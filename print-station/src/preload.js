@@ -202,6 +202,7 @@ contextBridge.exposeInMainWorld('printStation', {
     categories: () => ipcRenderer.invoke('inventory:input:categories'),
     saveCategory: (payload) => ipcRenderer.invoke('inventory:input:categories:save', payload || {}),
     saveProduct: (payload) => ipcRenderer.invoke('inventory:input:saveProduct', payload || {}),
+    updateProduct: (id, payload) => ipcRenderer.invoke('inventory:input:updateProduct', { id, payload }),
     startPreview: (cameraId) => ipcRenderer.invoke('inventory:preview:start', cameraId),
     stopPreview: (cameraId) => ipcRenderer.invoke('inventory:preview:stop', cameraId),
     onPreviewFrame: (cb) => {

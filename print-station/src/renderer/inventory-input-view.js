@@ -17,6 +17,9 @@
     recentItems: [],
     analyzing: false,
     initialized: false,
+    // Analysis queue — snap saves immediately, AI runs in background
+    analysisQueue: [],
+    analysisRunning: false,
   };
 
   // ── Init ──────────────────────────────────────────────────────────────────
@@ -194,74 +197,106 @@
     btn.disabled = !hasCamera || !hasCategory || state.analyzing;
   }
 
-  // ── SNAP ──────────────────────────────────────────────────────────────────
+  // ── SNAP (queue-based — saves immediately, AI analyzes in background) ────
   async function handleSnap() {
-    if (state.analyzing || !state.currentCameraId) return;
+    if (!state.currentCameraId) return;
 
+    const base64 = state.lastPreviewFrame;
+    if (!base64) { setStatus('No preview frame — wait for camera'); return; }
+
+    const category = getSelectedCategory();
+    const subcategory = getSelectedSubcategory();
+    if (!category) { setStatus('Select a category first'); return; }
+
+    // 1. Get price immediately (no AI needed)
+    let pricingResp;
+    try {
+      pricingResp = await printStation.inventoryInput.pricing({
+        category, subcategory,
+        printSize: getSelectedSize(),
+        size: '0',
+        colorCount: '1'
+      });
+    } catch (e) {
+      pricingResp = { ok: true, found: false };
+    }
+
+    if (!pricingResp.found) {
+      // No pricing — fall back to old flow (need manual price entry)
+      await handleSnapLegacy(base64, category, subcategory);
+      return;
+    }
+
+    // 2. Save immediately with known price + placeholder description
+    const surcharge = CATEGORY_SURCHARGE[category] || 0;
+    const priceCents = pricingResp.priceCents + surcharge;
+    const quantity = parseInt(document.getElementById('invInputQuantity').value, 10) || 1;
+
+    try {
+      const resp = await window.printStation.inventoryInput.saveProduct({
+        title: `${category} ${subcategory || ''} item`.trim(),
+        description: '',
+        priceCents,
+        photoBase64: base64,
+        category,
+        size: getSelectedSize(),
+        color: '',
+        quantity
+      });
+
+      // Add to recent items immediately
+      state.recentItems.unshift({
+        title: `${category} ${subcategory || ''}`.trim(),
+        category, subcategory, priceCents,
+        size: getSelectedSize(),
+        colors: 1, quantity,
+        timestamp: new Date().toLocaleTimeString(),
+        productId: resp?.product?.id || resp?.id || null,
+        aiPending: true
+      });
+      if (state.recentItems.length > 50) state.recentItems.pop();
+      renderRecentItems();
+
+      // 3. Queue AI analysis in background
+      const productId = resp?.product?.id || resp?.id || null;
+      if (productId) {
+        state.analysisQueue.push({ productId, imageBase64: base64 });
+        updateQueueCount();
+        processAnalysisQueue(); // fire-and-forget
+      }
+
+      setStatus(`Saved! $${(priceCents / 100).toFixed(2)} — snap next`);
+    } catch (err) {
+      console.error('[InvInput] Save error:', err);
+      setStatus(`Save error: ${err.message}`);
+    }
+  }
+
+  // Legacy flow for when pricing isn't known (manual price entry needed)
+  async function handleSnapLegacy(base64, category, subcategory) {
     state.analyzing = true;
     updateSnapButton();
-    setStatus('Capturing...');
+    setStatus('Analyzing with AI...');
     showAnalyzing(true);
 
     try {
-      // 1. Use the last preview frame (avoids opening a second ffmpeg RTSP connection)
-      const base64 = state.lastPreviewFrame;
-      if (!base64) throw new Error('No preview frame available — wait for camera to load');
-
-      // Store snapshot for saving later (lastPreviewFrame may get overwritten)
       state.snapshotBase64 = base64;
-
-      // Stop preview while analyzing
       await printStation.inventoryInput.stopPreview(state.currentCameraId);
-
       state.lastImageBase64 = base64;
 
-      // Show captured image
       const img = document.getElementById('invInputPreviewImg');
       img.src = `data:image/jpeg;base64,${base64}`;
       img.style.display = 'block';
 
-      // 2. Analyze with Gemini Vision
-      setStatus('Analyzing with AI...');
       const analyzeResp = await printStation.inventoryInput.analyze({ imageBase64: base64, mimeType: 'image/jpeg' });
       if (!analyzeResp.ok) throw new Error(analyzeResp.error || 'Analysis failed');
 
       const analysis = analyzeResp.analysis;
       state.lastAnalysis = analysis;
 
-      // 3. Lookup pricing
-      const category = getSelectedCategory();
-      const subcategory = getSelectedSubcategory();
-      setStatus('Looking up pricing...');
-
-      let pricingResp;
-      try {
-        pricingResp = await printStation.inventoryInput.pricing({
-          category,
-          subcategory,
-          printSize: getSelectedSize(),
-          size: String(analysis.longestDimensionInches || 0),
-          colorCount: String(analysis.colorCount || 1)
-        });
-      } catch (e) {
-        pricingResp = { ok: true, found: false };
-      }
-
-      // 4. Show results
+      const pricingResp = { ok: true, found: false };
       showResults(analysis, pricingResp, category, subcategory);
-
-      // 5. Auto-accept?
-      const autoAccept = document.getElementById('invInputAutoAccept').checked;
-      if (autoAccept && pricingResp.found) {
-        const autoSurcharge = CATEGORY_SURCHARGE[category] || 0;
-        await saveItem(analysis, pricingResp.priceCents + autoSurcharge, category, subcategory);
-        setStatus('Auto-saved! Ready for next.');
-        hideResults();
-        // Resume preview
-        startPreview(state.currentCameraId);
-      } else {
-        setStatus('Review results and confirm.');
-      }
+      setStatus('Set pricing and confirm.');
     } catch (err) {
       console.error('[InvInput] Snap error:', err);
       setStatus(`Error: ${err.message}`);
@@ -269,6 +304,69 @@
       state.analyzing = false;
       showAnalyzing(false);
       updateSnapButton();
+    }
+  }
+
+  // ── Background Analysis Queue ───────────────────────────────────────────
+  async function processAnalysisQueue() {
+    if (state.analysisRunning) return; // already processing
+    state.analysisRunning = true;
+
+    while (state.analysisQueue.length > 0) {
+      const job = state.analysisQueue[0];
+      try {
+        console.log(`[InvInput] Analyzing ${job.productId} in background (${state.analysisQueue.length} in queue)...`);
+        const analyzeResp = await printStation.inventoryInput.analyze({
+          imageBase64: job.imageBase64, mimeType: 'image/jpeg'
+        });
+
+        if (analyzeResp.ok && analyzeResp.analysis) {
+          // Update the product with AI description
+          try {
+            await window.printStation.inventoryInput.updateProduct(job.productId, {
+              title: analyzeResp.analysis.description || undefined,
+              ai_description: analyzeResp.analysis.description || '',
+              color_count: analyzeResp.analysis.colorCount || 1,
+              longest_dimension: analyzeResp.analysis.longestDimensionInches || 0
+            });
+          } catch (e) {
+            console.warn('[InvInput] Failed to update product with AI data:', e.message);
+          }
+
+          // Update recent item display
+          const recent = state.recentItems.find(r => r.productId === job.productId);
+          if (recent) {
+            recent.title = analyzeResp.analysis.description || recent.title;
+            recent.colors = analyzeResp.analysis.colorCount || 1;
+            recent.aiPending = false;
+            renderRecentItems();
+          }
+        }
+      } catch (err) {
+        console.warn(`[InvInput] Background analysis failed for ${job.productId}:`, err.message);
+        // Mark as done anyway — don't block the queue
+        const recent = state.recentItems.find(r => r.productId === job.productId);
+        if (recent) { recent.aiPending = false; renderRecentItems(); }
+      }
+
+      state.analysisQueue.shift();
+      updateQueueCount();
+    }
+
+    state.analysisRunning = false;
+    updateQueueCount();
+  }
+
+  function updateQueueCount() {
+    const el = document.getElementById('invInputQueueCount');
+    if (!el) return;
+    const n = state.analysisQueue.length;
+    if (n > 0) {
+      el.textContent = `AI queue: ${n}`;
+      el.style.display = '';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
     }
   }
 
@@ -426,9 +524,10 @@
     for (const item of state.recentItems) {
       const el = document.createElement('div');
       el.style.cssText = 'padding:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);';
+      const aiTag = item.aiPending ? '<span style="color:#FF9800;font-size:10px;margin-left:4px;">analyzing...</span>' : '';
       el.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">${escapeHtml(item.title)}</strong>
+          <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">${escapeHtml(item.title)}${aiTag}</strong>
           <span style="color:#2196F3;font-weight:600;">$${(item.priceCents / 100).toFixed(2)}</span>
         </div>
         <div style="color:#888;margin-top:2px;">${escapeHtml(item.category)}${item.subcategory ? ' / ' + escapeHtml(item.subcategory) : ''} &middot; ${item.size} &middot; ${item.colors} color${item.colors !== 1 ? 's' : ''} &middot; qty ${item.quantity} &middot; ${item.timestamp}</div>

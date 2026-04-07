@@ -8182,6 +8182,17 @@ Return ONLY valid JSON, nothing else:
     return resp.json();
   });
 
+  // Update product (for background AI analysis results)
+  ipcMain.handle('inventory:input:updateProduct', async (_event, { id, payload }) => {
+    const resp = await slicerFetch(`/api/products/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      timeout: 10000
+    });
+    return resp.json();
+  });
+
   // ==========================================================================
   // PRINT QUOTES
   // ==========================================================================
