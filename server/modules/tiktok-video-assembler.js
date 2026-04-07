@@ -121,14 +121,31 @@ function ffprobe(filePath) {
     );
     const info = JSON.parse(raw);
     const vs = (info.streams || []).find(s => s.codec_type === 'video');
+    let w = vs?.width || 0;
+    let h = vs?.height || 0;
+
+    // Check rotation metadata — ffmpeg auto-rotates videos before applying filters,
+    // but ffprobe reports the coded (pre-rotation) dimensions. We need to swap
+    // width/height for 90/270 degree rotations so crop math matches what ffmpeg sees.
+    const rotation = parseInt(
+      vs?.tags?.rotate ||
+      (vs?.side_data_list || []).find(sd => sd.rotation)?.rotation ||
+      '0', 10
+    );
+    if (rotation === 90 || rotation === -90 || rotation === 270 || rotation === -270) {
+      console.log(`[TikTok] Detected rotation=${rotation}° in ${path.basename(filePath)}, swapping dimensions ${w}x${h} → ${h}x${w}`);
+      [w, h] = [h, w];
+    }
+
     return {
       duration: parseFloat(info.format?.duration) || 0,
-      width: vs?.width || 0,
-      height: vs?.height || 0,
+      width: w,
+      height: h,
+      rotation,
       fps: vs?.r_frame_rate ? eval(vs.r_frame_rate) : 30
     };
   } catch (e) {
-    return { duration: 0, width: 0, height: 0, fps: 30 };
+    return { duration: 0, width: 0, height: 0, rotation: 0, fps: 30 };
   }
 }
 
