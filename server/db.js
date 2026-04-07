@@ -2867,6 +2867,28 @@ function initCustomArtTables() {
     CREATE INDEX IF NOT EXISTS idx_hm_color_variants_cache ON human_model_color_variants(cache_key);
   `);
 
+  // Model Groups (curated collections of human models)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS model_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS model_group_members (
+      group_id TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (group_id, model_id),
+      FOREIGN KEY (group_id) REFERENCES model_groups(id) ON DELETE CASCADE,
+      FOREIGN KEY (model_id) REFERENCES human_models(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mgm_group ON model_group_members(group_id);
+    CREATE INDEX IF NOT EXISTS idx_mgm_model ON model_group_members(model_id);
+  `);
+
   // Materials (canvas, metal, wood, acrylic, etc.)
   db.exec(`
     CREATE TABLE IF NOT EXISTS custom_art_materials (
@@ -4261,6 +4283,67 @@ function mapRecoloredModel(row) {
     cacheKey: row.cache_key,
     createdAt: row.created_at
   };
+}
+
+// --- MODEL GROUPS CRUD ---
+function createModelGroup({ name, description }) {
+  const id = 'mg_' + crypto.randomBytes(8).toString('hex');
+  db.prepare('INSERT INTO model_groups (id, name, description) VALUES (?, ?, ?)').run(id, name, description || '');
+  return { id, name, description: description || '', created_at: new Date().toISOString() };
+}
+
+function updateModelGroup(id, { name, description }) {
+  const sets = [];
+  const params = [];
+  if (name !== undefined) { sets.push('name = ?'); params.push(name); }
+  if (description !== undefined) { sets.push('description = ?'); params.push(description); }
+  if (!sets.length) return getModelGroupById(id);
+  sets.push("updated_at = datetime('now')");
+  params.push(id);
+  db.prepare(`UPDATE model_groups SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getModelGroupById(id);
+}
+
+function deleteModelGroup(id) {
+  db.prepare('DELETE FROM model_group_members WHERE group_id = ?').run(id);
+  const info = db.prepare('DELETE FROM model_groups WHERE id = ?').run(id);
+  return info.changes > 0;
+}
+
+function getModelGroupById(id) {
+  return db.prepare('SELECT * FROM model_groups WHERE id = ?').get(id) || null;
+}
+
+function listModelGroups() {
+  return db.prepare(`
+    SELECT g.*, COUNT(m.model_id) as member_count
+    FROM model_groups g
+    LEFT JOIN model_group_members m ON g.id = m.group_id
+    GROUP BY g.id
+    ORDER BY g.name
+  `).all();
+}
+
+function getModelGroupMembers(groupId) {
+  return db.prepare(`
+    SELECT hm.* FROM human_models hm
+    INNER JOIN model_group_members mgm ON hm.id = mgm.model_id
+    WHERE mgm.group_id = ?
+    ORDER BY hm.title
+  `).all(groupId);
+}
+
+function addModelsToGroup(groupId, modelIds) {
+  const stmt = db.prepare('INSERT OR IGNORE INTO model_group_members (group_id, model_id) VALUES (?, ?)');
+  const tx = db.transaction((ids) => {
+    for (const mid of ids) stmt.run(groupId, mid);
+  });
+  tx(modelIds);
+}
+
+function removeModelsFromGroup(groupId, modelIds) {
+  const placeholders = modelIds.map(() => '?').join(',');
+  db.prepare(`DELETE FROM model_group_members WHERE group_id = ? AND model_id IN (${placeholders})`).run(groupId, ...modelIds);
 }
 
 // --- MATERIALS CRUD ---
@@ -8467,6 +8550,15 @@ module.exports = {
   listRecoloredModelsByColor,
   deleteRecoloredModel,
   deleteRecoloredModelsByModel,
+  // Model Groups
+  createModelGroup,
+  updateModelGroup,
+  deleteModelGroup,
+  getModelGroupById,
+  listModelGroups,
+  getModelGroupMembers,
+  addModelsToGroup,
+  removeModelsFromGroup,
   // Raw database instance (for scripts that need direct access)
   db,
   // Custom Art - Materials
