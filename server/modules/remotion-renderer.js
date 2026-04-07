@@ -6,12 +6,12 @@ const os = require('os');
 const crypto = require('crypto');
 
 const TIKTOK_STUDIO_DIR = path.join(__dirname, '..', '..', 'tiktok-studio');
-const OUTPUT_DIR = '/mnt/websit/tiktok-videos';
+const { TIKTOK_VIDEOS_DIR } = require('../paths');
 const RENDER_TIMEOUT = 600000; // 10 min
 
 // Ensure output dir exists
-if (!fs.existsSync(OUTPUT_DIR)) {
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+if (!fs.existsSync(TIKTOK_VIDEOS_DIR)) {
+  fs.mkdirSync(TIKTOK_VIDEOS_DIR, { recursive: true });
 }
 
 let isRendering = false;
@@ -47,7 +47,7 @@ function cleanupTemp(filePath) {
 function doRender(props, outputName, extraArgs = []) {
   return new Promise((resolve) => {
     const startTime = Date.now();
-    const outputPath = path.join(OUTPUT_DIR, outputName);
+    const outputPath = path.join(TIKTOK_VIDEOS_DIR, outputName);
     let tempFile = null;
 
     try {

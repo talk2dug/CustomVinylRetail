@@ -23,8 +23,9 @@ const APP_ROOT = path.resolve(__dirname, '..', '..');
 const ENV_PATH = path.join(APP_ROOT, '.env');
 if (fs.existsSync(ENV_PATH)) require('dotenv').config({ path: ENV_PATH });
 
-const MOCKUP_DIR = '/mnt/dbFiles/apparel-mockups';
-const PRODUCT_BLANK_DIR = '/mnt/dbFiles/product-blank-mockups';
+const { PIPELINE_OUTPUT_DIR, PRODUCT_BLANKS_DIR } = require('../paths');
+const MOCKUP_DIR = PIPELINE_OUTPUT_DIR;
+const PRODUCT_BLANK_DIR = PRODUCT_BLANKS_DIR;
 const CATALOG_DIR = path.join(APP_ROOT, 'web', 'library');
 const PUBLIC_BASE = process.env.PUBLIC_URL || 'https://blueridgecustomco.com';
 

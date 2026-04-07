@@ -14,7 +14,8 @@ const path = require('path');
 const https = require('https');
 const sharp = require('sharp');
 
-const CACHE_PATH = '/mnt/dbFiles/design-categories.json';
+const { DESIGN_CATEGORIES_PATH, ARTWORK_IDS_PATH } = require('../paths');
+const CACHE_PATH = DESIGN_CATEGORIES_PATH;
 
 const THEMES = [
   'outdoor-adventure',
@@ -412,14 +413,13 @@ Title rules:
 - Make it sound like something you'd see on a gallery wall or a product listing
 - Return ONLY valid JSON, no markdown fences, no extra text`;
 
-const ARTWORK_CACHE_PATH = '/mnt/dbFiles/artwork-identifications.json';
 let _artworkCache = null;
 
 function loadArtworkCache() {
   if (_artworkCache) return _artworkCache;
   try {
-    if (fs.existsSync(ARTWORK_CACHE_PATH)) {
-      _artworkCache = JSON.parse(fs.readFileSync(ARTWORK_CACHE_PATH, 'utf8'));
+    if (fs.existsSync(ARTWORK_IDS_PATH)) {
+      _artworkCache = JSON.parse(fs.readFileSync(ARTWORK_IDS_PATH, 'utf8'));
     } else {
       _artworkCache = {};
     }
@@ -432,9 +432,9 @@ function loadArtworkCache() {
 
 function saveArtworkCache() {
   try {
-    const dir = path.dirname(ARTWORK_CACHE_PATH);
+    const dir = path.dirname(ARTWORK_IDS_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(ARTWORK_CACHE_PATH, JSON.stringify(_artworkCache, null, 2), 'utf8');
+    fs.writeFileSync(ARTWORK_IDS_PATH, JSON.stringify(_artworkCache, null, 2), 'utf8');
   } catch (err) {
     console.error('[design-categorizer] Failed to save artwork cache:', err.message);
   }

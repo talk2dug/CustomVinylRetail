@@ -12,12 +12,11 @@ const path = require('path');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 const { categorizeDesign, categorizeCollection, getDesignCategory, THEMES } = require('./design-categorizer');
+const { TIKTOK_VIDEOS_DIR, TIKTOK_TIKTOK_MUSIC_DIR, PIPELINE_TIKTOK_VIDEOS_DIR, PRODUCT_BLANKS_DIR } = require('../paths');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const CATALOG_PATH = path.join(APP_ROOT, 'web', 'catalog.json');
-const OUTPUT_DIR = '/mnt/websit/tiktok-videos';
-const MUSIC_DIR = '/mnt/websit/tiktok-music';
-const TEMP_DIR = path.join(OUTPUT_DIR, 'tmp');
+const TEMP_DIR = path.join(TIKTOK_VIDEOS_DIR, 'tmp');
 const FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
 const FONTS = {
   hook: '/usr/share/fonts/truetype/custom-tiktok/BebasNeue-Regular.ttf',
@@ -49,7 +48,7 @@ const PIPELINE_STEPS = [
   { key: 'complete',         index: 8, label: 'Complete' }
 ];
 
-fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+fs.mkdirSync(TIKTOK_VIDEOS_DIR, { recursive: true });
 fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 // ============================================================================
@@ -319,10 +318,10 @@ function matchModelToDesign(designCategory, models, collectionName = '') {
 // ============================================================================
 
 function pickMusicTrack() {
-  if (!fs.existsSync(MUSIC_DIR)) return null;
-  const tracks = fs.readdirSync(MUSIC_DIR).filter(f => /\.(mp3|ogg|m4a|wav)$/.test(f));
+  if (!fs.existsSync(TIKTOK_MUSIC_DIR)) return null;
+  const tracks = fs.readdirSync(TIKTOK_MUSIC_DIR).filter(f => /\.(mp3|ogg|m4a|wav)$/.test(f));
   if (!tracks.length) return null;
-  return path.join(MUSIC_DIR, pick(tracks));
+  return path.join(TIKTOK_MUSIC_DIR, pick(tracks));
 }
 
 function escapeFFText(text) {
@@ -455,7 +454,7 @@ function generateThemedReel(theme, mockupPaths, options = {}) {
   // Build video from image slides with Ken Burns zoom effect
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const outputName = `reel-${theme}-${timestamp}.mp4`;
-  const outputPath = path.join(OUTPUT_DIR, outputName);
+  const outputPath = path.join(TIKTOK_VIDEOS_DIR, outputName);
   const concatPath = path.join(TEMP_DIR, `concat-${runId}.txt`);
 
   // Create concat file — each image shown for slideDuration
@@ -925,7 +924,7 @@ async function runFullPipeline(collectionCategory, options = {}) {
       console.log('[ApparelPipeline] Step 5: Waiting for mockups to complete');
 
       // Smart check: count mockups already on disk for our designs
-      const mockupDir = '/mnt/dbFiles/apparel-mockups';
+      const mockupDir = PIPELINE_OUTPUT_DIR;
       const countMockupsOnDisk = () => {
         if (!fs.existsSync(mockupDir)) return 0;
         const files = fs.readdirSync(mockupDir).filter(f => f.startsWith('mockup_') && f.endsWith('.jpg'));
@@ -1021,8 +1020,8 @@ async function runFullPipeline(collectionCategory, options = {}) {
           if (!graphicPath || !fs.existsSync(graphicPath)) continue;
 
           // Check if product blanks already exist for this design
-          const existingBlanks = fs.existsSync('/mnt/dbFiles/product-blank-mockups')
-            ? fs.readdirSync('/mnt/dbFiles/product-blank-mockups').filter(f => f.includes(item.design.id.substring(0, 30)))
+          const existingBlanks = fs.existsSync(PRODUCT_BLANKS_DIR)
+            ? fs.readdirSync(PRODUCT_BLANKS_DIR).filter(f => f.includes(item.design.id.substring(0, 30)))
             : [];
           if (existingBlanks.length >= 2) continue; // already done
 
@@ -1092,12 +1091,12 @@ async function runFullPipeline(collectionCategory, options = {}) {
       console.log('[ApparelPipeline] Step 7: Generating themed reels (chunked, 4-5 images each)');
       if (notify) await sendTelegram('🎬 Generating TikTok reels (4-5 images each)...');
 
-      const mockupDir = '/mnt/dbFiles/apparel-mockups';
+      const mockupDir = PIPELINE_OUTPUT_DIR;
 
       // Use Shopify manifest from direct publishBatch call, or fall back to disk
       let publishManifest = results.shopifyManifest || [];
       if (!publishManifest.length) {
-        const manifestDir = '/mnt/dbFiles/apparel-mockups';
+        const manifestDir = PIPELINE_OUTPUT_DIR;
         if (fs.existsSync(manifestDir)) {
           const manifests = fs.readdirSync(manifestDir)
             .filter(f => f.startsWith('shopify_publish_'))

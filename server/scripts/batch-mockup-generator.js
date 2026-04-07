@@ -21,8 +21,9 @@ const APP_ROOT = path.resolve(__dirname, '..', '..');
 const ENV_PATH = path.join(APP_ROOT, '.env');
 if (fs.existsSync(ENV_PATH)) require('dotenv').config({ path: ENV_PATH });
 
+const { PIPELINE_OUTPUT_DIR } = require('../paths');
 const LIBRARY_ROOT = path.join(APP_ROOT, 'web', 'library');
-const OUTPUT_DIR = '/mnt/dbFiles/apparel-mockups';
+const OUTPUT_DIR = PIPELINE_OUTPUT_DIR;
 const CATALOG_MOCKUP_DIR = path.join(LIBRARY_ROOT, 'Mockups', 'uploads', 'previews');
 const CATALOG_PATH = path.join(APP_ROOT, 'web', 'catalog.json');
 

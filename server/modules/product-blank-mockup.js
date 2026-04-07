@@ -21,8 +21,9 @@ const APP_ROOT = path.resolve(__dirname, '..', '..');
 const ENV_PATH = path.join(APP_ROOT, '.env');
 if (fs.existsSync(ENV_PATH)) require('dotenv').config({ path: ENV_PATH });
 
-const OUTPUT_DIR = '/mnt/dbFiles/product-blank-mockups';
-const BLANK_CACHE_DIR = '/mnt/dbFiles/blank-images';
+const { PRODUCT_BLANKS_DIR, BLANK_IMAGES_DIR } = require('../paths');
+const OUTPUT_DIR = PRODUCT_BLANKS_DIR;
+const BLANK_CACHE_DIR = BLANK_IMAGES_DIR;
 const API_BASE = `http://localhost:${process.env.PORT || 4000}`;
 const API_KEY = process.env.INTERNAL_API_KEY || '';
 

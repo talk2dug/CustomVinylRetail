@@ -20,10 +20,8 @@ const path = require('path');
 const { execSync, exec } = require('child_process');
 const crypto = require('crypto');
 
-const FOOTAGE_DIR = '/mnt/stlFiles/footage-library';
-const OUTPUT_DIR = '/mnt/websit/tiktok-videos';
-const TEMP_DIR = path.join(OUTPUT_DIR, 'tmp');
-const MUSIC_DIR = '/mnt/websit/tiktok-music';
+const { FOOTAGE_DIR, TIKTOK_VIDEOS_DIR, TIKTOK_TIKTOK_MUSIC_DIR } = require('../paths');
+const TEMP_DIR = path.join(TIKTOK_VIDEOS_DIR, 'tmp');
 // Fonts — role-based typography for TikTok style
 const FONTS = {
   hook: '/usr/share/fonts/truetype/custom-tiktok/BebasNeue-Regular.ttf',      // Big, punchy headlines
@@ -40,7 +38,7 @@ const FPS = 30;
 const MAX_DURATION = 60;
 const MIN_DURATION = 8;
 
-fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+fs.mkdirSync(TIKTOK_VIDEOS_DIR, { recursive: true });
 fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 // ============================================================================
@@ -257,11 +255,11 @@ function prepareSegment(inputPath, outputPath, { startTime = 0, duration, text, 
  * Pick a random music track from the local library.
  */
 function pickMusicTrack() {
-  if (!fs.existsSync(MUSIC_DIR)) return null;
-  const tracks = fs.readdirSync(MUSIC_DIR).filter(f => f.endsWith('.ogg') || f.endsWith('.mp3'));
+  if (!fs.existsSync(TIKTOK_MUSIC_DIR)) return null;
+  const tracks = fs.readdirSync(TIKTOK_MUSIC_DIR).filter(f => f.endsWith('.ogg') || f.endsWith('.mp3'));
   if (!tracks.length) return null;
   const pick = tracks[Math.floor(Math.random() * tracks.length)];
-  return path.join(MUSIC_DIR, pick);
+  return path.join(TIKTOK_MUSIC_DIR, pick);
 }
 
 /**
@@ -651,7 +649,7 @@ function assembleVideo(db, options = {}) {
   // Concatenate all segments
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const outputName = options.outputName || `tiktok-${templateKey}-${timestamp}.mp4`;
-  const outputPath = path.join(OUTPUT_DIR, outputName);
+  const outputPath = path.join(TIKTOK_VIDEOS_DIR, outputName);
 
   console.log(`[TikTok] Concatenating ${segmentPaths.length} segments...`);
   concatenateSegments(segmentPaths, outputPath);
@@ -734,7 +732,7 @@ function assembleFromClips(db, clips, options = {}) {
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const outputName = options.outputName || `tiktok-custom-${timestamp}.mp4`;
-  const outputPath = path.join(OUTPUT_DIR, outputName);
+  const outputPath = path.join(TIKTOK_VIDEOS_DIR, outputName);
 
   concatenateSegments(segmentPaths, outputPath);
   const finalMeta = ffprobe(outputPath);
@@ -754,11 +752,11 @@ function assembleFromClips(db, clips, options = {}) {
  * List all generated TikTok videos.
  */
 function listVideos() {
-  if (!fs.existsSync(OUTPUT_DIR)) return [];
-  return fs.readdirSync(OUTPUT_DIR)
+  if (!fs.existsSync(TIKTOK_VIDEOS_DIR)) return [];
+  return fs.readdirSync(TIKTOK_VIDEOS_DIR)
     .filter(f => f.endsWith('.mp4') && f.startsWith('tiktok-'))
     .map(f => {
-      const filePath = path.join(OUTPUT_DIR, f);
+      const filePath = path.join(TIKTOK_VIDEOS_DIR, f);
       const stat = fs.statSync(filePath);
       const meta = ffprobe(filePath);
       return {
@@ -776,7 +774,7 @@ function listVideos() {
  * Delete a generated video.
  */
 function deleteVideo(filename) {
-  const filePath = path.join(OUTPUT_DIR, filename);
+  const filePath = path.join(TIKTOK_VIDEOS_DIR, filename);
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
     return true;
@@ -861,7 +859,7 @@ async function handleTikTokVideoRoute(pathname, req, res, db) {
   // GET /api/tiktok-videos/:filename — serve a generated video
   const fileMatch = route.match(/^\/([^/]+\.mp4)$/);
   if (fileMatch && req.method === 'GET') {
-    const filePath = path.join(OUTPUT_DIR, fileMatch[1]);
+    const filePath = path.join(TIKTOK_VIDEOS_DIR, fileMatch[1]);
     if (!fs.existsSync(filePath)) return sendError('Video not found', 404);
 
     const stat = fs.statSync(filePath);
