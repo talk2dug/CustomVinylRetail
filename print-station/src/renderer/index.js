@@ -24936,6 +24936,7 @@ function initHumanModelsElements() {
   humanModelsElements.bulkCategorySelect = document.getElementById('humanModelsBulkCategorySelect');
   humanModelsElements.bulkStatusSelect = document.getElementById('humanModelsBulkStatusSelect');
   humanModelsElements.bulkClear = document.getElementById('humanModelsBulkClear');
+  humanModelsElements.bulkGroupSelect = document.getElementById('humanModelsBulkGroupSelect');
   humanModelsElements.bulkAIMetadataBtn = document.getElementById('humanModelsBulkAIMetadata');
   humanModelsElements.formCard = document.getElementById('humanModelsFormCard');
   humanModelsElements.formTitle = document.getElementById('humanModelsFormTitle');
@@ -25008,8 +25009,16 @@ function initHumanModelsView() {
   // Bulk category
   if (humanModelsElements.bulkCategorySelect) {
     humanModelsElements.bulkCategorySelect.addEventListener('change', async () => {
-      const category = humanModelsElements.bulkCategorySelect.value;
+      let category = humanModelsElements.bulkCategorySelect.value;
       if (!category) return;
+      if (category === '__new__') {
+        category = prompt('Enter new category name:');
+        if (!category || !category.trim()) {
+          humanModelsElements.bulkCategorySelect.value = '';
+          return;
+        }
+        category = category.trim();
+      }
       await bulkUpdateHumanModels({ category });
       humanModelsElements.bulkCategorySelect.value = '';
     });
@@ -25023,6 +25032,41 @@ function initHumanModelsView() {
       await bulkUpdateHumanModels({ status });
       humanModelsElements.bulkStatusSelect.value = '';
     });
+  }
+
+  // Bulk add to group
+  if (humanModelsElements.bulkGroupSelect) {
+    humanModelsElements.bulkGroupSelect.addEventListener('change', async () => {
+      let groupId = humanModelsElements.bulkGroupSelect.value;
+      if (!groupId) return;
+      if (groupId === '__new__') {
+        const name = prompt('New group name:');
+        if (!name || !name.trim()) {
+          humanModelsElements.bulkGroupSelect.value = '';
+          return;
+        }
+        try {
+          const resp = await printStation.modelGroups.create({ name: name.trim() });
+          groupId = resp.group?.id;
+          if (!groupId) throw new Error('No group ID returned');
+        } catch (err) {
+          alert('Failed to create group: ' + (err.message || err));
+          humanModelsElements.bulkGroupSelect.value = '';
+          return;
+        }
+      }
+      const modelIds = Array.from(humanModelsState.selectedIds);
+      if (!modelIds.length) return;
+      try {
+        await printStation.modelGroups.addModels(groupId, modelIds);
+        setHumanModelsStatus(`Added ${modelIds.length} model(s) to group`);
+      } catch (err) {
+        setHumanModelsStatus(`Failed to add to group: ${err.message}`, true);
+      }
+      humanModelsElements.bulkGroupSelect.value = '';
+      loadHumanModelGroupsDropdown();
+    });
+    loadHumanModelGroupsDropdown();
   }
 
   // AI Metadata analysis button
@@ -25151,6 +25195,20 @@ function renderHumanModels() {
   updateHumanModelsSelectionUI();
 }
 
+async function loadHumanModelGroupsDropdown() {
+  const select = humanModelsElements.bulkGroupSelect;
+  if (!select) return;
+  try {
+    const resp = await printStation.modelGroups.list();
+    const groups = resp.groups || resp || [];
+    select.innerHTML = '<option value="">Add to Group...</option>' +
+      '<option value="__new__">+ New Group...</option>' +
+      groups.map(g => `<option value="${g.id}">${g.name} (${g.member_count || 0})</option>`).join('');
+  } catch (err) {
+    console.warn('[HumanModels] groups dropdown load failed:', err.message);
+  }
+}
+
 function renderHumanModelsCategoryFilter() {
   if (!humanModelsElements.categoryFilter) return;
   const current = humanModelsElements.categoryFilter.value;
@@ -25166,6 +25224,7 @@ function renderHumanModelsCategoryFilter() {
   // Update bulk category dropdown
   if (humanModelsElements.bulkCategorySelect) {
     humanModelsElements.bulkCategorySelect.innerHTML = '<option value="">Set Category...</option>' +
+      '<option value="__new__">+ New Category...</option>' +
       humanModelsState.categories.map(c => `<option value="${c}">${c}</option>`).join('');
   }
 }
