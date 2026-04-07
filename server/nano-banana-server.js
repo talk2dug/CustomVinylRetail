@@ -10,6 +10,7 @@ const { NanoBananaWorkflow, MODELS, ASPECT_RATIOS } = require('./nano-banana-wor
 const { ImagePromptGenerator, PROMPT_TEMPLATES } = require('./leonardo-prompt-generator');
 const { NanoBananaService, STYLES } = require('./nano-banana-service');
 const { parseBody, sendJson } = require('./utils/http');
+const PATHS = require('./paths');
 
 // Lazy-load services to avoid startup issues if API keys aren't set
 let workflow = null;
@@ -424,7 +425,7 @@ async function handleAiImageRoute(pathname, req, res) {
       }
 
       // Resolve and validate placement graphic paths
-      const LIBRARY_ROOT = process.env.LIBRARY_ROOT || path.join(__dirname, '..', 'web', 'library');
+      const LIBRARY_ROOT = PATHS.WEBSIT;
       for (const p of [...placements, ...backPlacements]) {
         if (!p.graphicPath) {
           sendJson(res, 400, { success: false, error: 'Each placement requires a graphicPath' });
@@ -512,7 +513,7 @@ async function handleAiImageRoute(pathname, req, res) {
       }
 
       // Resolve path
-      const LIBRARY_ROOT = process.env.LIBRARY_ROOT || path.join(__dirname, '..', 'web', 'library');
+      const LIBRARY_ROOT = PATHS.WEBSIT;
       let resolvedPath = imagePath;
       if (!path.isAbsolute(resolvedPath)) {
         let relPath = resolvedPath.replace(/^\//, '');
@@ -560,7 +561,7 @@ async function handleAiImageRoute(pathname, req, res) {
         return true;
       }
 
-      const LIBRARY_ROOT = process.env.LIBRARY_ROOT || path.join(__dirname, '..', 'web', 'library');
+      const LIBRARY_ROOT = PATHS.WEBSIT;
       let resolvedSource = sourceImage;
       if (resolvedSource.startsWith('/')) {
         resolvedSource = path.join(__dirname, '..', 'web', resolvedSource);
@@ -596,7 +597,7 @@ async function handleAiImageRoute(pathname, req, res) {
       const top = Math.round((imgHeight - newHeight) / 2) + pixelY;
 
       const outputFilename = `adjusted_${crypto.randomUUID().slice(0, 8)}.png`;
-      const outputDir = path.join(__dirname, '..', 'web', 'images', 'ai-generated', 'apparel-mockups');
+      const outputDir = PATHS.APPAREL_MOCKUPS_DIR;
       if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
       const outputPath = path.join(outputDir, outputFilename);
 
@@ -662,7 +663,7 @@ async function handleAiImageRoute(pathname, req, res) {
       const crypto = require('crypto');
 
       // Permanent storage directory
-      const SAVE_DIR = '/mnt/dbFiles/apparel-mockups';
+      const SAVE_DIR = PATHS.PIPELINE_OUTPUT_DIR;
       if (!fs.existsSync(SAVE_DIR)) {
         fs.mkdirSync(SAVE_DIR, { recursive: true });
       }

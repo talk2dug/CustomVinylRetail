@@ -268,24 +268,13 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const HOST = process.env.HOST || process.env.BIND_ADDRESS || '0.0.0.0';
 const APP_ROOT = path.resolve(__dirname, '..');
 
-// Use LIBRARY_ROOT if it exists and is accessible, otherwise fall back to APP_ROOT
-let LIBRARY_ROOT = APP_ROOT;
-if (process.env.LIBRARY_ROOT) {
-  try {
-    const candidatePath = path.resolve(process.env.LIBRARY_ROOT);
-    const parentDir = path.dirname(candidatePath);
-    if (fs.existsSync(parentDir)) {
-      LIBRARY_ROOT = candidatePath;
-    } else {
-      console.warn(`LIBRARY_ROOT path ${candidatePath} is not accessible, using local APP_ROOT instead`);
-    }
-  } catch (error) {
-    console.warn(`Invalid LIBRARY_ROOT path, using local APP_ROOT instead:`, error.message);
-  }
-}
+// Centralized path configuration
+const PATHS = require('./paths');
 
-const LIBRARY_WEB_DIR = path.join(LIBRARY_ROOT, 'web');
-const WEB_DIR = fs.existsSync(LIBRARY_WEB_DIR) ? LIBRARY_WEB_DIR : path.join(APP_ROOT, 'web');
+// Bridge: many places still reference LIBRARY_ROOT as the web-served asset root
+const LIBRARY_ROOT = PATHS.WEBSIT;
+
+const WEB_DIR = PATHS.WEB_DIR;
 
 /**
  * Resolve an image path that may be a full URL, server-relative path, or absolute path
@@ -294,14 +283,12 @@ const WEB_DIR = fs.existsSync(LIBRARY_WEB_DIR) ? LIBRARY_WEB_DIR : path.join(APP
  * Nginx mappings:
  *   /library/      → /mnt/websit/
  *   /web/library/  → /mnt/websit/
- *   /dbFiles/      → /home/ubuntu/vinylApp/dbFiles/
+ *   /dbFiles/      → /mnt/dbFiles/
  *   /web/          → /home/ubuntu/vinylApp/web/
  */
 const URL_PATH_MAPPINGS = [
-  { prefix: '/library/',     localRoot: '/mnt/websit/' },
-  { prefix: '/web/library/', localRoot: '/mnt/websit/' },
-  { prefix: '/api/library/', localRoot: '/mnt/websit/' },
-  { prefix: '/dbFiles/',     localRoot: path.join(APP_ROOT, 'dbFiles') + '/' },
+  ...PATHS.URL_MAPPINGS,
+  { prefix: '/dbFiles/',     localRoot: '/mnt/dbFiles/' },
   { prefix: '/web/',         localRoot: path.join(APP_ROOT, 'web') + '/' },
 ];
 
@@ -339,7 +326,7 @@ function resolveImageToLocalPath(imagePath) {
 const DATA_DIR = path.join(LIBRARY_ROOT, 'data');
 const OUTPUT_DIR = path.join(LIBRARY_ROOT, 'saved-designs');
 const RACE_QUOTE_FILES_DIR = path.join(DATA_DIR, 'race-quote-files');
-const PRODUCT_IMAGES_DIR = path.join(APP_ROOT, 'ProductImages');
+const PRODUCT_IMAGES_DIR = PATHS.PRODUCT_IMAGES_DIR;
 const CAMPAIGNS_DIR = path.join(DATA_DIR, 'campaigns');
 const PRICING_FILE = path.join(DATA_DIR, 'pricing.json');
 const PRICING_FALLBACK = path.join(__dirname, 'data', 'pricing.json');
@@ -19138,7 +19125,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       }
 
       const { fields, files } = await parseMultipartForm(req, {
-        uploadDir: path.join(LIBRARY_ROOT, 'human-models'),
+        uploadDir: PATHS.HUMAN_MODELS_DIR,
         maxFileSize: 50 * 1024 * 1024,
         filter: ({ mimetype }) => mimetype && mimetype.startsWith('image/')
       });
@@ -19154,7 +19141,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       const destFilename = `model_${uniqueId}${ext}`;
       const thumbFilename = `model_${uniqueId}_thumb.jpg`;
 
-      const destDir = path.join(LIBRARY_ROOT, 'human-models');
+      const destDir = PATHS.HUMAN_MODELS_DIR;
       await fs.promises.mkdir(destDir, { recursive: true });
 
       const destPath = path.join(destDir, destFilename);
@@ -19201,7 +19188,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       }
 
       const { fields, files } = await parseMultipartForm(req, {
-        uploadDir: path.join(LIBRARY_ROOT, 'mockup-backgrounds'),
+        uploadDir: PATHS.MOCKUP_BACKGROUNDS_DIR,
         maxFileSize: 50 * 1024 * 1024,
         filter: ({ mimetype }) => mimetype && mimetype.startsWith('image/')
       });
@@ -19231,7 +19218,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       const destFilename = `bg_${uniqueId}${ext}`;
       const thumbFilename = `bg_${uniqueId}_thumb.jpg`;
 
-      const destDir = path.join(LIBRARY_ROOT, 'mockup-backgrounds');
+      const destDir = PATHS.MOCKUP_BACKGROUNDS_DIR;
       await fs.promises.mkdir(destDir, { recursive: true });
 
       const destPath = path.join(destDir, destFilename);
@@ -20039,8 +20026,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
         return;
       }
       // Write to /mnt/websit/ so nginx can serve over HTTPS via /library/ URL
-      const UPLOADS_ROOT = fs.existsSync('/mnt/websit/uploads') ? '/mnt/websit' : LIBRARY_ROOT;
-      const uploadDir = path.join(UPLOADS_ROOT, 'uploads', 'custom-art');
+      const uploadDir = path.join(PATHS.UPLOADS_DIR, 'custom-art');
       fs.mkdirSync(uploadDir, { recursive: true });
 
       const ext = path.extname(body.filename) || '.png';
@@ -20057,7 +20043,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       let thumbnailPath = null;
       try {
         const sharp = require('sharp');
-        const thumbDir = path.join(UPLOADS_ROOT, 'uploads', 'custom-art', 'thumbs');
+        const thumbDir = path.join(PATHS.UPLOADS_DIR, 'custom-art', 'thumbs');
         fs.mkdirSync(thumbDir, { recursive: true });
         const thumbFilename = `thumb_${safeFilename.replace(/\.[^.]+$/, '.jpg')}`;
         const thumbAbsPath = path.join(thumbDir, thumbFilename);

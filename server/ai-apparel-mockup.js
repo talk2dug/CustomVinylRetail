@@ -10,14 +10,12 @@ const path = require('path');
 const sharp = require('sharp');
 const crypto = require('crypto');
 const { NanoBananaService } = require('./nano-banana-service');
+const PATHS = require('./paths');
 
 class AiApparelMockupService {
   constructor(options = {}) {
     this.service = options.service || new NanoBananaService(options);
-    this.outputDir = path.join(
-      options.outputDir || path.join(__dirname, '..', 'web', 'images', 'ai-generated'),
-      'apparel-mockups'
-    );
+    this.outputDir = options.outputDir || PATHS.APPAREL_MOCKUPS_DIR;
 
     if (!fs.existsSync(this.outputDir)) {
       fs.mkdirSync(this.outputDir, { recursive: true });
@@ -231,9 +229,8 @@ class AiApparelMockupService {
 
     // Resolve /library/ paths to filesystem
     if (!path.isAbsolute(imagePath) || imagePath.startsWith('/library/')) {
-      const LIBRARY_ROOT = process.env.LIBRARY_ROOT || path.join(__dirname, '..', 'web', 'library');
       const relPath = imagePath.replace(/^\/library\//, '').replace(/^library\//, '');
-      imagePath = path.join(LIBRARY_ROOT, relPath);
+      imagePath = path.join(PATHS.WEBSIT, relPath);
     }
 
     if (!fs.existsSync(imagePath)) {

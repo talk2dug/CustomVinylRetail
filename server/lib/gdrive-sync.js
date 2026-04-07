@@ -7,11 +7,13 @@ const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs').promises;
 
+const PATHS = require('../paths');
+
 // Base paths
-const CUSTOM_ART_PATH = '/mnt/dbFiles/uploads/custom-art';
-const LIBRARY_PATH = '/home/ubuntu/vinylApp/web/library';
-const DECAL_ICONS_PATH = '/home/ubuntu/vinylApp/dbFiles/DecalCreatorIcons';
-const CAMPAIGN_PREVIEWS_PATH = '/home/ubuntu/vinylApp/web/library/Campaign Assets/uploads/previews';
+const CUSTOM_ART_PATH = PATHS.GDRIVE_CUSTOM_ART_DIR;
+const LIBRARY_PATH = PATHS.WEBSIT;
+const DECAL_ICONS_PATH = PATHS.DECAL_ICONS_DIR;
+const CAMPAIGN_PREVIEWS_PATH = path.join(PATHS.WEBSIT, 'Campaign Assets', 'uploads', 'previews');
 
 // Google Drive paths
 const GDRIVE_BASE = 'gdrive:Canva';

@@ -5,28 +5,12 @@ const bcrypt = require('bcryptjs');
 const Database = require('better-sqlite3');
 
 const APP_ROOT = path.resolve(__dirname, '..');
+const PATHS = require('./paths');
 
-// Use LIBRARY_ROOT if it exists and is accessible, otherwise fall back to APP_ROOT
-let LIBRARY_ROOT = APP_ROOT;
-if (process.env.LIBRARY_ROOT) {
-  try {
-    const candidatePath = path.resolve(process.env.LIBRARY_ROOT);
-    // Test if we can access/create the parent directory
-    const parentDir = path.dirname(candidatePath);
-    if (fs.existsSync(parentDir)) {
-      LIBRARY_ROOT = candidatePath;
-    } else {
-      console.warn(`LIBRARY_ROOT path ${candidatePath} is not accessible, using local APP_ROOT instead`);
-    }
-  } catch (error) {
-    console.warn(`Invalid LIBRARY_ROOT path, using local APP_ROOT instead:`, error.message);
-  }
-}
-
-// Database is always in APP_ROOT/data, not LIBRARY_ROOT
+// Database is always in APP_ROOT/data
 const DATA_DIR = path.join(APP_ROOT, 'data');
 const DB_PATH = path.join(DATA_DIR, 'store.db');
-const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const BACKUP_DIR = PATHS.DB_BACKUPS_DIR;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(BACKUP_DIR, { recursive: true });

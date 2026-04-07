@@ -16,8 +16,9 @@
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
+const PATHS = require('./paths');
 
-const OUTPUT_DIR = path.join(__dirname, '..', 'web', 'images', 'ai-generated', 'apparel-mockups');
+const OUTPUT_DIR = PATHS.APPAREL_MOCKUPS_DIR;
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
 // Zone definitions: where on the model image to place the graphic

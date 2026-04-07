@@ -5,7 +5,8 @@ const APP_ROOT = path.resolve(__dirname, '..');
 const PRODUCTS_DIR = path.join(APP_ROOT, 'Products');
 const SKU_IMAGE_CANDIDATES_FILE = 'sku-to-alldayshirts-image-url-candidates.csv';
 const STYLE_IMAGE_CANDIDATES_FILE = 'alldayshirts-cdn-image-url-candidates.csv';
-const PRODUCT_IMAGES_DIR = path.join(APP_ROOT, 'ProductImages');
+const PATHS = require('./paths');
+const PRODUCT_IMAGES_DIR = PATHS.PRODUCT_IMAGES_DIR;
 
 const PRODUCT_FILE_TYPES = {
   'bella-canvas-4610c-unisex-heavyweight-t-shirt-skus.csv': 'tshirt',
