@@ -175,7 +175,10 @@ function prepareSegment(inputPath, outputPath, { startTime = 0, duration, text, 
     cropH = Math.round(srcW / targetRatio);
   }
 
-  let filterChain = `crop=${cropW}:${cropH}:(in_w-${cropW})/2:(in_h-${cropH})/2,scale=${WIDTH}:${HEIGHT}:flags=lanczos,setsar=1`;
+  // Color correction: normalize evens out exposure/white-balance across clips,
+  // eq applies a slight contrast boost and saturation bump for a consistent look.
+  // normalize strength=0.6 blends 60% corrected / 40% original to keep it natural.
+  let filterChain = `crop=${cropW}:${cropH}:(in_w-${cropW})/2:(in_h-${cropH})/2,scale=${WIDTH}:${HEIGHT}:flags=lanczos,setsar=1,normalize=strength=0.6,eq=contrast=1.05:saturation=1.1`;
 
   // Add text overlay if provided
   // TikTok safe zones: right ~15% has like/comment/share buttons,
