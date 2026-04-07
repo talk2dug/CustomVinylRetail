@@ -19,6 +19,11 @@ const OUTPUT_DIR = '/mnt/websit/tiktok-videos';
 const MUSIC_DIR = '/mnt/websit/tiktok-music';
 const TEMP_DIR = path.join(OUTPUT_DIR, 'tmp');
 const FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+const FONTS = {
+  hook: '/usr/share/fonts/truetype/custom-tiktok/BebasNeue-Regular.ttf',
+  body: '/usr/share/fonts/truetype/custom-tiktok/Poppins-ExtraBold.ttf',
+  cta:  '/usr/share/fonts/truetype/custom-tiktok/Anton-Regular.ttf'
+};
 const JOURNAL_PATH = path.join(APP_ROOT, 'data', 'apparel-pipeline-log.json');
 
 const API_BASE = `http://localhost:${process.env.PORT || 4000}`;
@@ -328,17 +333,41 @@ function escapeFFText(text) {
  * Build a single slide image (1080x1920) from a mockup image with text overlay.
  * Uses ffmpeg to resize/pad + draw text.
  */
-function buildSlide(inputPath, outputPath, { text, textPosition = 'bottom', fontSize = 48 }) {
+function buildSlide(inputPath, outputPath, { text, textPosition = 'bottom', fontSize = 48, role = 'body' }) {
   const escaped = text ? escapeFFText(text) : '';
-  const safeMargin = Math.round(WIDTH * 0.15); // 15% each side
 
   let filterChain = `scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`;
 
   if (escaped) {
+    // Role-based font and color styling
+    let fontFile, fontColor, outlineColor, outlineWidth;
+    if (role === 'hook') {
+      fontFile = FONTS.hook;
+      fontSize = text.length > 30 ? 72 : 96;
+      fontColor = 'white';
+      outlineColor = 'black';
+      outlineWidth = 3;
+    } else if (role === 'cta') {
+      fontFile = FONTS.cta;
+      fontSize = text.length > 30 ? 52 : 68;
+      fontColor = '#FFD700';
+      outlineColor = 'black';
+      outlineWidth = 3;
+    } else {
+      fontFile = FONTS.body;
+      fontColor = 'white';
+      outlineColor = 'black';
+      outlineWidth = 2;
+    }
+
     const yPos = textPosition === 'top' ? '(h*0.12)' :
                  textPosition === 'bottom' ? '(h*0.68)' : '(h*0.42)';
+    const xExpr = '(w-text_w)/2';
 
-    filterChain += `,drawtext=fontfile='${FONT_PATH}':text='${escaped}':fontcolor=white:fontsize=${fontSize}:x=if(gt(text_w\\,w-${safeMargin * 2})\\,${safeMargin}\\,(w-text_w)/2):y=${yPos}:box=1:boxcolor=black@0.55:boxborderw=16`;
+    // Shadow layer
+    filterChain += `,drawtext=fontfile='${fontFile}':text='${escaped}':fontcolor=black@0.8:fontsize=${fontSize}:x=${xExpr}+4:y=${yPos}+4`;
+    // Main text with outline
+    filterChain += `,drawtext=fontfile='${fontFile}':text='${escaped}':fontcolor=${fontColor}:fontsize=${fontSize}:borderw=${outlineWidth}:bordercolor=${outlineColor}:x=${xExpr}:y=${yPos}`;
   }
 
   const cmd = [
@@ -388,16 +417,19 @@ function generateThemedReel(theme, mockupPaths, options = {}) {
     let textPosition = 'bottom';
     let fontSize = 48;
 
+    let slideRole = 'body';
     if (i === 0) {
       // Hook slide — big text
       text = pick(copy.hooks);
       textPosition = 'center';
       fontSize = 64;
+      slideRole = 'hook';
     } else if (i === mockupPaths.length - 1) {
       // CTA slide
       text = pick(copy.ctas);
       textPosition = 'bottom';
       fontSize = 56;
+      slideRole = 'cta';
     } else if (designNames[i]) {
       // Middle slide — design name
       text = designNames[i];
@@ -407,7 +439,7 @@ function generateThemedReel(theme, mockupPaths, options = {}) {
 
     const slideFile = path.join(TEMP_DIR, `slide-${runId}-${i}.png`);
     try {
-      buildSlide(imgPath, slideFile, { text, textPosition, fontSize });
+      buildSlide(imgPath, slideFile, { text, textPosition, fontSize, role: slideRole });
       slideFiles.push(slideFile);
     } catch (err) {
       console.warn(`[ApparelPipeline] Slide build failed for ${imgPath}: ${err.message}`);

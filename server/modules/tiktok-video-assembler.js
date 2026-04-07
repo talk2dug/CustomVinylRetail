@@ -24,7 +24,14 @@ const FOOTAGE_DIR = '/mnt/stlFiles/footage-library';
 const OUTPUT_DIR = '/mnt/websit/tiktok-videos';
 const TEMP_DIR = path.join(OUTPUT_DIR, 'tmp');
 const MUSIC_DIR = '/mnt/websit/tiktok-music';
-const FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+// Fonts — role-based typography for TikTok style
+const FONTS = {
+  hook: '/usr/share/fonts/truetype/custom-tiktok/BebasNeue-Regular.ttf',      // Big, punchy headlines
+  body: '/usr/share/fonts/truetype/custom-tiktok/Poppins-ExtraBold.ttf',      // Clean, modern body text
+  cta:  '/usr/share/fonts/truetype/custom-tiktok/Anton-Regular.ttf',          // Bold call-to-action
+  fallback: '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+};
+const FONT_PATH = FONTS.fallback; // backward compat
 
 // TikTok specs
 const WIDTH = 1080;
@@ -153,7 +160,7 @@ function ffprobe(filePath) {
  * Trim + crop a clip to 9:16 portrait.
  * Center-crops horizontally from 16:9 source.
  */
-function prepareSegment(inputPath, outputPath, { startTime = 0, duration, text, textPosition = 'center' }) {
+function prepareSegment(inputPath, outputPath, { startTime = 0, duration, text, textPosition = 'center', role = 'process' }) {
   const meta = ffprobe(inputPath);
   const srcW = meta.width || 1920;
   const srcH = meta.height || 1080;
@@ -180,20 +187,53 @@ function prepareSegment(inputPath, outputPath, { startTime = 0, duration, text, 
   // normalize strength=0.6 blends 60% corrected / 40% original to keep it natural.
   let filterChain = `crop=${cropW}:${cropH}:(in_w-${cropW})/2:(in_h-${cropH})/2,scale=${WIDTH}:${HEIGHT}:flags=lanczos,setsar=1,normalize=strength=0.6,eq=contrast=1.05:saturation=1.1`;
 
-  // Add text overlay if provided
-  // TikTok safe zones: right ~15% has like/comment/share buttons,
-  // bottom ~20% has captions/music info, left ~5% margin.
-  // Keep text centered but within the safe middle ~70% of width.
+  // Add styled text overlay — TikTok-style with shadow, outline, role-based fonts
+  // Safe zones: right ~15% (like/comment buttons), bottom ~20% (captions/music)
   if (text && text.trim()) {
     const escaped = text.replace(/'/g, "'\\''").replace(/:/g, '\\:');
-    const fontSize = text.length > 30 ? 44 : 56;
+
+    // Role-based font, size, and color scheme
+    let fontFile, fontSize, fontColor, shadowColor, outlineColor, outlineWidth;
+    const isLong = text.length > 30;
+
+    if (role === 'hook') {
+      // Hook: big, punchy, uppercase-style font — grabs attention
+      fontFile = FONTS.hook;
+      fontSize = isLong ? 72 : 96;
+      fontColor = 'white';
+      shadowColor = 'black@0.8';
+      outlineColor = 'black';
+      outlineWidth = 3;
+    } else if (role === 'cta') {
+      // CTA: bold, urgent feel
+      fontFile = FONTS.cta;
+      fontSize = isLong ? 52 : 68;
+      fontColor = '#FFD700';  // gold/yellow stands out
+      shadowColor = 'black@0.9';
+      outlineColor = 'black';
+      outlineWidth = 3;
+    } else {
+      // Process, reveal, detail, etc: clean modern font
+      fontFile = FONTS.body;
+      fontSize = isLong ? 44 : 56;
+      fontColor = 'white';
+      shadowColor = 'black@0.7';
+      outlineColor = 'black';
+      outlineWidth = 2;
+    }
+
     const yPos = textPosition === 'top' ? '(h*0.15)' :
                  textPosition === 'bottom' ? '(h*0.68)' : '(h*0.42)';
-    // x: center text but clamp within safe zone (15% left margin, 15% right margin = 70% usable)
-    const safeMargin = Math.round(WIDTH * 0.15); // ~162px each side
+    const xExpr = '(w-text_w)/2';
 
-    // Text with dark background box, horizontally centered in safe zone
-    filterChain += `,drawtext=fontfile='${FONT_PATH}':text='${escaped}':fontcolor=white:fontsize=${fontSize}:x=if(gt(text_w\\,w-${safeMargin * 2})\\,${safeMargin}\\,(w-text_w)/2):y=${yPos}:box=1:boxcolor=black@0.55:boxborderw=14`;
+    // Fade-in timing: text appears 0.2s in, fades over 0.4s
+    const fadeIn = `alpha='if(lt(t\\,0.2)\\,0\\,if(lt(t\\,0.6)\\,(t-0.2)/0.4\\,1))'`;
+
+    // Layer 1: Drop shadow (offset 4px down-right, dark, blurred by being slightly larger)
+    filterChain += `,drawtext=fontfile='${fontFile}':text='${escaped}':fontcolor=${shadowColor}:fontsize=${fontSize}:x=${xExpr}+4:y=${yPos}+4:${fadeIn}`;
+
+    // Layer 2: Outline/stroke (drawn via borderw)
+    filterChain += `,drawtext=fontfile='${fontFile}':text='${escaped}':fontcolor=${fontColor}:fontsize=${fontSize}:borderw=${outlineWidth}:bordercolor=${outlineColor}:x=${xExpr}:y=${yPos}:${fadeIn}`;
   }
 
   const cmd = [
@@ -586,7 +626,8 @@ function assembleVideo(db, options = {}) {
         startTime,
         duration: segDuration,
         text: textOverlay,
-        textPosition
+        textPosition,
+        role: seg.role
       });
       segmentPaths.push(segFile);
       segmentInfo.push({
