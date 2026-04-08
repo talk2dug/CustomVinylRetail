@@ -19035,11 +19035,10 @@ Return ONLY valid JSON, no markdown or explanation.`;
           if (artwork.filePath) {
             const fp = artwork.filePath.replace(/^\//, '');
             const candidates = [
-              path.resolve(__dirname, '..', 'web', fp),
+              resolveImageToLocalPath(artwork.filePath),
+              path.join(PATHS.WEBSIT, fp.replace(/^library\//, '')),
               artwork.filePath,
-              path.resolve('/mnt/dbFiles', fp.replace(/^library\//, '')),
-              path.resolve('/mnt/dbFiles', fp),
-            ];
+            ].filter(Boolean);
             for (const c of candidates) {
               if (fs.existsSync(c)) { imagePath = c; break; }
             }
