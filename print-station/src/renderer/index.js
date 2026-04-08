@@ -22615,6 +22615,20 @@ async function openRoomPicker(options = {}) {
     roomPickerState.rooms = [];
   }
 
+  // Populate category filter from actual room data
+  if (roomPickerElements.category) {
+    const roomTypeLabelsLocal = {
+      'living-room': 'Living Room', 'bedroom': 'Bedroom', 'office': 'Office',
+      'dining-room': 'Dining Room', 'hallway': 'Hallway', 'bathroom': 'Bathroom',
+      'kitchen': 'Kitchen', 'garage': 'Garage', 'art-studio': 'Art Studio',
+      'front-porch': 'Front Porch', 'staircase': 'Staircase', 'workbench': 'Workbench',
+      'other': 'Other'
+    };
+    const types = [...new Set(roomPickerState.rooms.map(r => r.roomType).filter(Boolean))].sort();
+    roomPickerElements.category.innerHTML = '<option value="">All Categories</option>' +
+      types.map(t => `<option value="${t}">${roomTypeLabelsLocal[t] || t}</option>`).join('');
+  }
+
   // Reset filters
   if (roomPickerElements.search) roomPickerElements.search.value = '';
   if (roomPickerElements.category) roomPickerElements.category.value = '';
