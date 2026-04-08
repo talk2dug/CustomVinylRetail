@@ -183,6 +183,7 @@
         document.getElementById('invInputCategory').value = '';
         document.getElementById('invInputSubcategory').innerHTML = '<option value="">None</option>';
       }
+      updateSnapButton();
     });
 
     document.getElementById('invInputSnapBtn').addEventListener('click', handleSnap);
