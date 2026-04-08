@@ -540,7 +540,8 @@ async function generateProductLabels() {
             const printUrl = sheet.printUrl || sheet.url;
             if (!printUrl) continue;
             // Read the file and send as base64 (print server is on Pi, can't access local files)
-            const fileResp = await fetch(`${productApi.getServerUrl()}${printUrl}`, { headers: productApi.getHeaders() });
+            const fetchUrl = printUrl.startsWith('/library/') ? printUrl : `/library${printUrl}`;
+            const fileResp = await fetch(`${productApi.getServerUrl()}${fetchUrl}`, { headers: productApi.getHeaders() });
             const fileBlob = await fileResp.blob();
             const fileBase64 = await new Promise(resolve => {
               const reader = new FileReader();
