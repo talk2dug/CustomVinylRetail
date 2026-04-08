@@ -19735,8 +19735,22 @@ function renderCustomArtRooms() {
     'hallway': 'Hallway',
     'bathroom': 'Bathroom',
     'kitchen': 'Kitchen',
+    'garage': 'Garage',
+    'art-studio': 'Art Studio',
+    'front-porch': 'Front Porch',
+    'staircase': 'Staircase',
+    'workbench': 'Workbench',
     'other': 'Other'
   };
+
+  // Populate room type filter from actual data
+  if (customArtElements.roomTypeFilter) {
+    const types = [...new Set(customArtState.rooms.map(r => r.roomType).filter(Boolean))].sort();
+    const current = customArtElements.roomTypeFilter.value;
+    customArtElements.roomTypeFilter.innerHTML = '<option value="">All Types</option>' +
+      types.map(t => `<option value="${t}">${roomTypeLabels[t] || t}</option>`).join('');
+    customArtElements.roomTypeFilter.value = current;
+  }
 
   // Collect URLs for prefetching
   const roomPreviewUrls = [];
@@ -22664,6 +22678,11 @@ function renderRoomPickerGrid() {
     'hallway': 'Hallway',
     'bathroom': 'Bathroom',
     'kitchen': 'Kitchen',
+    'garage': 'Garage',
+    'art-studio': 'Art Studio',
+    'front-porch': 'Front Porch',
+    'staircase': 'Staircase',
+    'workbench': 'Workbench',
     'other': 'Other'
   };
 
