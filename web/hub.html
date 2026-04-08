@@ -417,12 +417,12 @@
 
 <script>
 // Pass API key through to internal tool links
-const urlKey = new URLSearchParams(window.location.search).get('key');
+const urlKey = new URLSearchParams(window.location.search).get('key') || localStorage.getItem('apiKey') || '';
 if (urlKey) {
   localStorage.setItem('apiKey', urlKey);
   document.querySelectorAll('a.card[href]').forEach(a => {
     const href = a.getAttribute('href');
-    // Only add key to internal paths that need auth (finance, kiosk, kiosk-admin)
+    // Add key to internal paths that need auth
     if (href.startsWith('/finance') || href.startsWith('/footage') || href.startsWith('/kiosk') || href.startsWith('/product-catalog') || href.startsWith('/pos')) {
       const sep = href.includes('?') ? '&' : '?';
       a.setAttribute('href', href + sep + 'key=' + encodeURIComponent(urlKey));
