@@ -29,7 +29,7 @@ const PROFILES_DIR = path.join(DATA_DIR, 'profiles');
 ].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
 // PrusaSlicer path from env
-const SLICER_PATH = process.env.PRUSA_SLICER_PATH || '/usr/bin/prusa-slicer';
+const SLICER_PATH = process.env.PRUSA_SLICER_PATH || '/opt/prusa-slicer-2.8.1/usr/bin/prusa-slicer';
 
 // Concurrency control: only one PrusaSlicer process at a time to prevent CPU overload
 const MAX_CONCURRENT_SLICES = 1;
