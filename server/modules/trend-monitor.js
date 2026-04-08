@@ -493,7 +493,7 @@ async function generateDesignForTrend(trend, settings) {
         numImages: 2,
         model: MODELS.GEMINI_2_FLASH,
         category: 'products/apparel',
-        addToArtwork: true
+        addToArtwork: false
       });
 
       if (result.success && result.images) {
@@ -817,21 +817,11 @@ async function runTrendScan(settings) {
       console.log(`[TrendMonitor] Generating designs for ${designTrends.length} trend(s)...`);
 
       for (const trend of designTrends) {
+        // Auto-generation disabled — costs too much on Gemini API.
+        // Trends are still tracked; designs can be generated manually from the UI.
         // Skip if designs already exist for this trend
         if (data.designs.some(d => d.trendId === trend.id)) continue;
-
-        try {
-          const newDesigns = await generateDesignForTrend(trend, settings);
-          data.designs.push(...newDesigns);
-          data.stats.totalDesignsGenerated += newDesigns.length;
-          console.log(`[TrendMonitor] Generated ${newDesigns.length} design(s) for: ${trend.title.slice(0, 60)}`);
-
-          // Update trend status
-          const trendIdx = data.trends.findIndex(t => t.id === trend.id);
-          if (trendIdx >= 0) data.trends[trendIdx].status = 'designed';
-        } catch (err) {
-          console.error(`[TrendMonitor] Design gen failed for ${trend.id}:`, err.message);
-        }
+        console.log(`[TrendMonitor] Trend logged (no auto-generate): ${trend.title.slice(0, 60)}`);
       }
     }
 
