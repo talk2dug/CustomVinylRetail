@@ -12,7 +12,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 const { categorizeDesign, categorizeCollection, getDesignCategory, THEMES } = require('./design-categorizer');
-const { TIKTOK_VIDEOS_DIR, TIKTOK_TIKTOK_MUSIC_DIR, PIPELINE_TIKTOK_VIDEOS_DIR, PRODUCT_BLANKS_DIR } = require('../paths');
+const { TIKTOK_VIDEOS_DIR, TIKTOK_MUSIC_DIR, PIPELINE_OUTPUT_DIR, PRODUCT_BLANKS_DIR } = require('../paths');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const CATALOG_PATH = path.join(APP_ROOT, 'web', 'catalog.json');
