@@ -20077,7 +20077,7 @@ function renderCustomArtArtwork() {
       <div class="custom-art-card-body">
         <div class="custom-art-card-title">${cleanedTitle}</div>
         <div class="custom-art-card-meta">${art.category || 'Uncategorized'}${art.dimensions?.width ? ` • ${art.dimensions.width}×${art.dimensions.height}${art.dimensions.unit === 'inches' ? '"' : 'cm'}` : ''}</div>
-        ${art.description ? `<div class="custom-art-card-desc" style="font-size:11px;color:#aaa;margin-top:4px;line-height:1.3;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${art.description}</div>` : ''}
+        ${art.description ? `<div class="custom-art-card-desc" style="font-size:11px;color:#aaa;margin-top:4px;line-height:1.3;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${art.description}</div>` : (art.tags ? `<div class="custom-art-card-desc" style="font-size:11px;color:#7a8;margin-top:4px;line-height:1.3;max-height:28px;overflow:hidden;text-overflow:ellipsis;">${art.tags}</div>` : '')}
         ${art.seoFilename ? `<div class="custom-art-card-filename" style="font-size:10px;color:#6a9;margin-top:2px;font-family:monospace;">${art.seoFilename}</div>` : ''}
         <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap;">
           <span class="custom-art-card-badge ${art.status}">${art.status}</span>
