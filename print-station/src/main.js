@@ -7510,13 +7510,15 @@ Return ONLY valid JSON, nothing else:
     fs.writeFileSync(tmpPath, gcodeBuf);
 
     // Step 3-5: Upload + level + start via print server
+    // Send gcode as base64 since the Pi can't access Electron's local filesystem
     console.log('[Slicer] Plate Step 3-5: Starting print via print server...');
+    const gcodeBase64 = fs.readFileSync(tmpPath).toString('base64');
     try {
       const job = await fleetFetch('/3d/print/start', {
         method: 'POST',
         body: JSON.stringify({
           printer_id: printerId, filename: sliceResult.gcode_filename,
-          file_path: tmpPath, level_bed: true, timelapse
+          gcode_base64: gcodeBase64, level_bed: true, timelapse
         }),
         timeout: 600000
       });
@@ -7552,12 +7554,14 @@ Return ONLY valid JSON, nothing else:
     fs.writeFileSync(tmpPath, gcodeBuf);
 
     // Step 3-5: Upload + level + start via print server
+    // Send gcode as base64 since the Pi can't access Electron's local filesystem
+    const gcodeBase64ForPrint = fs.readFileSync(tmpPath).toString('base64');
     try {
       const job = await fleetFetch('/3d/print/start', {
         method: 'POST',
         body: JSON.stringify({
           printer_id: printerId, filename: sliceResult.gcode_filename,
-          file_path: tmpPath, level_bed: true, timelapse
+          gcode_base64: gcodeBase64ForPrint, level_bed: true, timelapse
         }),
         timeout: 600000
       });
@@ -7602,12 +7606,14 @@ Return ONLY valid JSON, nothing else:
     fs.writeFileSync(tmpPath, gcodeBuf);
 
     // Step 3-5: Upload + level + start via print server
+    // Send as base64 since the Pi can't access Electron's local filesystem
     sendProgress(3, 'Sending to print server...');
+    const gcodeB64 = fs.readFileSync(tmpPath).toString('base64');
     try {
       const job = await fleetFetch('/3d/print/start', {
         method: 'POST',
         body: JSON.stringify({
-          printer_id: printerId, filename, file_path: tmpPath, level_bed: true, timelapse
+          printer_id: printerId, filename, gcode_base64: gcodeB64, level_bed: true, timelapse
         }),
         timeout: 600000
       });
