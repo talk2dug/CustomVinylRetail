@@ -20338,7 +20338,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       }
 
       // Ensure custom-art-images directory exists
-      const customArtImagesDir = path.join(__dirname, '..', 'web', 'images', 'custom-art');
+      const customArtImagesDir = PATHS.CUSTOM_ART_DIR;
       try { fs.mkdirSync(customArtImagesDir, { recursive: true }); } catch (_) {}
 
       // Save the mockup image
@@ -20657,7 +20657,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
       }
 
       // Ensure custom-art-images directory exists
-      const customArtImagesDir = path.join(__dirname, '..', 'web', 'images', 'custom-art');
+      const customArtImagesDir = PATHS.CUSTOM_ART_DIR;
       try { fs.mkdirSync(customArtImagesDir, { recursive: true }); } catch (_) {}
 
       const results = [];
