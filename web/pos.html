@@ -6,6 +6,7 @@
   <title>POS — Blue Ridge Custom Co</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Montserrat:wght@400;600;700&display=swap">
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     :root {
       --bg: #0f172a;
@@ -426,8 +427,14 @@
   </header>
 
   <div class="scanner-section">
-    <label for="scanInput">Scan Item:</label>
-    <input type="text" id="scanInput" placeholder="Scan product QR code or enter product ID..." autofocus autocomplete="off">
+    <div style="display:flex;gap:8px;align-items:center;">
+      <label for="scanInput" style="white-space:nowrap;">Scan Item:</label>
+      <input type="text" id="scanInput" placeholder="Scan or enter product ID..." autofocus autocomplete="off" style="flex:1;">
+      <button class="btn" id="cameraScanBtn" style="padding:10px 16px;font-size:1rem;white-space:nowrap;background:var(--accent);color:white;border:none;border-radius:8px;cursor:pointer;">
+        &#128247; Camera
+      </button>
+    </div>
+    <div id="cameraReader" style="display:none;margin-top:10px;border-radius:10px;overflow:hidden;max-width:400px;"></div>
   </div>
 
   <div class="main-area" id="mainArea">
@@ -729,6 +736,90 @@
       const d = document.createElement('div');
       d.textContent = str || '';
       return d.innerHTML;
+    }
+
+    // ── Camera QR Scanner ─────────────────────────────────────────────────
+    let html5QrScanner = null;
+    let cameraActive = false;
+    const cameraScanBtn = document.getElementById('cameraScanBtn');
+    const cameraReader = document.getElementById('cameraReader');
+
+    cameraScanBtn.addEventListener('click', toggleCamera);
+
+    async function toggleCamera() {
+      if (cameraActive) {
+        stopCamera();
+        return;
+      }
+
+      cameraReader.style.display = 'block';
+      cameraScanBtn.textContent = 'Stop Camera';
+      cameraScanBtn.style.background = '#ef4444';
+      cameraActive = true;
+
+      try {
+        html5QrScanner = new Html5Qrcode('cameraReader');
+        await html5QrScanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          async (decodedText) => {
+            // QR code scanned — process it
+            const productId = extractProductId(decodedText);
+            if (!productId) {
+              showToast('Invalid QR code', true);
+              return;
+            }
+
+            // Check if already in cart
+            const existing = cart.find(item => item.productId === productId);
+            if (existing) {
+              existing.quantity++;
+              showToast(`Added: ${existing.title} (x${existing.quantity})`);
+              renderCart();
+              return;
+            }
+
+            // Fetch product
+            scannerStatus.textContent = 'Looking up product...';
+            try {
+              const product = await fetchProduct(productId);
+              cart.push({
+                productId: product.id,
+                title: product.title,
+                priceCents: product.priceCents,
+                quantity: 1,
+                photoUrl: product.photoUrl
+              });
+              showToast(`Added: ${product.title}`);
+              renderCart();
+              scannerStatus.textContent = 'Ready to scan';
+              scannerStatus.style.color = 'var(--success)';
+            } catch (err) {
+              showToast('Product not found: ' + productId, true);
+              scannerStatus.textContent = 'Ready to scan';
+              scannerStatus.style.color = 'var(--text-muted)';
+            }
+          },
+          (errorMessage) => {
+            // Ignore scan errors (no QR found in frame)
+          }
+        );
+      } catch (err) {
+        showToast('Camera error: ' + err.message, true);
+        stopCamera();
+      }
+    }
+
+    function stopCamera() {
+      if (html5QrScanner) {
+        html5QrScanner.stop().catch(() => {});
+        html5QrScanner.clear();
+        html5QrScanner = null;
+      }
+      cameraReader.style.display = 'none';
+      cameraScanBtn.innerHTML = '&#128247; Camera';
+      cameraScanBtn.style.background = 'var(--accent)';
+      cameraActive = false;
     }
 
     // Initial state
