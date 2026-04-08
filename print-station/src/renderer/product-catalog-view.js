@@ -539,10 +539,19 @@ async function generateProductLabels() {
           try {
             const printUrl = sheet.printUrl || sheet.url;
             if (!printUrl) continue;
-            // Send to Brother printer (id: 9) via print server
+            // Read the file and send as base64 (print server is on Pi, can't access local files)
+            const fileResp = await fetch(`${productApi.getServerUrl()}${printUrl}`, { headers: productApi.getHeaders() });
+            const fileBlob = await fileResp.blob();
+            const fileBase64 = await new Promise(resolve => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result.split(',')[1]);
+              reader.readAsDataURL(fileBlob);
+            });
+
+            // Send to Brother printer (id: 6) via print server
             const printResp = await productApi.post('/api/print-server/inkjet/jobs', {
-              printer_id: 9,
-              file_path: `/mnt/websit/sticker-sheets/${data.batchName}/${printUrl.split('/').pop()}`,
+              printer_id: 6,
+              file_base64: fileBase64,
               filename: printUrl.split('/').pop(),
               title: `Avery Labels Sheet ${printed + 1}`,
               copies: 1,
