@@ -215,9 +215,10 @@
         await api().update(mgState.selectedGroupId, { name, description });
         await loadGroups();
         await loadGroupDetail(mgState.selectedGroupId);
-    } catch (err) {
-      console.error('Failed to update group:', err);
-    }
+      } catch (err) {
+        console.error('Failed to update group:', err);
+      }
+    });
   }
 
   // ── Delete Group ─────────────────────────────────────────────────────
