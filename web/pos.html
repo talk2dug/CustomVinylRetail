@@ -60,35 +60,10 @@
 
     #cameraReader {
       margin-top: 12px;
+      min-height: 300px;
+      background: #000;
+      border-radius: 10px;
     }
-    #cameraReader video {
-      width: 100% !important;
-      border-radius: 8px;
-    }
-    /* Style the html5-qrcode UI to match dark theme */
-    #cameraReader select, #cameraReader button {
-      background: var(--surface-alt) !important;
-      color: var(--text) !important;
-      border: 1px solid var(--border) !important;
-      border-radius: 6px !important;
-      padding: 8px 12px !important;
-      margin: 4px !important;
-      font-size: 14px !important;
-    }
-    #cameraReader select {
-      width: 100% !important;
-      max-width: 100% !important;
-      margin-bottom: 8px !important;
-    }
-    #cameraReader div {
-      overflow: visible !important;
-    }
-    /* Give the scanner controls more space */
-    #cameraReader > div {
-      padding: 8px !important;
-    }
-    #cameraReader img[alt="Info icon"] { display: none !important; }
-    #html5-qrcode-anchor-scan-type-change { color: var(--accent) !important; }
 
     .scanner-section label {
       font-size: 1.1rem;
@@ -826,31 +801,46 @@
       startCamera();
     }
 
-    function startCamera() {
+    async function startCamera() {
       cameraReader.style.display = 'block';
       cameraReader.innerHTML = '';
       cameraScanBtn.textContent = 'Stop Camera';
       cameraScanBtn.style.background = '#ef4444';
       cameraActive = true;
+      scannerStatus.textContent = 'Starting camera...';
+      scannerStatus.style.color = '#f59e0b';
 
-      const scanner = new Html5QrcodeScanner('cameraReader', {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        rememberLastUsedCamera: true,
-        showTorchButtonIfSupported: true
-      }, false);
+      try {
+        const scanner = new Html5Qrcode('cameraReader');
+        cameraReader._scanner = scanner;
 
-      scanner.render(
-        (decodedText) => handleQrResult(decodedText),
-        (error) => { /* ignore frame errors */ }
-      );
+        // Small delay to let the DOM render the container
+        await new Promise(r => setTimeout(r, 100));
 
-      cameraReader._scanner = scanner;
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
+          (decodedText) => handleQrResult(decodedText),
+          () => {} // ignore per-frame errors
+        );
+
+        scannerStatus.textContent = 'Camera active — scan a QR code';
+        scannerStatus.style.color = 'var(--success)';
+      } catch (err) {
+        console.error('Camera error:', err);
+        showToast('Camera error: ' + (err.message || err), true);
+        scannerStatus.textContent = 'Camera failed: ' + (err.message || err);
+        scannerStatus.style.color = '#ef4444';
+        stopCamera();
+      }
     }
 
     function stopCamera() {
-      if (cameraReader._scanner) {
-        cameraReader._scanner.clear().catch(() => {});
+      const scanner = cameraReader._scanner;
+      if (scanner) {
+        scanner.stop().then(() => scanner.clear()).catch(() => {
+          try { scanner.clear(); } catch(_) {}
+        });
         cameraReader._scanner = null;
       }
       cameraReader.style.display = 'none';
@@ -858,6 +848,8 @@
       cameraScanBtn.innerHTML = '&#128247; Camera';
       cameraScanBtn.style.background = 'var(--accent)';
       cameraActive = false;
+      scannerStatus.textContent = 'Ready to scan';
+      scannerStatus.style.color = 'var(--text-muted)';
     }
 
     // Initial state
