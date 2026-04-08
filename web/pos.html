@@ -739,84 +739,93 @@
     }
 
     // ── Camera QR Scanner ─────────────────────────────────────────────────
-    let html5QrScanner = null;
     let cameraActive = false;
+    let lastScannedId = '';
+    let lastScanTime = 0;
     const cameraScanBtn = document.getElementById('cameraScanBtn');
     const cameraReader = document.getElementById('cameraReader');
 
     cameraScanBtn.addEventListener('click', toggleCamera);
 
-    async function toggleCamera() {
+    async function handleQrResult(decodedText) {
+      // Debounce — don't process same code within 2 seconds
+      const now = Date.now();
+      if (decodedText === lastScannedId && now - lastScanTime < 2000) return;
+      lastScannedId = decodedText;
+      lastScanTime = now;
+
+      const productId = extractProductId(decodedText);
+      if (!productId) {
+        showToast('Invalid QR code', true);
+        return;
+      }
+
+      const existing = cart.find(item => item.productId === productId);
+      if (existing) {
+        existing.quantity++;
+        showToast(`Added: ${existing.title} (x${existing.quantity})`);
+        renderCart();
+        return;
+      }
+
+      scannerStatus.textContent = 'Looking up product...';
+      try {
+        const product = await fetchProduct(productId);
+        cart.push({
+          productId: product.id,
+          title: product.title,
+          priceCents: product.priceCents,
+          quantity: 1,
+          photoUrl: product.photoUrl
+        });
+        showToast(`Added: ${product.title}`);
+        renderCart();
+        scannerStatus.textContent = 'Ready to scan';
+        scannerStatus.style.color = 'var(--success)';
+      } catch (err) {
+        showToast('Product not found: ' + productId, true);
+        scannerStatus.textContent = 'Ready to scan';
+        scannerStatus.style.color = 'var(--text-muted)';
+      }
+    }
+
+    function toggleCamera() {
       if (cameraActive) {
         stopCamera();
         return;
       }
+      startCamera();
+    }
 
+    function startCamera() {
       cameraReader.style.display = 'block';
+      cameraReader.innerHTML = '';
       cameraScanBtn.textContent = 'Stop Camera';
       cameraScanBtn.style.background = '#ef4444';
       cameraActive = true;
 
-      try {
-        html5QrScanner = new Html5Qrcode('cameraReader');
-        await html5QrScanner.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 250, height: 250 } },
-          async (decodedText) => {
-            // QR code scanned — process it
-            const productId = extractProductId(decodedText);
-            if (!productId) {
-              showToast('Invalid QR code', true);
-              return;
-            }
+      const scanner = new Html5QrcodeScanner('cameraReader', {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        rememberLastUsedCamera: true,
+        showTorchButtonIfSupported: true
+      }, false);
 
-            // Check if already in cart
-            const existing = cart.find(item => item.productId === productId);
-            if (existing) {
-              existing.quantity++;
-              showToast(`Added: ${existing.title} (x${existing.quantity})`);
-              renderCart();
-              return;
-            }
+      scanner.render(
+        (decodedText) => handleQrResult(decodedText),
+        (error) => { /* ignore frame errors */ }
+      );
 
-            // Fetch product
-            scannerStatus.textContent = 'Looking up product...';
-            try {
-              const product = await fetchProduct(productId);
-              cart.push({
-                productId: product.id,
-                title: product.title,
-                priceCents: product.priceCents,
-                quantity: 1,
-                photoUrl: product.photoUrl
-              });
-              showToast(`Added: ${product.title}`);
-              renderCart();
-              scannerStatus.textContent = 'Ready to scan';
-              scannerStatus.style.color = 'var(--success)';
-            } catch (err) {
-              showToast('Product not found: ' + productId, true);
-              scannerStatus.textContent = 'Ready to scan';
-              scannerStatus.style.color = 'var(--text-muted)';
-            }
-          },
-          (errorMessage) => {
-            // Ignore scan errors (no QR found in frame)
-          }
-        );
-      } catch (err) {
-        showToast('Camera error: ' + err.message, true);
-        stopCamera();
-      }
+      cameraReader._scanner = scanner;
     }
 
     function stopCamera() {
-      if (html5QrScanner) {
-        html5QrScanner.stop().catch(() => {});
-        html5QrScanner.clear();
-        html5QrScanner = null;
+      if (cameraReader._scanner) {
+        cameraReader._scanner.clear().catch(() => {});
+        cameraReader._scanner = null;
       }
       cameraReader.style.display = 'none';
+      cameraReader.innerHTML = '';
       cameraScanBtn.innerHTML = '&#128247; Camera';
       cameraScanBtn.style.background = 'var(--accent)';
       cameraActive = false;
