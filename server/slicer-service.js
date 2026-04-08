@@ -9,11 +9,12 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
+const PATHS = require('./paths');
 const DATA_DIR = path.resolve(__dirname, '..', 'data');
-const STL_LIBRARY = path.join(DATA_DIR, 'stl-library');
+const STL_LIBRARY = PATHS.STL_LIBRARY_DIR;
 const STL_MODELS = path.join(STL_LIBRARY, 'models');
 const STL_THUMBNAILS = path.join(STL_LIBRARY, 'thumbnails');
-const GCODE_CACHE = path.join(DATA_DIR, 'gcode-cache');
+const GCODE_CACHE = PATHS.GCODE_CACHE_DIR;
 const PROFILES_DIR = path.join(DATA_DIR, 'profiles');
 
 // Ensure directories exist
