@@ -531,11 +531,27 @@ async function generateProductLabels() {
 
       // Auto-print Avery labels to Brother printer
       if (format === 'avery-5160' && data.sheets && data.sheets.length > 0) {
-        document.getElementById('productStatusText').textContent =
-          `Sending ${sheetCount} sheet${sheetCount !== 1 ? 's' : ''} to Brother printer...`;
+        // Find Brother printer by name (ID changes when printers are re-added)
+        let brotherPrinterId = null;
+        try {
+          const printers = await productApi.get('/api/print-server/inkjet/printers');
+          const brother = (Array.isArray(printers) ? printers : []).find(p =>
+            (p.name || p.cups_name || '').toLowerCase().includes('brother')
+          );
+          brotherPrinterId = brother?.id;
+        } catch (_) {}
+
+        if (!brotherPrinterId) {
+          alert('Brother printer not found. Check printer setup.');
+          document.getElementById('productStatusText').textContent = 'Brother printer not found';
+        } else {
+          document.getElementById('productStatusText').textContent =
+            `Sending ${sheetCount} sheet${sheetCount !== 1 ? 's' : ''} to Brother printer...`;
+        }
 
         let printed = 0;
         for (const sheet of data.sheets) {
+          if (!brotherPrinterId) break;
           try {
             const printUrl = sheet.printUrl || sheet.url;
             if (!printUrl) continue;
@@ -549,9 +565,9 @@ async function generateProductLabels() {
               reader.readAsDataURL(fileBlob);
             });
 
-            // Send to Brother printer (id: 6) via print server
+            // Send to Brother printer via print server
             const printResp = await productApi.post('/api/print-server/inkjet/jobs', {
-              printer_id: 6,
+              printer_id: brotherPrinterId,
               file_base64: fileBase64,
               filename: printUrl.split('/').pop(),
               title: `Avery Labels Sheet ${printed + 1}`,
