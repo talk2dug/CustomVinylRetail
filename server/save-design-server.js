@@ -9402,6 +9402,78 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // ===== POINT OF SALE (POS) =====
+
+  // POS page (requires ?key= query param)
+  if (req.method === 'GET' && parsedUrl.pathname === '/pos') {
+    if (!checkKioskKey(req, parsedUrl)) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    try {
+      const html = fs.readFileSync(path.join(WEB_DIR, 'pos.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch (e) {
+      sendJson(res, 404, { error: 'POS page not found' });
+    }
+    return;
+  }
+
+  // POS checkout — create Square payment link for cart items
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/pos/checkout') {
+    try {
+      const body = await parseBody(req);
+      const { items } = body;
+      if (!Array.isArray(items) || items.length === 0) {
+        sendJson(res, 400, { error: 'Cart is empty' });
+        return;
+      }
+      if (!squareClient) {
+        sendJson(res, 500, { error: 'Square integration not configured' });
+        return;
+      }
+
+      const locationId = await getSquareLocationId();
+      const idempotencyKey = crypto.randomUUID();
+
+      const lineItems = items.map(item => ({
+        name: item.title || 'Product',
+        quantity: `${Math.max(1, item.quantity || 1)}`,
+        basePriceMoney: {
+          amount: toMoneyAmount(item.priceCents),
+          currency: 'USD'
+        }
+      }));
+
+      const totalCents = items.reduce((sum, item) => sum + (item.priceCents * (item.quantity || 1)), 0);
+
+      const response = await squareClient.checkout.paymentLinks.create({
+        idempotencyKey,
+        order: {
+          locationId,
+          referenceId: `pos-${Date.now()}`,
+          lineItems
+        },
+        checkoutOptions: {
+          redirectUrl: undefined
+        }
+      });
+
+      const paymentLink = response?.paymentLink;
+      sendJson(res, 200, {
+        success: true,
+        paymentUrl: paymentLink?.url || null,
+        linkId: paymentLink?.id || null,
+        totalCents
+      });
+    } catch (err) {
+      console.error('[POS] Checkout error:', err);
+      sendJson(res, 500, { success: false, error: err.message });
+    }
+    return;
+  }
+
   // ===== QR PRODUCT CATALOG API =====
 
   // Product catalog management page (requires ?key= query param)

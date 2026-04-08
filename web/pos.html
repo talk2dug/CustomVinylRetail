@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>POS — Blue Ridge Custom Co</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Montserrat:wght@400;600;700&display=swap">
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-alt: #334155;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --danger: #ef4444;
+      --border: #475569;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Barlow', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--surface);
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header h1 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    header .subtitle {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .scanner-section {
+      background: var(--surface);
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .scanner-section label {
+      font-size: 1.1rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    #scanInput {
+      flex: 1;
+      padding: 14px 18px;
+      font-size: 1.1rem;
+      background: var(--bg);
+      color: var(--text);
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      outline: none;
+      font-family: 'Barlow', sans-serif;
+    }
+
+    #scanInput:focus {
+      border-color: var(--success);
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3);
+    }
+
+    .scanner-status {
+      font-size: 0.9rem;
+      color: var(--success);
+      white-space: nowrap;
+    }
+
+    .main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    .cart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .cart-header h2 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 1.3rem;
+    }
+
+    .cart-header .item-count {
+      color: var(--text-muted);
+      font-size: 1rem;
+      margin-left: 8px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Barlow', sans-serif;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn:active { transform: scale(0.97); }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+    .btn-danger:hover { background: #dc2626; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+    .btn-success:hover { background: #059669; }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 2px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--text); }
+
+    .cart-empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+      font-size: 1.2rem;
+    }
+
+    .cart-empty .scan-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .cart-items {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .cart-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .cart-item img {
+      width: 70px;
+      height: 70px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: var(--surface-alt);
+    }
+
+    .cart-item .no-photo {
+      width: 70px;
+      height: 70px;
+      border-radius: 8px;
+      background: var(--surface-alt);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .cart-item .item-info {
+      flex: 1;
+    }
+
+    .cart-item .item-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .cart-item .item-price {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .cart-item .qty-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .qty-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--text);
+      font-size: 1.3rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .qty-btn:active { background: var(--border); }
+
+    .qty-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      min-width: 32px;
+      text-align: center;
+    }
+
+    .cart-item .item-line-total {
+      font-size: 1.2rem;
+      font-weight: 700;
+      min-width: 80px;
+      text-align: right;
+    }
+
+    .remove-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--danger);
+      font-size: 1.3rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .remove-btn:hover { background: rgba(239, 68, 68, 0.15); }
+
+    .checkout-bar {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .total-display {
+      font-family: 'Montserrat', sans-serif;
+    }
+
+    .total-label {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .total-amount {
+      font-size: 2rem;
+      font-weight: 700;
+    }
+
+    .checkout-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: var(--success);
+      color: white;
+      padding: 14px 24px;
+      border-radius: 10px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      z-index: 1000;
+      transform: translateX(120%);
+      transition: transform 0.3s ease;
+    }
+    .toast.show { transform: translateX(0); }
+
+    /* Payment overlay */
+    .payment-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 500;
+    }
+
+    .payment-card {
+      background: var(--surface);
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+      max-width: 500px;
+      width: 90%;
+    }
+
+    .payment-card h2 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+
+    .payment-total {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--success);
+      margin-bottom: 24px;
+    }
+
+    .qr-container {
+      display: inline-block;
+      padding: 20px;
+      background: white;
+      border-radius: 16px;
+      margin-bottom: 24px;
+    }
+
+    .payment-instructions {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      margin-bottom: 24px;
+    }
+
+    .payment-url {
+      word-break: break-all;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      padding: 10px;
+      background: var(--bg);
+      border-radius: 8px;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--surface-alt);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 20px auto;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Manual add section */
+    .manual-add {
+      margin-top: 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .manual-add input {
+      padding: 10px 14px;
+      font-size: 1rem;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: 'Barlow', sans-serif;
+      width: 280px;
+    }
+
+    @media (max-width: 600px) {
+      .cart-item { flex-wrap: wrap; }
+      .checkout-bar { flex-direction: column; text-align: center; }
+      .checkout-actions { width: 100%; }
+      .checkout-actions .btn { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Point of Sale</h1>
+      <span class="subtitle">Blue Ridge Custom Co</span>
+    </div>
+    <div class="scanner-status" id="scannerStatus">Ready to scan</div>
+  </header>
+
+  <div class="scanner-section">
+    <label for="scanInput">Scan Item:</label>
+    <input type="text" id="scanInput" placeholder="Scan product QR code or enter product ID..." autofocus autocomplete="off">
+  </div>
+
+  <div class="main-area" id="mainArea">
+    <div class="cart-header">
+      <div style="display:flex;align-items:baseline;">
+        <h2>Cart</h2>
+        <span class="item-count" id="itemCount">(0 items)</span>
+      </div>
+      <button class="btn btn-outline" id="clearCartBtn" style="display:none;">Clear Cart</button>
+    </div>
+
+    <div id="cartEmpty" class="cart-empty">
+      <span class="scan-icon">&#128722;</span>
+      Scan a product QR code to begin
+    </div>
+
+    <div id="cartItems" class="cart-items"></div>
+  </div>
+
+  <div class="checkout-bar" id="checkoutBar" style="display:none;">
+    <div class="total-display">
+      <div class="total-label">Total</div>
+      <div class="total-amount" id="totalAmount">$0.00</div>
+    </div>
+    <div class="checkout-actions">
+      <button class="btn btn-success" id="checkoutBtn" style="font-size:1.2rem;padding:16px 40px;">
+        Done Adding Items
+      </button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API_KEY = new URLSearchParams(window.location.search).get('key') || '';
+    const cart = []; // { productId, title, priceCents, quantity, photoUrl }
+
+    const scanInput = document.getElementById('scanInput');
+    const cartItemsEl = document.getElementById('cartItems');
+    const cartEmptyEl = document.getElementById('cartEmpty');
+    const itemCountEl = document.getElementById('itemCount');
+    const totalAmountEl = document.getElementById('totalAmount');
+    const checkoutBar = document.getElementById('checkoutBar');
+    const clearCartBtn = document.getElementById('clearCartBtn');
+    const checkoutBtn = document.getElementById('checkoutBtn');
+    const scannerStatus = document.getElementById('scannerStatus');
+    const toastEl = document.getElementById('toast');
+
+    // Keep focus on scan input
+    function focusScan() {
+      setTimeout(() => scanInput.focus(), 50);
+    }
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('button') && !e.target.closest('.manual-add') && !e.target.closest('.payment-overlay')) {
+        focusScan();
+      }
+    });
+
+    // Extract product ID from URL or raw ID
+    function extractProductId(input) {
+      input = input.trim();
+      // URL pattern: ...?id=prod_xxx or ...?id=xxx
+      try {
+        const url = new URL(input);
+        const id = url.searchParams.get('id');
+        if (id) return id;
+      } catch (_) {}
+      // Direct product ID
+      if (input.startsWith('prod_') || /^[a-zA-Z0-9_-]{5,}$/.test(input)) {
+        return input;
+      }
+      return null;
+    }
+
+    // Fetch product from server
+    async function fetchProduct(productId) {
+      const res = await fetch(`/api/products/public/${encodeURIComponent(productId)}`);
+      if (!res.ok) throw new Error('Product not found');
+      const data = await res.json();
+      if (!data.success || !data.product) throw new Error('Product not found');
+      return data.product;
+    }
+
+    // Handle scan input
+    scanInput.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const raw = scanInput.value.trim();
+      scanInput.value = '';
+      if (!raw) return;
+
+      const productId = extractProductId(raw);
+      if (!productId) {
+        showToast('Invalid scan — could not find product ID', true);
+        return;
+      }
+
+      // Check if already in cart
+      const existing = cart.find(item => item.productId === productId);
+      if (existing) {
+        existing.quantity++;
+        showToast(`Added: ${existing.title} (x${existing.quantity})`);
+        renderCart();
+        return;
+      }
+
+      // Fetch product
+      scannerStatus.textContent = 'Looking up product...';
+      scannerStatus.style.color = '#f59e0b';
+      try {
+        const product = await fetchProduct(productId);
+        cart.push({
+          productId: product.id,
+          title: product.title,
+          priceCents: product.priceCents,
+          quantity: 1,
+          photoUrl: product.photoUrl
+        });
+        showToast(`Added: ${product.title}`);
+        renderCart();
+      } catch (err) {
+        showToast('Product not found: ' + productId, true);
+      } finally {
+        scannerStatus.textContent = 'Ready to scan';
+        scannerStatus.style.color = '#10b981';
+        focusScan();
+      }
+    });
+
+    // Render cart
+    function renderCart() {
+      if (cart.length === 0) {
+        cartEmptyEl.style.display = 'block';
+        cartItemsEl.innerHTML = '';
+        checkoutBar.style.display = 'none';
+        clearCartBtn.style.display = 'none';
+        itemCountEl.textContent = '(0 items)';
+        return;
+      }
+
+      cartEmptyEl.style.display = 'none';
+      checkoutBar.style.display = 'flex';
+      clearCartBtn.style.display = 'inline-block';
+
+      const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+      itemCountEl.textContent = `(${totalItems} item${totalItems !== 1 ? 's' : ''})`;
+
+      let totalCents = 0;
+      cartItemsEl.innerHTML = cart.map((item, idx) => {
+        const lineTotal = item.priceCents * item.quantity;
+        totalCents += lineTotal;
+        const photoHtml = item.photoUrl
+          ? `<img src="${item.photoUrl}" alt="${esc(item.title)}">`
+          : `<div class="no-photo">No Photo</div>`;
+        return `
+          <div class="cart-item" data-idx="${idx}">
+            ${photoHtml}
+            <div class="item-info">
+              <div class="item-title">${esc(item.title)}</div>
+              <div class="item-price">${formatMoney(item.priceCents)} each</div>
+            </div>
+            <div class="qty-controls">
+              <button class="qty-btn" onclick="changeQty(${idx}, -1)">-</button>
+              <span class="qty-value">${item.quantity}</span>
+              <button class="qty-btn" onclick="changeQty(${idx}, 1)">+</button>
+            </div>
+            <div class="item-line-total">${formatMoney(lineTotal)}</div>
+            <button class="remove-btn" onclick="removeItem(${idx})" title="Remove">&times;</button>
+          </div>
+        `;
+      }).join('');
+
+      totalAmountEl.textContent = formatMoney(totalCents);
+    }
+
+    function changeQty(idx, delta) {
+      cart[idx].quantity += delta;
+      if (cart[idx].quantity <= 0) {
+        cart.splice(idx, 1);
+      }
+      renderCart();
+      focusScan();
+    }
+
+    function removeItem(idx) {
+      cart.splice(idx, 1);
+      renderCart();
+      focusScan();
+    }
+
+    clearCartBtn.addEventListener('click', () => {
+      if (cart.length > 0 && !confirm('Clear all items from cart?')) return;
+      cart.length = 0;
+      renderCart();
+      focusScan();
+    });
+
+    // Checkout
+    checkoutBtn.addEventListener('click', async () => {
+      if (cart.length === 0) return;
+
+      const items = cart.map(item => ({
+        productId: item.productId,
+        title: item.title,
+        priceCents: item.priceCents,
+        quantity: item.quantity
+      }));
+
+      const totalCents = items.reduce((sum, i) => sum + i.priceCents * i.quantity, 0);
+
+      // Show loading overlay
+      const overlay = document.createElement('div');
+      overlay.className = 'payment-overlay';
+      overlay.id = 'paymentOverlay';
+      overlay.innerHTML = `
+        <div class="payment-card">
+          <h2>Creating Payment Link...</h2>
+          <div class="spinner"></div>
+          <p class="payment-instructions">Please wait</p>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      try {
+        const res = await fetch('/api/pos/checkout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': API_KEY
+          },
+          body: JSON.stringify({ items })
+        });
+
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Checkout failed');
+
+        // Show payment QR code
+        overlay.innerHTML = `
+          <div class="payment-card">
+            <h2>Scan to Pay</h2>
+            <div class="payment-total">${formatMoney(data.totalCents || totalCents)}</div>
+            <div class="qr-container" id="paymentQr"></div>
+            <p class="payment-instructions">Customer: scan the QR code above with your phone to complete payment</p>
+            <div class="payment-url">${esc(data.paymentUrl)}</div>
+            <button class="btn btn-success" onclick="newSale()" style="font-size:1.2rem;padding:16px 48px;">New Sale</button>
+          </div>
+        `;
+
+        // Generate QR code
+        new QRCode(document.getElementById('paymentQr'), {
+          text: data.paymentUrl,
+          width: 320,
+          height: 320,
+          colorDark: '#000000',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+
+      } catch (err) {
+        overlay.innerHTML = `
+          <div class="payment-card">
+            <h2 style="color:var(--danger);">Checkout Error</h2>
+            <p class="payment-instructions">${esc(err.message)}</p>
+            <button class="btn btn-primary" onclick="dismissOverlay()" style="margin-top:16px;">Close</button>
+          </div>
+        `;
+      }
+    });
+
+    function newSale() {
+      cart.length = 0;
+      renderCart();
+      dismissOverlay();
+      focusScan();
+    }
+
+    function dismissOverlay() {
+      const ov = document.getElementById('paymentOverlay');
+      if (ov) ov.remove();
+      focusScan();
+    }
+
+    // Toast
+    let toastTimer = null;
+    function showToast(msg, isError) {
+      toastEl.textContent = msg;
+      toastEl.style.background = isError ? 'var(--danger)' : 'var(--success)';
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2500);
+    }
+
+    // Utils
+    function formatMoney(cents) {
+      return '$' + (cents / 100).toFixed(2);
+    }
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+
+    // Initial state
+    renderCart();
+    focusScan();
+  </script>
+</body>
+</html>
