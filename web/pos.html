@@ -56,10 +56,25 @@
       background: var(--surface);
       padding: 16px 24px;
       border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 16px;
     }
+
+    #cameraReader {
+      margin-top: 12px;
+    }
+    #cameraReader video {
+      width: 100% !important;
+      border-radius: 8px;
+    }
+    /* Style the html5-qrcode UI to match dark theme */
+    #cameraReader select, #cameraReader button {
+      background: var(--surface-alt) !important;
+      color: var(--text) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 6px !important;
+      padding: 8px 12px !important;
+    }
+    #cameraReader img[alt="Info icon"] { display: none !important; }
+    #html5-qrcode-anchor-scan-type-change { color: var(--accent) !important; }
 
     .scanner-section label {
       font-size: 1.1rem;
