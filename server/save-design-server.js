@@ -9423,7 +9423,7 @@ Keep it concise and actionable.`;
   // POS checkout — create Square payment link for cart items
   if (req.method === 'POST' && parsedUrl.pathname === '/api/pos/checkout') {
     try {
-      const body = await parseBody(req);
+      const body = await getReqBodyJson(req);
       const { items } = body;
       if (!Array.isArray(items) || items.length === 0) {
         sendJson(res, 400, { error: 'Cart is empty' });
