@@ -108,10 +108,10 @@
     }
 
     grid.innerHTML = members.map(m => `
-      <div class="mg-member-card" style="position:relative;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg-secondary);">
+      <div class="mg-member-card" style="position:relative;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg-secondary);min-height:200px;">
         <img src="${esc(getThumbUrl(m))}" alt="${esc(m.title || '')}"
-             style="width:100%;height:160px;object-fit:cover;display:block;background:#1a1a2e;"
-             onerror="this.src='${NO_IMG}'" />
+             style="width:100%;height:180px;min-height:180px;object-fit:cover;display:block;background:#1a1a2e;"
+             onerror="this.style.height='180px';this.style.background='#1a1a2e';" />
         <div style="padding:6px 8px;">
           <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.title || m.id)}</div>
           <div style="font-size:10px;color:var(--text-secondary);margin-top:2px;">${esc(m.style || '')} ${m.demographic ? '/ ' + esc(m.demographic) : ''}</div>
@@ -297,10 +297,10 @@
       const selected = mgState.modalSelected.has(m.id);
       return `
         <div class="mg-modal-model ${selected ? 'mg-modal-selected' : ''}" data-model-id="${esc(m.id)}"
-             style="border:2px solid ${selected ? 'var(--accent)' : 'var(--border)'};border-radius:8px;overflow:hidden;cursor:pointer;position:relative;background:var(--bg-secondary);transition:border-color 0.12s;">
+             style="border:2px solid ${selected ? 'var(--accent)' : 'var(--border)'};border-radius:8px;overflow:hidden;cursor:pointer;position:relative;background:var(--bg-secondary);transition:border-color 0.12s;min-height:170px;">
           <img src="${esc(getThumbUrl(m))}" alt="${esc(m.title || '')}"
-               style="width:100%;height:130px;object-fit:cover;display:block;background:#1a1a2e;"
-               onerror="this.src='${NO_IMG}'" />
+               style="width:100%;height:140px;min-height:140px;object-fit:cover;display:block;background:#1a1a2e;"
+               onerror="this.style.height='140px';this.style.background='#1a1a2e';" />
           ${selected ? '<div style="position:absolute;top:4px;right:4px;background:var(--accent);color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">&#10003;</div>' : ''}
           <div style="padding:4px 6px;">
             <div style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.title || m.id)}</div>
