@@ -526,15 +526,44 @@ async function generateProductLabels() {
       renderProductList();
       updateLabelSelectionUI();
 
-      // Show result and switch to sticker sheets view if available
       const sheetCount = data.totalSheets || 0;
       const stickerCount = data.totalStickers || 0;
-      document.getElementById('productStatusText').textContent =
-        `Generated ${sheetCount} sheet${sheetCount !== 1 ? 's' : ''} with ${stickerCount} label${stickerCount !== 1 ? 's' : ''}`;
 
-      // Open the sticker sheets browser to show the generated batch
-      if (typeof openStickerSheetsBrowser === 'function') {
-        setTimeout(() => openStickerSheetsBrowser(), 500);
+      // Auto-print Avery labels to Brother printer
+      if (format === 'avery-5160' && data.sheets && data.sheets.length > 0) {
+        document.getElementById('productStatusText').textContent =
+          `Sending ${sheetCount} sheet${sheetCount !== 1 ? 's' : ''} to Brother printer...`;
+
+        let printed = 0;
+        for (const sheet of data.sheets) {
+          try {
+            const printUrl = sheet.printUrl || sheet.url;
+            if (!printUrl) continue;
+            // Send to Brother printer (id: 9) via print server
+            const printResp = await productApi.post('/api/print-server/inkjet/jobs', {
+              printer_id: 9,
+              file_path: `/mnt/websit/sticker-sheets/${data.batchName}/${printUrl.split('/').pop()}`,
+              filename: printUrl.split('/').pop(),
+              title: `Avery Labels Sheet ${printed + 1}`,
+              copies: 1,
+              page_size: 'Letter'
+            });
+            if (printResp.success || printResp.job) printed++;
+          } catch (printErr) {
+            console.error('[Labels] Print failed for sheet:', printErr.message);
+          }
+        }
+
+        document.getElementById('productStatusText').textContent =
+          `Printed ${printed}/${sheetCount} sheet${sheetCount !== 1 ? 's' : ''} (${stickerCount} labels) to Brother`;
+      } else {
+        document.getElementById('productStatusText').textContent =
+          `Generated ${sheetCount} sheet${sheetCount !== 1 ? 's' : ''} with ${stickerCount} label${stickerCount !== 1 ? 's' : ''}`;
+
+        // Open the sticker sheets browser for non-Avery formats
+        if (typeof openStickerSheetsBrowser === 'function') {
+          setTimeout(() => openStickerSheetsBrowser(), 500);
+        }
       }
     } else {
       alert('Label generation failed: ' + (data.error || 'Unknown error'));
