@@ -345,9 +345,11 @@
   // ── Init ─────────────────────────────────────────────────────────────
   function init() {
     // Always re-bind events (DOM elements are fresh after view switch)
+    console.log('[ModelGroups] init called');
     // Toolbar
     const newBtn = document.getElementById('mgNewGroupBtn');
-    if (newBtn) { newBtn.onclick = handleCreateGroup; }
+    console.log('[ModelGroups] newBtn:', newBtn);
+    if (newBtn) { newBtn.onclick = () => { console.log('[ModelGroups] New Group clicked'); handleCreateGroup(); }; }
 
     // Detail buttons
     const editBtn = document.getElementById('mgEditGroupBtn');
