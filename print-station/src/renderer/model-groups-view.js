@@ -344,38 +344,39 @@
 
   // ── Init ─────────────────────────────────────────────────────────────
   function init() {
-    if (mgState.initialized) {
-      loadGroups();
-      return;
-    }
-    mgState.initialized = true;
-
+    // Always re-bind events (DOM elements are fresh after view switch)
     // Toolbar
-    document.getElementById('mgNewGroupBtn')?.addEventListener('click', handleCreateGroup);
+    const newBtn = document.getElementById('mgNewGroupBtn');
+    if (newBtn) { newBtn.onclick = handleCreateGroup; }
 
     // Detail buttons
-    document.getElementById('mgEditGroupBtn')?.addEventListener('click', handleEditGroup);
-    document.getElementById('mgAddModelsBtn')?.addEventListener('click', openAddModelsModal);
-    document.getElementById('mgDeleteGroupBtn')?.addEventListener('click', handleDeleteGroup);
+    const editBtn = document.getElementById('mgEditGroupBtn');
+    if (editBtn) editBtn.onclick = handleEditGroup;
+    const addBtn = document.getElementById('mgAddModelsBtn');
+    if (addBtn) addBtn.onclick = openAddModelsModal;
+    const delBtn = document.getElementById('mgDeleteGroupBtn');
+    if (delBtn) delBtn.onclick = handleDeleteGroup;
 
     // Modal controls
-    document.getElementById('mgModalCloseBtn')?.addEventListener('click', closeAddModelsModal);
-    document.getElementById('mgModalAddBtn')?.addEventListener('click', handleModalAdd);
+    const closeBtn = document.getElementById('mgModalCloseBtn');
+    if (closeBtn) closeBtn.onclick = closeAddModelsModal;
+    const modalAddBtn = document.getElementById('mgModalAddBtn');
+    if (modalAddBtn) modalAddBtn.onclick = handleModalAdd;
 
-    // Modal filters — debounced search + instant selects
+    // Modal filters
     let searchTimer;
-    document.getElementById('mgModelSearch')?.addEventListener('input', () => {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(renderModalGrid, 250);
-    });
-    document.getElementById('mgModelStyleFilter')?.addEventListener('change', renderModalGrid);
-    document.getElementById('mgModelGenderFilter')?.addEventListener('change', renderModalGrid);
+    const searchEl = document.getElementById('mgModelSearch');
+    if (searchEl) searchEl.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderModalGrid, 250); };
+    const styleFilter = document.getElementById('mgModelStyleFilter');
+    if (styleFilter) styleFilter.onchange = renderModalGrid;
+    const genderFilter = document.getElementById('mgModelGenderFilter');
+    if (genderFilter) genderFilter.onchange = renderModalGrid;
 
     // Close modal on backdrop click
-    document.getElementById('mgAddModelsModal')?.addEventListener('click', (e) => {
-      if (e.target.id === 'mgAddModelsModal') closeAddModelsModal();
-    });
+    const addModal = document.getElementById('mgAddModelsModal');
+    if (addModal) addModal.onclick = (e) => { if (e.target === addModal) closeAddModelsModal(); };
 
+    mgState.initialized = true;
     loadGroups();
   }
 
