@@ -20,9 +20,11 @@
   function getThumbUrl(model) {
     const p = model.thumbnailPath || model.thumbnail_path || model.optimizedPath || model.optimized_path || model.filePath || model.file_path || '';
     if (!p) return NO_IMG;
-    // Use resolveArtworkUrl (same as Human Models view) to handle server-relative paths like /library/human-models/...
+    if (p.startsWith('http') || p.startsWith('data:')) return p;
+    // Server-relative paths like /library/human-models/... need the server base URL prepended
+    const serverBase = window.printStationConfig?.serverBaseUrl || window.state?.config?.serverBaseUrl || '';
+    if (serverBase && p.startsWith('/')) return serverBase + p;
     if (typeof resolveArtworkUrl === 'function') return resolveArtworkUrl(p, { width: 200, quality: 75 }) || NO_IMG;
-    if (typeof resolveAssetUrl === 'function') return resolveAssetUrl(p, { width: 200, quality: 75 }) || NO_IMG;
     return p;
   }
 
