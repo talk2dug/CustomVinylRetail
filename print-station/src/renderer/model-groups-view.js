@@ -142,33 +142,81 @@
     });
   }
 
+  // ── Inline prompt (Electron blocks window.prompt) ────────────────────
+  function showInputModal(title, fields, callback) {
+    const existing = document.getElementById('mgInputModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'mgInputModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = `
+      <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:12px;padding:20px;width:360px;max-width:90vw;">
+        <h3 style="margin:0 0 12px;">${esc(title)}</h3>
+        ${fields.map((f, i) => `
+          <label style="display:block;margin-bottom:10px;">
+            <span style="font-size:13px;color:var(--text-secondary);">${esc(f.label)}</span>
+            <input id="mgInput${i}" type="text" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}"
+              style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);box-sizing:border-box;">
+          </label>
+        `).join('')}
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+          <button id="mgInputCancel" class="btn" style="padding:6px 16px;">Cancel</button>
+          <button id="mgInputOk" class="btn btn-primary" style="padding:6px 16px;">OK</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    const firstInput = modal.querySelector('input');
+    if (firstInput) setTimeout(() => firstInput.focus(), 50);
+
+    modal.querySelector('#mgInputCancel').onclick = () => { modal.remove(); };
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    modal.querySelector('#mgInputOk').onclick = () => {
+      const values = fields.map((_, i) => document.getElementById(`mgInput${i}`).value.trim());
+      modal.remove();
+      callback(values);
+    };
+    // Enter key submits
+    modal.querySelectorAll('input').forEach(inp => {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') modal.querySelector('#mgInputOk').click();
+      });
+    });
+  }
+
   // ── Create Group ─────────────────────────────────────────────────────
-  async function handleCreateGroup() {
-    const name = prompt('Group name:');
-    if (!name || !name.trim()) return;
-    const description = prompt('Description (optional):') || '';
-    try {
-      const resp = await api().create({ name: name.trim(), description: description.trim() });
-      await loadGroups();
-      if (resp.group?.id) loadGroupDetail(resp.group.id);
-    } catch (err) {
-      alert('Failed to create group: ' + (err.message || err));
-    }
+  function handleCreateGroup() {
+    showInputModal('New Group', [
+      { label: 'Group name', placeholder: 'e.g. Pinup Girls' },
+      { label: 'Description (optional)', placeholder: '' }
+    ], async ([name, description]) => {
+      if (!name) return;
+      try {
+        const resp = await api().create({ name, description });
+        await loadGroups();
+        if (resp.group?.id) loadGroupDetail(resp.group.id);
+      } catch (err) {
+        showInputModal('Error', [{ label: 'Failed to create group: ' + (err.message || err), value: '' }], () => {});
+      }
+    });
   }
 
   // ── Edit Group ───────────────────────────────────────────────────────
-  async function handleEditGroup() {
+  function handleEditGroup() {
     if (!mgState.selectedGroupId) return;
     const current = mgState.groups.find(g => g.id === mgState.selectedGroupId);
-    const name = prompt('Group name:', current?.name || '');
-    if (!name || !name.trim()) return;
-    const description = prompt('Description:', current?.description || '') || '';
-    try {
-      await api().update(mgState.selectedGroupId, { name: name.trim(), description: description.trim() });
-      await loadGroups();
-      await loadGroupDetail(mgState.selectedGroupId);
+    showInputModal('Edit Group', [
+      { label: 'Group name', value: current?.name || '' },
+      { label: 'Description', value: current?.description || '' }
+    ], async ([name, description]) => {
+      if (!name) return;
+      try {
+        await api().update(mgState.selectedGroupId, { name, description });
+        await loadGroups();
+        await loadGroupDetail(mgState.selectedGroupId);
     } catch (err) {
-      alert('Failed to update group: ' + (err.message || err));
+      console.error('Failed to update group:', err);
     }
   }
 
@@ -176,15 +224,19 @@
   async function handleDeleteGroup() {
     if (!mgState.selectedGroupId) return;
     const current = mgState.groups.find(g => g.id === mgState.selectedGroupId);
-    if (!confirm(`Delete group "${current?.name || mgState.selectedGroupId}"? This won't delete the models themselves.`)) return;
-    try {
-      await api().delete(mgState.selectedGroupId);
-      mgState.selectedGroupId = null;
-      renderGroupDetail(null);
-      await loadGroups();
-    } catch (err) {
-      alert('Failed to delete group: ' + (err.message || err));
-    }
+    showInputModal(`Delete "${current?.name}"?`, [
+      { label: 'Type "delete" to confirm', placeholder: 'delete' }
+    ], async ([val]) => {
+      if (val !== 'delete') return;
+      try {
+        await api().delete(mgState.selectedGroupId);
+        mgState.selectedGroupId = null;
+        renderGroupDetail(null);
+        await loadGroups();
+      } catch (err) {
+        console.error('Failed to delete group:', err);
+      }
+    });
   }
 
   // ── Add Models Modal ─────────────────────────────────────────────────
@@ -286,7 +338,7 @@
       await loadGroupDetail(mgState.selectedGroupId);
       await loadGroups(); // refresh counts
     } catch (err) {
-      alert('Failed to add models: ' + (err.message || err));
+      console.error('Failed to add models:', err);
     }
   }
 
