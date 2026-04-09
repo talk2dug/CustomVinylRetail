@@ -7434,7 +7434,7 @@ Return ONLY valid JSON, nothing else:
 
   // Fetch raw G-code text (for renderer-side visualization)
   ipcMain.handle('slicer:gcode:fetchText', async (_event, gcodeId) => {
-    const resp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 180000 });
+    const resp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 600000 });
     let buf;
     try {
       buf = await resp.arrayBuffer();
@@ -7502,7 +7502,7 @@ Return ONLY valid JSON, nothing else:
 
     // Step 2: Download G-code, write to temp
     console.log('[Slicer] Plate Step 2: Downloading G-code...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 600000 });
     const gcodeBuf = Buffer.from(await gcodeResp.arrayBuffer());
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     fs.mkdirSync(tmpDir, { recursive: true });
@@ -7547,7 +7547,7 @@ Return ONLY valid JSON, nothing else:
     if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id');
 
     // Step 2: Download G-code, write to temp
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 60000 });
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 600000 });
     const gcodeBuf = Buffer.from(await gcodeResp.arrayBuffer());
     const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     fs.mkdirSync(tmpDir, { recursive: true });
