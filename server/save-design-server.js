@@ -4007,33 +4007,23 @@ const requestHandler = async (req, res) => {
         const { parseBody: parseB } = require('./utils/http');
         const body = await parseB(req);
 
-        // For print start: inject gcode as base64 so Pi has a local copy for re-upload after leveling
-        if (targetPath === '/api/3d/print/start' && body.filename && !body.gcode_base64) {
-          try {
-            // Try file_path first (if it's a VPS path)
-            if (body.file_path && fs.existsSync(body.file_path)) {
-              body.gcode_base64 = fs.readFileSync(body.file_path).toString('base64');
-              console.log(`[PrintServerProxy] Injected gcode_base64 (${Math.round(body.gcode_base64.length / 1024)}KB) from file_path`);
-            } else {
-              // Fallback: search gcode cache directories for the filename
-              const gcodeBaseDir = path.join(__dirname, '..', 'data', 'gcode-cache');
-              const modelDirs = fs.existsSync(gcodeBaseDir) ? fs.readdirSync(gcodeBaseDir).filter(d => fs.statSync(path.join(gcodeBaseDir, d)).isDirectory()) : [];
-              let found = false;
-              for (const modelDir of modelDirs) {
-                const gcodeFile = path.join(gcodeBaseDir, modelDir, body.filename);
-                if (fs.existsSync(gcodeFile)) {
-                  body.gcode_base64 = fs.readFileSync(gcodeFile).toString('base64');
-                  console.log(`[PrintServerProxy] Injected gcode_base64 (${Math.round(body.gcode_base64.length / 1024)}KB) from cache ${modelDir}/${body.filename}`);
-                  found = true;
-                  break;
-                }
-              }
+        // For print start: ensure Pi can get the gcode file
+        // Prefer gcode_url (Pi downloads directly) over base64 (avoids huge payloads)
+        if (targetPath === '/api/3d/print/start' && body.filename && !body.gcode_url && !body.gcode_base64) {
+          // Build a download URL for the Pi to fetch from this server
+          const gcodeBaseDir = PATHS.GCODE_CACHE_DIR;
+          const modelDirs = fs.existsSync(gcodeBaseDir) ? fs.readdirSync(gcodeBaseDir).filter(d => fs.statSync(path.join(gcodeBaseDir, d)).isDirectory()) : [];
+          for (const modelDir of modelDirs) {
+            const gcodeFile = path.join(gcodeBaseDir, modelDir, body.filename);
+            if (fs.existsSync(gcodeFile)) {
+              const baseUrl = process.env.ASSET_BASE_URL || `https://${req.headers.host}`;
+              body.gcode_url = `${baseUrl}/dbFiles/gcode-cache/${modelDir}/${encodeURIComponent(body.filename)}`;
+              console.log(`[PrintServerProxy] Set gcode_url for Pi download: ${body.gcode_url}`);
+              break;
             }
-            if (!body.gcode_base64 && !found) {
-              console.warn(`[PrintServerProxy] Could not find gcode for ${body.filename} — Pi will rely on previously uploaded file`);
-            }
-          } catch (e) {
-            console.warn('[PrintServerProxy] Gcode injection failed:', e.message);
+          }
+          if (!body.gcode_url) {
+            console.warn(`[PrintServerProxy] Could not find gcode for ${body.filename}`);
           }
         }
 
