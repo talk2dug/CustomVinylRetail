@@ -7500,18 +7500,8 @@ Return ONLY valid JSON, nothing else:
     if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id');
     console.log(`[Slicer] Plate Step 1 done: ${sliceResult.gcode_filename}`);
 
-    // Step 2: Download G-code, write to temp
-    console.log('[Slicer] Plate Step 2: Downloading G-code...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 600000 });
-    const gcodeBuf = Buffer.from(await gcodeResp.arrayBuffer());
-    const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
-    fs.writeFileSync(tmpPath, gcodeBuf);
-
-    // Step 3-5: Upload + level + start via print server
-    // Send gcode_url so Pi downloads directly from VPS (avoids 60MB+ base64 payloads timing out)
-    console.log('[Slicer] Plate Step 3-5: Starting print via print server...');
+    // Step 2-5: Send gcode_url to Pi — Pi downloads directly from VPS
+    console.log('[Slicer] Plate Step 2: Sending to print server...');
     const settings = ensureServerConfigured();
     const gcodeUrl = `${settings.serverBaseUrl}/api/slicer/gcode/${sliceResult.gcode_id}/download`;
     try {
@@ -7523,10 +7513,8 @@ Return ONLY valid JSON, nothing else:
         }),
         timeout: 600000
       });
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       return { success: true, job, sliceResult };
     } catch (err) {
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw err;
     }
   });
@@ -7546,16 +7534,7 @@ Return ONLY valid JSON, nothing else:
     if (sliceResult.error) throw new Error(`Server slicing error: ${sliceResult.error}`);
     if (!sliceResult.gcode_id) throw new Error('Server returned no gcode_id');
 
-    // Step 2: Download G-code, write to temp
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${sliceResult.gcode_id}/download`, { timeout: 600000 });
-    const gcodeBuf = Buffer.from(await gcodeResp.arrayBuffer());
-    const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const tmpPath = path.join(tmpDir, sliceResult.gcode_filename);
-    fs.writeFileSync(tmpPath, gcodeBuf);
-
-    // Step 3-5: Upload + level + start via print server
-    // Send gcode_url so Pi downloads directly from VPS
+    // Step 2-5: Send gcode_url to Pi — Pi downloads directly from VPS
     const settingsForPrint = ensureServerConfigured();
     const gcodeUrlForPrint = `${settingsForPrint.serverBaseUrl}/api/slicer/gcode/${sliceResult.gcode_id}/download`;
     try {
@@ -7567,10 +7546,8 @@ Return ONLY valid JSON, nothing else:
         }),
         timeout: 600000
       });
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       return { success: true, job, sliceResult };
     } catch (err) {
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw err;
     }
   });
@@ -7583,33 +7560,18 @@ Return ONLY valid JSON, nothing else:
       try { event.sender.send('slicer:printProgress', { step, detail }); } catch {}
     };
 
-    // Step 1: Download G-code from vinylApp server
-    sendProgress(1, 'Downloading G-code from server...');
-    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { timeout: 180000 });
-    const contentDisp = gcodeResp.headers.get('content-disposition') || '';
-    const filenameMatch = contentDisp.match(/filename="?([^"]+)"?/);
-    const filename = filenameMatch ? filenameMatch[1] : `gcode_${gcodeId}.gcode`;
-    let arrayBuf;
-    try {
-      arrayBuf = await gcodeResp.arrayBuffer();
-    } catch (err) {
-      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
-        throw new Error('G-code download timed out — file may be too large');
-      }
-      throw err;
+    // Step 1: Get filename from server
+    sendProgress(1, 'Preparing print job...');
+    const gcodeResp = await slicerFetch(`/api/slicer/gcode/${gcodeId}/download`, { method: 'HEAD', timeout: 10000 }).catch(() => null);
+    let filename = `gcode_${gcodeId}.gcode`;
+    if (gcodeResp) {
+      const contentDisp = gcodeResp.headers.get('content-disposition') || '';
+      const filenameMatch = contentDisp.match(/filename="?([^"]+)"?/);
+      if (filenameMatch) filename = filenameMatch[1];
     }
 
-    // Step 2: Write to temp
-    sendProgress(2, 'Preparing G-code file...');
-    const gcodeBuf = Buffer.from(arrayBuf);
-    const tmpDir = path.join(app.getPath('temp'), `ps-gcode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const tmpPath = path.join(tmpDir, filename);
-    fs.writeFileSync(tmpPath, gcodeBuf);
-
-    // Step 3-5: Upload + level + start via print server
-    // Send gcode_url so Pi downloads directly from VPS
-    sendProgress(3, 'Sending to print server...');
+    // Step 2-5: Send gcode_url to Pi — Pi downloads directly from VPS
+    sendProgress(2, 'Sending to print server...');
     const settingsForGcode = ensureServerConfigured();
     const gcodeDownloadUrl = `${settingsForGcode.serverBaseUrl}/api/slicer/gcode/${gcodeId}/download`;
     try {
@@ -7620,10 +7582,8 @@ Return ONLY valid JSON, nothing else:
         }),
         timeout: 600000
       });
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       return { success: true, job };
     } catch (err) {
-      try { fs.unlinkSync(tmpPath); fs.rmdirSync(tmpDir); } catch {}
       throw err;
     }
   });
