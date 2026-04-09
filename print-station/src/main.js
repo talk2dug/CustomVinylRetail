@@ -6852,11 +6852,11 @@ Return ONLY valid JSON, nothing else:
   });
 
   // --- Print Job Control ---
-  ipcMain.handle('fleet:print:start', async (_event, { printerId, filename, shopifyOrderId }) => {
+  ipcMain.handle('fleet:print:start', async (_event, { printerId, filename, shopifyOrderId, levelBed = true, timelapse = false }) => {
     return fleetFetch('/3d/print/start', {
       method: 'POST',
-      body: JSON.stringify({ printer_id: printerId, filename, shopify_order_id: shopifyOrderId }),
-      timeout: 120000
+      body: JSON.stringify({ printer_id: printerId, filename, shopify_order_id: shopifyOrderId, level_bed: levelBed, timelapse }),
+      timeout: 600000
     });
   });
 
