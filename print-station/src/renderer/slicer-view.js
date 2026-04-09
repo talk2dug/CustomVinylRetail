@@ -4536,16 +4536,21 @@ async function slicerSliceSavedPlate(plate) {
       await printStation.slicer.updatePlate(plate.id, { last_gcode_id: sliceResult.gcode_id });
     } catch (e) { console.warn('[Slicer] Could not update plate gcode ref:', e); }
 
-    // Fetch gcode for preview
-    slicerUpdateProgress(1, 'Downloading G-code for 3D preview...');
-    let gcodeText;
-    try {
-      gcodeText = await printStation.slicer.fetchGcodeText(sliceResult.gcode_id);
-    } catch (err) {
-      slicerHideProgress();
-      showToast('Sliced! Could not load G-code preview: ' + err.message, 'warning', 6000);
-      slicerLoadSavedPlates(); // Refresh cards
-      return;
+    // Fetch gcode for preview (skip for large files)
+    const bpFileSizeMB = (sliceResult.file_size || 0) / (1024 * 1024);
+    let gcodeText = null;
+    if (bpFileSizeMB > 50) {
+      console.log(`[Slicer] Skipping gcode download for build plate preview — file is ${bpFileSizeMB.toFixed(0)}MB`);
+    } else {
+      slicerUpdateProgress(1, 'Downloading G-code for 3D preview...');
+      try {
+        gcodeText = await printStation.slicer.fetchGcodeText(sliceResult.gcode_id);
+      } catch (err) {
+        slicerHideProgress();
+        showToast('Sliced! Could not load G-code preview: ' + err.message, 'warning', 6000);
+        slicerLoadSavedPlates(); // Refresh cards
+        return;
+      }
     }
 
     slicerHideProgress();
