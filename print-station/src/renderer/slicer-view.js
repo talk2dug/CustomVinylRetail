@@ -2041,20 +2041,26 @@ async function slicerSliceAndPrint() {
 
   const cached = sliceResult.cached ? ' (cache hit)' : '';
 
-  // STEP 3: Fetch G-code text for visualization
-  slicerUpdateProgress(1, 'Downloading G-code for 3D preview...');
-  let gcodeText;
-  try {
-    gcodeText = await printStation.slicer.fetchGcodeText(sliceResult.gcode_id);
-  } catch (err) {
-    slicerHideProgress();
-    console.error('[Slicer] Fetch G-code text error:', err);
-    showToast('Could not load G-code for preview: ' + err.message, 'error', 6000);
+  // STEP 3: Fetch G-code text for visualization (skip for large files)
+  const fileSizeMB = (sliceResult.file_size || 0) / (1024 * 1024);
+  let gcodeText = null;
+  if (fileSizeMB > 50) {
+    console.log(`[Slicer] Skipping gcode download for preview — file is ${fileSizeMB.toFixed(0)}MB`);
+    showToast(`Sliced ${fileSizeMB.toFixed(0)}MB — skipping 3D preview for large file`, 'info', 4000);
+  } else {
+    slicerUpdateProgress(1, 'Downloading G-code for 3D preview...');
     try {
-      const updated = await printStation.slicer.getCatalogItem(item.id);
-      if (updated) { slicerState.gcodeEntries = updated.gcodeEntries || []; slicerRenderGcodeList(slicerState.gcodeEntries); }
-    } catch (_) {}
-    return;
+      gcodeText = await printStation.slicer.fetchGcodeText(sliceResult.gcode_id);
+    } catch (err) {
+      slicerHideProgress();
+      console.error('[Slicer] Fetch G-code text error:', err);
+      showToast('Could not load G-code for preview: ' + err.message, 'error', 6000);
+      try {
+        const updated = await printStation.slicer.getCatalogItem(item.id);
+        if (updated) { slicerState.gcodeEntries = updated.gcodeEntries || []; slicerRenderGcodeList(slicerState.gcodeEntries); }
+      } catch (_) {}
+      return;
+    }
   }
   slicerHideProgress();
   const requestedCopies = slicerState.settings.copies || 1;
@@ -4086,16 +4092,21 @@ async function slicerSlicePlate() {
 
   const cached = sliceResult.cached ? ' (cache hit)' : '';
 
-  // STEP 3: Fetch G-code text for visualization
-  slicerUpdateProgress(1, 'Downloading G-code for 3D preview...');
-  let gcodeText;
-  try {
-    gcodeText = await printStation.slicer.fetchGcodeText(sliceResult.gcode_id);
-  } catch (err) {
-    slicerHideProgress();
-    console.error('[Slicer] Fetch G-code text error:', err);
-    showToast('Could not load G-code for preview: ' + err.message, 'error', 6000);
-    return;
+  // STEP 3: Fetch G-code text for visualization (skip for large files)
+  const plateFileSizeMB = (sliceResult.file_size || 0) / (1024 * 1024);
+  let gcodeText = null;
+  if (plateFileSizeMB > 50) {
+    console.log(`[Slicer] Skipping gcode download for plate preview — file is ${plateFileSizeMB.toFixed(0)}MB`);
+  } else {
+    slicerUpdateProgress(1, 'Downloading G-code for 3D preview...');
+    try {
+      gcodeText = await printStation.slicer.fetchGcodeText(sliceResult.gcode_id);
+    } catch (err) {
+      slicerHideProgress();
+      console.error('[Slicer] Fetch G-code text error:', err);
+      showToast('Could not load G-code for preview: ' + err.message, 'error', 6000);
+      return;
+    }
   }
   slicerHideProgress();
   const estInfo = sliceResult.est_time_min ? ` — ${slicerFormatTime(sliceResult.est_time_min)}, ${sliceResult.est_weight_g ? sliceResult.est_weight_g.toFixed(1) + 'g filament' : ''}` : '';
