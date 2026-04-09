@@ -7510,15 +7510,16 @@ Return ONLY valid JSON, nothing else:
     fs.writeFileSync(tmpPath, gcodeBuf);
 
     // Step 3-5: Upload + level + start via print server
-    // Send gcode as base64 since the Pi can't access Electron's local filesystem
+    // Send gcode_url so Pi downloads directly from VPS (avoids 60MB+ base64 payloads timing out)
     console.log('[Slicer] Plate Step 3-5: Starting print via print server...');
-    const gcodeBase64 = fs.readFileSync(tmpPath).toString('base64');
+    const settings = ensureServerConfigured();
+    const gcodeUrl = `${settings.serverBaseUrl}/api/slicer/gcode/${sliceResult.gcode_id}/download`;
     try {
       const job = await fleetFetch('/3d/print/start', {
         method: 'POST',
         body: JSON.stringify({
           printer_id: printerId, filename: sliceResult.gcode_filename,
-          gcode_base64: gcodeBase64, level_bed: true, timelapse
+          gcode_url: gcodeUrl, level_bed: true, timelapse
         }),
         timeout: 600000
       });
@@ -7554,14 +7555,15 @@ Return ONLY valid JSON, nothing else:
     fs.writeFileSync(tmpPath, gcodeBuf);
 
     // Step 3-5: Upload + level + start via print server
-    // Send gcode as base64 since the Pi can't access Electron's local filesystem
-    const gcodeBase64ForPrint = fs.readFileSync(tmpPath).toString('base64');
+    // Send gcode_url so Pi downloads directly from VPS
+    const settingsForPrint = ensureServerConfigured();
+    const gcodeUrlForPrint = `${settingsForPrint.serverBaseUrl}/api/slicer/gcode/${sliceResult.gcode_id}/download`;
     try {
       const job = await fleetFetch('/3d/print/start', {
         method: 'POST',
         body: JSON.stringify({
           printer_id: printerId, filename: sliceResult.gcode_filename,
-          gcode_base64: gcodeBase64ForPrint, level_bed: true, timelapse
+          gcode_url: gcodeUrlForPrint, level_bed: true, timelapse
         }),
         timeout: 600000
       });
@@ -7606,14 +7608,15 @@ Return ONLY valid JSON, nothing else:
     fs.writeFileSync(tmpPath, gcodeBuf);
 
     // Step 3-5: Upload + level + start via print server
-    // Send as base64 since the Pi can't access Electron's local filesystem
+    // Send gcode_url so Pi downloads directly from VPS
     sendProgress(3, 'Sending to print server...');
-    const gcodeB64 = fs.readFileSync(tmpPath).toString('base64');
+    const settingsForGcode = ensureServerConfigured();
+    const gcodeDownloadUrl = `${settingsForGcode.serverBaseUrl}/api/slicer/gcode/${gcodeId}/download`;
     try {
       const job = await fleetFetch('/3d/print/start', {
         method: 'POST',
         body: JSON.stringify({
-          printer_id: printerId, filename, gcode_base64: gcodeB64, level_bed: true, timelapse
+          printer_id: printerId, filename, gcode_url: gcodeDownloadUrl, level_bed: true, timelapse
         }),
         timeout: 600000
       });
