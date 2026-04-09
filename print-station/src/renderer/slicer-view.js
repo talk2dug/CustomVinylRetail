@@ -1765,24 +1765,27 @@ function slicerShowGcodePreview({ gcodeText, gcodeId, sliceResult, printerId, pr
     const existing = document.getElementById('gcodePreviewModal');
     if (existing) existing.remove();
 
-    // Parse G-code
-    console.log('[GcodePreview] Parsing G-code...');
-    const parsed = slicerParseGcode(gcodeText);
-    console.log(`[GcodePreview] Parsed ${parsed.layerCount} layers, ${parsed.totalSegments} segments`);
+    // Parse G-code (skip if no text — large file mode)
+    let parsed = { layers: [], layerCount: 0, totalSegments: 0, bounds: { minX: 0, maxX: 250, minY: 0, maxY: 250 } };
+    let legendHtml = '';
+    if (gcodeText) {
+      console.log('[GcodePreview] Parsing G-code...');
+      parsed = slicerParseGcode(gcodeText);
+      console.log(`[GcodePreview] Parsed ${parsed.layerCount} layers, ${parsed.totalSegments} segments`);
 
-    // Build color legend from types that appear
-    const usedTypes = new Set();
-    for (const layer of parsed.layers) {
-      for (const seg of layer.segments) usedTypes.add(seg.type);
+      const usedTypes = new Set();
+      for (const layer of parsed.layers) {
+        for (const seg of layer.segments) usedTypes.add(seg.type);
+      }
+      legendHtml = [...usedTypes].map(type => {
+        const color = GCODE_TYPE_COLORS[type] || GCODE_TYPE_COLORS['unknown'];
+        const hex = '#' + color.toString(16).padStart(6, '0');
+        return `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${hex};flex-shrink:0;"></span>
+          <span style="font-size:0.78rem;color:rgba(255,255,255,0.7);">${slicerEsc(type)}</span>
+        </div>`;
+      }).join('');
     }
-    const legendHtml = [...usedTypes].map(type => {
-      const color = GCODE_TYPE_COLORS[type] || GCODE_TYPE_COLORS['unknown'];
-      const hex = '#' + color.toString(16).padStart(6, '0');
-      return `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;">
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${hex};flex-shrink:0;"></span>
-        <span style="font-size:0.78rem;color:rgba(255,255,255,0.7);">${slicerEsc(type)}</span>
-      </div>`;
-    }).join('');
 
     const fname = sliceResult?.gcode_filename || 'G-code';
     const estTime = sliceResult?.est_time_min ? slicerFormatTime(sliceResult.est_time_min) : '--';
@@ -1803,7 +1806,9 @@ function slicerShowGcodePreview({ gcodeText, gcodeId, sliceResult, printerId, pr
         </div>
       </div>
       <div style="flex:1;display:flex;overflow:hidden;">
-        <div id="gcodePreviewCanvas" style="flex:1;position:relative;overflow:hidden;min-height:300px;"></div>
+        <div id="gcodePreviewCanvas" style="flex:1;position:relative;overflow:hidden;min-height:300px;">
+          ${!gcodeText ? '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,0.5);font-size:1.1rem;gap:8px;"><span style="font-size:2rem;">&#128206;</span>Large file — 3D preview skipped<br><span style="font-size:0.85rem;">Use "Send to Printer" to print</span></div>' : ''}
+        </div>
         <div style="width:340px;background:rgba(15,23,42,0.95);border-left:1px solid rgba(255,255,255,0.1);overflow-y:auto;padding:20px;">
           <div style="margin-bottom:16px;">
             <div style="font-weight:600;font-size:0.9rem;color:#fff;margin-bottom:6px;word-break:break-all;">${slicerEsc(fname)}</div>
@@ -1843,7 +1848,14 @@ function slicerShowGcodePreview({ gcodeText, gcodeId, sliceResult, printerId, pr
 
     document.body.appendChild(modal);
 
-    // ---- Three.js scene ----
+    // ---- Three.js scene (skip for large files without gcode text) ----
+    if (!gcodeText) {
+      console.log('[GcodePreview] No gcode text — skipping 3D scene, showing metadata only');
+      // Still wire up buttons
+      document.getElementById('gcodeCloseBtn')?.addEventListener('click', () => { modal.remove(); resolve('close'); });
+      document.getElementById('gcodePrintBtn')?.addEventListener('click', () => { modal.remove(); resolve('print'); });
+      return;
+    }
     const container = document.getElementById('gcodePreviewCanvas');
     const bedDims = slicerGetBedDimensions();
 
