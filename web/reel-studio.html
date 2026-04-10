@@ -1012,9 +1012,9 @@
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Render failed');
 
-      state.lastVideoUrl = data.videoUrl;
+      state.lastVideoUrl = data.videoUrl + '?key=' + encodeURIComponent(apiKey);
       document.getElementById('preview-container').innerHTML = `
-        <video class="preview-video" src="${data.videoUrl}" controls autoplay muted loop playsinline></video>
+        <video class="preview-video" src="${state.lastVideoUrl}" controls autoplay muted loop playsinline></video>
       `;
       status.className = 'preview-status success';
       status.textContent = `✓ Rendered in ${(data.durationMs / 1000).toFixed(1)}s`;
@@ -1049,9 +1049,10 @@
         return;
       }
       container.style.display = 'flex';
+      const keyedUrl = (u) => u + (u.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(apiKey);
       container.innerHTML = history.slice(0, 10).map(h => `
-        <div class="history-item" data-url="${h.videoUrl}">
-          <video src="${h.videoUrl}" muted preload="metadata"></video>
+        <div class="history-item" data-url="${keyedUrl(h.videoUrl)}">
+          <video src="${keyedUrl(h.videoUrl)}" muted preload="metadata"></video>
         </div>
       `).join('');
       container.querySelectorAll('.history-item').forEach(el => {

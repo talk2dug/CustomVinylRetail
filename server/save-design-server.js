@@ -10051,6 +10051,13 @@ Keep it concise and actionable.`;
 
   // Remotion video rendering API
   if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/remotion')) {
+    // Output file endpoint allows key via query param (for <video> tags)
+    const isOutputFile = parsedUrl.pathname.startsWith('/api/remotion/output/');
+    const qk = parsedUrl.query && parsedUrl.query.key;
+    const hk = req.headers['x-api-key'];
+    if (isOutputFile && INTERNAL_API_KEY && (qk === INTERNAL_API_KEY || hk === INTERNAL_API_KEY)) {
+      if (handleRemotionRoute(parsedUrl.pathname, req, res, db)) return;
+    }
     if (!requireInternalKey(req, res)) return;
     if (handleRemotionRoute(parsedUrl.pathname, req, res, db)) return;
   }
