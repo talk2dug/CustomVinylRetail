@@ -46,6 +46,14 @@ export const RemotionRoot: React.FC = () => {
           categoryBadge: "",
         }}
         calculateMetadata={async ({ props }) => {
+          // If items already provided (from Reel Studio), skip auto-fetch
+          if (props.images && props.images.length > 0) {
+            const frames = Math.max(
+              240,
+              45 + props.images.length * 60 + (props.showCta ? 80 : 20)
+            );
+            return { props, durationInFrames: frames };
+          }
           try {
             const artwork = await listArtwork({
               category: props.category || undefined,
@@ -62,7 +70,6 @@ export const RemotionRoot: React.FC = () => {
                     .replace(/-/g, " ")
                     .replace(/\b\w/g, (c) => c.toUpperCase())
                 : "New Arrivals");
-            // Duration: hook (45) + each image (60) + cta (80)
             const frames = Math.max(
               240,
               45 + images.length * 60 + (props.showCta ? 80 : 20)
@@ -108,6 +115,14 @@ export const RemotionRoot: React.FC = () => {
           labels: [] as string[],
         }}
         calculateMetadata={async ({ props }) => {
+          // If items already provided (from Reel Studio), skip auto-fetch
+          if (props.mockupImages && props.mockupImages.length > 0) {
+            const frames = Math.max(
+              240,
+              70 + props.mockupImages.length * 45 + 45
+            );
+            return { props, durationInFrames: frames };
+          }
           try {
             const mockups = await listAllMockups({
               source: props.source,
@@ -115,7 +130,6 @@ export const RemotionRoot: React.FC = () => {
             });
             const mockupImages = mockups.map((m) => m.url);
             const labels = mockups.map((m) => m.label);
-            // Duration: hook (70) + each mockup (45) + outro (45)
             const frames = Math.max(
               240,
               70 + mockupImages.length * 45 + 45
@@ -161,6 +175,15 @@ export const RemotionRoot: React.FC = () => {
           }[],
         }}
         calculateMetadata={async ({ props }) => {
+          // If clips already provided (from Reel Studio), skip auto-fetch
+          if (props.clips && props.clips.length > 0) {
+            const clipsTotal = props.clips.reduce(
+              (sum, c) => sum + (c.durationInFrames || 90),
+              0
+            );
+            const frames = Math.max(300, 60 + clipsTotal + 60);
+            return { props, durationInFrames: frames };
+          }
           try {
             const footage = await listFootage({
               category: props.category || undefined,
