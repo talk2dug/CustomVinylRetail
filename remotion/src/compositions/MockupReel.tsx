@@ -27,6 +27,18 @@ export const mockupReelSchema = z.object({
   accent: z.string().default("#ff6b35"),
   /** Transition style */
   transition: z.enum(["slide", "zoom", "fade"]).default("zoom"),
+  /** How images fill the frame and move */
+  panMode: z
+    .enum([
+      "fit",
+      "cover-static",
+      "ken-burns",
+      "pan-left-right",
+      "pan-right-left",
+      "pan-top-bottom",
+      "pan-bottom-top",
+    ])
+    .default("ken-burns"),
   /** Optional voiceover/music URL */
   audioUrl: z.string().default(""),
   /** Audio volume (0-1) */
@@ -48,6 +60,7 @@ export const MockupReel: React.FC<Props> = ({
   bgColor,
   accent,
   transition,
+  panMode = "ken-burns",
   audioUrl = "",
   audioVolume = 1,
 }) => {
@@ -118,6 +131,9 @@ export const MockupReel: React.FC<Props> = ({
             label={labels[i] || ""}
             accent={accent}
             transition={transition}
+            panMode={panMode}
+            slideFrames={perMockup + 10}
+            bgColor={bgColor}
             index={i}
             total={count}
           />
@@ -137,26 +153,104 @@ const MockupSlide: React.FC<{
   label: string;
   accent: string;
   transition: string;
+  panMode: string;
+  slideFrames: number;
+  bgColor: string;
   index: number;
   total: number;
-}> = ({ image, label, accent, transition, index, total }) => {
+}> = ({
+  image,
+  label,
+  accent,
+  transition,
+  panMode,
+  slideFrames,
+  bgColor,
+  index,
+  total,
+}) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
 
+  // ── Entry transition (applied to the whole slide container) ──
   const enterSpring = spring({ frame, fps, config: { damping: 14 } });
-
-  let transform = "";
-  let opacity = 1;
+  let containerTransform = "";
+  let containerOpacity = 1;
 
   if (transition === "zoom") {
-    const s = interpolate(enterSpring, [0, 1], [1.3, 1]);
-    transform = `scale(${s})`;
-    opacity = interpolate(frame, [0, 8], [0, 1], { extrapolateRight: "clamp" });
+    containerOpacity = interpolate(frame, [0, 8], [0, 1], {
+      extrapolateRight: "clamp",
+    });
   } else if (transition === "slide") {
-    const x = interpolate(enterSpring, [0, 1], [1080, 0]);
-    transform = `translateX(${x}px)`;
+    const x = interpolate(enterSpring, [0, 1], [width, 0]);
+    containerTransform = `translateX(${x}px)`;
   } else {
-    opacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
+    containerOpacity = interpolate(frame, [0, 12], [0, 1], {
+      extrapolateRight: "clamp",
+    });
+  }
+
+  // ── Pan/zoom effect for the image itself ──
+  // Progress 0 → 1 over the whole slide
+  const progress = Math.min(frame / Math.max(slideFrames - 10, 1), 1);
+
+  let imgStyle: React.CSSProperties = {};
+
+  if (panMode === "fit") {
+    // Show entire image, letterboxed/pillarboxed against bgColor
+    imgStyle = {
+      width: "100%",
+      height: "100%",
+      objectFit: "contain",
+    };
+  } else if (panMode === "cover-static") {
+    // Current behavior: crop to fill, no movement
+    imgStyle = {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+    };
+  } else if (panMode === "ken-burns") {
+    // Gentle zoom + slight diagonal pan
+    const scale = interpolate(progress, [0, 1], [1.05, 1.18]);
+    const tx = interpolate(progress, [0, 1], [0, -30]);
+    const ty = interpolate(progress, [0, 1], [0, -20]);
+    imgStyle = {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      transform: `scale(${scale}) translate(${tx}px, ${ty}px)`,
+      transformOrigin: "center",
+    };
+  } else if (panMode === "pan-left-right" || panMode === "pan-right-left") {
+    // Image fits vertically, overflows horizontally, pans
+    const scale = 1.35; // overflow to allow pan
+    const maxPan = width * 0.18;
+    const tx =
+      panMode === "pan-left-right"
+        ? interpolate(progress, [0, 1], [-maxPan, maxPan])
+        : interpolate(progress, [0, 1], [maxPan, -maxPan]);
+    imgStyle = {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      transform: `scale(${scale}) translateX(${tx}px)`,
+      transformOrigin: "center",
+    };
+  } else if (panMode === "pan-top-bottom" || panMode === "pan-bottom-top") {
+    const scale = 1.35;
+    const maxPan = height * 0.1;
+    const ty =
+      panMode === "pan-top-bottom"
+        ? interpolate(progress, [0, 1], [-maxPan, maxPan])
+        : interpolate(progress, [0, 1], [maxPan, -maxPan]);
+    imgStyle = {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      transform: `scale(${scale}) translateY(${ty}px)`,
+      transformOrigin: "center",
+    };
   }
 
   const labelOpacity = interpolate(frame, [10, 20], [0, 1], {
@@ -164,7 +258,7 @@ const MockupSlide: React.FC<{
   });
 
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={{ backgroundColor: bgColor }}>
       <div
         style={{
           position: "absolute",
@@ -172,18 +266,12 @@ const MockupSlide: React.FC<{
           left: 0,
           width: "100%",
           height: "100%",
-          transform,
-          opacity,
+          transform: containerTransform,
+          opacity: containerOpacity,
+          overflow: "hidden",
         }}
       >
-        <Img
-          src={image}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-          }}
-        />
+        <Img src={image} style={imgStyle} />
         {/* Dark gradient at bottom */}
         <div
           style={{
@@ -192,8 +280,8 @@ const MockupSlide: React.FC<{
             left: 0,
             right: 0,
             height: 300,
-            background:
-              "linear-gradient(transparent, rgba(0,0,0,0.8))",
+            background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
+            pointerEvents: "none",
           }}
         />
       </div>

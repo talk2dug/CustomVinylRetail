@@ -109,6 +109,7 @@ export const RemotionRoot: React.FC = () => {
           bgColor: "#111111",
           accent: "#ff6b35",
           transition: "zoom" as const,
+          panMode: "ken-burns" as const,
           audioUrl: "",
           audioVolume: 1,
           mockupImages: [] as string[],

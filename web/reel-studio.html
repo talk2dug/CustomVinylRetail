@@ -624,9 +624,21 @@
         <div class="field">
           <label>Transition</label>
           <select id="field-transition">
-            <option value="zoom">Zoom</option>
-            <option value="slide">Slide</option>
+            <option value="zoom">Zoom (fade in)</option>
+            <option value="slide">Slide in from right</option>
             <option value="fade">Fade</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Image Fit / Pan</label>
+          <select id="field-panMode">
+            <option value="ken-burns">Ken Burns (zoom + slight pan)</option>
+            <option value="fit">Fit whole image (letterbox)</option>
+            <option value="cover-static">Crop to fill (no movement)</option>
+            <option value="pan-left-right">Pan left → right</option>
+            <option value="pan-right-left">Pan right → left</option>
+            <option value="pan-top-bottom">Pan top → bottom</option>
+            <option value="pan-bottom-top">Pan bottom → top</option>
           </select>
         </div>
 
@@ -913,6 +925,7 @@
     const bgColor = document.getElementById('field-bgColor').value;
     const accent = document.getElementById('field-accent').value;
     const transition = document.getElementById('field-transition').value;
+    const panMode = document.getElementById('field-panMode').value;
 
     // Prefix URLs with current origin so render context can resolve them
     const origin = window.location.protocol + '//' + window.location.host;
@@ -928,6 +941,7 @@
         bgColor,
         accent,
         transition,
+        panMode,
         audioUrl: state.audioUrl ? absoluteUrl(state.audioUrl) : '',
         audioVolume: 1,
         mockupImages: state.selected.map(a => absoluteUrl(a.url)),
