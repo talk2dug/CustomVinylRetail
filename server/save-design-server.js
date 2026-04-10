@@ -95,6 +95,7 @@ const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
 const { handleTikTokStudioRoute } = require('./modules/tiktok-studio-routes');
 const { handleRemotionRoute } = require('./remotion-routes');
 const { handleMeshyRoute } = require('./meshy-routes');
+const { handleReelStudioRoute } = require('./reel-studio-routes');
 const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
 const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
 const { handleModelGroupsRoute } = require('./model-groups');
@@ -10042,6 +10043,12 @@ Keep it concise and actionable.`;
     if (handleMeshyRoute(parsedUrl.pathname, req, res)) return;
   }
 
+  // Reel Studio API (asset browser, render trigger, audio uploads)
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/reel-studio')) {
+    if (!requireInternalKey(req, res)) return;
+    if (handleReelStudioRoute(parsedUrl.pathname, req, res)) return;
+  }
+
   // Remotion video rendering API
   if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/remotion')) {
     if (!requireInternalKey(req, res)) return;
@@ -18505,6 +18512,21 @@ Keep it concise and actionable.`;
       'Location': `https://${host}:3101/`,
     });
     res.end();
+    return;
+  }
+
+  // Reel Studio HTML page (key-protected)
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    (parsedUrl.pathname === '/reel-studio' || parsedUrl.pathname === '/reel-studio.html')
+  ) {
+    const qk = parsedUrl.query && parsedUrl.query.key;
+    const hk = req.headers['x-api-key'];
+    if (INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    serveWebAsset(req, res, 'reel-studio.html');
     return;
   }
 

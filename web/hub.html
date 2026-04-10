@@ -278,14 +278,23 @@
           <p>Sticker category browser</p>
         </div>
       </a>
+      <a class="card" href="/reel-studio">
+        <div class="icon orange">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8l4 4-4 4M3 12h18"/><circle cx="7" cy="12" r="3"/></svg>
+        </div>
+        <div class="info">
+          <h3>Reel Studio</h3>
+          <p>Build reels from mockups &amp; footage — pick, arrange, render</p>
+          <span class="badge">New</span>
+        </div>
+      </a>
       <a class="card" href="/remotion/" target="_blank">
         <div class="icon pink">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
         </div>
         <div class="info">
           <h3>Remotion Studio</h3>
-          <p>Video editor — TikToks, product reels, mockup slideshows</p>
-          <span class="badge">New</span>
+          <p>Advanced: edit composition code &amp; animations directly</p>
         </div>
       </a>
     </div>
@@ -433,7 +442,7 @@ if (urlKey) {
   document.querySelectorAll('a.card[href]').forEach(a => {
     const href = a.getAttribute('href');
     // Add key to internal paths that need auth
-    if (href.startsWith('/finance') || href.startsWith('/footage') || href.startsWith('/kiosk') || href.startsWith('/product-catalog') || href.startsWith('/pos') || href.startsWith('/remotion')) {
+    if (href.startsWith('/finance') || href.startsWith('/footage') || href.startsWith('/kiosk') || href.startsWith('/product-catalog') || href.startsWith('/pos') || href.startsWith('/remotion') || href.startsWith('/reel-studio')) {
       const sep = href.includes('?') ? '&' : '?';
       a.setAttribute('href', href + sep + 'key=' + encodeURIComponent(urlKey));
     }

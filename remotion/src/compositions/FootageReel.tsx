@@ -1,5 +1,6 @@
 import {
   AbsoluteFill,
+  Audio,
   Video,
   Img,
   interpolate,
@@ -31,6 +32,10 @@ export const footageReelSchema = z.object({
   showLabels: z.boolean().default(true),
   /** Mute video audio */
   muteVideo: z.boolean().default(true),
+  /** Optional voiceover/music URL */
+  audioUrl: z.string().default(""),
+  /** Audio volume (0-1) */
+  audioVolume: z.number().min(0).max(1).default(1),
   /** Auto-populated: clips from calculateMetadata */
   clips: z
     .array(
@@ -62,6 +67,8 @@ export const FootageReel: React.FC<Props> = ({
   accent,
   showLabels,
   muteVideo,
+  audioUrl = "",
+  audioVolume = 1,
 }) => {
   const { durationInFrames } = useVideoConfig();
 
@@ -77,6 +84,7 @@ export const FootageReel: React.FC<Props> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: bgColor }}>
+      {audioUrl && <Audio src={audioUrl} volume={audioVolume} />}
       {/* Hook */}
       <Sequence durationInFrames={hookFrames}>
         <HookCard text={hookText} accent={accent} />

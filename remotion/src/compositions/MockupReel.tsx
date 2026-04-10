@@ -1,5 +1,6 @@
 import {
   AbsoluteFill,
+  Audio,
   Img,
   interpolate,
   spring,
@@ -26,6 +27,10 @@ export const mockupReelSchema = z.object({
   accent: z.string().default("#ff6b35"),
   /** Transition style */
   transition: z.enum(["slide", "zoom", "fade"]).default("zoom"),
+  /** Optional voiceover/music URL */
+  audioUrl: z.string().default(""),
+  /** Audio volume (0-1) */
+  audioVolume: z.number().min(0).max(1).default(1),
   /** Auto-populated: mockup image URLs (from calculateMetadata) */
   mockupImages: z.array(z.string()).default([]),
   /** Auto-populated: labels for each mockup */
@@ -43,6 +48,8 @@ export const MockupReel: React.FC<Props> = ({
   bgColor,
   accent,
   transition,
+  audioUrl = "",
+  audioVolume = 1,
 }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
@@ -62,6 +69,7 @@ export const MockupReel: React.FC<Props> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: bgColor }}>
+      {audioUrl && <Audio src={audioUrl} volume={audioVolume} />}
       {/* Hook text */}
       <Sequence durationInFrames={70}>
         <AbsoluteFill

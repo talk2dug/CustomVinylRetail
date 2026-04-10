@@ -102,6 +102,8 @@ export const RemotionRoot: React.FC = () => {
           bgColor: "#111111",
           accent: "#ff6b35",
           transition: "zoom" as const,
+          audioUrl: "",
+          audioVolume: 1,
           mockupImages: [] as string[],
           labels: [] as string[],
         }}
@@ -149,6 +151,8 @@ export const RemotionRoot: React.FC = () => {
           accent: "#ff6b35",
           showLabels: true,
           muteVideo: true,
+          audioUrl: "",
+          audioVolume: 1,
           clips: [] as {
             url: string;
             type: "video" | "image";
