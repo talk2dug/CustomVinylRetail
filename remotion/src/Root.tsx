@@ -1,4 +1,4 @@
-import { Composition, Still } from "remotion";
+import { Composition } from "remotion";
 import { ProductShowcase } from "./compositions/ProductShowcase";
 import { TikTokPromo } from "./compositions/TikTokPromo";
 import { StickerReveal } from "./compositions/StickerReveal";
@@ -8,68 +8,187 @@ import {
 } from "./compositions/CatalogShowcase";
 import { MockupReel, mockupReelSchema } from "./compositions/MockupReel";
 import { FootageReel, footageReelSchema } from "./compositions/FootageReel";
+import {
+  listArtwork,
+  listAllMockups,
+  listFootage,
+  footageVideoUrl,
+  assetUrl,
+} from "./lib/api";
+
+const FPS = 30;
 
 export const RemotionRoot: React.FC = () => {
   return (
     <>
-      {/* ── Catalog-driven compositions ── */}
+      {/* ── Catalog Showcase — artwork slideshow by category ── */}
       <Composition
         id="CatalogShowcase"
         component={CatalogShowcase}
         schema={catalogShowcaseSchema}
         durationInFrames={300}
-        fps={30}
+        fps={FPS}
         width={1080}
         height={1920}
         defaultProps={{
-          title: "New Arrivals",
+          category: "Asheville Art",
+          limit: 5,
+          title: "",
           subtitle: "Made in Asheville, NC",
-          images: [],
-          names: [],
           bgStart: "#0f0c29",
           bgEnd: "#302b63",
           accent: "#e94560",
           showCta: true,
           ctaText: "Shop Now →",
+          showCategoryBadge: true,
+          images: [] as string[],
+          names: [] as string[],
           categoryBadge: "",
         }}
+        calculateMetadata={async ({ props }) => {
+          try {
+            const artwork = await listArtwork({
+              category: props.category || undefined,
+              limit: props.limit,
+            });
+            const images = artwork.map((a) =>
+              assetUrl(a.thumbnailPath || a.filePath)
+            );
+            const names = artwork.map((a) => a.title || "");
+            const autoTitle =
+              props.title ||
+              (props.category
+                ? props.category
+                    .replace(/-/g, " ")
+                    .replace(/\b\w/g, (c) => c.toUpperCase())
+                : "New Arrivals");
+            // Duration: hook (45) + each image (60) + cta (80)
+            const frames = Math.max(
+              240,
+              45 + images.length * 60 + (props.showCta ? 80 : 20)
+            );
+            return {
+              props: {
+                ...props,
+                images,
+                names,
+                title: autoTitle,
+                categoryBadge: props.showCategoryBadge ? props.category : "",
+              },
+              durationInFrames: frames,
+            };
+          } catch (e) {
+            console.error("[CatalogShowcase] fetch failed:", e);
+            return { props };
+          }
+        }}
       />
+
+      {/* ── Mockup Reel — mixed apparel + custom art mockups ── */}
       <Composition
         id="MockupReel"
         component={MockupReel}
         schema={mockupReelSchema}
         durationInFrames={300}
-        fps={30}
+        fps={FPS}
         width={1080}
         height={1920}
         defaultProps={{
-          mockupImages: [],
-          labels: [],
+          source: "all" as const,
+          limit: 6,
           hookText: "Check out our latest drops",
           brandName: "BlueRidge Custom Co.",
           location: "Asheville, NC",
           bgColor: "#111111",
           accent: "#ff6b35",
           transition: "zoom" as const,
+          mockupImages: [] as string[],
+          labels: [] as string[],
+        }}
+        calculateMetadata={async ({ props }) => {
+          try {
+            const mockups = await listAllMockups({
+              source: props.source,
+              limit: props.limit,
+            });
+            const mockupImages = mockups.map((m) => m.url);
+            const labels = mockups.map((m) => m.label);
+            // Duration: hook (70) + each mockup (45) + outro (45)
+            const frames = Math.max(
+              240,
+              70 + mockupImages.length * 45 + 45
+            );
+            return {
+              props: { ...props, mockupImages, labels },
+              durationInFrames: frames,
+            };
+          } catch (e) {
+            console.error("[MockupReel] fetch failed:", e);
+            return { props };
+          }
         }}
       />
+
+      {/* ── Footage Reel — video clips from library ── */}
       <Composition
         id="FootageReel"
         component={FootageReel}
         schema={footageReelSchema}
         durationInFrames={600}
-        fps={30}
+        fps={FPS}
         width={1080}
         height={1920}
         defaultProps={{
-          clips: [],
-          hookText: "Behind the scenes",
+          category: "timelapse",
+          limit: 5,
+          maxFramesPerClip: 120,
+          hookText: "Watch us print live",
           tagline: "Made in Asheville, NC",
           brandName: "BlueRidge Custom Co.",
           bgColor: "#000000",
           accent: "#ff6b35",
           showLabels: true,
           muteVideo: true,
+          clips: [] as {
+            url: string;
+            type: "video" | "image";
+            label: string;
+            durationInFrames: number;
+          }[],
+        }}
+        calculateMetadata={async ({ props }) => {
+          try {
+            const footage = await listFootage({
+              category: props.category || undefined,
+              limit: props.limit,
+            });
+            const clips = footage.map((c) => {
+              const seconds = c.duration_seconds || 3;
+              const durationInFrames = Math.min(
+                Math.max(Math.floor(seconds * FPS), 60),
+                props.maxFramesPerClip
+              );
+              return {
+                url: footageVideoUrl(c),
+                type: "video" as const,
+                label: c.category || c.subcategory || c.original_name.slice(0, 30),
+                durationInFrames,
+              };
+            });
+            // Hook (60) + all clips + outro (60)
+            const clipsTotal = clips.reduce(
+              (sum, c) => sum + c.durationInFrames,
+              0
+            );
+            const frames = Math.max(300, 60 + clipsTotal + 60);
+            return {
+              props: { ...props, clips },
+              durationInFrames: frames,
+            };
+          } catch (e) {
+            console.error("[FootageReel] fetch failed:", e);
+            return { props };
+          }
         }}
       />
 
@@ -78,7 +197,7 @@ export const RemotionRoot: React.FC = () => {
         id="ProductShowcase"
         component={ProductShowcase}
         durationInFrames={150}
-        fps={30}
+        fps={FPS}
         width={1080}
         height={1920}
         defaultProps={{
@@ -91,7 +210,7 @@ export const RemotionRoot: React.FC = () => {
         id="TikTokPromo"
         component={TikTokPromo}
         durationInFrames={300}
-        fps={30}
+        fps={FPS}
         width={1080}
         height={1920}
         defaultProps={{
@@ -105,7 +224,7 @@ export const RemotionRoot: React.FC = () => {
         id="StickerReveal"
         component={StickerReveal}
         durationInFrames={90}
-        fps={30}
+        fps={FPS}
         width={1080}
         height={1080}
         defaultProps={{

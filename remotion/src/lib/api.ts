@@ -3,11 +3,16 @@
  * Used by Remotion compositions and Studio prop editors
  */
 
-// Studio runs on port 3101; API calls go to the main vinylApp server on the public domain
-const API_BASE =
-  typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}`
-    : "https://blueridgecustomco.com";
+// API base: detect context and use the right host/port
+function getApiBase(): string {
+  if (typeof window === "undefined") return "http://localhost:4000";
+  const host = window.location.hostname;
+  // Headless Chromium during bundling, or direct Studio access
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:4000";
+  // Public domain (nginx proxies /api/* to main server)
+  return `${window.location.protocol}//${host}`;
+}
+const API_BASE = getApiBase();
 const API_KEY = "laZHEthV92qDq0adO07UnqoH3O4baZmV";
 
 const headers = { "x-api-key": API_KEY };

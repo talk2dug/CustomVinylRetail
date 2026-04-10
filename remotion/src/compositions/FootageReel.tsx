@@ -11,17 +11,12 @@ import {
 import { z } from "zod";
 
 export const footageReelSchema = z.object({
-  /** Array of media clips (videos or images) */
-  clips: z
-    .array(
-      z.object({
-        url: z.string(),
-        type: z.enum(["video", "image"]).default("video"),
-        label: z.string().default(""),
-        durationInFrames: z.number().default(90),
-      })
-    )
-    .default([]),
+  /** Filter: category of footage to pull (leave empty for all) */
+  category: z.string().default("timelapse"),
+  /** Filter: max number of clips */
+  limit: z.number().min(1).max(15).default(5),
+  /** Max frames per clip (30fps = 30 frames per second) */
+  maxFramesPerClip: z.number().min(30).max(300).default(120),
   /** Hook text shown at start */
   hookText: z.string().default("Behind the scenes"),
   /** Brand tagline at end */
@@ -36,6 +31,17 @@ export const footageReelSchema = z.object({
   showLabels: z.boolean().default(true),
   /** Mute video audio */
   muteVideo: z.boolean().default(true),
+  /** Auto-populated: clips from calculateMetadata */
+  clips: z
+    .array(
+      z.object({
+        url: z.string(),
+        type: z.enum(["video", "image"]).default("video"),
+        label: z.string().default(""),
+        durationInFrames: z.number().default(90),
+      })
+    )
+    .default([]),
 });
 
 type Clip = {
@@ -48,7 +54,7 @@ type Clip = {
 type Props = z.infer<typeof footageReelSchema>;
 
 export const FootageReel: React.FC<Props> = ({
-  clips,
+  clips = [],
   hookText,
   tagline,
   brandName,

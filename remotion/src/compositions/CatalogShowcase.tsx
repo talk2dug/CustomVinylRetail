@@ -11,14 +11,14 @@ import {
 import { z } from "zod";
 
 export const catalogShowcaseSchema = z.object({
-  /** Title displayed at the top */
-  title: z.string().default("New Arrivals"),
+  /** Filter: artwork category (leave empty for newest) */
+  category: z.string().default("Asheville Art"),
+  /** Filter: max number of artworks to include */
+  limit: z.number().min(1).max(12).default(5),
+  /** Title displayed at the top (leave empty to auto-generate from category) */
+  title: z.string().default(""),
   /** Subtitle / tagline */
   subtitle: z.string().default("Made in Asheville, NC"),
-  /** Array of image URLs to showcase */
-  images: z.array(z.string()).default([]),
-  /** Array of product names (matches images) */
-  names: z.array(z.string()).default([]),
   /** Background gradient start color */
   bgStart: z.string().default("#0f0c29"),
   /** Background gradient end color */
@@ -29,7 +29,13 @@ export const catalogShowcaseSchema = z.object({
   showCta: z.boolean().default(true),
   /** CTA text */
   ctaText: z.string().default("Shop Now →"),
-  /** Category badge text (empty = hidden) */
+  /** Show category badge */
+  showCategoryBadge: z.boolean().default(true),
+  /** Auto-populated: image URLs from calculateMetadata */
+  images: z.array(z.string()).default([]),
+  /** Auto-populated: artwork names */
+  names: z.array(z.string()).default([]),
+  /** Auto-populated: category label (computed from category filter) */
   categoryBadge: z.string().default(""),
 });
 
@@ -38,15 +44,18 @@ type Props = z.infer<typeof catalogShowcaseSchema>;
 export const CatalogShowcase: React.FC<Props> = ({
   title,
   subtitle,
-  images,
-  names,
+  images = [],
+  names = [],
   bgStart,
   bgEnd,
   accent,
   showCta,
   ctaText,
   categoryBadge,
+  showCategoryBadge,
 }) => {
+  // Hide badge if user toggled it off
+  if (!showCategoryBadge) categoryBadge = "";
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
   const itemCount = images.length || 1;

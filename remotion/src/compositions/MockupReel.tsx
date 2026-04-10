@@ -10,10 +10,10 @@ import {
 import { z } from "zod";
 
 export const mockupReelSchema = z.object({
-  /** Mockup image URLs (lifestyle or product blanks) */
-  mockupImages: z.array(z.string()).default([]),
-  /** Labels for each mockup (e.g. garment type + color) */
-  labels: z.array(z.string()).default([]),
+  /** Filter: mockup source */
+  source: z.enum(["all", "apparel", "custom-art"]).default("all"),
+  /** Filter: max number of mockups to include */
+  limit: z.number().min(1).max(20).default(6),
   /** Hook text shown at start */
   hookText: z.string().default("Check out our latest drops"),
   /** Brand name */
@@ -26,13 +26,17 @@ export const mockupReelSchema = z.object({
   accent: z.string().default("#ff6b35"),
   /** Transition style */
   transition: z.enum(["slide", "zoom", "fade"]).default("zoom"),
+  /** Auto-populated: mockup image URLs (from calculateMetadata) */
+  mockupImages: z.array(z.string()).default([]),
+  /** Auto-populated: labels for each mockup */
+  labels: z.array(z.string()).default([]),
 });
 
 type Props = z.infer<typeof mockupReelSchema>;
 
 export const MockupReel: React.FC<Props> = ({
-  mockupImages,
-  labels,
+  mockupImages = [],
+  labels = [],
   hookText,
   brandName,
   location,

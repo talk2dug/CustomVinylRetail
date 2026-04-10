@@ -18508,6 +18508,27 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // Serve apparel mockup images (fallback for local rendering; nginx handles production)
+  if (parsedUrl.pathname.startsWith('/apparel-mockups/') && req.method === 'GET') {
+    const filename = decodeURIComponent(parsedUrl.pathname.replace('/apparel-mockups/', ''));
+    const filePath = require('path').join('/mnt/dbFiles/apparel-mockups', filename);
+    if (!filePath.startsWith('/mnt/dbFiles/apparel-mockups/')) {
+      res.writeHead(403); res.end(); return;
+    }
+    const fs = require('fs');
+    if (!fs.existsSync(filePath)) { res.writeHead(404); res.end(); return; }
+    const stat = fs.statSync(filePath);
+    const ext = require('path').extname(filename).toLowerCase();
+    const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+    res.writeHead(200, {
+      'Content-Type': mime[ext] || 'application/octet-stream',
+      'Content-Length': stat.size,
+      'Cache-Control': 'public, max-age=86400',
+    });
+    fs.createReadStream(filePath).pipe(res);
+    return;
+  }
+
   if (
     (req.method === 'GET' || req.method === 'HEAD') &&
     (parsedUrl.pathname === '/finance' || parsedUrl.pathname === '/finance.html')
