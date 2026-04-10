@@ -18477,66 +18477,34 @@ Keep it concise and actionable.`;
     return;
   }
 
-  // Remotion Studio reverse proxy (key-protected on page load, assets pass through)
-  if (parsedUrl.pathname.startsWith('/remotion')) {
-    // Only require key on the main page entry points, not on JS/CSS/asset sub-requests
-    const isPageLoad = parsedUrl.pathname === '/remotion' || parsedUrl.pathname === '/remotion/' || parsedUrl.pathname === '/remotion/index.html';
+  // Remotion Studio auth check (used by nginx auth_request)
+  if (parsedUrl.pathname === '/_auth/remotion') {
     const qk = parsedUrl.query && parsedUrl.query.key;
-    const hk = req.headers['x-api-key'];
-    const referer = req.headers['referer'] || '';
-    const hasKeyInReferer = referer.includes('key=' + INTERNAL_API_KEY);
-    if (isPageLoad && INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY) {
+    const cookieKey = (req.headers.cookie || '').match(/remotion_key=([^;]+)/)?.[1];
+    if (INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && cookieKey !== INTERNAL_API_KEY) {
+      res.writeHead(401);
+      res.end('Unauthorized');
+    } else {
+      res.writeHead(200);
+      res.end('OK');
+    }
+    return;
+  }
+
+  // Remotion Studio key gate — sets auth cookie then redirects to Studio (served by nginx)
+  if (parsedUrl.pathname === '/remotion' || parsedUrl.pathname === '/remotion/') {
+    const qk = parsedUrl.query && parsedUrl.query.key;
+    if (INTERNAL_API_KEY && qk !== INTERNAL_API_KEY) {
       sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
       return;
     }
-    // For sub-resources, verify the referer contains our domain (came from an authenticated page)
-    if (!isPageLoad && INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY && !hasKeyInReferer) {
-      // Allow if referer is from our own remotion page
-      const refHost = referer && new URL(referer, 'http://localhost').pathname;
-      if (!referer || !referer.includes('/remotion')) {
-        sendJson(res, 401, { error: 'Unauthorized' });
-        return;
-      }
-    }
-    // Strip /remotion prefix and proxy to Studio on port 3100
-    const targetPath = parsedUrl.pathname.replace(/^\/remotion/, '') || '/';
-    const qs = require('url').parse(req.url).search || '';
-    const proxyOpts = {
-      hostname: '127.0.0.1',
-      port: 3100,
-      path: targetPath + qs,
-      method: req.method,
-      headers: { ...req.headers, host: '127.0.0.1:3100' },
-    };
-    const proxyReq = require('http').request(proxyOpts, (proxyRes) => {
-      const contentType = proxyRes.headers['content-type'] || '';
-      // Rewrite HTML to prefix asset paths with /remotion
-      if (isPageLoad && contentType.includes('text/html')) {
-        let body = '';
-        proxyRes.on('data', chunk => body += chunk);
-        proxyRes.on('end', () => {
-          body = body
-            .replace(/src="\//g, 'src="/remotion/')
-            .replace(/href="\//g, 'href="/remotion/')
-            .replace(/"\/static-/g, '"/remotion/static-')
-            .replace(/"\/api\//g, '"/remotion/api/')
-            .replace(/window\.remotion_publicPath\s*=\s*"\/"/g, 'window.remotion_publicPath = "/remotion/"');
-          const headers = { ...proxyRes.headers };
-          headers['content-length'] = Buffer.byteLength(body);
-          delete headers['content-encoding'];
-          res.writeHead(proxyRes.statusCode, headers);
-          res.end(body);
-        });
-      } else {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res, { end: true });
-      }
+    // Set auth cookie and redirect to Studio (nginx serves it on port 3101)
+    const host = (req.headers.host || 'localhost').split(':')[0];
+    res.writeHead(302, {
+      'Set-Cookie': `remotion_key=${INTERNAL_API_KEY}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=86400`,
+      'Location': `https://${host}:3101/`,
     });
-    proxyReq.on('error', (err) => {
-      console.error('[remotion proxy] error:', err.message);
-      sendJson(res, 502, { error: 'Remotion Studio unavailable' });
-    });
-    req.pipe(proxyReq, { end: true });
+    res.end();
     return;
   }
 
