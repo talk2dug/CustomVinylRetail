@@ -19,7 +19,7 @@ function handleRemotionRoute(pathname, req, res, db) {
       console.log(`[remotion] Starting render: ${compositionId}`);
       renderVideo({ compositionId, props, outputFile, codec })
         .then(result => {
-          sendJson(res, {
+          sendJson(res, 200, {
             success: true,
             filePath: result.filePath,
             filename: path.basename(result.filePath),
@@ -42,7 +42,7 @@ function handleRemotionRoute(pathname, req, res, db) {
       }
       renderStill({ compositionId, props, frame, format, outputFile })
         .then(result => {
-          sendJson(res, {
+          sendJson(res, 200, {
             success: true,
             filePath: result.filePath,
             filename: path.basename(result.filePath),
@@ -57,7 +57,7 @@ function handleRemotionRoute(pathname, req, res, db) {
 
   // GET /api/remotion/compositions — list available compositions
   if (pathname === '/api/remotion/compositions' && req.method === 'GET') {
-    sendJson(res, {
+    sendJson(res, 200, {
       compositions: [
         {
           id: 'ProductShowcase',
@@ -116,7 +116,7 @@ function handleRemotionRoute(pathname, req, res, db) {
   // GET /api/remotion/outputs — list rendered files
   if (pathname === '/api/remotion/outputs' && req.method === 'GET') {
     if (!fs.existsSync(OUT_DIR)) {
-      return sendJson(res, { files: [] });
+      return sendJson(res, 200, { files: [] });
     }
     const files = fs.readdirSync(OUT_DIR).map(f => {
       const stat = fs.statSync(path.join(OUT_DIR, f));
@@ -126,7 +126,7 @@ function handleRemotionRoute(pathname, req, res, db) {
         created: stat.birthtime,
       };
     });
-    sendJson(res, { files });
+    sendJson(res, 200, { files });
     return true;
   }
 

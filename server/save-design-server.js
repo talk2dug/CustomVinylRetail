@@ -94,6 +94,7 @@ const { handleInventoryInputRoute } = require('./inventory-input-server');
 const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
 const { handleTikTokStudioRoute } = require('./modules/tiktok-studio-routes');
 const { handleRemotionRoute } = require('./remotion-routes');
+const { handleMeshyRoute } = require('./meshy-routes');
 const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
 const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
 const { handleModelGroupsRoute } = require('./model-groups');
@@ -10033,6 +10034,12 @@ Keep it concise and actionable.`;
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;
+  }
+
+  // Meshy 3D AI generation API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/meshy')) {
+    if (!requireInternalKey(req, res)) return;
+    if (handleMeshyRoute(parsedUrl.pathname, req, res)) return;
   }
 
   // Remotion video rendering API
