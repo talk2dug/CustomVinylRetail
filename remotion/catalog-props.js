@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 /**
  * Catalog Props Helper
- * Fetches artwork/mockups from vinylApp and generates Remotion props JSON
+ * Fetches artwork/mockups/footage from vinylApp and generates Remotion props JSON
  *
  * Usage:
- *   node catalog-props.js artwork [category] [limit]
- *   node catalog-props.js mockups [campaignSlug] [limit]
- *   node catalog-props.js categories
- *   node catalog-props.js showcase <category> [limit]  — full CatalogShowcase props
- *   node catalog-props.js reel <campaignSlug> [limit]  — full MockupReel props
+ *   node catalog-props.js categories                     List artwork categories
+ *   node catalog-props.js artwork [category] [limit]     List artwork items
+ *   node catalog-props.js mockups [campaignSlug] [limit] List custom-art mockups
+ *   node catalog-props.js apparel [limit]                List apparel mockups
+ *   node catalog-props.js footage [category] [limit]     List footage clips
+ *   node catalog-props.js showcase <category> [limit]    CatalogShowcase props JSON
+ *   node catalog-props.js reel <campaignSlug> [limit]    MockupReel props JSON
+ *   node catalog-props.js mockup-reel [limit]            MockupReel props w/ ALL mockups
+ *   node catalog-props.js footage-reel [category] [limit] FootageReel props JSON
  */
 
 const http = require('http');
@@ -146,6 +150,102 @@ Catalog Props Helper — generate Remotion props from your catalog
     };
 
     console.log('\n--- MockupReel Props ---\n');
+    console.log(JSON.stringify(props, null, 2));
+    return;
+  }
+
+  if (cmd === 'apparel') {
+    const limit = Number(arg1) || 20;
+    const data = await fetch('/api/batch-mockups');
+    const mockups = (data.mockups || []).slice(0, limit);
+    console.log(`\n${mockups.length} apparel mockups (of ${data.total || 0} total):\n`);
+    for (const m of mockups) {
+      console.log(`  ${m.filename}`);
+      console.log(`    → ${API_BASE}${m.url}`);
+    }
+    return;
+  }
+
+  if (cmd === 'footage') {
+    const category = arg1;
+    const limit = Number(arg2) || 20;
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (category) params.set('category', category);
+    const data = await fetch(`/api/footage/clips?${params}`);
+    const clips = data.items || [];
+    console.log(`\n${clips.length} footage clips${category ? ` in "${category}"` : ''}:\n`);
+    for (const c of clips) {
+      const dur = c.duration_seconds ? `${c.duration_seconds}s` : '?';
+      console.log(`  ${c.id}  [${c.category || 'uncategorized'}/${c.subcategory || ''}]  ${dur}`);
+      console.log(`    ${c.original_name}`);
+      console.log(`    → ${API_BASE}/api/footage/file/${c.filename}?key=${API_KEY}`);
+    }
+    return;
+  }
+
+  if (cmd === 'mockup-reel') {
+    const limit = Number(arg1) || 8;
+    // Pull both apparel and custom-art mockups
+    const [apparelData, customData] = await Promise.all([
+      fetch('/api/batch-mockups').catch(() => ({ mockups: [] })),
+      fetch('/api/custom-art/mockups?activeOnly=false').catch(() => []),
+    ]);
+
+    const apparel = (apparelData.mockups || []).slice(0, Math.ceil(limit / 2));
+    const custom = (Array.isArray(customData) ? customData : []).slice(0, Math.floor(limit / 2));
+
+    const images = [
+      ...apparel.map(m => `${API_BASE}${m.url}`),
+      ...custom.map(m => m.url || assetUrl(m.filePath || '')).filter(Boolean),
+    ];
+    const labels = [
+      ...apparel.map(m => m.filename.replace(/^mockup_/, '').replace(/_hm_.*$/, '').slice(0, 40)),
+      ...custom.map(m => m.title || m.artwork?.title || `Custom Art #${m.id}`),
+    ];
+
+    const props = {
+      mockupImages: images,
+      labels,
+      hookText: 'Check out our latest drops',
+      brandName: 'BlueRidge Custom Co.',
+      location: 'Asheville, NC',
+      bgColor: '#111111',
+      accent: '#ff6b35',
+      transition: 'zoom',
+    };
+
+    console.log('\n--- MockupReel Props (mixed apparel + custom art) ---\n');
+    console.log(JSON.stringify(props, null, 2));
+    return;
+  }
+
+  if (cmd === 'footage-reel') {
+    const category = arg1;
+    const limit = Number(arg2) || 5;
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (category) params.set('category', category);
+    const data = await fetch(`/api/footage/clips?${params}`);
+    const footageClips = (data.items || []).slice(0, limit);
+
+    const clips = footageClips.map(c => ({
+      url: `${API_BASE}/api/footage/file/${c.filename}?key=${API_KEY}`,
+      type: 'video',
+      label: c.category || c.original_name.slice(0, 30),
+      durationInFrames: Math.min(Math.max((c.duration_seconds || 3) * 30, 60), 150),
+    }));
+
+    const props = {
+      clips,
+      hookText: category === 'timelapse' ? 'Watch us print live' : 'Behind the scenes',
+      tagline: 'Made in Asheville, NC',
+      brandName: 'BlueRidge Custom Co.',
+      bgColor: '#000000',
+      accent: '#ff6b35',
+      showLabels: true,
+      muteVideo: true,
+    };
+
+    console.log('\n--- FootageReel Props ---\n');
     console.log(JSON.stringify(props, null, 2));
     return;
   }

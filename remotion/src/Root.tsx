@@ -7,6 +7,7 @@ import {
   catalogShowcaseSchema,
 } from "./compositions/CatalogShowcase";
 import { MockupReel, mockupReelSchema } from "./compositions/MockupReel";
+import { FootageReel, footageReelSchema } from "./compositions/FootageReel";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -50,6 +51,25 @@ export const RemotionRoot: React.FC = () => {
           bgColor: "#111111",
           accent: "#ff6b35",
           transition: "zoom" as const,
+        }}
+      />
+      <Composition
+        id="FootageReel"
+        component={FootageReel}
+        schema={footageReelSchema}
+        durationInFrames={600}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          clips: [],
+          hookText: "Behind the scenes",
+          tagline: "Made in Asheville, NC",
+          brandName: "BlueRidge Custom Co.",
+          bgColor: "#000000",
+          accent: "#ff6b35",
+          showLabels: true,
+          muteVideo: true,
         }}
       />
 
