@@ -283,16 +283,25 @@
 
     .preview-area {
       flex: 1;
+      min-height: 0;
       padding: 20px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      overflow-y: auto;
+      overflow: hidden;
+    }
+    #preview-container {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .preview-placeholder {
-      width: 270px;
-      height: 480px;
+      width: 240px;
+      aspect-ratio: 9/16;
       background: var(--surface);
       border: 2px dashed var(--border);
       border-radius: 16px;
@@ -311,14 +320,15 @@
       opacity: 0.5;
     }
     .preview-video {
-      max-width: 100%;
       max-height: 100%;
+      max-width: 100%;
+      height: auto;
       width: auto;
-      height: 100%;
       aspect-ratio: 9/16;
       border-radius: 16px;
       background: #000;
       box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      display: block;
     }
     .preview-status {
       margin-top: 16px;
