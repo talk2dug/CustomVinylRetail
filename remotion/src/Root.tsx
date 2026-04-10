@@ -1,11 +1,59 @@
-import { Composition } from "remotion";
+import { Composition, Still } from "remotion";
 import { ProductShowcase } from "./compositions/ProductShowcase";
 import { TikTokPromo } from "./compositions/TikTokPromo";
 import { StickerReveal } from "./compositions/StickerReveal";
+import {
+  CatalogShowcase,
+  catalogShowcaseSchema,
+} from "./compositions/CatalogShowcase";
+import { MockupReel, mockupReelSchema } from "./compositions/MockupReel";
 
 export const RemotionRoot: React.FC = () => {
   return (
     <>
+      {/* ── Catalog-driven compositions ── */}
+      <Composition
+        id="CatalogShowcase"
+        component={CatalogShowcase}
+        schema={catalogShowcaseSchema}
+        durationInFrames={300}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          title: "New Arrivals",
+          subtitle: "Made in Asheville, NC",
+          images: [],
+          names: [],
+          bgStart: "#0f0c29",
+          bgEnd: "#302b63",
+          accent: "#e94560",
+          showCta: true,
+          ctaText: "Shop Now →",
+          categoryBadge: "",
+        }}
+      />
+      <Composition
+        id="MockupReel"
+        component={MockupReel}
+        schema={mockupReelSchema}
+        durationInFrames={300}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          mockupImages: [],
+          labels: [],
+          hookText: "Check out our latest drops",
+          brandName: "BlueRidge Custom Co.",
+          location: "Asheville, NC",
+          bgColor: "#111111",
+          accent: "#ff6b35",
+          transition: "zoom" as const,
+        }}
+      />
+
+      {/* ── Original compositions ── */}
       <Composition
         id="ProductShowcase"
         component={ProductShowcase}
