@@ -18477,6 +18477,36 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // Remotion Studio reverse proxy (key-protected)
+  if (parsedUrl.pathname.startsWith('/remotion')) {
+    const qk = parsedUrl.query && parsedUrl.query.key;
+    const hk = req.headers['x-api-key'];
+    if (INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY) {
+      sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
+      return;
+    }
+    // Strip /remotion prefix and proxy to Studio on port 3100
+    const targetPath = parsedUrl.pathname.replace(/^\/remotion/, '') || '/';
+    const qs = require('url').parse(req.url).search || '';
+    const proxyOpts = {
+      hostname: '127.0.0.1',
+      port: 3100,
+      path: targetPath + qs,
+      method: req.method,
+      headers: { ...req.headers, host: '127.0.0.1:3100' },
+    };
+    const proxyReq = require('http').request(proxyOpts, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res, { end: true });
+    });
+    proxyReq.on('error', (err) => {
+      console.error('[remotion proxy] error:', err.message);
+      sendJson(res, 502, { error: 'Remotion Studio unavailable' });
+    });
+    req.pipe(proxyReq, { end: true });
+    return;
+  }
+
   if (
     (req.method === 'GET' || req.method === 'HEAD') &&
     (parsedUrl.pathname === '/finance' || parsedUrl.pathname === '/finance.html')

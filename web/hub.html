@@ -433,7 +433,7 @@ if (urlKey) {
   document.querySelectorAll('a.card[href]').forEach(a => {
     const href = a.getAttribute('href');
     // Add key to internal paths that need auth
-    if (href.startsWith('/finance') || href.startsWith('/footage') || href.startsWith('/kiosk') || href.startsWith('/product-catalog') || href.startsWith('/pos')) {
+    if (href.startsWith('/finance') || href.startsWith('/footage') || href.startsWith('/kiosk') || href.startsWith('/product-catalog') || href.startsWith('/pos') || href.startsWith('/remotion')) {
       const sep = href.includes('?') ? '&' : '?';
       a.setAttribute('href', href + sep + 'key=' + encodeURIComponent(urlKey));
     }
