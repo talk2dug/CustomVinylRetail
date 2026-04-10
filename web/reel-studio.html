@@ -330,6 +330,82 @@
       box-shadow: 0 20px 60px rgba(0,0,0,0.5);
       display: block;
     }
+    .preview-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .preview-tab {
+      padding: 6px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .preview-tab.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    .preview-tab:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .canvas-preview {
+      position: relative;
+      max-height: 100%;
+      height: min(100%, 600px);
+      aspect-ratio: 9/16;
+      border-radius: 16px;
+      background: #000;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      overflow: hidden;
+      display: block;
+    }
+    .canvas-preview .canvas-img {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      display: block;
+      will-change: transform;
+    }
+    .canvas-preview .guide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      border: 1px dashed rgba(255, 107, 53, 0.3);
+      border-radius: 16px;
+    }
+    .preview-scrubber-wrap {
+      width: 100%;
+      max-width: 340px;
+      margin-top: 14px;
+    }
+    .preview-scrubber-wrap label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    .preview-scrubber-wrap label span {
+      float: right;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .preview-scrubber-wrap input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
     .preview-status {
       margin-top: 16px;
       font-size: 13px;
@@ -602,12 +678,20 @@
         <div class="selected-empty">Click items on the left to add them to your reel →</div>
       </div>
       <div class="preview-area">
+        <div class="preview-tabs">
+          <button class="preview-tab active" data-preview-mode="live">Live Preview</button>
+          <button class="preview-tab" data-preview-mode="rendered" id="rendered-tab" disabled>Rendered</button>
+        </div>
         <div id="preview-container">
           <div class="preview-placeholder">
             <div class="icon">▶</div>
-            <div>Your rendered reel will appear here</div>
-            <div style="margin-top:6px; font-size: 11px;">Select items, configure, then click <b>Render Reel</b></div>
+            <div>Select an item to see a live preview</div>
+            <div style="margin-top:6px; font-size: 11px;">Adjust sliders to see pan/zoom in real-time</div>
           </div>
+        </div>
+        <div class="preview-scrubber-wrap" id="scrubber-wrap" style="display:none;">
+          <label>Pan Position <span id="scrubber-value">0%</span></label>
+          <input type="range" id="scrubber" min="0" max="100" step="1" value="0">
         </div>
         <div class="preview-status" id="preview-status"></div>
       </div>
@@ -931,6 +1015,158 @@
   bindSliderDisplay('field-offsetX', 'val-offx', (v) => v + '%');
   bindSliderDisplay('field-offsetY', 'val-offy', (v) => v + '%');
 
+  // ── Live canvas preview ──
+  state.previewMode = 'live';
+  state.scrubberValue = 0; // 0..100
+
+  function updateLivePreview() {
+    if (state.previewMode !== 'live') return;
+    const container = document.getElementById('preview-container');
+    const first = state.selected[0];
+    if (!first || first.type !== 'image') {
+      container.innerHTML = `
+        <div class="preview-placeholder">
+          <div class="icon">▶</div>
+          <div>${first ? 'Video preview coming soon' : 'Select an image to see a live preview'}</div>
+          <div style="margin-top:6px; font-size: 11px;">Adjust sliders to see pan/zoom in real-time</div>
+        </div>`;
+      document.getElementById('scrubber-wrap').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('scrubber-wrap').style.display = 'block';
+
+    // Read current settings
+    const panMode = document.getElementById('field-panMode').value;
+    const imageScale = Number(document.getElementById('field-imageScale').value);
+    const panDistance = Number(document.getElementById('field-panDistance').value);
+    const imageOffsetX = Number(document.getElementById('field-offsetX').value);
+    const imageOffsetY = Number(document.getElementById('field-offsetY').value);
+    const progress = state.scrubberValue / 100;
+
+    // Build or reuse canvas DOM
+    let canvas = container.querySelector('.canvas-preview');
+    if (!canvas) {
+      container.innerHTML = `
+        <div class="canvas-preview">
+          <img class="canvas-img" alt="" draggable="false">
+          <div class="guide"></div>
+        </div>`;
+      canvas = container.querySelector('.canvas-preview');
+    }
+    const img = canvas.querySelector('.canvas-img');
+    if (img.getAttribute('src') !== first.thumbnail) {
+      img.setAttribute('src', first.thumbnail);
+    }
+
+    // Compute transform matching MockupSlide.tsx logic
+    // Frame dimensions (preview canvas scale doesn't matter, we use %)
+    // We use the canvas's computed dimensions
+    const rect = canvas.getBoundingClientRect();
+    const W = rect.width;
+    const H = rect.height;
+
+    const panPixelsX = (W * panDistance) / 100;
+    const panPixelsY = (H * panDistance) / 100;
+    const userOffsetX = (W * imageOffsetX) / 100;
+    const userOffsetY = (H * imageOffsetY) / 100;
+
+    let panTx = 0, panTy = 0;
+    let extraScale = imageScale;
+
+    // Reset sizing
+    img.style.width = '';
+    img.style.height = '';
+    img.style.minWidth = '';
+    img.style.minHeight = '';
+    img.style.maxWidth = '';
+    img.style.maxHeight = '';
+
+    if (panMode === 'fit') {
+      img.style.maxWidth = (100 * imageScale) + '%';
+      img.style.maxHeight = (100 * imageScale) + '%';
+      img.style.width = 'auto';
+      img.style.height = 'auto';
+    } else if (panMode === 'cover-static') {
+      img.style.minWidth = (100 * imageScale) + '%';
+      img.style.minHeight = (100 * imageScale) + '%';
+      img.style.width = 'auto';
+      img.style.height = 'auto';
+    } else if (panMode === 'ken-burns') {
+      const kbScale = (1 + progress * 0.15) * imageScale;
+      extraScale = kbScale;
+      panTx = -W * 0.03 * progress;
+      panTy = -H * 0.02 * progress;
+      img.style.minWidth = '100%';
+      img.style.minHeight = '100%';
+      img.style.width = 'auto';
+      img.style.height = 'auto';
+    } else if (panMode === 'pan-left-right') {
+      const from = -panPixelsX, to = panPixelsX;
+      panTx = from + (to - from) * progress;
+      img.style.height = '100%';
+      img.style.width = 'auto';
+    } else if (panMode === 'pan-right-left') {
+      const from = panPixelsX, to = -panPixelsX;
+      panTx = from + (to - from) * progress;
+      img.style.height = '100%';
+      img.style.width = 'auto';
+    } else if (panMode === 'pan-top-bottom') {
+      const from = -panPixelsY, to = panPixelsY;
+      panTy = from + (to - from) * progress;
+      img.style.width = '100%';
+      img.style.height = 'auto';
+    } else if (panMode === 'pan-bottom-top') {
+      const from = panPixelsY, to = -panPixelsY;
+      panTy = from + (to - from) * progress;
+      img.style.width = '100%';
+      img.style.height = 'auto';
+    }
+
+    const totalTx = userOffsetX + panTx;
+    const totalTy = userOffsetY + panTy;
+    img.style.transform = `translate(calc(-50% + ${totalTx}px), calc(-50% + ${totalTy}px)) scale(${extraScale})`;
+    img.style.transformOrigin = 'center';
+  }
+
+  // Bind all control inputs to live preview refresh
+  ['field-panMode', 'field-imageScale', 'field-panDistance', 'field-offsetX', 'field-offsetY'].forEach(id => {
+    document.getElementById(id).addEventListener('input', updateLivePreview);
+  });
+
+  // Scrubber
+  const scrubber = document.getElementById('scrubber');
+  scrubber.addEventListener('input', () => {
+    state.scrubberValue = Number(scrubber.value);
+    document.getElementById('scrubber-value').textContent = scrubber.value + '%';
+    updateLivePreview();
+  });
+
+  // Preview tabs (live vs rendered)
+  document.querySelectorAll('.preview-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      if (tab.disabled) return;
+      document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      state.previewMode = tab.dataset.previewMode;
+      if (state.previewMode === 'live') {
+        updateLivePreview();
+      } else if (state.previewMode === 'rendered' && state.lastVideoUrl) {
+        const container = document.getElementById('preview-container');
+        container.innerHTML = `
+          <video class="preview-video" src="${state.lastVideoUrl}" controls autoplay muted loop playsinline></video>
+        `;
+      }
+    });
+  });
+
+  // Re-run live preview on selection change
+  const originalRenderSelected = renderSelected;
+  renderSelected = function() {
+    originalRenderSelected.apply(this, arguments);
+    if (state.previewMode === 'live') updateLivePreview();
+  };
+
   document.getElementById('clear-btn').addEventListener('click', () => {
     state.selected = [];
     renderSelected();
@@ -1088,6 +1324,14 @@
       document.getElementById('preview-container').innerHTML = `
         <video class="preview-video" src="${state.lastVideoUrl}" controls autoplay muted loop playsinline></video>
       `;
+      // Switch to rendered tab
+      document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+      const renderedTab = document.getElementById('rendered-tab');
+      renderedTab.disabled = false;
+      renderedTab.classList.add('active');
+      state.previewMode = 'rendered';
+      document.getElementById('scrubber-wrap').style.display = 'none';
+
       status.className = 'preview-status success';
       status.textContent = `✓ Rendered in ${(data.durationMs / 1000).toFixed(1)}s`;
       document.getElementById('download-btn').style.display = 'block';
