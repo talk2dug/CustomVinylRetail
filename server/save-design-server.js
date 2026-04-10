@@ -18477,13 +18477,26 @@ Keep it concise and actionable.`;
     return;
   }
 
-  // Remotion Studio reverse proxy (key-protected)
+  // Remotion Studio reverse proxy (key-protected on page load, assets pass through)
   if (parsedUrl.pathname.startsWith('/remotion')) {
+    // Only require key on the main page entry points, not on JS/CSS/asset sub-requests
+    const isPageLoad = parsedUrl.pathname === '/remotion' || parsedUrl.pathname === '/remotion/' || parsedUrl.pathname === '/remotion/index.html';
     const qk = parsedUrl.query && parsedUrl.query.key;
     const hk = req.headers['x-api-key'];
-    if (INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY) {
+    const referer = req.headers['referer'] || '';
+    const hasKeyInReferer = referer.includes('key=' + INTERNAL_API_KEY);
+    if (isPageLoad && INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY) {
       sendJson(res, 401, { error: 'Invalid or missing API key. Use ?key=YOUR_KEY' });
       return;
+    }
+    // For sub-resources, verify the referer contains our domain (came from an authenticated page)
+    if (!isPageLoad && INTERNAL_API_KEY && qk !== INTERNAL_API_KEY && hk !== INTERNAL_API_KEY && !hasKeyInReferer) {
+      // Allow if referer is from our own remotion page
+      const refHost = referer && new URL(referer, 'http://localhost').pathname;
+      if (!referer || !referer.includes('/remotion')) {
+        sendJson(res, 401, { error: 'Unauthorized' });
+        return;
+      }
     }
     // Strip /remotion prefix and proxy to Studio on port 3100
     const targetPath = parsedUrl.pathname.replace(/^\/remotion/, '') || '/';
