@@ -18509,8 +18509,28 @@ Keep it concise and actionable.`;
       headers: { ...req.headers, host: '127.0.0.1:3100' },
     };
     const proxyReq = require('http').request(proxyOpts, (proxyRes) => {
-      res.writeHead(proxyRes.statusCode, proxyRes.headers);
-      proxyRes.pipe(res, { end: true });
+      const contentType = proxyRes.headers['content-type'] || '';
+      // Rewrite HTML to prefix asset paths with /remotion
+      if (isPageLoad && contentType.includes('text/html')) {
+        let body = '';
+        proxyRes.on('data', chunk => body += chunk);
+        proxyRes.on('end', () => {
+          body = body
+            .replace(/src="\//g, 'src="/remotion/')
+            .replace(/href="\//g, 'href="/remotion/')
+            .replace(/"\/static-/g, '"/remotion/static-')
+            .replace(/"\/api\//g, '"/remotion/api/')
+            .replace(/window\.remotion_publicPath\s*=\s*"\/"/g, 'window.remotion_publicPath = "/remotion/"');
+          const headers = { ...proxyRes.headers };
+          headers['content-length'] = Buffer.byteLength(body);
+          delete headers['content-encoding'];
+          res.writeHead(proxyRes.statusCode, headers);
+          res.end(body);
+        });
+      } else {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res, { end: true });
+      }
     });
     proxyReq.on('error', (err) => {
       console.error('[remotion proxy] error:', err.message);
