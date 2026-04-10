@@ -1,0 +1,29 @@
+{
+  "name": "remotion",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts",
+    "render:showcase": "remotion render src/index.ts ProductShowcase out/showcase.mp4",
+    "render:tiktok": "remotion render src/index.ts TikTokPromo out/tiktok.mp4",
+    "render:sticker": "remotion render src/index.ts StickerReveal out/sticker.mp4",
+    "render:still": "remotion still src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@remotion/cli": "^4.0.447",
+    "@remotion/renderer": "^4.0.447",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "remotion": "^4.0.447"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.2"
+  }
+}

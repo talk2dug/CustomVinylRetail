@@ -93,6 +93,7 @@ const { handleFootageRoute } = require('./footage-server');
 const { handleInventoryInputRoute } = require('./inventory-input-server');
 const { handleTikTokVideoRoute } = require('./modules/tiktok-video-assembler');
 const { handleTikTokStudioRoute } = require('./modules/tiktok-studio-routes');
+const { handleRemotionRoute } = require('./remotion-routes');
 const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
 const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
 const { handleModelGroupsRoute } = require('./model-groups');
@@ -10032,6 +10033,12 @@ Keep it concise and actionable.`;
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;
+  }
+
+  // Remotion video rendering API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/remotion')) {
+    if (!requireInternalKey(req, res)) return;
+    if (handleRemotionRoute(parsedUrl.pathname, req, res, db)) return;
   }
 
   // Slicer API (3D model catalog, slicing, G-code cache)
