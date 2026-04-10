@@ -47,6 +47,10 @@ export const mockupReelSchema = z.object({
   imageOffsetY: z.number().min(-50).max(50).default(0),
   /** Pan distance as percentage of frame (how far to pan) */
   panDistance: z.number().min(0).max(100).default(30),
+  /** How long each mockup is displayed, in seconds */
+  slideSeconds: z.number().min(0.5).max(10).default(2.5),
+  /** Pan speed multiplier (1.0 = pan completes over full slide duration) */
+  panSpeed: z.number().min(0.25).max(4).default(1),
   /** Optional voiceover/music URL */
   audioUrl: z.string().default(""),
   /** Audio volume (0-1) */
@@ -73,6 +77,8 @@ export const MockupReel: React.FC<Props> = ({
   imageOffsetX = 0,
   imageOffsetY = 0,
   panDistance = 30,
+  slideSeconds = 2.5,
+  panSpeed = 1,
   audioUrl = "",
   audioVolume = 1,
 }) => {
@@ -87,10 +93,9 @@ export const MockupReel: React.FC<Props> = ({
     extrapolateRight: "clamp",
   });
 
-  // Each mockup duration
+  // Each mockup duration — explicit from props
   const mockupStart = 70;
-  const mockupArea = durationInFrames - mockupStart - 45;
-  const perMockup = Math.max(40, Math.floor(mockupArea / count));
+  const perMockup = Math.max(15, Math.floor(slideSeconds * fps));
 
   return (
     <AbsoluteFill style={{ backgroundColor: bgColor }}>
@@ -148,6 +153,7 @@ export const MockupReel: React.FC<Props> = ({
             imageOffsetX={imageOffsetX}
             imageOffsetY={imageOffsetY}
             panDistance={panDistance}
+            panSpeed={panSpeed}
             slideFrames={perMockup + 10}
             bgColor={bgColor}
             index={i}
@@ -174,6 +180,7 @@ const MockupSlide: React.FC<{
   imageOffsetX: number;
   imageOffsetY: number;
   panDistance: number;
+  panSpeed: number;
   slideFrames: number;
   bgColor: string;
   index: number;
@@ -188,6 +195,7 @@ const MockupSlide: React.FC<{
   imageOffsetX,
   imageOffsetY,
   panDistance,
+  panSpeed,
   slideFrames,
   bgColor,
   index,
@@ -215,8 +223,9 @@ const MockupSlide: React.FC<{
   }
 
   // ── Pan/zoom effect ──
-  // progress: 0 → 1 over the visible portion of the slide
-  const progress = Math.min(frame / Math.max(slideFrames - 10, 1), 1);
+  // progress: 0 → 1, scaled by panSpeed (higher = faster pan)
+  const rawProgress = frame / Math.max(slideFrames - 10, 1);
+  const progress = Math.max(0, Math.min(rawProgress * panSpeed, 1));
 
   // Pan distance in pixels (based on frame dimensions)
   const panPixelsX = (width * panDistance) / 100;

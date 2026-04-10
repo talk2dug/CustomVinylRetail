@@ -114,19 +114,25 @@ export const RemotionRoot: React.FC = () => {
           imageOffsetX: 0,
           imageOffsetY: 0,
           panDistance: 30,
+          slideSeconds: 2.5,
+          panSpeed: 1,
           audioUrl: "",
           audioVolume: 1,
           mockupImages: [] as string[],
           labels: [] as string[],
         }}
         calculateMetadata={async ({ props }) => {
+          // Duration: hook (70) + each mockup (slideSeconds * fps) + outro (45)
+          const slideFrames = Math.max(15, Math.floor(props.slideSeconds * FPS));
+          const computeDuration = (count: number) =>
+            Math.max(150, 70 + count * slideFrames + 45);
+
           // If items already provided (from Reel Studio), skip auto-fetch
           if (props.mockupImages && props.mockupImages.length > 0) {
-            const frames = Math.max(
-              240,
-              70 + props.mockupImages.length * 45 + 45
-            );
-            return { props, durationInFrames: frames };
+            return {
+              props,
+              durationInFrames: computeDuration(props.mockupImages.length),
+            };
           }
           try {
             const mockups = await listAllMockups({
@@ -135,13 +141,9 @@ export const RemotionRoot: React.FC = () => {
             });
             const mockupImages = mockups.map((m) => m.url);
             const labels = mockups.map((m) => m.label);
-            const frames = Math.max(
-              240,
-              70 + mockupImages.length * 45 + 45
-            );
             return {
               props: { ...props, mockupImages, labels },
-              durationInFrames: frames,
+              durationInFrames: computeDuration(mockupImages.length),
             };
           } catch (e) {
             console.error("[MockupReel] fetch failed:", e);

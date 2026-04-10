@@ -762,6 +762,14 @@
           <label>Vertical Offset <span class="val" id="val-offy">0%</span></label>
           <input type="range" id="field-offsetY" min="-50" max="50" step="2" value="0">
         </div>
+        <div class="field">
+          <label>Slide Duration <span class="val" id="val-dur">2.5s</span></label>
+          <input type="range" id="field-slideSeconds" min="0.5" max="10" step="0.1" value="2.5">
+        </div>
+        <div class="field">
+          <label>Pan Speed <span class="val" id="val-speed">1.00x</span></label>
+          <input type="range" id="field-panSpeed" min="0.25" max="4" step="0.05" value="1">
+        </div>
 
         <h3>Voiceover / Music</h3>
         <div class="audio-upload">
@@ -1014,6 +1022,8 @@
   bindSliderDisplay('field-panDistance', 'val-pan', (v) => v + '%');
   bindSliderDisplay('field-offsetX', 'val-offx', (v) => v + '%');
   bindSliderDisplay('field-offsetY', 'val-offy', (v) => v + '%');
+  bindSliderDisplay('field-slideSeconds', 'val-dur', (v) => Number(v).toFixed(1) + 's');
+  bindSliderDisplay('field-panSpeed', 'val-speed', (v) => Number(v).toFixed(2) + 'x');
 
   // ── Live canvas preview ──
   state.previewMode = 'live';
@@ -1042,7 +1052,9 @@
     const panDistance = Number(document.getElementById('field-panDistance').value);
     const imageOffsetX = Number(document.getElementById('field-offsetX').value);
     const imageOffsetY = Number(document.getElementById('field-offsetY').value);
-    const progress = state.scrubberValue / 100;
+    const panSpeed = Number(document.getElementById('field-panSpeed').value);
+    // Apply pan speed to the scrubber position (same formula as MockupSlide)
+    const progress = Math.max(0, Math.min((state.scrubberValue / 100) * panSpeed, 1));
 
     // Build or reuse canvas DOM
     let canvas = container.querySelector('.canvas-preview');
@@ -1130,7 +1142,7 @@
   }
 
   // Bind all control inputs to live preview refresh
-  ['field-panMode', 'field-imageScale', 'field-panDistance', 'field-offsetX', 'field-offsetY'].forEach(id => {
+  ['field-panMode', 'field-imageScale', 'field-panDistance', 'field-offsetX', 'field-offsetY', 'field-panSpeed'].forEach(id => {
     document.getElementById(id).addEventListener('input', updateLivePreview);
   });
 
@@ -1216,6 +1228,8 @@
     const panDistance = Number(document.getElementById('field-panDistance').value);
     const imageOffsetX = Number(document.getElementById('field-offsetX').value);
     const imageOffsetY = Number(document.getElementById('field-offsetY').value);
+    const slideSeconds = Number(document.getElementById('field-slideSeconds').value);
+    const panSpeed = Number(document.getElementById('field-panSpeed').value);
 
     // Prefix URLs with current origin so render context can resolve them
     const origin = window.location.protocol + '//' + window.location.host;
@@ -1236,6 +1250,8 @@
         imageOffsetX,
         imageOffsetY,
         panDistance,
+        slideSeconds,
+        panSpeed,
         audioUrl: state.audioUrl ? absoluteUrl(state.audioUrl) : '',
         audioVolume: 1,
         mockupImages: state.selected.map(a => absoluteUrl(a.url)),
