@@ -59,6 +59,30 @@ export const mockupReelSchema = z.object({
   mockupImages: z.array(z.string()).default([]),
   /** Auto-populated: labels for each mockup */
   labels: z.array(z.string()).default([]),
+  /** Optional per-item effect overrides (parallel to mockupImages) */
+  itemEffects: z
+    .array(
+      z.object({
+        panMode: z
+          .enum([
+            "fit",
+            "cover-static",
+            "ken-burns",
+            "pan-left-right",
+            "pan-right-left",
+            "pan-top-bottom",
+            "pan-bottom-top",
+          ])
+          .optional(),
+        imageScale: z.number().optional(),
+        imageOffsetX: z.number().optional(),
+        imageOffsetY: z.number().optional(),
+        panDistance: z.number().optional(),
+        panSpeed: z.number().optional(),
+        slideSeconds: z.number().optional(),
+      })
+    )
+    .default([]),
 });
 
 type Props = z.infer<typeof mockupReelSchema>;
@@ -79,6 +103,7 @@ export const MockupReel: React.FC<Props> = ({
   panDistance = 30,
   slideSeconds = 2.5,
   panSpeed = 1,
+  itemEffects = [],
   audioUrl = "",
   audioVolume = 1,
 }) => {
@@ -93,9 +118,16 @@ export const MockupReel: React.FC<Props> = ({
     extrapolateRight: "clamp",
   });
 
-  // Each mockup duration — explicit from props
+  // Each mockup duration — per-item slideSeconds if provided, else global
   const mockupStart = 70;
-  const perMockup = Math.max(15, Math.floor(slideSeconds * fps));
+  const slideFrameCounts = mockupImages.map((_, i) => {
+    const itemSeconds = itemEffects[i]?.slideSeconds ?? slideSeconds;
+    return Math.max(15, Math.floor(itemSeconds * fps));
+  });
+  // Cumulative start frames for each slide
+  const slideStarts = slideFrameCounts.map((_, i) =>
+    mockupStart + slideFrameCounts.slice(0, i).reduce((a, b) => a + b, 0)
+  );
 
   return (
     <AbsoluteFill style={{ backgroundColor: bgColor }}>
@@ -137,30 +169,34 @@ export const MockupReel: React.FC<Props> = ({
       </Sequence>
 
       {/* Mockup slides */}
-      {mockupImages.map((img, i) => (
-        <Sequence
-          key={i}
-          from={mockupStart + i * perMockup}
-          durationInFrames={perMockup + 10}
-        >
-          <MockupSlide
-            image={img}
-            label={labels[i] || ""}
-            accent={accent}
-            transition={transition}
-            panMode={panMode}
-            imageScale={imageScale}
-            imageOffsetX={imageOffsetX}
-            imageOffsetY={imageOffsetY}
-            panDistance={panDistance}
-            panSpeed={panSpeed}
-            slideFrames={perMockup + 10}
-            bgColor={bgColor}
-            index={i}
-            total={count}
-          />
-        </Sequence>
-      ))}
+      {mockupImages.map((img, i) => {
+        const eff = itemEffects[i] || {};
+        const slideFrames = slideFrameCounts[i];
+        return (
+          <Sequence
+            key={i}
+            from={slideStarts[i]}
+            durationInFrames={slideFrames + 10}
+          >
+            <MockupSlide
+              image={img}
+              label={labels[i] || ""}
+              accent={accent}
+              transition={transition}
+              panMode={eff.panMode ?? panMode}
+              imageScale={eff.imageScale ?? imageScale}
+              imageOffsetX={eff.imageOffsetX ?? imageOffsetX}
+              imageOffsetY={eff.imageOffsetY ?? imageOffsetY}
+              panDistance={eff.panDistance ?? panDistance}
+              panSpeed={eff.panSpeed ?? panSpeed}
+              slideFrames={slideFrames + 10}
+              bgColor={bgColor}
+              index={i}
+              total={count}
+            />
+          </Sequence>
+        );
+      })}
 
       {/* End card */}
       <Sequence from={durationInFrames - 45}>

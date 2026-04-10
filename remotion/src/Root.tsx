@@ -120,12 +120,27 @@ export const RemotionRoot: React.FC = () => {
           audioVolume: 1,
           mockupImages: [] as string[],
           labels: [] as string[],
+          itemEffects: [] as Array<{
+            panMode?: string;
+            imageScale?: number;
+            imageOffsetX?: number;
+            imageOffsetY?: number;
+            panDistance?: number;
+            panSpeed?: number;
+            slideSeconds?: number;
+          }>,
         }}
         calculateMetadata={async ({ props }) => {
-          // Duration: hook (70) + each mockup (slideSeconds * fps) + outro (45)
-          const slideFrames = Math.max(15, Math.floor(props.slideSeconds * FPS));
-          const computeDuration = (count: number) =>
-            Math.max(150, 70 + count * slideFrames + 45);
+          // Sum per-item slide durations (or use global if no itemEffects)
+          const computeDuration = (count: number) => {
+            let totalSlideFrames = 0;
+            for (let i = 0; i < count; i++) {
+              const itemSeconds =
+                props.itemEffects?.[i]?.slideSeconds ?? props.slideSeconds;
+              totalSlideFrames += Math.max(15, Math.floor(itemSeconds * FPS));
+            }
+            return Math.max(150, 70 + totalSlideFrames + 45);
+          };
 
           // If items already provided (from Reel Studio), skip auto-fetch
           if (props.mockupImages && props.mockupImages.length > 0) {

@@ -237,7 +237,28 @@
       overflow: hidden;
       border: 2px solid var(--border);
       background: var(--surface);
-      cursor: grab;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .selected-item:hover { border-color: var(--accent-2); }
+    .selected-item.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent), 0 4px 20px rgba(255, 107, 53, 0.4);
+      transform: translateY(-2px);
+    }
+    .selected-item .effect-badge {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 2px 4px;
+      background: rgba(0, 0, 0, 0.75);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      text-align: center;
+      font-family: 'Montserrat', sans-serif;
+      white-space: nowrap;
     }
     .selected-item img, .selected-item video {
       width: 100%;
@@ -666,7 +687,7 @@
     <!-- ── CENTER: Workspace + Preview ── -->
     <main class="workspace">
       <div class="workspace-header">
-        <h2>Selected Items <span class="count" id="selected-count">0</span></h2>
+        <h2>Items <span class="count" id="selected-count">0</span> <span id="editing-label" style="font-size: 11px; color: var(--accent); margin-left: 10px;"></span></h2>
         <button class="tab" id="clear-btn" style="font-size: 12px; padding: 6px 12px;">Clear All</button>
       </div>
       <div class="selected-strip" id="selected-strip">
@@ -792,9 +813,23 @@
   if (apiKey) localStorage.setItem('apiKey', apiKey);
   document.getElementById('back-link').href = '/hub' + (apiKey ? '?key=' + encodeURIComponent(apiKey) : '');
 
+  // Default effect values for new items
+  const DEFAULT_EFFECTS = {
+    panMode: 'ken-burns',
+    imageScale: 1,
+    imageOffsetX: 0,
+    imageOffsetY: 0,
+    panDistance: 30,
+    panSpeed: 1,
+    slideSeconds: 2.5,
+  };
+
   const state = {
     currentTab: 'apparel',
+    // selected[i] = { asset, effects: {...} }
     selected: [],
+    // index of the currently edited item (null if none)
+    activeIndex: null,
     assets: { apparel: [], 'custom-art': [], footage: [] },
     categories: { apparel: [], 'custom-art': [], footage: [] },
     template: 'MockupReel',
@@ -882,7 +917,7 @@
     assets.slice(0, 100).forEach(asset => {
       const card = document.createElement('div');
       card.className = 'asset-card';
-      const selectedIdx = state.selected.findIndex(s => s.id === asset.id);
+      const selectedIdx = state.selected.findIndex(s => s.asset.id === asset.id);
       if (selectedIdx >= 0) card.classList.add('selected');
 
       const media = asset.type === 'video' && asset.thumbnail
@@ -903,15 +938,73 @@
 
   // ── Selection management ──
   function toggleAsset(asset) {
-    const idx = state.selected.findIndex(s => s.id === asset.id);
+    const idx = state.selected.findIndex(s => s.asset.id === asset.id);
     if (idx >= 0) {
       state.selected.splice(idx, 1);
+      if (state.activeIndex === idx) {
+        state.activeIndex = state.selected.length > 0 ? 0 : null;
+      } else if (state.activeIndex !== null && state.activeIndex > idx) {
+        state.activeIndex--;
+      }
     } else {
-      state.selected.push(asset);
+      // New item inherits current slider values as its effects
+      state.selected.push({
+        asset,
+        effects: readEffectsFromSliders(),
+      });
+      // Make the newly added item active
+      state.activeIndex = state.selected.length - 1;
+    }
+    // Update editing label
+    if (state.activeIndex !== null) {
+      const label = state.selected[state.activeIndex].asset.label || '';
+      document.getElementById('editing-label').textContent = `Editing: ${label.slice(0, 40)}`;
+    } else {
+      document.getElementById('editing-label').textContent = '';
     }
     renderSelected();
     renderAssets();
+    updateLivePreview();
   }
+
+  function readEffectsFromSliders() {
+    return {
+      panMode: document.getElementById('field-panMode').value,
+      imageScale: Number(document.getElementById('field-imageScale').value),
+      imageOffsetX: Number(document.getElementById('field-offsetX').value),
+      imageOffsetY: Number(document.getElementById('field-offsetY').value),
+      panDistance: Number(document.getElementById('field-panDistance').value),
+      panSpeed: Number(document.getElementById('field-panSpeed').value),
+      slideSeconds: Number(document.getElementById('field-slideSeconds').value),
+    };
+  }
+
+  function writeEffectsToSliders(eff) {
+    document.getElementById('field-panMode').value = eff.panMode;
+    document.getElementById('field-imageScale').value = eff.imageScale;
+    document.getElementById('field-offsetX').value = eff.imageOffsetX;
+    document.getElementById('field-offsetY').value = eff.imageOffsetY;
+    document.getElementById('field-panDistance').value = eff.panDistance;
+    document.getElementById('field-panSpeed').value = eff.panSpeed;
+    document.getElementById('field-slideSeconds').value = eff.slideSeconds;
+    // Refresh value displays
+    document.getElementById('val-scale').textContent = Number(eff.imageScale).toFixed(2) + 'x';
+    document.getElementById('val-pan').textContent = eff.panDistance + '%';
+    document.getElementById('val-offx').textContent = eff.imageOffsetX + '%';
+    document.getElementById('val-offy').textContent = eff.imageOffsetY + '%';
+    document.getElementById('val-speed').textContent = Number(eff.panSpeed).toFixed(2) + 'x';
+    document.getElementById('val-dur').textContent = Number(eff.slideSeconds).toFixed(1) + 's';
+  }
+
+  const PAN_MODE_ICONS = {
+    'fit': '⊞',
+    'cover-static': '▣',
+    'ken-burns': '⊚',
+    'pan-left-right': '→',
+    'pan-right-left': '←',
+    'pan-top-bottom': '↓',
+    'pan-bottom-top': '↑',
+  };
 
   function renderSelected() {
     const strip = document.getElementById('selected-strip');
@@ -924,24 +1017,34 @@
     }
 
     strip.innerHTML = '';
-    state.selected.forEach((asset, i) => {
+    state.selected.forEach((item, i) => {
+      const asset = item.asset;
       const el = document.createElement('div');
-      el.className = 'selected-item';
+      el.className = 'selected-item' + (i === state.activeIndex ? ' active' : '');
       el.draggable = true;
       el.dataset.index = i;
       const media = asset.type === 'video'
         ? (asset.thumbnail ? `<img src="${asset.thumbnail}">` : `<video src="${asset.url}" muted></video>`)
         : `<img src="${asset.thumbnail}">`;
+      const panIcon = PAN_MODE_ICONS[item.effects.panMode] || '';
       el.innerHTML = `
         ${media}
         <div class="order">${i + 1}</div>
         <button class="remove" data-index="${i}">✕</button>
+        <div class="effect-badge">${panIcon} ${item.effects.slideSeconds}s</div>
       `;
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.remove')) return;
+        setActiveItem(i);
+      });
       el.querySelector('.remove').addEventListener('click', (e) => {
         e.stopPropagation();
         state.selected.splice(i, 1);
+        if (state.activeIndex === i) state.activeIndex = state.selected.length > 0 ? 0 : null;
+        else if (state.activeIndex !== null && state.activeIndex > i) state.activeIndex--;
         renderSelected();
         renderAssets();
+        updateLivePreview();
       });
 
       // Drag and drop reorder
@@ -956,12 +1059,32 @@
         if (from === to) return;
         const [moved] = state.selected.splice(from, 1);
         state.selected.splice(to, 0, moved);
+        state.activeIndex = to;
         renderSelected();
         renderAssets();
+        updateLivePreview();
       });
 
       strip.appendChild(el);
     });
+  }
+
+  function setActiveItem(idx) {
+    if (idx < 0 || idx >= state.selected.length) return;
+    state.activeIndex = idx;
+    // Load that item's effects into the sliders
+    writeEffectsToSliders(state.selected[idx].effects);
+    // Refresh strip to show new active highlight
+    renderSelected();
+    // Update "editing" label
+    const label = state.selected[idx].asset.label || `Item ${idx + 1}`;
+    document.getElementById('editing-label').textContent = `Editing: ${label.slice(0, 40)}`;
+    // Reset playback + update preview
+    stopPlayback();
+    state.scrubberValue = 0;
+    document.getElementById('scrubber').value = 0;
+    document.getElementById('scrubber-value').textContent = '0%';
+    updateLivePreview();
   }
 
   // ── Templates ──
@@ -1029,13 +1152,16 @@
   function updateLivePreview() {
     if (state.previewMode !== 'live') return;
     const container = document.getElementById('preview-container');
-    const first = state.selected[0];
-    if (!first || first.type !== 'image') {
+    // Use active item, fallback to first
+    const idx = state.activeIndex !== null ? state.activeIndex : 0;
+    const item = state.selected[idx];
+    const activeAsset = item?.asset;
+    if (!activeAsset || activeAsset.type !== 'image') {
       container.innerHTML = `
         <div class="preview-placeholder">
           <div class="icon">▶</div>
-          <div>${first ? 'Video preview coming soon' : 'Select an image to see a live preview'}</div>
-          <div style="margin-top:6px; font-size: 11px;">Adjust sliders to see pan/zoom in real-time</div>
+          <div>${activeAsset ? 'Video preview coming soon' : 'Select an image to see a live preview'}</div>
+          <div style="margin-top:6px; font-size: 11px;">Click an item in the strip to edit its effects</div>
         </div>`;
       document.getElementById('scrubber-wrap').style.display = 'none';
       return;
@@ -1064,8 +1190,8 @@
       canvas = container.querySelector('.canvas-preview');
     }
     const img = canvas.querySelector('.canvas-img');
-    if (img.getAttribute('src') !== first.thumbnail) {
-      img.setAttribute('src', first.thumbnail);
+    if (img.getAttribute('src') !== activeAsset.thumbnail) {
+      img.setAttribute('src', activeAsset.thumbnail);
     }
 
     // Compute transform matching MockupSlide.tsx logic
@@ -1138,9 +1264,16 @@
     img.style.transformOrigin = 'center';
   }
 
-  // Bind all control inputs to live preview refresh
-  ['field-panMode', 'field-imageScale', 'field-panDistance', 'field-offsetX', 'field-offsetY', 'field-panSpeed'].forEach(id => {
-    document.getElementById(id).addEventListener('input', updateLivePreview);
+  // Bind all control inputs: save to active item's effects + refresh preview
+  function onEffectChanged() {
+    if (state.activeIndex !== null && state.selected[state.activeIndex]) {
+      state.selected[state.activeIndex].effects = readEffectsFromSliders();
+      renderSelected(); // refresh badges (pan mode icon, duration)
+    }
+    updateLivePreview();
+  }
+  ['field-panMode', 'field-imageScale', 'field-panDistance', 'field-offsetX', 'field-offsetY', 'field-panSpeed', 'field-slideSeconds'].forEach(id => {
+    document.getElementById(id).addEventListener('input', onEffectChanged);
   });
 
   // Scrubber
@@ -1218,8 +1351,11 @@
 
   document.getElementById('clear-btn').addEventListener('click', () => {
     state.selected = [];
+    state.activeIndex = null;
+    document.getElementById('editing-label').textContent = '';
     renderSelected();
     renderAssets();
+    updateLivePreview();
   });
 
   // ── Audio upload ──
@@ -1282,6 +1418,7 @@
         bgColor,
         accent,
         transition,
+        // Global fallback values (used if an item's effects don't override)
         panMode,
         imageScale,
         imageOffsetX,
@@ -1291,8 +1428,10 @@
         panSpeed,
         audioUrl: state.audioUrl ? absoluteUrl(state.audioUrl) : '',
         audioVolume: 1,
-        mockupImages: state.selected.map(a => absoluteUrl(a.url)),
-        labels: state.selected.map(a => a.label),
+        mockupImages: state.selected.map(s => absoluteUrl(s.asset.url)),
+        labels: state.selected.map(s => s.asset.label),
+        // Per-item effect overrides
+        itemEffects: state.selected.map(s => s.effects),
       };
     }
 
@@ -1310,11 +1449,11 @@
         muteVideo: !!state.audioUrl,
         audioUrl: state.audioUrl ? absoluteUrl(state.audioUrl) : '',
         audioVolume: 1,
-        clips: state.selected.map(a => ({
-          url: absoluteUrl(a.url),
+        clips: state.selected.map(s => ({
+          url: absoluteUrl(s.asset.url),
           type: 'video',
-          label: a.label,
-          durationInFrames: Math.min(Math.max(Math.floor((a.duration || 3) * 30), 60), 120),
+          label: s.asset.label,
+          durationInFrames: Math.min(Math.max(Math.floor((s.asset.duration || 3) * 30), 60), 120),
         })),
       };
     }
@@ -1331,8 +1470,8 @@
         showCta: true,
         ctaText: 'Shop Now →',
         showCategoryBadge: false,
-        images: state.selected.map(a => absoluteUrl(a.url)),
-        names: state.selected.map(a => a.label),
+        images: state.selected.map(s => absoluteUrl(s.asset.url)),
+        names: state.selected.map(s => s.asset.label),
         categoryBadge: '',
       };
     }
@@ -1347,7 +1486,7 @@
 
     // Validate template supports the selected asset type
     const tpl = state.templates.find(t => t.id === state.template);
-    const selectedType = state.selected[0].type;
+    const selectedType = state.selected[0].asset.type;
     if (tpl && tpl.assetType !== selectedType) {
       if (!confirm(`The ${tpl.name} template is for ${tpl.assetType}s but you selected ${selectedType}s. Continue anyway?`)) return;
     }
