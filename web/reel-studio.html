@@ -386,6 +386,17 @@
       height: 34px;
       cursor: pointer;
     }
+    .field input[type="range"] {
+      padding: 0;
+      width: 100%;
+      accent-color: var(--accent);
+    }
+    .field label .val {
+      float: right;
+      color: var(--accent);
+      font-weight: 700;
+      font-family: 'Montserrat', sans-serif;
+    }
     .field input:focus, .field select:focus, .field textarea:focus {
       outline: none;
       border-color: var(--accent);
@@ -651,6 +662,22 @@
             <option value="pan-bottom-top">Pan bottom → top</option>
           </select>
         </div>
+        <div class="field">
+          <label>Image Scale <span class="val" id="val-scale">1.00x</span></label>
+          <input type="range" id="field-imageScale" min="0.5" max="3" step="0.05" value="1">
+        </div>
+        <div class="field">
+          <label>Pan Distance <span class="val" id="val-pan">30%</span></label>
+          <input type="range" id="field-panDistance" min="0" max="100" step="5" value="30">
+        </div>
+        <div class="field">
+          <label>Horizontal Offset <span class="val" id="val-offx">0%</span></label>
+          <input type="range" id="field-offsetX" min="-50" max="50" step="2" value="0">
+        </div>
+        <div class="field">
+          <label>Vertical Offset <span class="val" id="val-offy">0%</span></label>
+          <input type="range" id="field-offsetY" min="-50" max="50" step="2" value="0">
+        </div>
 
         <h3>Voiceover / Music</h3>
         <div class="audio-upload">
@@ -891,6 +918,19 @@
   document.getElementById('search-input').addEventListener('input', renderAssets);
   document.getElementById('category-filter').addEventListener('change', renderAssets);
 
+  // Live slider value displays
+  function bindSliderDisplay(inputId, valueId, fmt) {
+    const input = document.getElementById(inputId);
+    const val = document.getElementById(valueId);
+    const update = () => { val.textContent = fmt(input.value); };
+    input.addEventListener('input', update);
+    update();
+  }
+  bindSliderDisplay('field-imageScale', 'val-scale', (v) => Number(v).toFixed(2) + 'x');
+  bindSliderDisplay('field-panDistance', 'val-pan', (v) => v + '%');
+  bindSliderDisplay('field-offsetX', 'val-offx', (v) => v + '%');
+  bindSliderDisplay('field-offsetY', 'val-offy', (v) => v + '%');
+
   document.getElementById('clear-btn').addEventListener('click', () => {
     state.selected = [];
     renderSelected();
@@ -936,6 +976,10 @@
     const accent = document.getElementById('field-accent').value;
     const transition = document.getElementById('field-transition').value;
     const panMode = document.getElementById('field-panMode').value;
+    const imageScale = Number(document.getElementById('field-imageScale').value);
+    const panDistance = Number(document.getElementById('field-panDistance').value);
+    const imageOffsetX = Number(document.getElementById('field-offsetX').value);
+    const imageOffsetY = Number(document.getElementById('field-offsetY').value);
 
     // Prefix URLs with current origin so render context can resolve them
     const origin = window.location.protocol + '//' + window.location.host;
@@ -952,6 +996,10 @@
         accent,
         transition,
         panMode,
+        imageScale,
+        imageOffsetX,
+        imageOffsetY,
+        panDistance,
         audioUrl: state.audioUrl ? absoluteUrl(state.audioUrl) : '',
         audioVolume: 1,
         mockupImages: state.selected.map(a => absoluteUrl(a.url)),

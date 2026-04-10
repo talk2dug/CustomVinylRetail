@@ -39,6 +39,14 @@ export const mockupReelSchema = z.object({
       "pan-bottom-top",
     ])
     .default("ken-burns"),
+  /** Additional zoom multiplier on top of pan mode (1.0 = no extra zoom) */
+  imageScale: z.number().min(0.5).max(3).default(1),
+  /** Horizontal offset as percentage of frame width (-50 to 50) */
+  imageOffsetX: z.number().min(-50).max(50).default(0),
+  /** Vertical offset as percentage of frame height (-50 to 50) */
+  imageOffsetY: z.number().min(-50).max(50).default(0),
+  /** Pan distance as percentage of frame (how far to pan) */
+  panDistance: z.number().min(0).max(100).default(30),
   /** Optional voiceover/music URL */
   audioUrl: z.string().default(""),
   /** Audio volume (0-1) */
@@ -61,6 +69,10 @@ export const MockupReel: React.FC<Props> = ({
   accent,
   transition,
   panMode = "ken-burns",
+  imageScale = 1,
+  imageOffsetX = 0,
+  imageOffsetY = 0,
+  panDistance = 30,
   audioUrl = "",
   audioVolume = 1,
 }) => {
@@ -132,6 +144,10 @@ export const MockupReel: React.FC<Props> = ({
             accent={accent}
             transition={transition}
             panMode={panMode}
+            imageScale={imageScale}
+            imageOffsetX={imageOffsetX}
+            imageOffsetY={imageOffsetY}
+            panDistance={panDistance}
             slideFrames={perMockup + 10}
             bgColor={bgColor}
             index={i}
@@ -154,6 +170,10 @@ const MockupSlide: React.FC<{
   accent: string;
   transition: string;
   panMode: string;
+  imageScale: number;
+  imageOffsetX: number;
+  imageOffsetY: number;
+  panDistance: number;
   slideFrames: number;
   bgColor: string;
   index: number;
@@ -164,6 +184,10 @@ const MockupSlide: React.FC<{
   accent,
   transition,
   panMode,
+  imageScale,
+  imageOffsetX,
+  imageOffsetY,
+  panDistance,
   slideFrames,
   bgColor,
   index,
@@ -190,68 +214,92 @@ const MockupSlide: React.FC<{
     });
   }
 
-  // ── Pan/zoom effect for the image itself ──
-  // Progress 0 → 1 over the whole slide
+  // ── Pan/zoom effect ──
+  // progress: 0 → 1 over the visible portion of the slide
   const progress = Math.min(frame / Math.max(slideFrames - 10, 1), 1);
 
-  let imgStyle: React.CSSProperties = {};
+  // Pan distance in pixels (based on frame dimensions)
+  const panPixelsX = (width * panDistance) / 100;
+  const panPixelsY = (height * panDistance) / 100;
+
+  // User-set offset in pixels
+  const userOffsetX = (width * imageOffsetX) / 100;
+  const userOffsetY = (height * imageOffsetY) / 100;
+
+  // Image sizing — no forced scale, just the user's imageScale multiplier.
+  // The pan modes choose whether to fit width or height to the frame.
+  let imgStyle: React.CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    // centering + user offset + pan animation
+  };
+
+  // Additional pan translate
+  let panTx = 0;
+  let panTy = 0;
+  let extraScale = imageScale;
 
   if (panMode === "fit") {
-    // Show entire image, letterboxed/pillarboxed against bgColor
+    // Whole image visible (contain)
     imgStyle = {
-      width: "100%",
-      height: "100%",
-      objectFit: "contain",
+      ...imgStyle,
+      maxWidth: `${100 * imageScale}%`,
+      maxHeight: `${100 * imageScale}%`,
+      width: "auto",
+      height: "auto",
     };
   } else if (panMode === "cover-static") {
-    // Current behavior: crop to fill, no movement
+    // Fill frame (may crop)
     imgStyle = {
-      width: "100%",
-      height: "100%",
-      objectFit: "cover",
+      ...imgStyle,
+      minWidth: `${100 * imageScale}%`,
+      minHeight: `${100 * imageScale}%`,
+      width: "auto",
+      height: "auto",
     };
   } else if (panMode === "ken-burns") {
-    // Gentle zoom + slight diagonal pan
-    const scale = interpolate(progress, [0, 1], [1.05, 1.18]);
-    const tx = interpolate(progress, [0, 1], [0, -30]);
-    const ty = interpolate(progress, [0, 1], [0, -20]);
+    // Fill frame with slow zoom in
+    const kbScale = interpolate(progress, [0, 1], [1, 1.15]) * imageScale;
+    extraScale = kbScale;
+    panTx = interpolate(progress, [0, 1], [0, -width * 0.03]);
+    panTy = interpolate(progress, [0, 1], [0, -height * 0.02]);
     imgStyle = {
-      width: "100%",
-      height: "100%",
-      objectFit: "cover",
-      transform: `scale(${scale}) translate(${tx}px, ${ty}px)`,
-      transformOrigin: "center",
+      ...imgStyle,
+      minWidth: "100%",
+      minHeight: "100%",
+      width: "auto",
+      height: "auto",
     };
   } else if (panMode === "pan-left-right" || panMode === "pan-right-left") {
-    // Image fits vertically, overflows horizontally, pans
-    const scale = 1.35; // overflow to allow pan
-    const maxPan = width * 0.18;
-    const tx =
-      panMode === "pan-left-right"
-        ? interpolate(progress, [0, 1], [-maxPan, maxPan])
-        : interpolate(progress, [0, 1], [maxPan, -maxPan]);
+    // Fit image HEIGHT to frame; width overflows naturally for wide images.
+    // Pan translates horizontally.
+    const from = panMode === "pan-left-right" ? -panPixelsX : panPixelsX;
+    const to = panMode === "pan-left-right" ? panPixelsX : -panPixelsX;
+    panTx = interpolate(progress, [0, 1], [from, to]);
     imgStyle = {
-      width: "100%",
+      ...imgStyle,
       height: "100%",
-      objectFit: "cover",
-      transform: `scale(${scale}) translateX(${tx}px)`,
-      transformOrigin: "center",
+      width: "auto",
     };
   } else if (panMode === "pan-top-bottom" || panMode === "pan-bottom-top") {
-    const scale = 1.35;
-    const maxPan = height * 0.1;
-    const ty =
-      panMode === "pan-top-bottom"
-        ? interpolate(progress, [0, 1], [-maxPan, maxPan])
-        : interpolate(progress, [0, 1], [maxPan, -maxPan]);
+    // Fit image WIDTH to frame; height overflows naturally for tall images.
+    // Pan translates vertically.
+    const from = panMode === "pan-top-bottom" ? -panPixelsY : panPixelsY;
+    const to = panMode === "pan-top-bottom" ? panPixelsY : -panPixelsY;
+    panTy = interpolate(progress, [0, 1], [from, to]);
     imgStyle = {
+      ...imgStyle,
       width: "100%",
-      height: "100%",
-      objectFit: "cover",
-      transform: `scale(${scale}) translateY(${ty}px)`,
-      transformOrigin: "center",
+      height: "auto",
     };
   }
+
+  // Compose the transform: center image + apply offsets + pan + scale
+  const totalTx = userOffsetX + panTx;
+  const totalTy = userOffsetY + panTy;
+  imgStyle.transform = `translate(calc(-50% + ${totalTx}px), calc(-50% + ${totalTy}px)) scale(${extraScale})`;
+  imgStyle.transformOrigin = "center";
 
   const labelOpacity = interpolate(frame, [10, 20], [0, 1], {
     extrapolateRight: "clamp",
