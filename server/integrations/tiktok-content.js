@@ -258,57 +258,95 @@ async function getUserInfo() {
  * Initialize video upload - Step 1
  * Returns upload URL for the video file
  */
-async function initVideoUpload(videoSize, chunkSize = null) {
+/**
+ * Initialize a video upload.
+ *
+ * TikTok has two init endpoints:
+ *   - /post/publish/video/init/        "Direct Post" — requires the app to be
+ *     separately audited for direct publishing. Sends post_info (title,
+ *     privacy, etc.) so the video goes straight to the user's feed.
+ *   - /post/publish/inbox/video/init/  "Upload to drafts" — only requires the
+ *     video.upload scope. Video lands in the user's TikTok app drafts/inbox;
+ *     they finish posting (caption, sound, cover, privacy) from the app.
+ *
+ * Most apps only have the upload scope audited (not direct publish), so
+ * `mode: 'inbox'` is the safe default and matches the "post to drafts,
+ * finish in app" workflow this project uses. Pass `mode: 'direct'` when
+ * you know the app is audited for direct publishing.
+ */
+async function initVideoUpload(videoSize, {
+  chunkSize = null,
+  title = '',
+  privacyLevel = 'SELF_ONLY',
+  mode = 'inbox'
+} = {}) {
   const tokens = loadTokens();
   if (!tokens || !tokens.open_id) {
     throw new Error('Not authenticated');
   }
 
-  const body = {
-    post_info: {
-      title: '',
-      privacy_level: 'SELF_ONLY', // Start as private, change when publishing
-      disable_duet: false,
-      disable_comment: false,
-      disable_stitch: false
-    },
-    source_info: {
-      source: 'FILE_UPLOAD',
-      video_size: videoSize
-    }
+  // TikTok's FILE_UPLOAD init REQUIRES video_size + chunk_size +
+  // total_chunk_count, otherwise the API answers "The video info is empty".
+  // < 64 MB → single chunk; larger → 10 MB chunks.
+  const MAX_SINGLE_CHUNK = 64 * 1024 * 1024; // 64 MB
+  const DEFAULT_CHUNK    = 10 * 1024 * 1024; // 10 MB
+  let effectiveChunk = chunkSize;
+  if (!effectiveChunk) {
+    effectiveChunk = videoSize <= MAX_SINGLE_CHUNK ? videoSize : DEFAULT_CHUNK;
+  }
+  const totalChunks = Math.ceil(videoSize / effectiveChunk);
+
+  const sourceInfo = {
+    source: 'FILE_UPLOAD',
+    video_size: videoSize,
+    chunk_size: effectiveChunk,
+    total_chunk_count: totalChunks
   };
 
-  if (chunkSize) {
-    body.source_info.chunk_size = chunkSize;
-    body.source_info.total_chunk_count = Math.ceil(videoSize / chunkSize);
-  }
+  // Inbox flow does NOT accept post_info. Direct-post flow requires it.
+  const body = mode === 'direct'
+    ? {
+        post_info: {
+          title: title || '',
+          privacy_level: privacyLevel,
+          disable_duet: false,
+          disable_comment: false,
+          disable_stitch: false
+        },
+        source_info: sourceInfo
+      }
+    : { source_info: sourceInfo };
 
-  return apiRequest('/post/publish/video/init/', 'POST', body);
+  const endpoint = mode === 'direct'
+    ? '/post/publish/video/init/'
+    : '/post/publish/inbox/video/init/';
+
+  return apiRequest(endpoint, 'POST', body);
 }
 
 /**
- * Upload video chunk
+ * Upload a byte range to the TikTok-provided upload URL. TikTok REQUIRES
+ * Content-Range on every PUT, even when the whole file fits in a single chunk.
  */
-async function uploadVideoChunk(uploadUrl, videoBuffer, chunkStart = 0, chunkEnd = null) {
+async function uploadVideoChunk(uploadUrl, videoBuffer, chunkStart = 0, chunkEnd = null, totalSize = null) {
   return new Promise((resolve, reject) => {
     const url = new URL(uploadUrl);
-    const chunk = chunkEnd ? videoBuffer.slice(chunkStart, chunkEnd) : videoBuffer;
+    const end = chunkEnd != null ? chunkEnd : videoBuffer.length;
+    const chunk = videoBuffer.slice(chunkStart, end);
+    const total = totalSize != null ? totalSize : videoBuffer.length;
 
     const headers = {
       'Content-Type': 'video/mp4',
-      'Content-Length': chunk.length
+      'Content-Length': chunk.length,
+      'Content-Range': `bytes ${chunkStart}-${end - 1}/${total}`
     };
-
-    if (chunkEnd) {
-      headers['Content-Range'] = `bytes ${chunkStart}-${chunkEnd - 1}/${videoBuffer.length}`;
-    }
 
     const options = {
       hostname: url.hostname,
       port: 443,
       path: url.pathname + url.search,
       method: 'PUT',
-      headers: headers
+      headers
     };
 
     const req = https.request(options, (res) => {
@@ -355,77 +393,95 @@ async function getPublishStatus(publishId) {
 }
 
 /**
- * Upload and publish a video file
- * @param {string} videoPath - Path to video file
- * @param {string} title - Video title/caption
- * @param {string} privacyLevel - PUBLIC_TO_EVERYONE, MUTUAL_FOLLOW_FRIENDS, SELF_ONLY
+ * Upload a video file to TikTok. The FILE_UPLOAD flow is:
+ *   1. POST /post/publish/video/init/ with post_info + source_info
+ *      → returns { upload_url, publish_id }. Privacy + title are set HERE;
+ *      there is NO second "publish" call.
+ *   2. PUT bytes to upload_url with Content-Range (even for single chunks).
+ *   3. Poll /post/publish/status/fetch/?publish_id=... for PROCESSING/DONE.
+ *
+ * Unaudited apps can only post with privacy_level=SELF_ONLY. Audited apps
+ * can post PUBLIC_TO_EVERYONE / MUTUAL_FOLLOW_FRIENDS / SELF_ONLY.
+ *
+ * @param {string} videoPath      - Local path to the .mp4 file
+ * @param {string} title          - Caption / video title
+ * @param {string} privacyLevel   - PUBLIC_TO_EVERYONE | MUTUAL_FOLLOW_FRIENDS | SELF_ONLY
  */
-async function uploadVideo(videoPath, title, privacyLevel = 'PUBLIC_TO_EVERYONE') {
-  // Read video file
+async function uploadVideo(videoPath, title, privacyLevel = 'PUBLIC_TO_EVERYONE', { mode = 'inbox' } = {}) {
+  if (!fs.existsSync(videoPath)) {
+    throw new Error(`Video file not found: ${videoPath}`);
+  }
   const videoBuffer = fs.readFileSync(videoPath);
   const videoSize = videoBuffer.length;
+  const sizeMb = (videoSize / 1024 / 1024).toFixed(2);
 
-  console.log(`[TikTok Content] Uploading video: ${videoPath} (${(videoSize / 1024 / 1024).toFixed(2)} MB)`);
-
-  // Step 1: Initialize upload
-  const initResult = await initVideoUpload(videoSize);
-
-  if (!initResult.data || !initResult.data.upload_url) {
-    throw new Error('Failed to initialize upload: ' + JSON.stringify(initResult));
+  if (videoSize < 1024 * 1024) {
+    throw new Error(`Video too small (${sizeMb} MB). TikTok requires at least ~1MB.`);
   }
 
+  console.log(`[TikTok Content] Uploading ${videoPath} (${sizeMb} MB, mode=${mode}, privacy=${privacyLevel})`);
+
+  // Step 1 — init (inbox mode = lands in drafts; direct mode = straight to feed)
+  const initResult = await initVideoUpload(videoSize, { title, privacyLevel, mode });
+  if (!initResult?.data?.upload_url || !initResult?.data?.publish_id) {
+    throw new Error('Init failed: ' + JSON.stringify(initResult));
+  }
   const { upload_url, publish_id } = initResult.data;
-  console.log(`[TikTok Content] Upload initialized, publish_id: ${publish_id}`);
+  console.log(`[TikTok Content] Init ok — publish_id=${publish_id}`);
 
-  // Step 2: Upload video
-  await uploadVideoChunk(upload_url, videoBuffer);
-  console.log(`[TikTok Content] Video uploaded`);
+  // Step 2 — PUT the bytes. For < 64 MB we send one request covering the
+  // whole file, with Content-Range: bytes 0-(N-1)/N.
+  const MAX_SINGLE_CHUNK = 64 * 1024 * 1024;
+  if (videoSize <= MAX_SINGLE_CHUNK) {
+    await uploadVideoChunk(upload_url, videoBuffer, 0, videoSize, videoSize);
+    console.log(`[TikTok Content] Bytes uploaded (single chunk)`);
+  } else {
+    const CHUNK = 10 * 1024 * 1024;
+    for (let start = 0; start < videoSize; start += CHUNK) {
+      const end = Math.min(start + CHUNK, videoSize);
+      await uploadVideoChunk(upload_url, videoBuffer, start, end, videoSize);
+      console.log(`[TikTok Content] Chunk uploaded ${start}-${end}/${videoSize}`);
+    }
+  }
 
-  // Step 3: Publish
-  const publishResult = await publishVideo(publish_id, title, privacyLevel);
-  console.log(`[TikTok Content] Video published`);
-
-  return {
-    publish_id,
-    status: publishResult
-  };
+  // Step 3 — return publish_id so the caller can poll status.
+  return { publish_id, uploadUrl: upload_url, sizeBytes: videoSize };
 }
 
 /**
  * Upload video from URL
  */
-async function uploadVideoFromUrl(videoUrl, title, privacyLevel = 'PUBLIC_TO_EVERYONE') {
+async function uploadVideoFromUrl(videoUrl, title, privacyLevel = 'PUBLIC_TO_EVERYONE', { mode = 'inbox' } = {}) {
   const tokens = loadTokens();
   if (!tokens || !tokens.open_id) {
     throw new Error('Not authenticated');
   }
 
-  // IMPORTANT: Unaudited TikTok apps can ONLY post as SELF_ONLY (private)
-  // Until the app passes TikTok's audit, public posts will be rejected with
-  // "content-sharing-guidelines" error. Force SELF_ONLY for now.
-  // To get audited: https://developers.tiktok.com/doc/content-posting-api-get-started
-  const IS_AUDITED = true; // App approved by TikTok (Dec 2025)
-  const effectivePrivacy = IS_AUDITED ? privacyLevel : 'SELF_ONLY';
+  // Inbox flow does NOT accept post_info; direct-post requires it.
+  const sourceInfo = { source: 'PULL_FROM_URL', video_url: videoUrl };
+  const body = mode === 'direct'
+    ? {
+        post_info: {
+          title: title,
+          privacy_level: privacyLevel,
+          disable_duet: false,
+          disable_comment: false,
+          disable_stitch: false
+        },
+        source_info: sourceInfo
+      }
+    : { source_info: sourceInfo };
 
-  if (!IS_AUDITED && privacyLevel !== 'SELF_ONLY') {
-    console.warn('[TikTok] App not audited - forcing SELF_ONLY privacy. Requested:', privacyLevel);
-  }
+  const endpoint = mode === 'direct'
+    ? '/post/publish/video/init/'
+    : '/post/publish/inbox/video/init/';
 
-  const body = {
-    post_info: {
-      title: title,
-      privacy_level: effectivePrivacy,
-      disable_duet: false,
-      disable_comment: false,
-      disable_stitch: false
-    },
-    source_info: {
-      source: 'PULL_FROM_URL',
-      video_url: videoUrl
-    }
+  const result = await apiRequest(endpoint, 'POST', body);
+  return {
+    publish_id: result?.data?.publish_id,
+    mode,
+    raw: result
   };
-
-  return apiRequest('/post/publish/video/init/', 'POST', body);
 }
 
 // Token storage helpers
