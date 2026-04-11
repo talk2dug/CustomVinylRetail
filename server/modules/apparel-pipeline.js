@@ -837,27 +837,30 @@ async function runFullPipeline(collectionCategory, options = {}) {
     console.log('[ApparelPipeline] Step 3: Matching models to designs');
     let models = [];
     try {
-      const modelData = await apiFetch('/api/human-models');
+      // Bump limit so group members beyond the default 100 are included.
+      const modelData = await apiFetch('/api/human-models?limit=10000');
       models = Array.isArray(modelData) ? modelData : (modelData.models || modelData.items || []);
     } catch (err) {
       console.warn('[ApparelPipeline] Could not fetch models:', err.message);
       results.errors.push('Model fetch failed: ' + err.message);
     }
 
-    // Filter to a specific model group if requested
-    if (models.length && options.modelGroupId) {
+    // Filter to a specific model group if requested. Rather than intersecting
+    // the (paginated) human-models response, fetch group members directly so
+    // the user's selection is always honored even if a member is outside the
+    // top 10000.
+    if (options.modelGroupId) {
       try {
         const groupData = await apiFetch(`/api/model-groups/${encodeURIComponent(options.modelGroupId)}`);
-        const memberIds = new Set((groupData.members || []).map(m => m.id));
-        const filtered = models.filter(m => memberIds.has(m.id));
-        if (filtered.length) {
-          console.log(`[ApparelPipeline] Filtered to model group "${groupData.group?.name}": ${filtered.length} of ${models.length} models`);
-          models = filtered;
+        const groupMembers = Array.isArray(groupData.members) ? groupData.members : [];
+        if (groupMembers.length) {
+          console.log(`[ApparelPipeline] Using model group "${groupData.group?.name}": ${groupMembers.length} members`);
+          models = groupMembers;
         } else {
-          console.warn(`[ApparelPipeline] Model group "${options.modelGroupId}" has no matching models, using all ${models.length}`);
+          console.warn(`[ApparelPipeline] Model group "${options.modelGroupId}" has no members, using all ${models.length}`);
         }
       } catch (err) {
-        console.warn('[ApparelPipeline] Model group filter failed, using all models:', err.message);
+        console.warn('[ApparelPipeline] Model group fetch failed, using all models:', err.message);
       }
     }
 
@@ -908,6 +911,12 @@ async function runFullPipeline(collectionCategory, options = {}) {
       };
       if (options.designIds && options.designIds.length) {
         mockupPayload.designIds = options.designIds;
+      }
+      // If the user picked a model group, lock the generator to its members.
+      // This overrides the theme-based style filter above so the user's
+      // selection is never widened by the default heuristics.
+      if (options.modelGroupId) {
+        mockupPayload.modelGroupId = options.modelGroupId;
       }
       const mockupResp = await apiFetch('/api/batch-mockups/generate', {
         method: 'POST',

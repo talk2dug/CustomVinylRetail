@@ -78,8 +78,27 @@ function getDesignsFromCategory(catalog, categoryName) {
 }
 
 async function getModels(filter = {}) {
-  const data = await apiFetch('/api/human-models');
+  // Default limit is 100 — bump high so group members beyond page 1 are seen.
+  const data = await apiFetch('/api/human-models?limit=10000');
   let models = Array.isArray(data) ? data : (data.models || data.items || []);
+
+  // Explicit model ID list takes priority over all other filters.
+  // When a user selects a model group, the pipeline resolves its members
+  // and passes them here so none of the style/theme filters can silently
+  // widen the pool beyond the user's selection.
+  if (Array.isArray(filter.modelIds) && filter.modelIds.length) {
+    const idSet = new Set(filter.modelIds);
+    models = models.filter(m => idSet.has(m.id));
+    // Still apply apparelType/facing guard rails below but skip style/demo filters
+    if (filter.apparelType) {
+      models = models.filter(m => m.apparelType === filter.apparelType);
+    }
+    if (filter.facing) {
+      models = models.filter(m => m.facing === filter.facing);
+    }
+    models = models.filter(m => m.active !== false && m.apparelType);
+    return models;
+  }
 
   // Filter by apparel type
   if (filter.apparelType) {
@@ -421,12 +440,27 @@ async function handleBatchMockupRoute(pathname, req, res, db) {
       const jobId = crypto.randomUUID();
       sendJson({ jobId, status: 'started', message: 'Batch generation started in background' }, 202);
 
+      // If a model group was passed, resolve its members into modelIds so
+      // the generator can lock selection to exactly those models.
+      const mergedFilter = { ...(body.modelFilter || {}) };
+      if (Array.isArray(body.modelIds) && body.modelIds.length) {
+        mergedFilter.modelIds = body.modelIds;
+      } else if (body.modelGroupId) {
+        try {
+          const group = await apiFetch(`/api/model-groups/${encodeURIComponent(body.modelGroupId)}`);
+          const memberIds = (group?.members || []).map(m => m.id).filter(Boolean);
+          if (memberIds.length) mergedFilter.modelIds = memberIds;
+        } catch (err) {
+          console.warn(`[BatchMockup] Could not resolve modelGroupId ${body.modelGroupId}: ${err.message}`);
+        }
+      }
+
       // Run async
       runBatch({
         category: body.category || '95 T Shirt Designs Mega Bundle',
         designIds: body.designIds || null,
         limit: body.limit || 10,
-        modelFilter: body.modelFilter || {},
+        modelFilter: mergedFilter,
         zone: body.zone || 'front-chest',
         size: body.size || 'large',
         delayMs: body.delayMs || 5000
