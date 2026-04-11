@@ -51,7 +51,7 @@
 
     .layout {
       display: grid;
-      grid-template-columns: 320px 1fr 340px;
+      grid-template-columns: 380px 1fr 340px;
       height: calc(100vh - 60px);
       overflow: hidden;
     }
@@ -112,21 +112,17 @@
       overflow-y: auto;
       padding: 12px;
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
+      grid-template-columns: 1fr;
+      gap: 12px;
       align-content: start;
-    }
-    /* Single column on narrow viewports for bigger previews */
-    @media (max-width: 1400px) {
-      .asset-grid { grid-template-columns: 1fr; }
     }
     .asset-card {
       background: var(--bg);
       border: 2px solid var(--border);
-      border-radius: 8px;
+      border-radius: 10px;
       cursor: pointer;
       overflow: hidden;
-      aspect-ratio: 3/4;
+      aspect-ratio: 4/3;
       position: relative;
       transition: all .15s;
     }
@@ -149,10 +145,10 @@
       bottom: 0;
       left: 0;
       right: 0;
-      padding: 6px 8px;
-      background: linear-gradient(transparent, rgba(0,0,0,0.85));
+      padding: 10px 12px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.9));
       color: white;
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
