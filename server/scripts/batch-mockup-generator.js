@@ -21,8 +21,12 @@ const APP_ROOT = path.resolve(__dirname, '..', '..');
 const ENV_PATH = path.join(APP_ROOT, '.env');
 if (fs.existsSync(ENV_PATH)) require('dotenv').config({ path: ENV_PATH });
 
-const { PIPELINE_OUTPUT_DIR } = require('../paths');
-const LIBRARY_ROOT = path.join(APP_ROOT, 'web', 'library');
+const { PIPELINE_OUTPUT_DIR, WEBSIT } = require('../paths');
+// nginx serves https://<host>/library/* from /mnt/websit/*, so this is the
+// authoritative location for design assets — not the legacy web/library.
+// Keep the legacy path as a fallback for any lingering dev-only assets.
+const LIBRARY_ROOT = WEBSIT;
+const LEGACY_LIBRARY_ROOT = path.join(APP_ROOT, 'web', 'library');
 const OUTPUT_DIR = PIPELINE_OUTPUT_DIR;
 const CATALOG_MOCKUP_DIR = path.join(LIBRARY_ROOT, 'Mockups', 'uploads', 'previews');
 const CATALOG_PATH = path.join(APP_ROOT, 'web', 'catalog.json');
@@ -126,7 +130,9 @@ function resolveToLocalPath(urlOrPath) {
   // Try multiple resolution strategies
   const candidates = [];
   if (p.startsWith('/library/')) {
-    candidates.push(path.join(LIBRARY_ROOT, p.slice('/library/'.length)));
+    const rel = p.slice('/library/'.length);
+    candidates.push(path.join(LIBRARY_ROOT, rel));        // /mnt/websit/...
+    candidates.push(path.join(LEGACY_LIBRARY_ROOT, rel)); // legacy web/library
     candidates.push(path.join(APP_ROOT, 'web', p.slice(1)));
   } else if (p.startsWith('/')) {
     candidates.push(path.join(APP_ROOT, 'web', p.slice(1)));
