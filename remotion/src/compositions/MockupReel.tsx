@@ -55,6 +55,10 @@ export const mockupReelSchema = z.object({
   audioUrl: z.string().default(""),
   /** Audio volume (0-1) */
   audioVolume: z.number().min(0).max(1).default(1),
+  /** Optional CTA URL displayed as a banner at the bottom of slides */
+  ctaUrl: z.string().default(""),
+  /** CTA banner label text (e.g. "Shop Now:") */
+  ctaLabel: z.string().default("Shop Now:"),
   /** Auto-populated: mockup image URLs (from calculateMetadata) */
   mockupImages: z.array(z.string()).default([]),
   /** Auto-populated: labels for each mockup */
@@ -106,6 +110,8 @@ export const MockupReel: React.FC<Props> = ({
   itemEffects = [],
   audioUrl = "",
   audioVolume = 1,
+  ctaUrl = "",
+  ctaLabel = "Shop Now:",
 }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
@@ -198,9 +204,16 @@ export const MockupReel: React.FC<Props> = ({
         );
       })}
 
+      {/* CTA URL banner — appears after hook, stays until outro */}
+      {ctaUrl && (
+        <Sequence from={mockupStart} durationInFrames={durationInFrames - mockupStart - 45}>
+          <CTABanner url={ctaUrl} label={ctaLabel} accent={accent} />
+        </Sequence>
+      )}
+
       {/* End card */}
       <Sequence from={durationInFrames - 45}>
-        <EndCard brandName={brandName} location={location} accent={accent} />
+        <EndCard brandName={brandName} location={location} accent={accent} ctaUrl={ctaUrl} ctaLabel={ctaLabel} />
       </Sequence>
     </AbsoluteFill>
   );
@@ -429,16 +442,21 @@ const EndCard: React.FC<{
   brandName: string;
   location: string;
   accent: string;
-}> = ({ brandName, location, accent }) => {
+  ctaUrl?: string;
+  ctaLabel?: string;
+}> = ({ brandName, location, accent, ctaUrl = "", ctaLabel = "Shop Now:" }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   const scale = spring({ frame, fps, config: { damping: 10 } });
 
+  // Strip protocol from URL for display
+  const displayUrl = ctaUrl.replace(/^https?:\/\//, "");
+
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: "rgba(0,0,0,0.85)",
+        backgroundColor: "rgba(0,0,0,0.9)",
         justifyContent: "center",
         alignItems: "center",
         transform: `scale(${scale})`,
@@ -475,6 +493,106 @@ const EndCard: React.FC<{
       >
         {location}
       </p>
+      {ctaUrl && (
+        <div
+          style={{
+            marginTop: 40,
+            padding: "18px 40px",
+            backgroundColor: accent,
+            borderRadius: 50,
+            boxShadow: `0 8px 30px ${accent}60`,
+          }}
+        >
+          <div
+            style={{
+              color: "white",
+              fontSize: 20,
+              fontFamily: "Arial, sans-serif",
+              fontWeight: 600,
+              opacity: 0.8,
+              marginBottom: 4,
+            }}
+          >
+            {ctaLabel}
+          </div>
+          <div
+            style={{
+              color: "white",
+              fontSize: 34,
+              fontFamily: "Arial, sans-serif",
+              fontWeight: 800,
+              letterSpacing: 0.5,
+            }}
+          >
+            {displayUrl}
+          </div>
+        </div>
+      )}
     </AbsoluteFill>
+  );
+};
+
+const CTABanner: React.FC<{
+  url: string;
+  label: string;
+  accent: string;
+}> = ({ url, label, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const enterSpring = spring({ frame, fps, config: { damping: 12 } });
+  const ty = interpolate(enterSpring, [0, 1], [80, 0]);
+  const opacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
+  // Subtle pulse
+  const pulse = 1 + Math.sin(frame * 0.06) * 0.015;
+  const displayUrl = url.replace(/^https?:\/\//, "");
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 60,
+        left: 0,
+        right: 0,
+        display: "flex",
+        justifyContent: "center",
+        transform: `translateY(${ty}px) scale(${pulse})`,
+        opacity,
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          padding: "14px 32px",
+          backgroundColor: accent,
+          borderRadius: 40,
+          boxShadow: `0 8px 30px ${accent}80`,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <span
+          style={{
+            color: "white",
+            fontSize: 22,
+            fontFamily: "Arial, sans-serif",
+            fontWeight: 700,
+            opacity: 0.9,
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            color: "white",
+            fontSize: 26,
+            fontFamily: "Arial, sans-serif",
+            fontWeight: 900,
+          }}
+        >
+          {displayUrl}
+        </span>
+      </div>
+    </div>
   );
 };

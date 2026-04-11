@@ -810,6 +810,24 @@
           <span id="audio-name"></span>
           <button class="clear" id="audio-clear">✕</button>
         </div>
+
+        <h3>Shopify Landing Page</h3>
+        <div class="field">
+          <label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="field-tiktokShop" style="accent-color: var(--accent); width: auto;">
+            <span>Add products to TikTok Shop</span>
+          </label>
+        </div>
+        <button class="btn btn-secondary" id="publish-btn" style="margin-top: 0;">🛍 Publish Selected to Shopify</button>
+        <div id="publish-status" style="display:none; margin-top: 8px; padding: 10px; border-radius: 6px; font-size: 11px;"></div>
+        <div class="field" style="margin-top: 12px;">
+          <label>CTA URL (shown in video)</label>
+          <input type="text" id="field-ctaUrl" placeholder="https://blueridgecustomco.com/products/...">
+        </div>
+        <div class="field">
+          <label>CTA Label</label>
+          <input type="text" id="field-ctaLabel" value="Shop Now:">
+        </div>
       </div>
       <div class="render-bar">
         <button class="btn" id="render-btn">Render Reel</button>
@@ -1418,6 +1436,8 @@
     const imageOffsetY = Number(document.getElementById('field-offsetY').value);
     const slideSeconds = Number(document.getElementById('field-slideSeconds').value);
     const panSpeed = Number(document.getElementById('field-panSpeed').value);
+    const ctaUrl = document.getElementById('field-ctaUrl').value.trim();
+    const ctaLabel = document.getElementById('field-ctaLabel').value.trim() || 'Shop Now:';
 
     // Prefix URLs with current origin so render context can resolve them
     const origin = window.location.protocol + '//' + window.location.host;
@@ -1443,6 +1463,8 @@
         panSpeed,
         audioUrl: state.audioUrl ? absoluteUrl(state.audioUrl) : '',
         audioVolume: 1,
+        ctaUrl,
+        ctaLabel,
         mockupImages: state.selected.map(s => absoluteUrl(s.asset.url)),
         labels: state.selected.map(s => s.asset.label),
         // Per-item effect overrides
@@ -1564,6 +1586,82 @@
     }
   });
 
+  // ── Shopify publish ──
+  document.getElementById('publish-btn').addEventListener('click', async () => {
+    const apparelItems = state.selected.filter(s => s.asset.source === 'apparel');
+    if (apparelItems.length === 0) {
+      alert('Select apparel mockup items to publish. (Custom-art and footage are not supported yet.)');
+      return;
+    }
+    const filenames = apparelItems.map(s => {
+      const u = s.asset.url.split('/').pop();
+      return u.split('?')[0];
+    });
+
+    const btn = document.getElementById('publish-btn');
+    const status = document.getElementById('publish-status');
+    const includeTikTokShop = document.getElementById('field-tiktokShop').checked;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Resolving designs...';
+    status.style.display = 'block';
+    status.style.background = 'var(--surface-2)';
+    status.style.color = 'var(--muted)';
+    status.textContent = 'Matching mockups to catalog designs...';
+
+    try {
+      const resolveRes = await fetch('/api/reel-studio/resolve-designs', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filenames }),
+      });
+      const resolveData = await resolveRes.json();
+      const designIds = (resolveData.resolved || [])
+        .filter(r => r.designId)
+        .map(r => r.designId);
+
+      if (designIds.length === 0) {
+        throw new Error('Could not match any mockups to catalog designs');
+      }
+
+      const unmatched = apparelItems.length - designIds.length;
+      status.textContent = `Publishing ${designIds.length} design(s)${unmatched ? ` (${unmatched} skipped)` : ''}...`;
+      btn.innerHTML = '<span class="spinner"></span>Publishing to Shopify...';
+
+      const pubRes = await fetch('/api/reel-studio/publish-shopify', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ designIds, includeTikTokShop }),
+      });
+      const pubData = await pubRes.json();
+
+      if (!pubRes.ok || !pubData.success) {
+        throw new Error(pubData.error || 'Publish failed');
+      }
+
+      document.getElementById('field-ctaUrl').value = pubData.primaryUrl;
+      state.publishedProducts = pubData.products;
+      state.primaryUrl = pubData.primaryUrl;
+
+      status.style.background = 'rgba(16, 185, 129, 0.2)';
+      status.style.color = '#6ee7b7';
+      const tiktokMsg = includeTikTokShop
+        ? ` • ${pubData.tiktokShopAdded} added to TikTok Shop`
+        : '';
+      status.innerHTML = `
+        ✓ Published ${pubData.published} product(s)${tiktokMsg}<br>
+        <span style="font-size: 10px; opacity: 0.7;">CTA URL: ${pubData.primaryUrl}</span>
+      `;
+    } catch (e) {
+      status.style.background = 'rgba(239, 68, 68, 0.2)';
+      status.style.color = '#fca5a5';
+      status.textContent = '✗ ' + e.message;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '🛍 Publish Selected to Shopify';
+    }
+  });
+
   // ── TikTok upload ──
   async function checkTikTokStatus() {
     try {
@@ -1578,8 +1676,11 @@
   document.getElementById('tiktok-btn').addEventListener('click', async () => {
     if (!state.lastRenderFilename) return alert('No rendered video to upload');
 
-    // Ask for title and privacy
-    const title = prompt('Caption for TikTok:', document.getElementById('field-hookText').value);
+    // Build default caption: hook text + CTA URL
+    const hook = document.getElementById('field-hookText').value;
+    const cta = document.getElementById('field-ctaUrl').value.trim();
+    const defaultCaption = cta ? `${hook}\n\n🛍 ${cta}` : hook;
+    const title = prompt('Caption for TikTok:', defaultCaption);
     if (!title) return;
 
     const privacyChoice = confirm('Post PUBLIC? Click OK for public, Cancel for SELF_ONLY (private draft)') ? 'PUBLIC_TO_EVERYONE' : 'SELF_ONLY';

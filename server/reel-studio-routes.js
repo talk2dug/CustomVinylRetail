@@ -13,8 +13,47 @@ const { renderVideo, OUT_DIR } = require('../remotion/render-api');
 
 const AUDIO_DIR = path.join(__dirname, '..', 'data', 'reel-studio-audio');
 const HISTORY_FILE = path.join(__dirname, '..', 'data', 'reel-studio-history.json');
+const CATALOG_PATH = path.join(__dirname, '..', 'web', 'catalog.json');
 
 if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR, { recursive: true });
+
+// Cached catalog for design lookups
+let _catalogCache = null;
+let _catalogCacheTime = 0;
+function loadCatalog() {
+  const now = Date.now();
+  if (_catalogCache && now - _catalogCacheTime < 60000) return _catalogCache;
+  try {
+    _catalogCache = JSON.parse(fs.readFileSync(CATALOG_PATH, 'utf8'));
+    _catalogCacheTime = now;
+    return _catalogCache;
+  } catch (e) {
+    console.error('[reel-studio] catalog load failed:', e);
+    return { categories: [] };
+  }
+}
+
+/**
+ * Resolve apparel mockup filenames to design IDs.
+ * Filename format: mockup_<designId>_hm_<modelId>_<timestamp>.jpg
+ * where designId is typically "slug-name-<timestamp>" (e.g. sarcastic-moods-065-1762126207472)
+ */
+function resolveMockupToDesignId(filename) {
+  if (!filename) return null;
+  const m = filename.match(/^mockup_(.+?)_hm_/);
+  if (!m) return null;
+  const extracted = m[1];
+  // Try exact match against catalog
+  const catalog = loadCatalog();
+  for (const cat of (catalog.categories || [])) {
+    for (const design of (cat.designs || [])) {
+      if (design.id === extracted) return { designId: design.id, category: cat.name };
+      // Fallback: prefix match (mockup might include only first 30 chars)
+      if (design.id.startsWith(extracted.slice(0, 30))) return { designId: design.id, category: cat.name };
+    }
+  }
+  return null;
+}
 
 function loadHistory() {
   try {
@@ -168,6 +207,98 @@ function handleReelStudioRoute(pathname, req, res) {
   // GET /api/reel-studio/history — list past renders
   if (pathname === '/api/reel-studio/history' && req.method === 'GET') {
     sendJson(res, 200, { history: loadHistory() });
+    return true;
+  }
+
+  // POST /api/reel-studio/resolve-designs — mockup filenames → design IDs
+  if (pathname === '/api/reel-studio/resolve-designs' && req.method === 'POST') {
+    parseBody(req).then((body) => {
+      const { filenames } = body;
+      if (!Array.isArray(filenames)) return sendError(res, 400, 'filenames array required');
+      const resolved = filenames.map(fn => {
+        const match = resolveMockupToDesignId(fn);
+        return { filename: fn, ...(match || { designId: null }) };
+      });
+      sendJson(res, 200, { resolved });
+    }).catch(() => sendError(res, 400, 'Invalid request body'));
+    return true;
+  }
+
+  // POST /api/reel-studio/publish-shopify — publish designs to Shopify (optional TikTok Shop)
+  if (pathname === '/api/reel-studio/publish-shopify' && req.method === 'POST') {
+    parseBody(req).then(async (body) => {
+      const { designIds, includeTikTokShop = false, dryRun = false } = body;
+      if (!Array.isArray(designIds) || designIds.length === 0) {
+        return sendError(res, 400, 'designIds array required');
+      }
+
+      try {
+        console.log(`[reel-studio] Publishing ${designIds.length} design(s) to Shopify (TikTok Shop: ${includeTikTokShop})`);
+        const { publishBatch } = require('./scripts/shopify-apparel-publisher');
+        const result = await publishBatch({
+          designIds,
+          limit: designIds.length,
+          dryRun,
+          delayMs: 1500,
+        });
+
+        // Extract product URLs
+        const STORE_BASE = process.env.SHOPIFY_STORE_URL || 'https://blueridgecustomco.com';
+        const products = (result.results || [])
+          .filter(r => r.handle && !r.error)
+          .map(r => ({
+            designId: r.designId,
+            title: r.title,
+            shopifyId: r.shopifyId,
+            handle: r.handle,
+            url: `${STORE_BASE}/products/${r.handle}`,
+          }));
+
+        // Optionally add to TikTok Shop publication
+        let tiktokShopAdded = 0;
+        if (includeTikTokShop && products.length > 0 && !dryRun) {
+          try {
+            const shopify = require('./integrations/shopify');
+            const publications = await shopify.getPublications();
+            const tiktokPub = publications?.find(p =>
+              (p.name || '').toLowerCase().includes('tiktok')
+            );
+            if (tiktokPub) {
+              for (const product of products) {
+                try {
+                  await shopify.publishToPublications(product.shopifyId, [tiktokPub.id]);
+                  tiktokShopAdded++;
+                } catch (err) {
+                  console.warn('[reel-studio] TikTok Shop publish failed for', product.title, err.message);
+                }
+              }
+            } else {
+              console.warn('[reel-studio] No TikTok Shop publication found');
+            }
+          } catch (err) {
+            console.error('[reel-studio] TikTok Shop integration failed:', err);
+          }
+        }
+
+        // Build primary CTA URL (use collection URL for multi-item, product URL for single)
+        const primaryUrl = products.length === 1
+          ? products[0].url
+          : `${STORE_BASE}/collections/apparel`;
+
+        sendJson(res, 200, {
+          success: true,
+          published: products.length,
+          failed: result.failed || 0,
+          products,
+          primaryUrl,
+          tiktokShopAdded,
+          summary: result,
+        });
+      } catch (e) {
+        console.error('[reel-studio] publish failed:', e);
+        sendError(res, 500, e.message);
+      }
+    }).catch(() => sendError(res, 400, 'Invalid request body'));
     return true;
   }
 

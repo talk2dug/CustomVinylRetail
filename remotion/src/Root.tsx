@@ -118,6 +118,8 @@ export const RemotionRoot: React.FC = () => {
           panSpeed: 1,
           audioUrl: "",
           audioVolume: 1,
+          ctaUrl: "",
+          ctaLabel: "Shop Now:",
           mockupImages: [] as string[],
           labels: [] as string[],
           itemEffects: [] as Array<{
