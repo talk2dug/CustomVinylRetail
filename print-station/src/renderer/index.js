@@ -6275,7 +6275,7 @@ function renderCampaignItems() {
   if (!tbody) return;
   const items = state.campaign.items;
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan=”6” class=”placeholder”>Use “Add to campaign” in Catalog to add items.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="placeholder">Use "Add to campaign" in Catalog to add items.</td></tr>';
     return;
   }
   tbody.innerHTML = items
@@ -6291,17 +6291,17 @@ function renderCampaignItems() {
         imgSrc = imgSrc.replace('/api/library/', '/api/library-black-bg/');
       }
       const imgHtml = imgSrc
-        ? `<img src=”${escapeHtml(imgSrc)}” alt=”${safeName}” style=”max-height:56px;border-radius:6px;border:1px solid var(--border);background:#000;object-fit:contain;”/>`
-        : '<span class=”muted” style=”font-size:12px;”>No image</span>';
+        ? `<img src="${escapeHtml(imgSrc)}" alt="${safeName}" style="max-height:56px;border-radius:6px;border:1px solid var(--border);background:#000;object-fit:contain;"/>`
+        : '<span class="muted" style="font-size:12px;">No image</span>';
       const typeLabel = { tshirt: 'T-shirt', hoodie: 'Hoodie', sticker: 'Sticker', 'metal-print': 'Metal Print', 'sticker-pack': 'Sticker Pack' }[item.productType] || item.productType || 'T-shirt';
       return `
-        <tr data-index=”${idx}” data-uid=”${item.uid}”>
-          <td><input type=”checkbox” class=”campaign-select-item” data-uid=”${item.uid}” ${selected ? 'checked' : ''}></td>
-          <td><div style=”display:flex;align-items:center;justify-content:center;”>${imgHtml}</div></td>
-          <td><input type=”text” class=”campaign-name” value=”${safeName}” style=”width:100%;”></td>
-          <td><span style=”font-size:12px;”>${escapeHtml(typeLabel)}</span></td>
-          <td><input type=”text” class=”campaign-price” inputmode=”decimal” value=”${escapeHtml(String(price))}” placeholder=”0.00” style=”width:70px;”></td>
-          <td><button type=”button” class=”danger campaign-remove” style=”padding:2px 8px;font-size:12px;” title=”Remove”>x</button></td>
+        <tr data-index="${idx}" data-uid="${item.uid}">
+          <td><input type="checkbox" class="campaign-select-item" data-uid="${item.uid}" ${selected ? 'checked' : ''}></td>
+          <td><div style="display:flex;align-items:center;justify-content:center;">${imgHtml}</div></td>
+          <td><input type="text" class="campaign-name" value="${safeName}" style="width:100%;"></td>
+          <td><span style="font-size:12px;">${escapeHtml(typeLabel)}</span></td>
+          <td><input type="text" class="campaign-price" inputmode="decimal" value="${escapeHtml(String(price))}" placeholder="0.00" style="width:70px;"></td>
+          <td><button type="button" class="danger campaign-remove" style="padding:2px 8px;font-size:12px;" title="Remove">x</button></td>
         </tr>
       `;
     })
