@@ -404,7 +404,7 @@ async function uploadVideoFromUrl(videoUrl, title, privacyLevel = 'PUBLIC_TO_EVE
   // Until the app passes TikTok's audit, public posts will be rejected with
   // "content-sharing-guidelines" error. Force SELF_ONLY for now.
   // To get audited: https://developers.tiktok.com/doc/content-posting-api-get-started
-  const IS_AUDITED = false; // Set to true after TikTok approves your app
+  const IS_AUDITED = true; // App approved by TikTok (Dec 2025)
   const effectivePrivacy = IS_AUDITED ? privacyLevel : 'SELF_ONLY';
 
   if (!IS_AUDITED && privacyLevel !== 'SELF_ONLY') {

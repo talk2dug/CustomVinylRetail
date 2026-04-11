@@ -572,6 +572,16 @@
     .btn-secondary:hover:not(:disabled) {
       background: var(--border);
     }
+    .btn-tiktok {
+      background: linear-gradient(135deg, #000 0%, #25F4EE 50%, #FE2C55 100%);
+      color: white;
+      margin-top: 8px;
+      border: none;
+    }
+    .btn-tiktok:hover:not(:disabled) {
+      background: linear-gradient(135deg, #111 0%, #25F4EE 50%, #FE2C55 100%);
+      transform: translateY(-1px);
+    }
     .audio-upload {
       position: relative;
     }
@@ -803,7 +813,12 @@
       </div>
       <div class="render-bar">
         <button class="btn" id="render-btn">Render Reel</button>
+        <button class="btn btn-tiktok" id="tiktok-btn" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle; margin-right:6px;"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.5a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.05z"/></svg>
+          Post to TikTok
+        </button>
         <button class="btn btn-secondary" id="download-btn" style="display:none;">Download</button>
+        <div id="tiktok-status" style="display:none; margin-top: 10px; padding: 10px; border-radius: 6px; font-size: 11px; text-align: center;"></div>
       </div>
     </aside>
   </div>
@@ -1527,6 +1542,9 @@
       status.className = 'preview-status success';
       status.textContent = `✓ Rendered in ${(data.durationMs / 1000).toFixed(1)}s`;
       document.getElementById('download-btn').style.display = 'block';
+      document.getElementById('tiktok-btn').style.display = 'block';
+      // Remember the server-side path for TikTok upload
+      state.lastRenderFilename = data.filename;
       loadHistory();
     } catch (e) {
       status.className = 'preview-status error';
@@ -1543,6 +1561,72 @@
       a.href = state.lastVideoUrl;
       a.download = 'reel-' + Date.now() + '.mp4';
       a.click();
+    }
+  });
+
+  // ── TikTok upload ──
+  async function checkTikTokStatus() {
+    try {
+      const res = await fetch('/api/tiktok-content/status', { headers: { 'x-api-key': apiKey } });
+      const data = await res.json();
+      return data;
+    } catch (e) {
+      return { connected: false };
+    }
+  }
+
+  document.getElementById('tiktok-btn').addEventListener('click', async () => {
+    if (!state.lastRenderFilename) return alert('No rendered video to upload');
+
+    // Ask for title and privacy
+    const title = prompt('Caption for TikTok:', document.getElementById('field-hookText').value);
+    if (!title) return;
+
+    const privacyChoice = confirm('Post PUBLIC? Click OK for public, Cancel for SELF_ONLY (private draft)') ? 'PUBLIC_TO_EVERYONE' : 'SELF_ONLY';
+
+    const btn = document.getElementById('tiktok-btn');
+    const status = document.getElementById('tiktok-status');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Checking TikTok auth...';
+    status.style.display = 'block';
+    status.style.background = 'var(--surface-2)';
+    status.style.color = 'var(--muted)';
+    status.textContent = 'Checking TikTok connection...';
+
+    const authStatus = await checkTikTokStatus();
+    if (!authStatus.connected) {
+      status.style.background = 'rgba(239, 68, 68, 0.2)';
+      status.style.color = '#fca5a5';
+      status.innerHTML = `Not connected to TikTok. <a href="/oauth/tiktok-content?key=${encodeURIComponent(apiKey)}" target="_blank" style="color: #fbbf24;">Click here to authenticate</a>, then try again.`;
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle; margin-right:6px;"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.5a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.05z"/></svg>Post to TikTok';
+      return;
+    }
+
+    btn.innerHTML = '<span class="spinner"></span>Uploading to TikTok...';
+    status.textContent = 'Uploading video to TikTok (this takes 30-90s)...';
+
+    try {
+      // Server-side path to the rendered file
+      const videoPath = `/home/ubuntu/vinylApp/remotion/out/${state.lastRenderFilename}`;
+      const res = await fetch('/api/tiktok-content/upload-video', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoPath, title, privacyLevel: privacyChoice }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Upload failed');
+      status.style.background = 'rgba(16, 185, 129, 0.2)';
+      status.style.color = '#6ee7b7';
+      const where = privacyChoice === 'PUBLIC_TO_EVERYONE' ? 'posted publicly' : 'saved as a private draft';
+      status.innerHTML = `✓ Video ${where}! Check your TikTok app. <span style="font-size:10px; opacity:0.7;">publish_id: ${data.result?.publish_id || 'n/a'}</span>`;
+    } catch (e) {
+      status.style.background = 'rgba(239, 68, 68, 0.2)';
+      status.style.color = '#fca5a5';
+      status.textContent = '✗ ' + e.message;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle; margin-right:6px;"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.5a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.05z"/></svg>Post to TikTok';
     }
   });
 
