@@ -18555,14 +18555,24 @@ Keep it concise and actionable.`;
   }
 
   // Serve apparel mockup images (fallback for local rendering; nginx handles production)
+  // Note: the pipeline/batch generator writes into PIPELINE_OUTPUT_DIR
+  // (/mnt/dbFiles/apparel-pipeline). Fall back to the legacy /mnt/dbFiles/apparel-mockups
+  // location only if the file isn't found in the pipeline dir.
   if (parsedUrl.pathname.startsWith('/apparel-mockups/') && req.method === 'GET') {
     const filename = decodeURIComponent(parsedUrl.pathname.replace('/apparel-mockups/', ''));
-    const filePath = require('path').join('/mnt/dbFiles/apparel-mockups', filename);
-    if (!filePath.startsWith('/mnt/dbFiles/apparel-mockups/')) {
-      res.writeHead(403); res.end(); return;
-    }
+    if (filename.includes('..')) { res.writeHead(403); res.end(); return; }
+    const pathMod = require('path');
+    const { PIPELINE_OUTPUT_DIR } = require('./paths');
+    const primaryPath = pathMod.join(PIPELINE_OUTPUT_DIR, filename);
+    const legacyPath = pathMod.join('/mnt/dbFiles/apparel-mockups', filename);
     const fs = require('fs');
-    if (!fs.existsSync(filePath)) { res.writeHead(404); res.end(); return; }
+    let filePath = null;
+    if (primaryPath.startsWith(PIPELINE_OUTPUT_DIR + '/') && fs.existsSync(primaryPath)) {
+      filePath = primaryPath;
+    } else if (legacyPath.startsWith('/mnt/dbFiles/apparel-mockups/') && fs.existsSync(legacyPath)) {
+      filePath = legacyPath;
+    }
+    if (!filePath) { res.writeHead(404); res.end(); return; }
     const stat = fs.statSync(filePath);
     const ext = require('path').extname(filename).toLowerCase();
     const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
