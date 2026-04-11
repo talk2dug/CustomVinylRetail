@@ -774,6 +774,10 @@
           <textarea id="field-artExplainer" rows="2">Every detail pressed into metal.
 Made to live in the light.</textarea>
         </div>
+        <div class="field">
+          <label>Hashtags (5 max — TikTok rule) <span class="val" id="hashtag-count">0/5</span></label>
+          <textarea id="field-hashtags" rows="2" placeholder="#BlueRidgeCustomCo #AshevilleNC ..."></textarea>
+        </div>
 
         <h3>Colors</h3>
         <div class="color-row">
@@ -1229,6 +1233,25 @@ Made to live in the light.</textarea>
   bindSliderDisplay('field-offsetY', 'val-offy', (v) => v + '%');
   bindSliderDisplay('field-slideSeconds', 'val-dur', (v) => Number(v).toFixed(1) + 's');
   bindSliderDisplay('field-panSpeed', 'val-speed', (v) => Number(v).toFixed(2) + 'x');
+
+  // Live hashtag counter
+  function parseHashtags(text) {
+    return (text || '')
+      .split(/\s+/)
+      .map(t => t.trim())
+      .filter(t => t.startsWith('#') && t.length > 1)
+      .slice(0, 20);
+  }
+  function updateHashtagCount() {
+    const input = document.getElementById('field-hashtags');
+    const counter = document.getElementById('hashtag-count');
+    if (!input || !counter) return;
+    const tags = parseHashtags(input.value);
+    counter.textContent = `${tags.length}/5`;
+    counter.style.color = tags.length === 5 ? '#6ee7b7' : tags.length > 5 ? '#fca5a5' : 'var(--accent)';
+  }
+  document.getElementById('field-hashtags').addEventListener('input', updateHashtagCount);
+  updateHashtagCount();
 
   // ── Live canvas preview ──
   state.previewMode = 'live';
@@ -1773,6 +1796,11 @@ Made to live in the light.</textarea>
         state.copyData = copy;
         renderSelected();
       }
+      // Write hashtags
+      if (copy.hashtags && Array.isArray(copy.hashtags)) {
+        document.getElementById('field-hashtags').value = copy.hashtags.join(' ');
+        updateHashtagCount();
+      }
 
       status.style.background = 'rgba(16, 185, 129, 0.2)';
       status.style.color = '#6ee7b7';
@@ -1877,10 +1905,14 @@ Made to live in the light.</textarea>
   document.getElementById('tiktok-btn').addEventListener('click', async () => {
     if (!state.lastRenderFilename) return alert('No rendered video to upload');
 
-    // Build default caption: hook text + CTA URL
+    // Build default caption: hook + CTA URL + 5 hashtags
     const hook = document.getElementById('field-hookText').value;
     const cta = document.getElementById('field-ctaUrl').value.trim();
-    const defaultCaption = cta ? `${hook}\n\n🛍 ${cta}` : hook;
+    const rawTags = document.getElementById('field-hashtags').value;
+    const tags = parseHashtags(rawTags).slice(0, 5).join(' ');
+    let defaultCaption = hook;
+    if (cta) defaultCaption += `\n\n🛍 ${cta}`;
+    if (tags) defaultCaption += `\n\n${tags}`;
     const title = prompt('Caption for TikTok:', defaultCaption);
     if (!title) return;
 

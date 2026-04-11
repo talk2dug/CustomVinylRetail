@@ -52,14 +52,22 @@ Output ONLY valid JSON (no markdown, no explanation) matching this exact shape:
   "items": [
     { "caption": "max 20 chars", "subtitle": "max 25 chars" },
     ...one entry per design in order
-  ]
+  ],
+  "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"]
 }
 
 Rules:
 - Be direct, avoid generic phrases like "check out"
 - Reference ${LOCATION} or "local" in the outro when it fits
-- No hashtags, no emojis
-- Captions should feel like hand-written titles, not descriptions`;
+- No hashtags in hook/outro/captions/subtitles text fields, no emojis
+- Captions should feel like hand-written titles, not descriptions
+
+Hashtag strategy (EXACTLY 5 hashtags — TikTok 5-tag rule):
+- 1 branded: #BlueRidgeCustomCo
+- 1 location: #AshevilleNC or #828
+- 1 broad/trending: e.g. #tiktokmademebuyit, #smallbusiness, #apparel
+- 2 niche: specific to theme/mood/keywords (e.g. #sarcasticshirts, #motoculture, #outdoorwear)
+- Lowercase, no spaces, must start with #`;
 
   try {
     const text = await ollamaClient.generate(prompt, {
@@ -111,14 +119,22 @@ Output ONLY valid JSON (no markdown, no explanation):
   "artExplainer": "2 short lines, 40 chars each, about the art",
   "whyMetal": "one sentence, max 80 chars, what makes metal special",
   "ctaText": "short action, 2-3 words",
-  "outro": "max 30 chars, tagline"
+  "outro": "max 30 chars, tagline",
+  "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"]
 }
 
 Rules:
 - Be evocative, not salesy
 - Reference craft, detail, permanence, or ${LOCATION} when it fits
-- No hashtags, no emojis
-- Use short, declarative sentences`;
+- No hashtags in hook/outro text fields, no emojis
+- Use short, declarative sentences
+
+Hashtag strategy (EXACTLY 5 hashtags — TikTok 5-tag rule):
+- 1 branded: #BlueRidgeCustomCo
+- 1 location: #AshevilleNC or #828
+- 1 broad/art-related: e.g. #metalprint, #wallart, #homedecor
+- 2 niche: specific to theme/subject (e.g. #motorsport, #mountainbiking, #carart)
+- Lowercase, no spaces, must start with #`;
 
   try {
     const text = await ollamaClient.generate(prompt, {
@@ -154,6 +170,13 @@ function validateApparelCopy(obj, itemCount) {
     outro: String(obj.outro || `Made in ${LOCATION}`).slice(0, 35),
     ctaText: String(obj.ctaText || 'Shop Now').slice(0, 20),
     items: [],
+    hashtags: normalizeHashtags(obj.hashtags, [
+      '#BlueRidgeCustomCo',
+      '#AshevilleNC',
+      '#smallbusiness',
+      '#apparel',
+      '#tiktokmademebuyit',
+    ]),
   };
   const items = Array.isArray(obj.items) ? obj.items : [];
   for (let i = 0; i < itemCount; i++) {
@@ -174,7 +197,50 @@ function validateMetalCopy(obj) {
     whyMetal: String(obj.whyMetal || 'Museum-grade metal reveals depth and light nothing else can.').slice(0, 100),
     ctaText: String(obj.ctaText || 'Shop Now').slice(0, 20),
     outro: String(obj.outro || `${LOCATION} Studio`).slice(0, 35),
+    hashtags: normalizeHashtags(obj.hashtags, [
+      '#BlueRidgeCustomCo',
+      '#AshevilleNC',
+      '#metalprint',
+      '#wallart',
+      '#homedecor',
+    ]),
   };
+}
+
+/**
+ * Normalize hashtags: lowercase, prefix #, strip spaces, exactly 5.
+ * Falls back to provided defaults if fewer than 5 valid tags.
+ */
+function normalizeHashtags(input, defaults) {
+  const raw = Array.isArray(input) ? input : [];
+  const cleaned = [];
+  const seen = new Set();
+  for (const tag of raw) {
+    if (typeof tag !== 'string') continue;
+    let t = tag.trim().replace(/\s+/g, '').toLowerCase();
+    if (!t) continue;
+    if (!t.startsWith('#')) t = '#' + t;
+    // remove anything that isn't letters/digits/underscore after the #
+    t = '#' + t.slice(1).replace(/[^a-z0-9_]/g, '');
+    if (t.length < 2 || seen.has(t)) continue;
+    seen.add(t);
+    cleaned.push(t);
+  }
+  // Preserve original casing for branded tags
+  const cased = cleaned.map((tag) => {
+    if (tag === '#blueridgecustomco') return '#BlueRidgeCustomCo';
+    if (tag === '#ashevillenc') return '#AshevilleNC';
+    if (tag === '#tiktokmademebuyit') return '#TikTokMadeMeBuyIt';
+    return tag;
+  });
+  // Pad with defaults if needed, dedupe
+  const result = [...cased];
+  for (const d of defaults) {
+    if (result.length >= 5) break;
+    const lower = d.toLowerCase();
+    if (!result.map((t) => t.toLowerCase()).includes(lower)) result.push(d);
+  }
+  return result.slice(0, 5);
 }
 
 // Offline fallbacks (used if Ollama is unreachable)
@@ -187,6 +253,13 @@ function fallbackApparelCopy(items) {
       caption: (it?.title || '').slice(0, 25),
       subtitle: it?.theme?.replace(/-/g, ' ') || '',
     })),
+    hashtags: [
+      '#BlueRidgeCustomCo',
+      '#AshevilleNC',
+      '#smallbusiness',
+      '#apparel',
+      '#TikTokMadeMeBuyIt',
+    ],
   };
 }
 
@@ -198,6 +271,13 @@ function fallbackMetalCopy() {
     whyMetal: 'Museum-grade metal catches light and color that paper cannot.',
     ctaText: 'Shop Now',
     outro: `${LOCATION} Studio`,
+    hashtags: [
+      '#BlueRidgeCustomCo',
+      '#AshevilleNC',
+      '#metalprint',
+      '#wallart',
+      '#homedecor',
+    ],
   };
 }
 
