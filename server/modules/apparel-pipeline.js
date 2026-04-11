@@ -595,71 +595,723 @@ function formatThemeName(theme) {
 /**
  * Build responsive HTML for a reel landing page showing featured products.
  */
-function buildReelLandingPageHtml({ title, hook, body, products, collectionHandle, reelUrl, theme, isTikTokShopReel, apparelChoices }) {
-  // Build color label from apparel choices
+// ============================================================================
+// LANDING PAGE BUILDER — editorial drop broadsheet
+// ----------------------------------------------------------------------------
+// Self-contained HTML for Shopify page body_html. Dispatches per dominant
+// product type (apparel / metal-print / sticker / drinkware / stl / default),
+// each reusing the same editorial bones but with a different accent palette,
+// copy voice, and layout rhythm. All styles scoped under .brl (Blue-Ridge
+// Landing) to avoid clobbering theme CSS.
+// ============================================================================
+
+function normalizeProductType(raw) {
+  const s = String(raw || '').toLowerCase();
+  if (/t.?shirt|tee\b|hoodie|sweatshirt|long.?sleeve|tank|apparel|garment|crewneck|raglan/.test(s)) return 'apparel';
+  if (/sticker|decal|vinyl[- ]?cut/.test(s)) return 'sticker';
+  if (/metal[- ]?print|wall[- ]?art|poster|canvas|framed/.test(s)) return 'metal-print';
+  if (/mug|tumbler|drinkware|bottle|cup|glass/.test(s)) return 'drinkware';
+  if (/mount|stl|3d|holder|bracket|multiboard|print[- ]?in[- ]?place/.test(s)) return 'stl';
+  return 'apparel';
+}
+
+function detectDominantType(products) {
+  const counts = {};
+  for (const p of products || []) {
+    const t = normalizeProductType(p.productType || p.type || '');
+    counts[t] = (counts[t] || 0) + 1;
+  }
+  let max = 0, dominant = 'apparel';
+  for (const [t, c] of Object.entries(counts)) {
+    if (c > max) { max = c; dominant = t; }
+  }
+  return dominant;
+}
+
+// Palette + voice per product family — each one gives the page its identity.
+const LANDING_THEMES = {
+  'apparel': {
+    bg: '#F3EEE4',           // warm cream paper
+    ink: '#17140F',          // deep espresso
+    accent: '#C6381C',       // rust red
+    muted: '#7A7066',
+    line: 'rgba(23,20,15,0.14)',
+    eyebrow: 'NEW DROP',
+    ctaLabel: 'Pick Your Size & Color',
+    seeMore: 'See the full drop',
+    provenance: 'Printed in Asheville, North Carolina',
+    craftNote: 'Soft, pre-shrunk cotton. Water-based inks. One run at a time.'
+  },
+  'metal-print': {
+    bg: '#0D0D0F',
+    ink: '#F3F1EC',
+    accent: '#D4A351',       // brushed brass
+    muted: '#847E73',
+    line: 'rgba(243,241,236,0.12)',
+    eyebrow: 'LIMITED GALLERY RUN',
+    ctaLabel: 'Choose Size',
+    seeMore: 'See the full gallery',
+    provenance: 'Pressed onto 0.045" aluminum · Asheville NC',
+    craftNote: 'Hi-def sublimation. Mounted and ready to hang.'
+  },
+  'sticker': {
+    bg: '#FFF8E8',
+    ink: '#14120B',
+    accent: '#F25C2B',
+    muted: '#7A6E55',
+    line: 'rgba(20,18,11,0.14)',
+    eyebrow: 'STICK ANYWHERE',
+    ctaLabel: 'Grab This Sticker',
+    seeMore: 'Browse all stickers',
+    provenance: 'Die-cut vinyl · weatherproof · Asheville NC',
+    craftNote: 'Thick premium vinyl. Laminated. Survives rain, sun, and suds.'
+  },
+  'drinkware': {
+    bg: '#EFEBE2',
+    ink: '#1C170F',
+    accent: '#8C5A2B',       // coffee
+    muted: '#7A6E60',
+    line: 'rgba(28,23,15,0.12)',
+    eyebrow: 'MORNING ROTATION',
+    ctaLabel: 'Fill Your Cup',
+    seeMore: 'All drinkware',
+    provenance: 'Printed and packed in Asheville NC',
+    craftNote: 'Hand-wash recommended. Dishwasher safe on top rack.'
+  },
+  'stl': {
+    bg: '#0E0F11',
+    ink: '#E6E5E0',
+    accent: '#7EC8B1',       // mint filament
+    muted: '#7A7D80',
+    line: 'rgba(230,229,224,0.12)',
+    eyebrow: 'PRINT-IN-PLACE',
+    ctaLabel: 'Configure & Print',
+    seeMore: 'All mounts & files',
+    provenance: 'Designed in Asheville NC · Multiboard compatible',
+    craftNote: 'Tested prints. Tuned for a 0.4mm nozzle. No supports.'
+  }
+};
+
+function buildReelLandingPageHtml(ctx) {
+  const dominantType = detectDominantType(ctx.products);
+  return renderLandingPage(dominantType, ctx);
+}
+
+function renderLandingPage(type, ctx) {
+  const palette = LANDING_THEMES[type] || LANDING_THEMES['apparel'];
+  const {
+    title,
+    hook,
+    body,
+    products,
+    collectionHandle,
+    reelUrl,
+    theme,
+    isTikTokShopReel,
+    apparelChoices
+  } = ctx;
+
+  const safe = escapeHtml;
+  const fmtPrice = (p) => {
+    const n = Number(p);
+    if (Number.isFinite(n)) return n.toFixed(2).replace(/\.00$/, '');
+    return String(p || '0');
+  };
+
+  // Build a human-readable color label from the campaign's apparel choices
   const colorNames = (apparelChoices || [])
     .filter(Boolean)
     .map(a => a.color || a.colorName || '')
     .filter(Boolean);
   const colorLabel = colorNames.length > 1
     ? colorNames.slice(0, -1).join(', ') + ' & ' + colorNames[colorNames.length - 1]
-    : colorNames[0] || 'multiple colors';
+    : colorNames[0] || '';
 
-  const productGridHtml = products.map(p => {
+  // Reel video embed (the attention grabber)
+  const videoHtml = reelUrl ? `
+    <video class="brl-reel" autoplay muted loop playsinline preload="metadata" poster="${safe(products[0]?.image || '')}">
+      <source src="${safe(reelUrl)}" type="video/mp4">
+    </video>` : (products[0]?.image
+      ? `<img class="brl-reel brl-reel--static" src="${safe(products[0].image)}" alt="${safe(title)}">`
+      : '');
+
+  // Per-product cards — mockup is the grabber, variants are the sale
+  const productCardsHtml = products.map((p, idx) => {
     const productUrl = p.handle ? `/products/${p.handle}` : '#';
-
-    // Hero image (lifestyle mockup) — first image
-    const heroImg = p.image
-      ? `<img src="${escapeHtml(p.image)}" alt="${escapeHtml(p.title)}" style="width:100%;height:auto;border-radius:8px;aspect-ratio:3/4;object-fit:cover;" loading="lazy">`
+    const mockup = p.image
+      ? `<img class="brl-card__mockup" src="${safe(p.image)}" alt="${safe(p.title)}" loading="lazy">`
       : '';
 
-    // Product blank images (the actual shirt colors)
-    const blankImgs = (p.images || []).slice(1, 3).map(img =>
-      `<img src="${escapeHtml(img)}" alt="${escapeHtml(p.title)}" style="width:100%;height:auto;border-radius:6px;aspect-ratio:1/1;object-fit:cover;" loading="lazy">`
-    ).join('');
+    // Variant thumbnails (the actual items) — use images[1..] which are blanks
+    const variantImgs = (p.images || []).slice(1, 5);
+    const variantChips = variantImgs.length
+      ? variantImgs.map((img, i) => `
+          <a href="${productUrl}" class="brl-chip" aria-label="View variant ${i + 1}">
+            <img src="${safe(img)}" alt="${safe(p.title)} variant ${i + 1}" loading="lazy">
+          </a>`).join('')
+      : '';
+
+    const price = fmtPrice(p.price);
+    const isAlt = idx % 2 === 1;
 
     return `
-      <div style="text-align:center;border:1px solid #eee;border-radius:12px;overflow:hidden;background:#fff;">
-        <a href="${productUrl}" style="text-decoration:none;color:inherit;">
-          ${heroImg}
+      <article class="brl-card${isAlt ? ' brl-card--alt' : ''}" style="--i:${idx};">
+        <div class="brl-card__index"><span>${String(idx + 1).padStart(2, '0')}</span> / ${String(products.length).padStart(2, '0')}</div>
+        <a class="brl-card__mockup-wrap" href="${productUrl}" aria-label="${safe(p.title)}">
+          ${mockup}
+          <span class="brl-card__scrim"></span>
         </a>
-        <div style="padding:12px 16px;">
-          <h3 style="margin:0 0 4px;font-size:15px;font-weight:600;color:#1a1a1a;">${escapeHtml(p.title)}</h3>
-          <p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#2d2d2d;">From $${escapeHtml(p.price)}</p>
-          ${blankImgs ? `
-          <p style="font-size:12px;color:#888;margin:0 0 8px;">Available in ${escapeHtml(colorLabel)}</p>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
-            ${blankImgs}
-          </div>` : ''}
-          <a href="${productUrl}" style="display:inline-block;width:100%;padding:10px 0;background:#1a1a1a;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:600;">Choose Color &amp; Size</a>
+        <div class="brl-card__body">
+          <h3 class="brl-card__title">${safe(p.title)}</h3>
+          <div class="brl-card__meta">
+            <span class="brl-card__price">$${safe(price)}</span>
+            <span class="brl-card__dot">·</span>
+            <span class="brl-card__tag">${safe((p.productType || '').toUpperCase() || 'MADE TO ORDER')}</span>
+          </div>
+          ${variantChips ? `
+          <p class="brl-card__variant-label">The real thing — pick your fit</p>
+          <div class="brl-card__chips">${variantChips}</div>
+          ` : ''}
+          <a class="brl-card__cta" href="${productUrl}">
+            <span>${safe(palette.ctaLabel)}</span>
+            <svg width="18" height="12" viewBox="0 0 18 12" fill="none" aria-hidden="true">
+              <path d="M1 6h16M12 1l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/>
+            </svg>
+          </a>
         </div>
-      </div>`;
+      </article>`;
   }).join('\n');
 
-  return `
-<div style="max-width:900px;margin:0 auto;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <!-- Hero Section -->
-  <div style="text-align:center;margin-bottom:32px;">
-    <h1 style="font-size:28px;font-weight:800;margin:0 0 8px;color:#1a1a1a;">${escapeHtml(hook || title)}</h1>
-    <p style="font-size:16px;color:#555;margin:0 0 12px;max-width:600px;display:inline-block;">${escapeHtml(body || '')}</p>
-    <p style="font-size:14px;color:#1a1a1a;margin:0 0 4px;font-weight:600;">Each design is available in ${escapeHtml(colorLabel)}.</p>
-    <p style="font-size:13px;color:#888;margin:0;">Select your color and size on the product page. Printed locally in Asheville, NC.</p>
+  // Eyebrow line (date + drop + optional channel flag)
+  const now = new Date();
+  const issueLabel = `${now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase()} · ISSUE ${String(now.getDate()).padStart(2, '0')}`;
+
+  // The whole thing — self-contained, scoped under .brl
+  return `<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,700;9..144,900&family=Manrope:wght@400;500;600;700&display=swap');
+
+.brl {
+  --brl-bg: ${palette.bg};
+  --brl-ink: ${palette.ink};
+  --brl-accent: ${palette.accent};
+  --brl-muted: ${palette.muted};
+  --brl-line: ${palette.line};
+  --brl-serif: 'Fraunces', 'Times New Roman', Georgia, serif;
+  --brl-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+
+  position: relative;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 64px 28px 80px;
+  background: var(--brl-bg);
+  color: var(--brl-ink);
+  font-family: var(--brl-sans);
+  font-weight: 400;
+  line-height: 1.5;
+  overflow: hidden;
+  isolation: isolate;
+}
+.brl *, .brl *::before, .brl *::after { box-sizing: border-box; }
+.brl a { color: inherit; text-decoration: none; }
+.brl img { display: block; max-width: 100%; height: auto; }
+
+/* Subtle paper grain, layered beneath everything */
+.brl::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.08 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  opacity: 0.9;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+.brl > * { position: relative; z-index: 1; }
+
+/* ── Masthead ─────────────────────────────────────────────────────────── */
+.brl-masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--brl-line);
+  margin-bottom: 36px;
+  font-family: var(--brl-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brl-muted);
+}
+.brl-masthead__brand {
+  color: var(--brl-ink);
+  font-family: var(--brl-serif);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+.brl-masthead__brand em {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--brl-muted);
+}
+.brl-masthead__drop {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.brl-masthead__drop::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background: var(--brl-accent);
+  border-radius: 50%;
+  display: inline-block;
+  animation: brl-pulse 2.4s ease-in-out infinite;
+}
+@keyframes brl-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+
+/* ── Hero: video on left, editorial headline on right ────────────────── */
+.brl-hero {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 44px;
+  align-items: end;
+  margin-bottom: 72px;
+}
+@media (max-width: 860px) {
+  .brl-hero { grid-template-columns: 1fr; gap: 32px; }
+  .brl { padding: 40px 20px 60px; }
+}
+.brl-reel-frame {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--brl-ink);
+  box-shadow:
+    0 1px 0 var(--brl-line),
+    0 30px 60px -30px rgba(0,0,0,0.35),
+    0 10px 20px -10px rgba(0,0,0,0.2);
+  max-height: 640px;
+}
+.brl-reel {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.brl-reel-frame::after {
+  content: "LIVE CUT · ${safe((theme || 'DROP').toUpperCase())}";
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 6px 10px;
+  background: var(--brl-bg);
+  color: var(--brl-ink);
+  font-family: var(--brl-sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  border: 1px solid var(--brl-line);
+}
+.brl-reel-frame::before {
+  content: "";
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--brl-accent);
+  box-shadow: 0 0 0 2px var(--brl-bg), 0 10px 30px rgba(0,0,0,0.4);
+  animation: brl-bob 3s ease-in-out infinite;
+  z-index: 2;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'><path d='M6 4l10 6-10 6z' fill='white'/></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+@keyframes brl-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.brl-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.brl-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--brl-accent);
+}
+.brl-eyebrow::before {
+  content: "";
+  width: 28px;
+  height: 1px;
+  background: var(--brl-accent);
+}
+.brl-h1 {
+  margin: 0;
+  font-family: var(--brl-serif);
+  font-weight: 400;
+  font-size: clamp(44px, 6.5vw, 96px);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  color: var(--brl-ink);
+}
+.brl-h1 em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--brl-accent);
+}
+.brl-dek {
+  margin: 0;
+  max-width: 46ch;
+  font-family: var(--brl-serif);
+  font-weight: 400;
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--brl-ink);
+  opacity: 0.82;
+}
+.brl-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  padding-top: 14px;
+  margin-top: 6px;
+  border-top: 1px solid var(--brl-line);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brl-muted);
+}
+.brl-meta strong {
+  color: var(--brl-ink);
+  font-weight: 700;
+}
+
+/* ── Section rule ─────────────────────────────────────────────────────── */
+.brl-rule {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  margin: 20px 0 40px;
+}
+.brl-rule__label {
+  flex-shrink: 0;
+  font-family: var(--brl-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--brl-muted);
+}
+.brl-rule__line {
+  flex: 1;
+  height: 1px;
+  background: var(--brl-line);
+}
+.brl-rule__count {
+  font-family: var(--brl-serif);
+  font-size: 22px;
+  font-style: italic;
+  color: var(--brl-ink);
+}
+
+/* ── Product cards (the drop) ─────────────────────────────────────────── */
+.brl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 48px 36px;
+}
+.brl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: relative;
+  animation: brl-rise 0.8s ease-out both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+@keyframes brl-rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.brl-card__index {
+  font-family: var(--brl-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--brl-muted);
+}
+.brl-card__index span {
+  color: var(--brl-accent);
+  font-size: 14px;
+}
+.brl-card__mockup-wrap {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  background: var(--brl-line);
+  transition: transform 0.5s ease;
+}
+.brl-card__mockup {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1), filter 0.5s ease;
+}
+.brl-card__mockup-wrap:hover .brl-card__mockup {
+  transform: scale(1.06);
+  filter: saturate(1.1);
+}
+.brl-card__scrim {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 38%;
+  background: linear-gradient(to top, rgba(0,0,0,0.35), transparent);
+  pointer-events: none;
+}
+.brl-card--alt .brl-card__mockup-wrap { aspect-ratio: 4 / 5; }
+.brl-card--alt { padding-top: 28px; }
+
+.brl-card__body { display: flex; flex-direction: column; gap: 10px; }
+.brl-card__title {
+  margin: 0;
+  font-family: var(--brl-serif);
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--brl-ink);
+}
+.brl-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--brl-muted);
+  text-transform: uppercase;
+}
+.brl-card__price {
+  font-family: var(--brl-serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--brl-accent);
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+.brl-card__dot { opacity: 0.5; }
+.brl-card__tag { font-weight: 700; font-size: 11px; }
+
+.brl-card__variant-label {
+  margin: 10px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brl-muted);
+  font-weight: 600;
+}
+.brl-card__chips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.brl-chip {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border: 1px solid var(--brl-line);
+  background: var(--brl-bg);
+  transition: transform 0.25s ease, border-color 0.25s ease;
+}
+.brl-chip:hover {
+  transform: translateY(-2px);
+  border-color: var(--brl-accent);
+}
+.brl-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.brl-card__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px 18px;
+  background: var(--brl-ink);
+  color: var(--brl-bg);
+  font-family: var(--brl-sans);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.brl-card__cta:hover {
+  background: var(--brl-accent);
+  transform: translateX(2px);
+}
+.brl-card__cta svg { transition: transform 0.3s ease; }
+.brl-card__cta:hover svg { transform: translateX(4px); }
+
+/* ── Collection CTA ───────────────────────────────────────────────────── */
+.brl-collection {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 32px;
+  align-items: center;
+  padding: 56px 44px;
+  margin: 96px 0 40px;
+  border-top: 1px solid var(--brl-line);
+  border-bottom: 1px solid var(--brl-line);
+}
+@media (max-width: 720px) {
+  .brl-collection { grid-template-columns: 1fr; padding: 36px 0; }
+}
+.brl-collection__title {
+  margin: 0 0 8px;
+  font-family: var(--brl-serif);
+  font-weight: 300;
+  font-style: italic;
+  font-size: clamp(32px, 4.5vw, 52px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--brl-ink);
+}
+.brl-collection__title strong {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--brl-accent);
+}
+.brl-collection__sub {
+  margin: 0;
+  font-size: 14px;
+  font-family: var(--brl-sans);
+  color: var(--brl-muted);
+}
+.brl-collection__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 32px;
+  background: var(--brl-accent);
+  color: #fff;
+  font-family: var(--brl-sans);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transition: background 0.3s ease, transform 0.3s ease;
+  white-space: nowrap;
+}
+.brl-collection__cta:hover {
+  background: var(--brl-ink);
+  transform: translateX(4px);
+}
+
+/* ── Colophon ─────────────────────────────────────────────────────────── */
+.brl-colophon {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 24px;
+  padding-top: 28px;
+  margin-top: 48px;
+  border-top: 1px solid var(--brl-line);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brl-muted);
+}
+.brl-colophon__mark {
+  font-family: var(--brl-serif);
+  font-size: 14px;
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--brl-ink);
+}
+
+@media (max-width: 720px) {
+  .brl-card__title { font-size: 22px; }
+  .brl-colophon { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
+</style>
+<div class="brl">
+
+  <!-- Masthead -->
+  <header class="brl-masthead">
+    <div class="brl-masthead__brand">Blue Ridge <em>Custom Co.</em></div>
+    <div class="brl-masthead__drop">${safe(palette.eyebrow)} · ${safe(issueLabel)}</div>
+  </header>
+
+  <!-- Hero -->
+  <section class="brl-hero">
+    <div class="brl-reel-frame">${videoHtml}</div>
+    <div class="brl-headline">
+      <span class="brl-eyebrow">${safe(palette.eyebrow)}</span>
+      <h1 class="brl-h1">${safe(hook || title)}</h1>
+      ${body ? `<p class="brl-dek">${safe(body)}</p>` : ''}
+      <div class="brl-meta">
+        <span>${products.length} <strong>Designs</strong></span>
+        ${colorLabel ? `<span>In <strong>${safe(colorLabel)}</strong></span>` : ''}
+        <span><strong>${safe(palette.craftNote)}</strong></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Drop rule -->
+  <div class="brl-rule">
+    <span class="brl-rule__label">The Drop</span>
+    <span class="brl-rule__line"></span>
+    <span class="brl-rule__count">${products.length} pieces</span>
   </div>
 
-  <!-- Product Grid -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px;margin-bottom:40px;">
-    ${productGridHtml}
-  </div>
+  <!-- Product grid -->
+  <section class="brl-grid">
+    ${productCardsHtml}
+  </section>
 
-  <!-- See More Button -->
-  <div style="text-align:center;margin:40px 0;">
-    <a href="/collections/${escapeHtml(collectionHandle)}" style="display:inline-block;padding:16px 48px;background:#2d2d2d;color:#fff;text-decoration:none;border-radius:8px;font-size:18px;font-weight:700;letter-spacing:0.5px;">See More Designs</a>
-  </div>
+  <!-- Collection CTA -->
+  <section class="brl-collection">
+    <div>
+      <h2 class="brl-collection__title">Not the <strong>one</strong>? <em>See the rest.</em></h2>
+      <p class="brl-collection__sub">${safe(palette.provenance)}</p>
+    </div>
+    <a class="brl-collection__cta" href="/collections/${safe(collectionHandle)}">
+      <span>${safe(palette.seeMore)}</span>
+      <svg width="22" height="14" viewBox="0 0 22 14" fill="none" aria-hidden="true">
+        <path d="M1 7h20M15 1l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/>
+      </svg>
+    </a>
+  </section>
 
-  <!-- Footer -->
-  <div style="text-align:center;padding:24px 0;border-top:1px solid #eee;margin-top:20px;">
-    <p style="font-size:13px;color:#999;margin:0;">Handmade in Asheville, NC | Blue Ridge Custom Co</p>
-  </div>
+  <!-- Colophon -->
+  <footer class="brl-colophon">
+    <span class="brl-colophon__mark">Made slow. Printed local. <em>Shipped warm.</em></span>
+    <span>${safe(palette.provenance)}</span>
+  </footer>
+
 </div>`;
 }
 

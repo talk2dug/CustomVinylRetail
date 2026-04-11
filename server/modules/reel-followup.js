@@ -174,7 +174,10 @@ async function createReelLandingPages(reelRecords, ctx = {}) {
                 images: allImages,
                 price,
                 handle,
-                id: pid
+                id: pid,
+                productType: product.product_type || product.productType || '',
+                tags: Array.isArray(product.tags) ? product.tags : (typeof product.tags === 'string' ? product.tags.split(',').map(t => t.trim()) : []),
+                vendor: product.vendor || ''
               });
             }
           } catch (err) {
