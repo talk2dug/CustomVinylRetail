@@ -118,6 +118,7 @@
           <button class="dropdown-item" data-view="aiAgentView">AI Sales Agent</button>
           <button class="dropdown-item" data-view="trendMonitorView">Trend Monitor</button>
           <button class="dropdown-item" data-view="tiktokMarketingView">TikTok Dashboard</button>
+          <button class="dropdown-item" data-view="reelStudioView">Reel Studio</button>
           <button class="dropdown-item" data-view="footageLibraryView">Footage Library</button>
         </div>
       </div>
@@ -4797,6 +4798,25 @@
       <!-- ================================================================== -->
       <!-- FOOTAGE LIBRARY & CAMERA RECORDING                                -->
       <!-- ================================================================== -->
+      <!-- ================================================================== -->
+      <!-- REEL STUDIO (embedded via webview → vinylApp /reel-studio.html)   -->
+      <!-- ================================================================== -->
+      <section id="reelStudioView" class="view">
+        <div class="view-toolbar">
+          <div class="catalog-toolbar-group">
+            <h3 style="margin:0;">Reel Studio</h3>
+            <small class="muted" style="margin-left:8px;">Create reels and attach them to pipeline campaigns</small>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="reelStudioReloadBtn" class="secondary small">Reload</button>
+            <button id="reelStudioOpenExternalBtn" class="secondary small">Open in Browser</button>
+          </div>
+        </div>
+        <div id="reelStudioFrameContainer" style="flex:1;width:100%;background:#0f172a;overflow:hidden;">
+          <iframe id="reelStudioFrame" src="about:blank" style="width:100%;height:100%;border:none;background:#0f172a;" allow="clipboard-read; clipboard-write; autoplay"></iframe>
+        </div>
+      </section>
+
       <!-- ================================================================== -->
       <!-- TIKTOK MARKETING DASHBOARD                                       -->
       <!-- ================================================================== -->

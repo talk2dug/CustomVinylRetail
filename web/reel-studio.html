@@ -865,8 +865,28 @@ Made to live in the light.</textarea>
           <input type="text" id="field-ctaLabel" value="Shop Now:">
         </div>
       </div>
+      <div class="field" style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px;">
+        <label>Attach to Pipeline Campaign <span style="color: var(--text-muted); font-weight: normal;">(optional)</span></label>
+        <select id="field-campaignRun">
+          <option value="">— standalone reel —</option>
+        </select>
+        <div id="campaign-info" style="display:none; font-size: 11px; color: var(--text-muted); margin-top: 6px; padding: 8px; background: var(--bg-raised, #1a1a1a); border-radius: 4px;"></div>
+      </div>
+      <div class="field">
+        <label>Theme <span style="color: var(--text-muted); font-weight: normal;">(for campaigns)</span></label>
+        <select id="field-campaignTheme">
+          <option value="">— pick a campaign first —</option>
+        </select>
+      </div>
+      <div class="field">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="field-isTikTokShopReel">
+          <span>First reel for this theme → TikTok Shop</span>
+        </label>
+      </div>
       <div class="render-bar">
         <button class="btn" id="render-btn">Render Reel</button>
+        <button class="btn btn-secondary" id="finalize-campaign-btn" style="display:none; margin-top: 8px;">Finalize Campaign (Step 7b/7c)</button>
         <button class="btn btn-tiktok" id="tiktok-btn" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle; margin-right:6px;"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.5a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.05z"/></svg>
           Post to TikTok
@@ -905,6 +925,11 @@ Made to live in the light.</textarea>
     templates: [],
     audioUrl: '',
     lastVideoUrl: '',
+    // Campaign attachment — when set, rendered reels are tied to a
+    // pipeline_runs row so finalize-campaign can run step 7b/7c.
+    pendingCampaigns: [],
+    activeCampaignId: '',
+    activeCampaignTheme: '',
   };
 
   const assetHeaders = { 'x-api-key': apiKey };
@@ -1648,14 +1673,26 @@ Made to live in the light.</textarea>
 
     try {
       const props = buildProps();
+      const renderBody = {
+        template: state.template,
+        props,
+        label: document.getElementById('field-hookText').value,
+      };
+      // Attach to pipeline campaign if selected
+      if (state.activeCampaignId && state.activeCampaignTheme) {
+        const camp = state.pendingCampaigns.find(c => c.id === state.activeCampaignId);
+        const themeItems = camp?.themes?.[state.activeCampaignTheme] || [];
+        renderBody.campaignRunId = state.activeCampaignId;
+        renderBody.theme = state.activeCampaignTheme;
+        renderBody.isTikTokShopReel = document.getElementById('field-isTikTokShopReel').checked;
+        renderBody.chunkDesignIds = themeItems.map(i => i.designId).filter(Boolean);
+        renderBody.shopifyProductIds = themeItems.map(i => i.shopifyProductId).filter(Boolean);
+        renderBody.caption = document.getElementById('field-hookText').value;
+      }
       const res = await fetch('/api/reel-studio/render', {
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          template: state.template,
-          props,
-          label: document.getElementById('field-hookText').value,
-        }),
+        body: JSON.stringify(renderBody),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Render failed');
@@ -1679,6 +1716,15 @@ Made to live in the light.</textarea>
       // Remember the server-side path for TikTok upload
       state.lastRenderFilename = data.filename;
       loadHistory();
+      // If this reel was attached to a campaign, refresh the campaign list
+      // so the "existing reel count" is up to date for subsequent renders.
+      if (renderBody.campaignRunId) {
+        await loadPendingCampaigns();
+        document.getElementById('field-campaignRun').value = renderBody.campaignRunId;
+        onCampaignChange();
+        document.getElementById('field-campaignTheme').value = renderBody.theme;
+        onCampaignThemeChange();
+      }
     } catch (e) {
       status.className = 'preview-status error';
       status.textContent = '✗ ' + e.message;
@@ -1993,6 +2039,107 @@ Made to live in the light.</textarea>
     } catch (e) { console.error(e); }
   }
 
+  // ── Pipeline campaign attachment ──
+  async function loadPendingCampaigns() {
+    try {
+      const res = await fetch('/api/reel-studio/pending-campaigns', { headers: { 'x-api-key': apiKey } });
+      const data = await res.json();
+      state.pendingCampaigns = data.campaigns || [];
+      const sel = document.getElementById('field-campaignRun');
+      // Preserve placeholder
+      sel.innerHTML = '<option value="">— standalone reel —</option>';
+      for (const c of state.pendingCampaigns) {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        const themeCount = Object.keys(c.themes || {}).length;
+        opt.textContent = `${c.collection || c.campaignSlug || c.id} — ${themeCount} theme(s), ${c.existingReelCount} reel(s) made`;
+        sel.appendChild(opt);
+      }
+    } catch (e) {
+      console.error('[reel-studio] loadPendingCampaigns:', e);
+    }
+  }
+
+  function onCampaignChange() {
+    const runId = document.getElementById('field-campaignRun').value;
+    state.activeCampaignId = runId;
+    const info = document.getElementById('campaign-info');
+    const themeSel = document.getElementById('field-campaignTheme');
+    const finalizeBtn = document.getElementById('finalize-campaign-btn');
+    themeSel.innerHTML = '';
+
+    if (!runId) {
+      info.style.display = 'none';
+      themeSel.innerHTML = '<option value="">— pick a campaign first —</option>';
+      state.activeCampaignTheme = '';
+      finalizeBtn.style.display = 'none';
+      return;
+    }
+
+    const camp = state.pendingCampaigns.find(c => c.id === runId);
+    if (!camp) return;
+
+    const themeNames = Object.keys(camp.themes || {});
+    themeSel.innerHTML = '<option value="">— select theme —</option>' +
+      themeNames.map(t => {
+        const count = (camp.themes[t] || []).length;
+        const withShopify = (camp.themes[t] || []).filter(i => i.shopifyProductId).length;
+        return `<option value="${t}">${t} (${count} designs, ${withShopify} on Shopify)</option>`;
+      }).join('');
+
+    const existingByTheme = {};
+    for (const r of (camp.existingReels || [])) {
+      existingByTheme[r.theme] = (existingByTheme[r.theme] || 0) + 1;
+    }
+    info.innerHTML = `
+      <strong>${camp.collection || camp.campaignSlug}</strong><br>
+      Status: ${camp.status} · ${camp.existingReelCount} reel(s) already made<br>
+      ${Object.entries(existingByTheme).map(([t, n]) => `· ${t}: ${n} reel(s)`).join('<br>') || '<em>no reels yet</em>'}
+    `;
+    info.style.display = 'block';
+    finalizeBtn.style.display = camp.existingReelCount > 0 ? 'inline-block' : 'none';
+  }
+
+  function onCampaignThemeChange() {
+    state.activeCampaignTheme = document.getElementById('field-campaignTheme').value;
+    // Auto-set isTikTokShopReel for the first reel of a theme
+    const camp = state.pendingCampaigns.find(c => c.id === state.activeCampaignId);
+    if (camp && state.activeCampaignTheme) {
+      const alreadyHasTheme = (camp.existingReels || []).some(r => r.theme === state.activeCampaignTheme);
+      document.getElementById('field-isTikTokShopReel').checked = !alreadyHasTheme;
+    }
+  }
+
+  document.getElementById('field-campaignRun').addEventListener('change', onCampaignChange);
+  document.getElementById('field-campaignTheme').addEventListener('change', onCampaignThemeChange);
+
+  document.getElementById('finalize-campaign-btn').addEventListener('click', async () => {
+    const runId = state.activeCampaignId;
+    if (!runId) return;
+    if (!confirm('Finalize this campaign? This runs TikTok Shop publishing + Shopify landing pages for all reels made so far.')) return;
+    const btn = document.getElementById('finalize-campaign-btn');
+    btn.disabled = true;
+    btn.textContent = 'Finalizing...';
+    try {
+      const res = await fetch('/api/reel-studio/finalize-campaign/' + encodeURIComponent(runId), {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notify: true })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Finalize failed');
+      alert(`Finalized!\nLanding pages: ${data.landingPages?.created || 0}\nTikTok Shop added: ${data.tiktokShop?.added || 0}`);
+      await loadPendingCampaigns();
+      document.getElementById('field-campaignRun').value = '';
+      onCampaignChange();
+    } catch (e) {
+      alert('Finalize failed: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Finalize Campaign (Step 7b/7c)';
+    }
+  });
+
   // ── Init ──
   async function init() {
     try {
@@ -2001,6 +2148,7 @@ Made to live in the light.</textarea>
         loadApparel().catch(e => console.error('apparel:', e)),
         loadCustomArt().catch(e => console.error('custom-art:', e)),
         loadFootage().catch(e => console.error('footage:', e)),
+        loadPendingCampaigns().catch(e => console.error('campaigns:', e)),
       ]);
       updateCategoryFilter();
       renderAssets();

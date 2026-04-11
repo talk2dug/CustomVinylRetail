@@ -10165,9 +10165,16 @@ Keep it concise and actionable.`;
         });
         const runId = run.id;
 
+        // Default: skipReels=true. Reels are now made manually in reel-studio.
+        // Callers can pass skipReels:false to opt into legacy inline reel gen.
+        const effectiveSkipReels = skipReels !== false;
+
         const pipelineOpts = {
           designIds, campaignSlug, campaignTitle,
-          apparelChoices, limit, modelFilter, size, skipShopify, skipReels, modelGroupId,
+          apparelChoices, limit, modelFilter, size, skipShopify,
+          skipReels: effectiveSkipReels,
+          pipelineRunId: runId,
+          modelGroupId,
           onProgress: ({ step, stepIndex, stepLabel, progress, total }) => {
             try {
               db.updatePipelineRun(runId, {
@@ -10182,9 +10189,12 @@ Keep it concise and actionable.`;
 
         // Run pipeline in background — don't await
         runFullPipeline(category, pipelineOpts).then(results => {
+          // If reels were skipped, the run is awaiting manual reel creation
+          // in reel-studio. Otherwise it's fully complete.
+          const finalStatus = effectiveSkipReels ? 'pending-reels' : 'complete';
           db.updatePipelineRun(runId, {
-            status: 'complete',
-            current_step: 'complete',
+            status: finalStatus,
+            current_step: effectiveSkipReels ? 'awaiting-reels' : 'complete',
             current_step_index: 8,
             results_json: JSON.stringify(results),
             completed_at: new Date().toISOString()

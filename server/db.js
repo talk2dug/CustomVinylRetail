@@ -3813,6 +3813,23 @@ function initCustomArtTables() {
   ensureColumn('tiktok_videos', 'shopify_product_ids', 'TEXT');
   ensureColumn('tiktok_videos', 'shopify_page_id', 'TEXT');
   ensureColumn('tiktok_videos', 'shopify_page_url', 'TEXT');
+  // Reel-studio "training data" columns: where did this reel come from and
+  // what Remotion props were used (so we can learn from manual curation)
+  ensureColumn('tiktok_videos', 'source', 'TEXT');
+  ensureColumn('tiktok_videos', 'render_props', 'TEXT');
+  ensureColumn('tiktok_videos', 'campaign_run_id', 'TEXT');
+  ensureColumn('tiktok_videos', 'chunk_idx', 'INTEGER');
+  ensureColumn('tiktok_videos', 'is_tiktok_shop_reel', 'INTEGER');
+
+  // pipeline_runs extensions for reel-followup flow:
+  // When a pipeline finishes steps 1-6 with skipReels=true, it persists the
+  // state needed by server/modules/reel-followup.js so reels can be made
+  // manually in reel-studio and then "finalized" (step 7b/7c) on demand.
+  ensureColumn('pipeline_runs', 'collection', 'TEXT');
+  ensureColumn('pipeline_runs', 'theme_groups', 'TEXT');
+  ensureColumn('pipeline_runs', 'publish_manifest', 'TEXT');
+  ensureColumn('pipeline_runs', 'mockup_dir', 'TEXT');
+  ensureColumn('pipeline_runs', 'finalized_at', 'TEXT');
 
   // Footage Library — AI analysis columns
   ensureColumn('footage_library', 'ai_analysis', 'TEXT');
@@ -8310,11 +8327,21 @@ function getTiktokVideo(id) {
 
 function createTiktokVideo(data) {
   const id = data.id || require('crypto').randomUUID();
-  db.prepare(`INSERT INTO tiktok_videos (id, filename, url, template, collection, designs, shopify_product_ids, duration, file_size, status, caption, platform, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(
+  db.prepare(`INSERT INTO tiktok_videos (
+      id, filename, url, template, collection, designs, shopify_product_ids,
+      duration, file_size, status, caption, platform,
+      source, render_props, campaign_run_id, chunk_idx, is_tiktok_shop_reel,
+      created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`).run(
     id, data.filename, data.url || null, data.template || null, data.collection || null,
     data.designs || null, data.shopifyProductIds || null, data.duration || null, data.fileSize || data.file_size || null,
-    data.status || 'draft', data.caption || null, data.platform || null
+    data.status || 'draft', data.caption || null, data.platform || null,
+    data.source || null,
+    data.renderProps || data.render_props || null,
+    data.campaignRunId || data.campaign_run_id || null,
+    (data.chunkIdx != null ? data.chunkIdx : (data.chunk_idx != null ? data.chunk_idx : null)),
+    (data.isTiktokShopReel != null ? (data.isTiktokShopReel ? 1 : 0) : (data.is_tiktok_shop_reel != null ? data.is_tiktok_shop_reel : null))
   );
   return getTiktokVideo(id);
 }
@@ -8322,7 +8349,8 @@ function createTiktokVideo(data) {
 function updateTiktokVideo(id, updates) {
   const allowed = ['filename', 'url', 'template', 'collection', 'designs', 'shopify_product_ids', 'duration', 'file_size',
     'status', 'caption', 'platform', 'published_at', 'published_url', 'views', 'likes', 'comments', 'shares',
-    'shopify_page_id', 'shopify_page_url'];
+    'shopify_page_id', 'shopify_page_url',
+    'source', 'render_props', 'campaign_run_id', 'chunk_idx', 'is_tiktok_shop_reel'];
   const sets = [];
   const params = [];
   for (const [key, val] of Object.entries(updates)) {
@@ -8384,7 +8412,8 @@ function getPipelineRun(id) {
 function updatePipelineRun(id, updates) {
   const allowed = ['status', 'current_step', 'current_step_index', 'total_steps',
     'step_progress', 'step_total', 'apparel_choices', 'design_ids', 'design_count',
-    'results_json', 'error_message', 'started_at', 'completed_at'];
+    'results_json', 'error_message', 'started_at', 'completed_at',
+    'collection', 'theme_groups', 'publish_manifest', 'mockup_dir', 'finalized_at'];
   const sets = [];
   const params = [];
   for (const [key, val] of Object.entries(updates)) {
@@ -8413,6 +8442,27 @@ function listPipelineRuns(filters = {}) {
 function getLatestPipelineRun(campaignSlug) {
   return db.prepare('SELECT * FROM pipeline_runs WHERE campaign_slug = ? ORDER BY created_at DESC LIMIT 1')
     .get(campaignSlug) || null;
+}
+
+/**
+ * List pipeline runs that finished steps 1-6 and are waiting on reels to be
+ * created manually in reel-studio. Used by the reel-studio "pending campaigns"
+ * picker. See server/modules/reel-followup.js.
+ */
+function listPipelineRunsAwaitingReels() {
+  return db.prepare(`SELECT * FROM pipeline_runs
+    WHERE status = 'pending-reels'
+    ORDER BY created_at DESC`).all();
+}
+
+/**
+ * Fetch all tiktok_videos rows associated with a pipeline run (by
+ * campaign_run_id). Used by finalize-campaign to run step 7b/7c on the
+ * manually-created reels.
+ */
+function getPipelineRunReels(pipelineRunId) {
+  return db.prepare('SELECT * FROM tiktok_videos WHERE campaign_run_id = ? ORDER BY created_at ASC')
+    .all(pipelineRunId);
 }
 
 // ============================================================================
@@ -8828,6 +8878,8 @@ module.exports = {
   updatePipelineRun,
   listPipelineRuns,
   getLatestPipelineRun,
+  listPipelineRunsAwaitingReels,
+  getPipelineRunReels,
   // Category Pricing (Inventory Input)
   getCategoryPricing,
   upsertCategoryPricing,

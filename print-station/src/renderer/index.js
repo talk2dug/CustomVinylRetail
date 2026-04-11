@@ -1762,6 +1762,9 @@ function switchView(viewId) {
   if (viewId === 'tiktokMarketingView') {
     if (typeof window.initTiktokMarketingView === 'function') window.initTiktokMarketingView();
   }
+  if (viewId === 'reelStudioView') {
+    try { initReelStudioView(); } catch (err) { console.error('[reelStudio]', err); }
+  }
   if (viewId === 'inventoryInputView') {
     if (typeof window.initInventoryInputView === 'function') window.initInventoryInputView();
   }
@@ -3696,6 +3699,53 @@ function ensureMockupsLoaded() {
     elements.mockupsFrame.src = url;
   }
 }
+
+// Reel Studio — embeds the vinylApp /web/reel-studio.html page in an iframe
+// so reels can be created inside print-station and attached to pipeline runs.
+function initReelStudioView() {
+  const frame = document.getElementById('reelStudioFrame');
+  if (!frame) return;
+  let url = buildServerUrl('/web/reel-studio.html');
+  if (!url) {
+    frame.srcdoc = '<p style="color:#fff;font-family:sans-serif;padding:24px;">Configure server URL in Settings to use Reel Studio.</p>';
+    return;
+  }
+  // reel-studio.html reads ?key=... for x-api-key header
+  if (state.config?.apiKey) {
+    const separator = url.includes('?') ? '&' : '?';
+    url = `${url}${separator}key=${encodeURIComponent(state.config.apiKey)}`;
+  }
+  if (!frame.src || frame.src === 'about:blank' || !frame.src.includes('reel-studio.html')) {
+    frame.src = url;
+  }
+  // Wire toolbar buttons once
+  const reloadBtn = document.getElementById('reelStudioReloadBtn');
+  if (reloadBtn && !reloadBtn.dataset.wired) {
+    reloadBtn.dataset.wired = '1';
+    reloadBtn.addEventListener('click', () => {
+      const f = document.getElementById('reelStudioFrame');
+      if (f) f.src = f.src;
+    });
+  }
+  const openBtn = document.getElementById('reelStudioOpenExternalBtn');
+  if (openBtn && !openBtn.dataset.wired) {
+    openBtn.dataset.wired = '1';
+    openBtn.addEventListener('click', () => {
+      const f = document.getElementById('reelStudioFrame');
+      if (f?.src) {
+        try {
+          // Prefer Electron shell.openExternal via preload if available
+          if (window.printStation?.openExternal) {
+            window.printStation.openExternal(f.src);
+          } else {
+            window.open(f.src, '_blank');
+          }
+        } catch (_) { window.open(f.src, '_blank'); }
+      }
+    });
+  }
+}
+window.initReelStudioView = initReelStudioView;
 
 function resolveAssetUrl(pathValue, options = {}) {
   if (!pathValue) return '';

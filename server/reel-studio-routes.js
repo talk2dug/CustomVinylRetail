@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { parseBody, sendJson, sendError } = require('./utils/http');
 const { renderVideo, OUT_DIR } = require('../remotion/render-api');
 
+const { PIPELINE_OUTPUT_DIR } = require('./paths');
 const AUDIO_DIR = path.join(__dirname, '..', 'data', 'reel-studio-audio');
 const HISTORY_FILE = path.join(__dirname, '..', 'data', 'reel-studio-history.json');
 const CATALOG_PATH = path.join(__dirname, '..', 'web', 'catalog.json');
@@ -110,13 +111,21 @@ function handleReelStudioRoute(pathname, req, res) {
     return true;
   }
 
-  // POST /api/reel-studio/render — render a composition with given props
+  // POST /api/reel-studio/render — render a composition with given props.
+  // Optional campaign attachment: pass { campaignRunId, chunkDesignIds,
+  // shopifyProductIds, theme, isTikTokShopReel } and the rendered video will
+  // be inserted into tiktok_videos tied to that pipeline run, ready for
+  // finalize-campaign to run step 7b/7c.
   if (pathname === '/api/reel-studio/render' && req.method === 'POST') {
     parseBody(req).then(async (body) => {
-      const { template, props, label } = body;
+      const {
+        template, props, label,
+        campaignRunId, chunkDesignIds, shopifyProductIds,
+        theme, isTikTokShopReel, caption
+      } = body;
       if (!template || !props) return sendError(res, 400, 'template and props are required');
       try {
-        console.log(`[reel-studio] Rendering ${template}`);
+        console.log(`[reel-studio] Rendering ${template}${campaignRunId ? ` (campaign ${campaignRunId})` : ''}`);
         const outputFile = `reel-${template.toLowerCase()}-${Date.now()}.mp4`;
         const result = await renderVideo({
           compositionId: template,
@@ -134,18 +143,234 @@ function handleReelStudioRoute(pathname, req, res) {
           videoUrl,
           filename: path.basename(result.filePath),
           durationMs: result.durationMs,
+          campaignRunId: campaignRunId || null,
           createdAt: new Date().toISOString(),
         });
         saveHistory(history.slice(0, 100));
+
+        // If attached to a campaign run, insert into tiktok_videos so the
+        // finalize-campaign step can run 7b/7c against it.
+        let videoId = null;
+        if (campaignRunId) {
+          try {
+            const db = require('./db');
+            const run = db.getPipelineRun(campaignRunId);
+            if (!run) {
+              console.warn(`[reel-studio] campaign run ${campaignRunId} not found, skipping DB insert`);
+            } else {
+              videoId = `tv_${crypto.randomBytes(8).toString('hex')}`;
+              // Determine next chunk_idx for this theme within this run
+              const existing = db.getPipelineRunReels(campaignRunId) || [];
+              const sameTheme = existing.filter(r => r.template === (theme || template));
+              const nextChunkIdx = sameTheme.length;
+              db.createTiktokVideo({
+                id: videoId,
+                filename: path.basename(result.filePath),
+                url: videoUrl,
+                template: theme || template,
+                collection: run.collection || run.campaign_slug,
+                designs: JSON.stringify(chunkDesignIds || []),
+                shopifyProductIds: JSON.stringify(shopifyProductIds || []),
+                duration: result.durationMs ? result.durationMs / 1000 : null,
+                status: 'draft',
+                platform: isTikTokShopReel ? 'tiktok-shop' : 'shopify',
+                caption: caption || '',
+                source: 'manual-reel-studio',
+                renderProps: JSON.stringify({ template, props }),
+                campaignRunId,
+                chunkIdx: nextChunkIdx,
+                isTiktokShopReel: isTikTokShopReel ? 1 : 0
+              });
+              console.log(`[reel-studio] Saved reel → tiktok_videos ${videoId} for campaign ${campaignRunId}`);
+            }
+          } catch (dbErr) {
+            console.error('[reel-studio] DB insert failed:', dbErr.message);
+            // Don't fail the render if DB insert fails — return warning
+          }
+        }
 
         sendJson(res, 200, {
           success: true,
           videoUrl,
           filename: path.basename(result.filePath),
           durationMs: result.durationMs,
+          videoId,
+          campaignRunId: campaignRunId || null,
         });
       } catch (e) {
         console.error('[reel-studio] render failed:', e);
+        sendError(res, 500, e.message);
+      }
+    }).catch(() => sendError(res, 400, 'Invalid request body'));
+    return true;
+  }
+
+  // GET /api/reel-studio/pipeline-mockup/:filename — serve mockup file from
+  // the apparel pipeline output dir so the reel-studio UI can preview them.
+  if (pathname.startsWith('/api/reel-studio/pipeline-mockup/') && req.method === 'GET') {
+    const filename = decodeURIComponent(pathname.replace('/api/reel-studio/pipeline-mockup/', ''));
+    // Prevent path traversal
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return sendError(res, 400, 'Invalid filename');
+    }
+    const filePath = path.join(PIPELINE_OUTPUT_DIR, filename);
+    if (!filePath.startsWith(PIPELINE_OUTPUT_DIR) || !fs.existsSync(filePath)) {
+      return sendError(res, 404, 'Mockup not found');
+    }
+    const ext = path.extname(filename).toLowerCase();
+    const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, {
+      'Content-Type': mime[ext] || 'application/octet-stream',
+      'Content-Length': stat.size,
+      'Cache-Control': 'public, max-age=3600',
+    });
+    fs.createReadStream(filePath).pipe(res);
+    return true;
+  }
+
+  // GET /api/reel-studio/pending-campaigns — list pipeline_runs awaiting reels
+  // Each entry includes resolved mockup files and design metadata so the UI
+  // can pre-populate the reel composition with the right assets.
+  if (pathname === '/api/reel-studio/pending-campaigns' && req.method === 'GET') {
+    try {
+      const db = require('./db');
+      const runs = db.listPipelineRunsAwaitingReels();
+      const enriched = runs.map(run => {
+        let themeGroups = {};
+        let publishManifest = [];
+        let apparelChoices = [];
+        try { themeGroups = run.theme_groups ? JSON.parse(run.theme_groups) : {}; } catch (_) {}
+        try { publishManifest = run.publish_manifest ? JSON.parse(run.publish_manifest) : []; } catch (_) {}
+        try { apparelChoices = run.apparel_choices ? JSON.parse(run.apparel_choices) : []; } catch (_) {}
+
+        // For each theme, find mockup files on disk
+        const themes = {};
+        const mockupDir = run.mockup_dir;
+        for (const [theme, items] of Object.entries(themeGroups)) {
+          const themeItems = items.map(item => {
+            let mockupFile = null;
+            if (mockupDir && fs.existsSync(mockupDir) && item.designId) {
+              const files = fs.readdirSync(mockupDir).filter(f =>
+                f.includes(item.designId) && /\.(png|jpg|jpeg|webp)$/i.test(f)
+              );
+              if (files.length) mockupFile = files[0];
+            }
+            const shopifyMatch = publishManifest.find(p =>
+              p.shopifyId && item.designId && p.designId?.includes(item.designId.substring(0, 20))
+            );
+            return {
+              name: item.name,
+              designId: item.designId,
+              designSlug: item.designSlug,
+              category: item.category,
+              mockupFile,
+              mockupUrl: mockupFile ? `/api/reel-studio/pipeline-mockup/${encodeURIComponent(mockupFile)}` : null,
+              shopifyProductId: shopifyMatch?.shopifyId ? String(shopifyMatch.shopifyId) : null,
+              shopifyHandle: shopifyMatch?.handle || null,
+              preview: item.preview
+            };
+          });
+          themes[theme] = themeItems;
+        }
+
+        // Reels already created for this run
+        const existingReels = db.getPipelineRunReels(run.id) || [];
+
+        return {
+          id: run.id,
+          campaignSlug: run.campaign_slug,
+          collection: run.collection,
+          status: run.status,
+          createdAt: run.created_at,
+          apparelChoices,
+          themes,
+          existingReelCount: existingReels.length,
+          existingReels: existingReels.map(r => ({
+            id: r.id,
+            url: r.url,
+            theme: r.template,
+            isTikTokShopReel: !!r.is_tiktok_shop_reel,
+            chunkIdx: r.chunk_idx
+          }))
+        };
+      });
+      sendJson(res, 200, { campaigns: enriched });
+    } catch (e) {
+      console.error('[reel-studio] pending-campaigns failed:', e);
+      sendError(res, 500, e.message);
+    }
+    return true;
+  }
+
+  // POST /api/reel-studio/finalize-campaign/:id — run step 7b + 7c against
+  // the reels that have been created for this pipeline run, then mark the
+  // pipeline_runs row as finalized.
+  if (pathname.startsWith('/api/reel-studio/finalize-campaign/') && req.method === 'POST') {
+    const runId = decodeURIComponent(pathname.replace('/api/reel-studio/finalize-campaign/', ''));
+    parseBody(req).then(async (body = {}) => {
+      try {
+        const db = require('./db');
+        const reelFollowup = require('./modules/reel-followup');
+        const run = db.getPipelineRun(runId);
+        if (!run) return sendError(res, 404, 'Pipeline run not found');
+
+        const reels = db.getPipelineRunReels(runId) || [];
+        if (!reels.length) return sendError(res, 400, 'No reels attached to this campaign run yet');
+
+        // Adapt tiktok_videos rows back into the reelRecords shape the
+        // follow-up module expects.
+        const reelRecords = reels.map(r => {
+          let designIds = [];
+          let shopifyProductIds = [];
+          try { designIds = r.designs ? JSON.parse(r.designs) : []; } catch (_) {}
+          try { shopifyProductIds = r.shopify_product_ids ? JSON.parse(r.shopify_product_ids) : []; } catch (_) {}
+          return {
+            videoId: r.id,
+            theme: r.template,
+            chunkIdx: r.chunk_idx || 0,
+            isTikTokShopReel: !!r.is_tiktok_shop_reel,
+            reel: { outputUrl: r.url, outputPath: r.filename },
+            designIds,
+            shopifyProductIds,
+          };
+        });
+
+        let apparelChoices;
+        try { apparelChoices = run.apparel_choices ? JSON.parse(run.apparel_choices) : undefined; } catch (_) {}
+
+        const results = { errors: [], landingPages: [] };
+        const ctx = {
+          notify: body.notify === true,
+          apparelChoices,
+          results,
+        };
+
+        db.updatePipelineRun(runId, { status: 'finalizing' });
+
+        const tiktokResult = await reelFollowup.publishTiktokShopReelProducts(reelRecords, ctx);
+        const pagesResult = await reelFollowup.createReelLandingPages(reelRecords, ctx);
+
+        db.updatePipelineRun(runId, {
+          status: 'complete',
+          finalized_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          current_step: 'complete',
+        });
+
+        sendJson(res, 200, {
+          success: true,
+          runId,
+          tiktokShop: tiktokResult,
+          landingPages: pagesResult,
+          errors: results.errors,
+          landingPagesDetail: results.landingPages,
+        });
+      } catch (e) {
+        console.error('[reel-studio] finalize-campaign failed:', e);
+        try {
+          require('./db').updatePipelineRun(runId, { status: 'error', error_message: e.message });
+        } catch (_) {}
         sendError(res, 500, e.message);
       }
     }).catch(() => sendError(res, 400, 'Invalid request body'));

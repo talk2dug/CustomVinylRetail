@@ -700,6 +700,10 @@ function escapeHtml(str) {
 async function runFullPipeline(collectionCategory, options = {}) {
   const notify = options.notify !== false;
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  // NEW: Reels are now created manually in reel-studio by default.
+  // Pass skipReels: false explicitly to run the legacy inline reel generation.
+  const skipReels = options.skipReels !== false; // default true
+  const pipelineRunId = options.pipelineRunId || null;
   const results = {
     category: collectionCategory || options.campaignTitle || 'Campaign',
     campaignSlug: options.campaignSlug || null,
@@ -1078,15 +1082,48 @@ async function runFullPipeline(collectionCategory, options = {}) {
     }
 
     // ------------------------------------------------------------------
-    // Step 7: Generate themed reels (chunked into 4-5 images per reel)
+    // Persist campaign state for reel-studio (reel-followup flow).
+    // After step 6 (Shopify publish) we write the minimal state needed to
+    // later create reels manually and run step 7b/7c on demand.
     // ------------------------------------------------------------------
-    // Each theme's images are split into chunks of 4-5.
-    // First reel per theme → TikTok Shop (products associated to video).
-    // Remaining reels → Shopify store (with landing pages).
+    if (pipelineRunId) {
+      try {
+        const db = require('../db');
+        // Slim themeGroups to only what reel-studio needs (no circular refs)
+        const slimThemeGroups = {};
+        for (const [theme, items] of Object.entries(themeGroups)) {
+          slimThemeGroups[theme] = items.map(it => ({
+            name: it.name,
+            designId: it.design?.id || it.design?.slug || null,
+            designSlug: it.design?.slug || null,
+            preview: it.design?.preview || it.design?.image || null,
+            category: it.category || null
+          }));
+        }
+        db.updatePipelineRun(pipelineRunId, {
+          collection: collectionCategory || options.campaignTitle || categoryLabel,
+          theme_groups: JSON.stringify(slimThemeGroups),
+          publish_manifest: JSON.stringify(results.shopifyManifest || []),
+          mockup_dir: PIPELINE_OUTPUT_DIR
+        });
+      } catch (err) {
+        console.warn('[ApparelPipeline] Could not persist campaign state to pipeline_runs:', err.message);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Step 7: Generate themed reels (legacy inline mode)
+    // ------------------------------------------------------------------
+    // By default this step is SKIPPED — reels are now created manually in
+    // reel-studio against the persisted pipeline_runs row. Pass
+    // skipReels: false to opt into the legacy auto-generation path.
+    //
+    // When legacy mode: each theme's images are split into chunks of 4-5.
+    // First reel per theme → TikTok Shop. Remaining → Shopify landing pages.
     // ------------------------------------------------------------------
     const allReelRecords = []; // collect for Step 7c landing pages
 
-    if (!options.skipReels) {
+    if (!skipReels) {
       reportProgress('create-reels', { progress: 0, total: Object.keys(themeGroups).length });
       console.log('[ApparelPipeline] Step 7: Generating themed reels (chunked, 4-5 images each)');
       if (notify) await sendTelegram('🎬 Generating TikTok reels (4-5 images each)...');
@@ -1243,179 +1280,22 @@ async function runFullPipeline(collectionCategory, options = {}) {
     }
 
     // ------------------------------------------------------------------
-    // Step 7b: Publish TikTok Shop reel products only
+    // Step 7b + 7c: TikTok Shop publishing + Shopify landing pages
+    // (Extracted to server/modules/reel-followup.js so they can also run
+    // later, after reels are made manually in reel-studio.)
     // ------------------------------------------------------------------
-    // Only the first reel per theme goes to TikTok Shop. Associate those
-    // specific products so customers can buy what they see in the video.
-    const tiktokShopReels = allReelRecords.filter(r => r.isTikTokShopReel);
-    if (tiktokShopReels.length > 0 && !options.skipShopify) {
-      console.log(`[ApparelPipeline] Step 7b: Publishing ${tiktokShopReels.length} TikTok Shop reel products`);
-      if (notify) await sendTelegram('🛒 Adding TikTok Shop reel products...');
-
-      try {
-        const shopify = require('../integrations/shopify');
-        const tiktokPub = await shopify.findTikTokPublication();
-
-        if (tiktokPub) {
-          const currentTikTok = await shopify.getProductsOnPublication(tiktokPub.id).catch(() => []);
-          let currentCount = currentTikTok.length;
-          console.log(`[ApparelPipeline] TikTok Shop: ${currentCount}/100 products currently`);
-
-          // Only add products from TikTok Shop reels
-          const tiktokProductIds = [];
-          for (const rec of tiktokShopReels) {
-            tiktokProductIds.push(...rec.shopifyProductIds);
-          }
-          const uniqueIds = [...new Set(tiktokProductIds)];
-
-          const available = 100 - currentCount;
-          const toAdd = uniqueIds.slice(0, Math.max(0, available));
-
-          if (toAdd.length > 0) {
-            let added = 0;
-            for (const pid of toAdd) {
-              try {
-                await shopify.publishToPublications(pid, [tiktokPub.id]);
-                added++;
-              } catch (err) {
-                console.warn(`[ApparelPipeline] TikTok publish failed for ${pid}: ${err.message}`);
-              }
-              await new Promise(r => setTimeout(r, 500));
-            }
-            console.log(`[ApparelPipeline] Added ${added} products to TikTok Shop (${currentCount + added}/100)`);
-            if (notify) await sendTelegram(`🛒 Added ${added} products to TikTok Shop (${currentCount + added}/100 total)`);
-          } else {
-            console.log(`[ApparelPipeline] TikTok Shop at capacity (${currentCount}/100), skipping`);
-            if (notify) await sendTelegram(`⚠️ TikTok Shop at capacity (${currentCount}/100)`);
-          }
-        } else {
-          console.log('[ApparelPipeline] TikTok Shop channel not found in Shopify');
-        }
-      } catch (err) {
-        console.error('[ApparelPipeline] TikTok Shop publish error:', err.message);
-        if (notify) await sendTelegram(`⚠️ TikTok Shop publish failed: ${err.message}`);
-      }
-    }
-
-    // ------------------------------------------------------------------
-    // Step 7c: Create Shopify landing pages for each reel
-    // ------------------------------------------------------------------
-    // Each reel gets a dedicated landing page showing the featured products
-    // with images, prices, and a "See More" button to the full collection.
     results.landingPages = [];
-
     if (allReelRecords.length > 0 && !options.skipShopify) {
-      reportProgress('landing-pages', { progress: 0, total: allReelRecords.length });
-      console.log(`[ApparelPipeline] Step 7c: Creating Shopify landing pages for ${allReelRecords.length} reels`);
-      if (notify) await sendTelegram('📄 Creating Shopify landing pages for reels...');
-
-      try {
-        const shopify = require('../integrations/shopify');
-        const db = require('../db');
-
-        // Find the apparel collection handle for the "See More" link
-        let collectionHandle = 'apparel';
-        try {
-          const collections = await shopify.listCollections();
-          const apparelCol = (collections || []).find(c =>
-            (c.title || '').toLowerCase().includes('apparel')
-          );
-          if (apparelCol && apparelCol.handle) collectionHandle = apparelCol.handle;
-        } catch (_) {}
-
-        for (const rec of allReelRecords) {
-          try {
-            // Fetch product details from Shopify for the landing page
-            const productCards = [];
-            for (const pid of rec.shopifyProductIds) {
-              try {
-                const product = await shopify.getProduct(pid);
-                if (product) {
-                  const allImages = Array.isArray(product.images) ? product.images.map(img => img.src) : [];
-                  const heroImage = allImages[0] || (product.image?.src || '');
-                  const price = product.variants?.[0]?.price || '24.99';
-                  const handle = product.handle || '';
-                  productCards.push({
-                    title: product.title || 'Custom Tee',
-                    image: heroImage,
-                    images: allImages,
-                    price,
-                    handle,
-                    id: pid
-                  });
-                }
-              } catch (err) {
-                console.warn(`[ApparelPipeline] Could not fetch product ${pid}: ${err.message}`);
-              }
-            }
-
-            if (!productCards.length) {
-              console.log(`[ApparelPipeline] No products found for reel ${rec.videoId}, skipping landing page`);
-              continue;
-            }
-
-            // Build the landing page HTML
-            const copy = THEME_COPY[rec.theme] || THEME_COPY.default;
-            const reelNum = rec.chunkIdx + 1;
-            const pageTitle = `${formatThemeName(rec.theme)} Collection${allReelRecords.filter(r => r.theme === rec.theme).length > 1 ? ` - Part ${reelNum}` : ''}`;
-            const pageHandle = `reel-${rec.theme}${rec.chunkIdx > 0 ? '-pt' + reelNum : ''}-${Date.now()}`;
-
-            const bodyHtml = buildReelLandingPageHtml({
-              title: pageTitle,
-              hook: pick(copy.hooks),
-              body: copy.body,
-              products: productCards,
-              collectionHandle,
-              reelUrl: rec.reel.outputUrl,
-              theme: rec.theme,
-              isTikTokShopReel: rec.isTikTokShopReel,
-              apparelChoices: options.apparelChoices
-            });
-
-            // Check if page already exists (avoid duplicates)
-            const existing = await shopify.findPageByTitle(pageTitle).catch(() => null);
-            let page;
-            if (existing) {
-              page = await shopify.updatePage(existing.id, { body_html: bodyHtml, published: true });
-              console.log(`[ApparelPipeline] Updated existing landing page: ${existing.id}`);
-            } else {
-              page = await shopify.createPage({ title: pageTitle, body_html: bodyHtml, published: true });
-              console.log(`[ApparelPipeline] Created landing page: ${page.id} — "${pageTitle}"`);
-            }
-
-            // Update the tiktok_videos record with the Shopify page info
-            if (page && page.id) {
-              const pageUrl = `/pages/${page.handle || pageHandle}`;
-              try {
-                db.updateTiktokVideo(rec.videoId, {
-                  shopify_page_id: String(page.id),
-                  shopify_page_url: pageUrl
-                });
-              } catch (_) {}
-
-              results.landingPages.push({
-                videoId: rec.videoId,
-                theme: rec.theme,
-                pageId: page.id,
-                pageUrl,
-                productCount: productCards.length,
-                isTikTokShopReel: rec.isTikTokShopReel
-              });
-            }
-          } catch (err) {
-            console.error(`[ApparelPipeline] Landing page failed for reel ${rec.videoId}: ${err.message}`);
-            results.errors.push(`Landing page ${rec.videoId} failed: ${err.message}`);
-          }
-          reportProgress('landing-pages', { progress: results.landingPages.length, total: allReelRecords.length });
-        }
-
-        if (notify && results.landingPages.length > 0) {
-          await sendTelegram(`📄 Created ${results.landingPages.length} Shopify landing pages`);
-        }
-      } catch (err) {
-        console.error('[ApparelPipeline] Landing page step failed:', err.message);
-        if (notify) await sendTelegram(`⚠️ Landing page step failed: ${err.message}`);
-      }
+      const reelFollowup = require('./reel-followup');
+      const followupCtx = {
+        notify,
+        apparelChoices: options.apparelChoices,
+        sendTelegram,
+        reportProgress,
+        results
+      };
+      await reelFollowup.publishTiktokShopReelProducts(allReelRecords, followupCtx);
+      await reelFollowup.createReelLandingPages(allReelRecords, followupCtx);
     }
 
     // ------------------------------------------------------------------
