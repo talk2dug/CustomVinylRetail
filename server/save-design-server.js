@@ -2201,11 +2201,18 @@ function serveWebAsset(req, res, assetPath) {
   }
 
   const mimeType = determineMimeType(safePath);
-  res.writeHead(200, {
+  const headers = {
     'Access-Control-Allow-Origin': '*',
     'Content-Type': mimeType,
     'Content-Length': stat.size
-  });
+  };
+  // Don't cache HTML files so edits show up immediately on reload
+  if (mimeType === 'text/html') {
+    headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    headers['Pragma'] = 'no-cache';
+    headers['Expires'] = '0';
+  }
+  res.writeHead(200, headers);
 
   if (req.method === 'HEAD') {
     res.end();
