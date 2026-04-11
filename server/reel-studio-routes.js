@@ -74,11 +74,22 @@ function handleReelStudioRoute(pathname, req, res) {
       templates: [
         {
           id: 'MockupReel',
-          name: 'Mockup Reel',
-          description: 'Product mockup slideshow with hook, labels, and brand outro',
+          name: 'Apparel Drop',
+          description: 'Big hooks, per-item captions, model-vibe matched (best for apparel)',
           assetType: 'image',
           dimensions: '1080x1920',
-          transitions: ['zoom', 'slide', 'fade'],
+          supportsCopy: true,
+          copyTemplate: 'apparel',
+        },
+        {
+          id: 'MetalPrintStory',
+          name: 'Metal Print Story',
+          description: 'Cinematic: hook → process → hero → mockups → why metal → CTA',
+          assetType: 'image',
+          dimensions: '1080x1920',
+          supportsCopy: true,
+          copyTemplate: 'metal-print',
+          needsProcessFootage: true,
         },
         {
           id: 'FootageReel',
@@ -207,6 +218,27 @@ function handleReelStudioRoute(pathname, req, res) {
   // GET /api/reel-studio/history — list past renders
   if (pathname === '/api/reel-studio/history' && req.method === 'GET') {
     sendJson(res, 200, { history: loadHistory() });
+    return true;
+  }
+
+  // POST /api/reel-studio/generate-copy — AI-write hooks/captions via local Ollama
+  if (pathname === '/api/reel-studio/generate-copy' && req.method === 'POST') {
+    parseBody(req).then(async (body) => {
+      const { template = 'apparel', items = [], vibe, sceneContext } = body;
+      try {
+        const { writeApparelCopy, writeMetalPrintCopy } = require('./modules/reel-copywriter');
+        let copy;
+        if (template === 'metal-print') {
+          copy = await writeMetalPrintCopy({ items, sceneContext });
+        } else {
+          copy = await writeApparelCopy({ items, vibe });
+        }
+        sendJson(res, 200, { success: true, copy });
+      } catch (e) {
+        console.error('[reel-studio] copy generation failed:', e);
+        sendError(res, 500, e.message);
+      }
+    }).catch(() => sendError(res, 400, 'Invalid request body'));
     return true;
   }
 

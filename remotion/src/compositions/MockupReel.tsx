@@ -63,6 +63,10 @@ export const mockupReelSchema = z.object({
   mockupImages: z.array(z.string()).default([]),
   /** Auto-populated: labels for each mockup */
   labels: z.array(z.string()).default([]),
+  /** Optional per-item captions (display big text on each slide) */
+  captions: z.array(z.string()).default([]),
+  /** Optional per-item subtitles (smaller text under caption) */
+  subtitles: z.array(z.string()).default([]),
   /** Optional per-item effect overrides (parallel to mockupImages) */
   itemEffects: z
     .array(
@@ -112,6 +116,8 @@ export const MockupReel: React.FC<Props> = ({
   audioVolume = 1,
   ctaUrl = "",
   ctaLabel = "Shop Now:",
+  captions = [],
+  subtitles = [],
 }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
@@ -187,6 +193,8 @@ export const MockupReel: React.FC<Props> = ({
             <MockupSlide
               image={img}
               label={labels[i] || ""}
+              caption={captions[i] || ""}
+              subtitle={subtitles[i] || ""}
               accent={accent}
               transition={transition}
               panMode={eff.panMode ?? panMode}
@@ -222,6 +230,8 @@ export const MockupReel: React.FC<Props> = ({
 const MockupSlide: React.FC<{
   image: string;
   label: string;
+  caption: string;
+  subtitle: string;
   accent: string;
   transition: string;
   panMode: string;
@@ -237,6 +247,8 @@ const MockupSlide: React.FC<{
 }> = ({
   image,
   label,
+  caption,
+  subtitle,
   accent,
   transition,
   panMode,
@@ -392,28 +404,62 @@ const MockupSlide: React.FC<{
         />
       </div>
 
-      {/* Label */}
-      {label && (
+      {/* Caption block (caption + subtitle + label) */}
+      {(caption || subtitle || label) && (
         <div
           style={{
             position: "absolute",
-            bottom: 120,
+            bottom: 180,
             width: "100%",
             textAlign: "center",
             opacity: labelOpacity,
+            padding: "0 60px",
           }}
         >
-          <span
-            style={{
-              color: "white",
-              fontSize: 36,
-              fontFamily: "Arial, sans-serif",
-              fontWeight: 700,
-              textShadow: "0 2px 15px rgba(0,0,0,0.6)",
-            }}
-          >
-            {label}
-          </span>
+          {caption && (
+            <div
+              style={{
+                color: "white",
+                fontSize: 72,
+                fontFamily: "Arial Black, Arial, sans-serif",
+                fontWeight: 900,
+                lineHeight: 1.05,
+                textShadow: "0 4px 20px rgba(0,0,0,0.9)",
+                letterSpacing: -1,
+                marginBottom: 10,
+                textTransform: "uppercase",
+              }}
+            >
+              {caption}
+            </div>
+          )}
+          {subtitle && (
+            <div
+              style={{
+                color: accent,
+                fontSize: 30,
+                fontFamily: "Arial, sans-serif",
+                fontWeight: 700,
+                textShadow: "0 2px 12px rgba(0,0,0,0.7)",
+                letterSpacing: 1,
+              }}
+            >
+              {subtitle}
+            </div>
+          )}
+          {!caption && label && (
+            <div
+              style={{
+                color: "white",
+                fontSize: 36,
+                fontFamily: "Arial, sans-serif",
+                fontWeight: 700,
+                textShadow: "0 2px 15px rgba(0,0,0,0.6)",
+              }}
+            >
+              {label}
+            </div>
+          )}
         </div>
       )}
 

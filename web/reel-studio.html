@@ -260,6 +260,25 @@
       font-family: 'Montserrat', sans-serif;
       white-space: nowrap;
     }
+    .selected-item .caption-preview {
+      position: absolute;
+      top: 26px;
+      left: 2px;
+      right: 2px;
+      padding: 3px 4px;
+      background: rgba(255, 107, 53, 0.92);
+      color: white;
+      font-size: 9px;
+      font-weight: 900;
+      text-align: center;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .selected-item img, .selected-item video {
       width: 100%;
       height: 100%;
@@ -733,7 +752,11 @@
         <h3>Template</h3>
         <div class="template-cards" id="template-cards"></div>
 
-        <h3>Text</h3>
+        <h3>Text / Copy</h3>
+        <button class="btn btn-secondary" id="generate-copy-btn" style="margin: 0 0 12px; padding: 10px;">
+          ✨ Auto-write copy with Ollama
+        </button>
+        <div id="copy-status" style="display:none; margin-bottom: 10px; padding: 8px; border-radius: 6px; font-size: 11px;"></div>
         <div class="field">
           <label>Hook / Title</label>
           <input type="text" id="field-hookText" value="Check out our latest drops">
@@ -741,6 +764,15 @@
         <div class="field">
           <label>Subtitle / Tagline</label>
           <input type="text" id="field-subtitle" value="Made in Asheville, NC">
+        </div>
+        <div class="field" id="why-metal-wrap" style="display:none;">
+          <label>Why Metal (one line)</label>
+          <textarea id="field-whyMetal" rows="2">Museum-grade metal catches light and color that paper cannot.</textarea>
+        </div>
+        <div class="field" id="art-explainer-wrap" style="display:none;">
+          <label>Art Explainer (2 lines)</label>
+          <textarea id="field-artExplainer" rows="2">Every detail pressed into metal.
+Made to live in the light.</textarea>
         </div>
 
         <h3>Colors</h3>
@@ -1060,10 +1092,12 @@
         ? (asset.thumbnail ? `<img src="${asset.thumbnail}">` : `<video src="${asset.url}" muted></video>`)
         : `<img src="${asset.thumbnail}">`;
       const panIcon = PAN_MODE_ICONS[item.effects.panMode] || '';
+      const captionPreview = item.caption ? `<div class="caption-preview">${item.caption.slice(0, 18)}</div>` : '';
       el.innerHTML = `
         ${media}
         <div class="order">${i + 1}</div>
         <button class="remove" data-index="${i}">✕</button>
+        ${captionPreview}
         <div class="effect-badge">${panIcon} ${item.effects.slideSeconds}s</div>
       `;
       el.addEventListener('click', (e) => {
@@ -1120,6 +1154,23 @@
     updateLivePreview();
   }
 
+  // Show/hide template-specific fields
+  function updateTemplateFields() {
+    const isMetal = state.template === 'MetalPrintStory';
+    const whyMetalWrap = document.getElementById('why-metal-wrap');
+    const artExplainerWrap = document.getElementById('art-explainer-wrap');
+    if (whyMetalWrap) whyMetalWrap.style.display = isMetal ? 'block' : 'none';
+    if (artExplainerWrap) artExplainerWrap.style.display = isMetal ? 'block' : 'none';
+
+    // Metal template uses darker default colors
+    if (isMetal) {
+      const bg = document.getElementById('field-bgColor');
+      const accent = document.getElementById('field-accent');
+      if (bg.value === '#111111') bg.value = '#0a0a0a';
+      if (accent.value === '#ff6b35') accent.value = '#c9a048';
+    }
+  }
+
   // ── Templates ──
   async function loadTemplates() {
     const data = await api('/api/reel-studio/templates');
@@ -1137,6 +1188,7 @@
         state.template = tpl.id;
         document.querySelectorAll('.template-card').forEach(c => c.classList.remove('active'));
         card.classList.add('active');
+        updateTemplateFields();
       });
       container.appendChild(card);
     });
@@ -1467,8 +1519,44 @@
         ctaLabel,
         mockupImages: state.selected.map(s => absoluteUrl(s.asset.url)),
         labels: state.selected.map(s => s.asset.label),
+        captions: state.selected.map(s => s.caption || ''),
+        subtitles: state.selected.map(s => s.subtitle || ''),
         // Per-item effect overrides
         itemEffects: state.selected.map(s => s.effects),
+      };
+    }
+
+    if (state.template === 'MetalPrintStory') {
+      // Split selected items: videos = process clips, images = mockups
+      const processClips = state.selected
+        .filter(s => s.asset.type === 'video')
+        .map(s => ({
+          url: absoluteUrl(s.asset.url),
+          durationInFrames: 90,
+        }));
+      const mockupImgs = state.selected
+        .filter(s => s.asset.type === 'image')
+        .map(s => absoluteUrl(s.asset.url));
+      // First image is hero
+      const heroImage = mockupImgs[0] || '';
+      const remainingMockups = mockupImgs.slice(1);
+
+      return {
+        hook,
+        processIntro: 'Watch it come to life',
+        artExplainer: document.getElementById('field-artExplainer')?.value || 'Every detail pressed into metal.\nMade to live in the light.',
+        whyMetal: document.getElementById('field-whyMetal')?.value || 'Museum-grade metal catches light and color that paper cannot.',
+        ctaText: 'Shop Now',
+        outro: subtitle,
+        brandName: 'BlueRidge Custom Co.',
+        processClips,
+        mockupImages: remainingMockups,
+        heroImage,
+        bgColor,
+        accent,
+        audioUrl: state.audioUrl ? absoluteUrl(state.audioUrl) : '',
+        audioVolume: 1,
+        ctaUrl,
       };
     }
 
@@ -1583,6 +1671,119 @@
       a.href = state.lastVideoUrl;
       a.download = 'reel-' + Date.now() + '.mp4';
       a.click();
+    }
+  });
+
+  // ── AI copy generation (Ollama) ──
+  async function fetchArtworkMeta(asset) {
+    // For apparel mockups, derive title from label; for custom-art, fetch from DB
+    if (asset.source === 'apparel') {
+      return {
+        title: asset.label || 'apparel design',
+        theme: '',
+        mood: '',
+        keywords: [],
+      };
+    }
+    if (asset.source === 'custom-art') {
+      // Try to resolve artwork id from asset id
+      const artId = (asset.id || '').split(':')[1];
+      try {
+        const res = await fetch(`/api/custom-art/artwork/${artId}`, {
+          headers: { 'x-api-key': apiKey },
+        });
+        const data = await res.json();
+        const a = data.artwork || data;
+        return {
+          title: a.title || asset.label,
+          theme: a.theme || a.category || '',
+          mood: a.mood || '',
+          keywords: a.keywords || [],
+          description: a.description || '',
+        };
+      } catch (e) {
+        return { title: asset.label, theme: '', mood: '', keywords: [] };
+      }
+    }
+    return { title: asset.label, theme: '', mood: '', keywords: [] };
+  }
+
+  document.getElementById('generate-copy-btn').addEventListener('click', async () => {
+    if (state.selected.length === 0) {
+      alert('Select items first');
+      return;
+    }
+    const tpl = state.templates.find(t => t.id === state.template);
+    if (!tpl?.supportsCopy) {
+      alert('This template does not support AI copy generation');
+      return;
+    }
+
+    const btn = document.getElementById('generate-copy-btn');
+    const status = document.getElementById('copy-status');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Writing copy with local Ollama...';
+    status.style.display = 'block';
+    status.style.background = 'var(--surface-2)';
+    status.style.color = 'var(--muted)';
+    status.textContent = 'Collecting design metadata...';
+
+    try {
+      // Gather metadata for each selected item
+      const items = await Promise.all(
+        state.selected.map(s => fetchArtworkMeta(s.asset))
+      );
+
+      status.textContent = 'Ollama is writing copy (this can take 30-90s)...';
+      const res = await fetch('/api/reel-studio/generate-copy', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template: tpl.copyTemplate,
+          items,
+          vibe: document.getElementById('field-subtitle').value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Generation failed');
+
+      const copy = data.copy;
+      // Write the generated copy into the form fields
+      if (tpl.copyTemplate === 'metal-print') {
+        document.getElementById('field-hookText').value = copy.hook || '';
+        document.getElementById('field-subtitle').value = copy.outro || '';
+        if (document.getElementById('field-whyMetal')) {
+          document.getElementById('field-whyMetal').value = copy.whyMetal || '';
+        }
+        if (document.getElementById('field-artExplainer')) {
+          document.getElementById('field-artExplainer').value = copy.artExplainer || '';
+        }
+        state.copyData = copy;
+      } else {
+        // apparel: hook + outro + per-item captions
+        document.getElementById('field-hookText').value = copy.hook || '';
+        document.getElementById('field-subtitle').value = copy.outro || '';
+        // Attach captions to each selected item
+        (copy.items || []).forEach((item, i) => {
+          if (state.selected[i]) {
+            state.selected[i].caption = item.caption || '';
+            state.selected[i].subtitle = item.subtitle || '';
+          }
+        });
+        state.copyData = copy;
+        renderSelected();
+      }
+
+      status.style.background = 'rgba(16, 185, 129, 0.2)';
+      status.style.color = '#6ee7b7';
+      status.textContent = '✓ Copy written. Edit any field before rendering.';
+    } catch (e) {
+      status.style.background = 'rgba(239, 68, 68, 0.2)';
+      status.style.color = '#fca5a5';
+      status.textContent = '✗ ' + e.message;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '✨ Auto-write copy with Ollama';
     }
   });
 
@@ -1772,6 +1973,7 @@
       updateCategoryFilter();
       renderAssets();
       loadHistory();
+      updateTemplateFields();
     } catch (e) {
       document.getElementById('asset-grid').innerHTML = `<div class="asset-empty">Error loading: ${e.message}</div>`;
     }

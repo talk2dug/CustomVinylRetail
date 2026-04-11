@@ -9,6 +9,10 @@ import {
 import { MockupReel, mockupReelSchema } from "./compositions/MockupReel";
 import { FootageReel, footageReelSchema } from "./compositions/FootageReel";
 import {
+  MetalPrintStory,
+  metalPrintStorySchema,
+} from "./compositions/MetalPrintStory";
+import {
   listArtwork,
   listAllMockups,
   listFootage,
@@ -122,6 +126,8 @@ export const RemotionRoot: React.FC = () => {
           ctaLabel: "Shop Now:",
           mockupImages: [] as string[],
           labels: [] as string[],
+          captions: [] as string[],
+          subtitles: [] as string[],
           itemEffects: [] as Array<{
             panMode?: string;
             imageScale?: number;
@@ -240,6 +246,55 @@ export const RemotionRoot: React.FC = () => {
             console.error("[FootageReel] fetch failed:", e);
             return { props };
           }
+        }}
+      />
+
+      {/* ── Metal Print Story — process + art + mockups + why-metal ── */}
+      <Composition
+        id="MetalPrintStory"
+        component={MetalPrintStory}
+        schema={metalPrintStorySchema}
+        durationInFrames={900}
+        fps={FPS}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          hook: "Hand-finished metal prints",
+          processIntro: "Watch it come to life",
+          artExplainer:
+            "Every detail pressed into metal.\nMade to live in the light.",
+          whyMetal:
+            "Museum-grade metal catches light and color that paper cannot.",
+          ctaText: "Shop Now",
+          outro: "Asheville, NC Studio",
+          brandName: "BlueRidge Custom Co.",
+          processClips: [] as { url: string; durationInFrames: number }[],
+          mockupImages: [] as string[],
+          heroImage: "",
+          bgColor: "#0a0a0a",
+          accent: "#c9a048",
+          audioUrl: "",
+          audioVolume: 1,
+          ctaUrl: "",
+        }}
+        calculateMetadata={({ props }) => {
+          // Compute total frames from content
+          const HOOK = 75,
+            PROCESS_INTRO = 45,
+            HERO = 90,
+            ART = 75,
+            WHY = 90,
+            OUTRO_F = 90;
+          const MOCKUP_EACH = 90;
+          const processTotal = (props.processClips || []).reduce(
+            (sum, c) => sum + (c.durationInFrames || MOCKUP_EACH),
+            0
+          );
+          const mockupTotal = (props.mockupImages || []).length * MOCKUP_EACH;
+          const heroFrames = props.heroImage ? HERO : 0;
+          const total =
+            HOOK + PROCESS_INTRO + processTotal + heroFrames + ART + mockupTotal + WHY + OUTRO_F;
+          return { props, durationInFrames: Math.max(450, total) };
         }}
       />
 
