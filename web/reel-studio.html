@@ -881,8 +881,11 @@ Made to live in the light.</textarea>
       <div class="field">
         <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
           <input type="checkbox" id="field-isTikTokShopReel">
-          <span>First reel for this theme → TikTok Shop</span>
+          <span>Push this reel's products to TikTok Shop</span>
         </label>
+        <small style="color: var(--text-muted); display: block; margin-top: 4px;">
+          When checked, Finalize will add the reel's products to the TikTok Shop sales channel (capped at 100 total). Leave unchecked for Shopify-only reels.
+        </small>
       </div>
       <div class="render-bar">
         <button class="btn" id="render-btn">Render Reel</button>
@@ -2102,12 +2105,8 @@ Made to live in the light.</textarea>
 
   function onCampaignThemeChange() {
     state.activeCampaignTheme = document.getElementById('field-campaignTheme').value;
-    // Auto-set isTikTokShopReel for the first reel of a theme
-    const camp = state.pendingCampaigns.find(c => c.id === state.activeCampaignId);
-    if (camp && state.activeCampaignTheme) {
-      const alreadyHasTheme = (camp.existingReels || []).some(r => r.theme === state.activeCampaignTheme);
-      document.getElementById('field-isTikTokShopReel').checked = !alreadyHasTheme;
-    }
+    // The TikTok Shop checkbox is left for the user to decide per reel —
+    // not every reel should push to TikTok Shop.
   }
 
   document.getElementById('field-campaignRun').addEventListener('change', onCampaignChange);
