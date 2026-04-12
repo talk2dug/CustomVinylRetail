@@ -1715,10 +1715,184 @@ function scheduleMultiboardPosts(db, options = {}) {
   return created;
 }
 
+// ============================================================================
+// VIDEO / REEL PUBLISHING — Facebook + Instagram
+// ============================================================================
+
+/**
+ * Publish a video to a Facebook Page as a Reel/video post.
+ * Uses the Graph API v21.0 /{page-id}/videos endpoint with file_url
+ * (the video must be publicly accessible).
+ *
+ * @param {string} publicVideoUrl - Publicly accessible URL to the .mp4
+ * @param {string} description   - Caption with hashtags, URLs, etc.
+ * @param {string} category      - Product category (for credential routing)
+ * @returns {Promise<{success: boolean, videoId: string, postId: string}>}
+ */
+async function publishVideoToFacebook(publicVideoUrl, description, category = '') {
+  const creds = getFacebookCredentials(category);
+  if (!creds.accessToken || !creds.pageId) {
+    throw new Error('Facebook credentials not configured');
+  }
+
+  console.log(`[Facebook] Publishing video reel to ${creds.pageName} (${creds.pageId})...`);
+
+  return new Promise((resolve, reject) => {
+    const postData = JSON.stringify({
+      file_url: publicVideoUrl,
+      description: description,
+      access_token: creds.accessToken
+    });
+
+    const req = https.request({
+      hostname: 'graph-video.facebook.com',
+      path: `/v21.0/${creds.pageId}/videos`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          if (result.error) {
+            console.error('[Facebook] Video publish error:', result.error.message);
+            reject(new Error(result.error.message));
+          } else {
+            console.log(`[Facebook] Video published: id=${result.id}`);
+            resolve({
+              success: true,
+              videoId: result.id,
+              postId: result.post_id || result.id,
+              page: creds.pageName
+            });
+          }
+        } catch (e) {
+          reject(new Error(`Failed to parse response: ${data.substring(0, 200)}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
+  });
+}
+
+/**
+ * Publish a video as an Instagram Reel.
+ * Uses the two-step container flow:
+ *   1. POST /{ig-user-id}/media with media_type=REELS + video_url
+ *   2. Poll until container status is FINISHED
+ *   3. POST /{ig-user-id}/media_publish with creation_id
+ *
+ * @param {string} publicVideoUrl - Publicly accessible URL to the .mp4
+ * @param {string} caption        - Full caption text
+ * @returns {Promise<{success: boolean, igPostId: string}>}
+ */
+async function publishReelToInstagram(publicVideoUrl, caption) {
+  if (!INSTAGRAM_BUSINESS_ACCOUNT_ID) {
+    return { success: false, skipped: true, reason: 'INSTAGRAM_BUSINESS_ACCOUNT_ID not configured' };
+  }
+  const accessToken = FB_PAGE_ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error('No FB_PAGE_ACCESS_TOKEN for Instagram publishing');
+  }
+
+  console.log(`[Instagram] Publishing reel to IG account ${INSTAGRAM_BUSINESS_ACCOUNT_ID}...`);
+
+  // Step 1: Create media container
+  const containerId = await new Promise((resolve, reject) => {
+    const postData = JSON.stringify({
+      media_type: 'REELS',
+      video_url: publicVideoUrl,
+      caption: caption,
+      access_token: accessToken
+    });
+    const req = https.request({
+      hostname: 'graph.facebook.com',
+      path: `/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}/media`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+    }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(data);
+          if (r.error) reject(new Error(r.error.message));
+          else resolve(r.id);
+        } catch (e) { reject(new Error('Parse failed: ' + data.substring(0, 200))); }
+      });
+    });
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
+  });
+
+  console.log(`[Instagram] Reel container created: ${containerId}, polling...`);
+
+  // Step 2: Poll until FINISHED (up to 2 min)
+  for (let attempt = 0; attempt < 24; attempt++) {
+    await new Promise(r => setTimeout(r, 5000));
+    const status = await new Promise((resolve, reject) => {
+      const url = `https://graph.facebook.com/v21.0/${containerId}?fields=status_code,status&access_token=${accessToken}`;
+      https.get(url, (res) => {
+        let d = '';
+        res.on('data', c => d += c);
+        res.on('end', () => {
+          try { resolve(JSON.parse(d)); } catch (e) { reject(e); }
+        });
+      }).on('error', reject);
+    });
+
+    if (status.status_code === 'FINISHED') break;
+    if (status.status_code === 'ERROR' || status.status_code === 'EXPIRED') {
+      throw new Error(`IG container ${status.status_code}: ${status.status || 'unknown'}`);
+    }
+    console.log(`[Instagram] Container status: ${status.status_code} (attempt ${attempt + 1})`);
+  }
+
+  // Step 3: Publish
+  const igPostId = await new Promise((resolve, reject) => {
+    const postData = JSON.stringify({
+      creation_id: containerId,
+      access_token: accessToken
+    });
+    const req = https.request({
+      hostname: 'graph.facebook.com',
+      path: `/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+    }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(data);
+          if (r.error) reject(new Error(r.error.message));
+          else resolve(r.id);
+        } catch (e) { reject(new Error('Parse failed: ' + data.substring(0, 200))); }
+      });
+    });
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
+  });
+
+  console.log(`[Instagram] Reel published: ${igPostId}`);
+  return { success: true, igPostId };
+}
+
 module.exports = {
   generateMockupForPost,
   postToFacebook,
   publishToInstagram,
+  publishVideoToFacebook,
+  publishReelToInstagram,
   postFirstComment,
   processScheduledPost,
   processPendingPosts,

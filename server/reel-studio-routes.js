@@ -559,6 +559,67 @@ function handleReelStudioRoute(pathname, req, res) {
     return true;
   }
 
+  // POST /api/reel-studio/publish-social — publish a rendered reel to
+  // Facebook (video post) and/or Instagram (Reel), with full caption,
+  // hashtags, and product links embedded.
+  if (pathname === '/api/reel-studio/publish-social' && req.method === 'POST') {
+    parseBody(req).then(async (body) => {
+      const {
+        filename,       // remotion output filename (e.g. reel-mockupreel-1776031655818.mp4)
+        caption,        // full caption text with hashtags + links
+        category,       // product category for FB credential routing
+        facebook = true,
+        instagram = true
+      } = body;
+      if (!filename) return sendError(res, 400, 'filename required');
+
+      try {
+        const { TIKTOK_VIDEOS_DIR } = require('./paths');
+        const srcPath = path.join(__dirname, '..', 'remotion', 'out', filename);
+        if (!fs.existsSync(srcPath)) return sendError(res, 404, 'Video file not found: ' + filename);
+
+        // Copy to public-accessible dir so FB/IG can pull it
+        const pubFilename = `reel-${Date.now()}-${filename}`;
+        const pubPath = path.join(TIKTOK_VIDEOS_DIR, pubFilename);
+        fs.copyFileSync(srcPath, pubPath);
+        const publicUrl = `https://blueridgecustomco.com/library/tiktok-videos/${encodeURIComponent(pubFilename)}`;
+        console.log(`[reel-studio] Video staged for social: ${publicUrl}`);
+
+        const { publishVideoToFacebook, publishReelToInstagram } = require('./lib/facebook-post-scheduler');
+        const results = { facebook: null, instagram: null };
+
+        if (facebook) {
+          try {
+            results.facebook = await publishVideoToFacebook(publicUrl, caption || '', category || '');
+          } catch (e) {
+            console.error('[reel-studio] Facebook publish failed:', e.message);
+            results.facebook = { success: false, error: e.message };
+          }
+        }
+
+        if (instagram) {
+          try {
+            results.instagram = await publishReelToInstagram(publicUrl, caption || '');
+          } catch (e) {
+            console.error('[reel-studio] Instagram publish failed:', e.message);
+            results.instagram = { success: false, error: e.message };
+          }
+        }
+
+        sendJson(res, 200, {
+          success: true,
+          publicUrl,
+          facebook: results.facebook,
+          instagram: results.instagram
+        });
+      } catch (e) {
+        console.error('[reel-studio] publish-social failed:', e);
+        sendError(res, 500, e.message);
+      }
+    }).catch(() => sendError(res, 400, 'Invalid request body'));
+    return true;
+  }
+
   return false;
 }
 
