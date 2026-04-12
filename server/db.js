@@ -8450,8 +8450,14 @@ function getLatestPipelineRun(campaignSlug) {
  * picker. See server/modules/reel-followup.js.
  */
 function listPipelineRunsAwaitingReels() {
+  // Show both:
+  // 1. Runs that finished steps 1-6 and are explicitly awaiting reels
+  // 2. Runs still at step 6 (shopify-publish) that already have mockups
+  //    ready (theme_groups populated) — user can start making reels in
+  //    parallel while Shopify publish finishes.
   return db.prepare(`SELECT * FROM pipeline_runs
-    WHERE status = 'pending-reels'
+    WHERE (status = 'pending-reels')
+       OR (status = 'running' AND theme_groups IS NOT NULL)
     ORDER BY created_at DESC`).all();
 }
 

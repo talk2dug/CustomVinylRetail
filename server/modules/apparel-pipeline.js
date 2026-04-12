@@ -1709,6 +1709,36 @@ async function runFullPipeline(collectionCategory, options = {}) {
     }
 
     // ------------------------------------------------------------------
+    // Persist campaign state for reel-studio EARLY (right after mockups
+    // are done, BEFORE Shopify publish) so the user can start creating
+    // reels in reel-studio while Shopify step 6 is still running.
+    // publish_manifest is updated again after step 6 completes.
+    // ------------------------------------------------------------------
+    if (pipelineRunId) {
+      try {
+        const db = require('../db');
+        const slimThemeGroups = {};
+        for (const [theme, items] of Object.entries(themeGroups)) {
+          slimThemeGroups[theme] = items.map(it => ({
+            name: it.name,
+            designId: it.design?.id || it.design?.slug || null,
+            designSlug: it.design?.slug || null,
+            preview: it.design?.preview || it.design?.image || null,
+            category: it.category || null
+          }));
+        }
+        db.updatePipelineRun(pipelineRunId, {
+          collection: collectionCategory || options.campaignTitle || categoryLabel,
+          theme_groups: JSON.stringify(slimThemeGroups),
+          mockup_dir: PIPELINE_OUTPUT_DIR
+        });
+        console.log('[ApparelPipeline] Campaign state persisted early — reel-studio can see this run now');
+      } catch (err) {
+        console.warn('[ApparelPipeline] Could not persist early campaign state:', err.message);
+      }
+    }
+
+    // ------------------------------------------------------------------
     // Step 6: Publish to Shopify
     // ------------------------------------------------------------------
     if (!options.skipShopify) {
@@ -1743,32 +1773,18 @@ async function runFullPipeline(collectionCategory, options = {}) {
     }
 
     // ------------------------------------------------------------------
-    // Persist campaign state for reel-studio (reel-followup flow).
-    // After step 6 (Shopify publish) we write the minimal state needed to
-    // later create reels manually and run step 7b/7c on demand.
+    // Update publish_manifest now that step 6 is done (theme_groups etc.
+    // were already persisted before step 6 so reel-studio could see them
+    // while Shopify was still publishing).
     // ------------------------------------------------------------------
-    if (pipelineRunId) {
+    if (pipelineRunId && results.shopifyManifest) {
       try {
         const db = require('../db');
-        // Slim themeGroups to only what reel-studio needs (no circular refs)
-        const slimThemeGroups = {};
-        for (const [theme, items] of Object.entries(themeGroups)) {
-          slimThemeGroups[theme] = items.map(it => ({
-            name: it.name,
-            designId: it.design?.id || it.design?.slug || null,
-            designSlug: it.design?.slug || null,
-            preview: it.design?.preview || it.design?.image || null,
-            category: it.category || null
-          }));
-        }
         db.updatePipelineRun(pipelineRunId, {
-          collection: collectionCategory || options.campaignTitle || categoryLabel,
-          theme_groups: JSON.stringify(slimThemeGroups),
-          publish_manifest: JSON.stringify(results.shopifyManifest || []),
-          mockup_dir: PIPELINE_OUTPUT_DIR
+          publish_manifest: JSON.stringify(results.shopifyManifest)
         });
       } catch (err) {
-        console.warn('[ApparelPipeline] Could not persist campaign state to pipeline_runs:', err.message);
+        console.warn('[ApparelPipeline] Could not persist publish_manifest:', err.message);
       }
     }
 
