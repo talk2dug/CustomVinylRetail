@@ -1954,19 +1954,6 @@ Made to live in the light.</textarea>
   document.getElementById('tiktok-btn').addEventListener('click', async () => {
     if (!state.lastRenderFilename) return alert('No rendered video to upload');
 
-    // Build default caption: hook + CTA URL + 5 hashtags
-    const hook = document.getElementById('field-hookText').value;
-    const cta = document.getElementById('field-ctaUrl').value.trim();
-    const rawTags = document.getElementById('field-hashtags').value;
-    const tags = parseHashtags(rawTags).slice(0, 5).join(' ');
-    let defaultCaption = hook;
-    if (cta) defaultCaption += `\n\n🛍 ${cta}`;
-    if (tags) defaultCaption += `\n\n${tags}`;
-    const title = prompt('Caption for TikTok:', defaultCaption);
-    if (!title) return;
-
-    const privacyChoice = confirm('Post PUBLIC? Click OK for public, Cancel for SELF_ONLY (private draft)') ? 'PUBLIC_TO_EVERYONE' : 'SELF_ONLY';
-
     const btn = document.getElementById('tiktok-btn');
     const status = document.getElementById('tiktok-status');
     btn.disabled = true;
@@ -1987,22 +1974,95 @@ Made to live in the light.</textarea>
     }
 
     btn.innerHTML = '<span class="spinner"></span>Uploading to TikTok...';
-    status.textContent = 'Uploading video to TikTok (this takes 30-90s)...';
+    status.textContent = 'Sending video to your TikTok drafts...';
 
     try {
-      // Server-side path to the rendered file
       const videoPath = `/home/ubuntu/vinylApp/remotion/out/${state.lastRenderFilename}`;
       const res = await fetch('/api/tiktok-content/upload-video', {
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoPath, title, privacyLevel: privacyChoice }),
+        body: JSON.stringify({ videoPath, title: 'Reel from Blue Ridge Custom Co' }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Upload failed');
-      status.style.background = 'rgba(16, 185, 129, 0.2)';
-      status.style.color = '#6ee7b7';
-      const where = privacyChoice === 'PUBLIC_TO_EVERYONE' ? 'posted publicly' : 'saved as a private draft';
-      status.innerHTML = `✓ Video ${where}! Check your TikTok app. <span style="font-size:10px; opacity:0.7;">publish_id: ${data.result?.publish_id || 'n/a'}</span>`;
+
+      // Build caption for copy-paste (inbox flow doesn't carry captions)
+      const hook = (document.getElementById('field-hookText').value || '').trim();
+      const cta = (document.getElementById('field-ctaUrl').value || '').trim();
+      const rawTags = (document.getElementById('field-hashtags').value || '').trim();
+      const tags = parseHashtags(rawTags).slice(0, 8).join(' ');
+      // Always include brand tags
+      const brandTags = '#BlueRidgeCustomCo #AshevilleNC #MadeInAsheville #LocallyMade';
+      const allTags = tags ? `${tags} ${brandTags}` : brandTags;
+
+      // Build campaign product links if attached
+      let productLinks = '';
+      if (state.activeCampaignId) {
+        const camp = state.pendingCampaigns.find(c => c.id === state.activeCampaignId);
+        if (camp) {
+          const themeItems = camp.themes?.[state.activeCampaignTheme] || Object.values(camp.themes || {})[0] || [];
+          const shopLinks = themeItems
+            .filter(i => i.shopifyHandle)
+            .slice(0, 3)
+            .map(i => `https://blueridgecustomco.com/products/${i.shopifyHandle}`);
+          if (shopLinks.length) productLinks = '\n' + shopLinks.join('\n');
+        }
+      }
+      // Fallback: use CTA URL if no campaign links
+      if (!productLinks && cta) productLinks = '\n\n' + cta;
+
+      const fullCaption = [
+        hook,
+        productLinks ? `\n🛍 Shop:${productLinks}` : '',
+        `\n\n${allTags}`
+      ].filter(Boolean).join('');
+
+      const escapedCaption = fullCaption.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      status.style.background = 'rgba(16, 185, 129, 0.15)';
+      status.style.color = '#d1fae5';
+      status.innerHTML = `
+        <div style="text-align:left;">
+          <div style="font-weight:700; margin-bottom:8px; color:#6ee7b7;">✓ Video sent to TikTok drafts!</div>
+          <div style="font-size:11px; opacity:0.7; margin-bottom:10px;">Open TikTok → Profile → Inbox → "From Content Manager" to finish posting.</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:#9ca3af; margin-bottom:6px;">Caption — tap to copy:</div>
+          <pre id="tiktok-caption-text" style="
+            background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1);
+            border-radius:6px; padding:10px 12px; font-family:inherit; font-size:12px;
+            line-height:1.5; white-space:pre-wrap; word-break:break-word;
+            color:#e5e7eb; cursor:pointer; margin:0 0 8px;
+            max-height:200px; overflow-y:auto;
+          ">${escapedCaption}</pre>
+          <button id="tiktok-copy-caption" type="button" style="
+            background:#1a1a1a; color:#fff; border:1px solid rgba(255,255,255,0.15);
+            padding:8px 16px; border-radius:4px; font-size:12px; font-weight:600;
+            cursor:pointer; width:100%;
+          ">Copy Caption to Clipboard</button>
+        </div>
+      `;
+
+      // Copy handlers
+      const copyAction = () => {
+        const text = document.getElementById('tiktok-caption-text').textContent;
+        navigator.clipboard.writeText(text).then(() => {
+          const copyBtn = document.getElementById('tiktok-copy-caption');
+          copyBtn.textContent = 'Copied!';
+          copyBtn.style.background = '#065f46';
+          setTimeout(() => { copyBtn.textContent = 'Copy Caption to Clipboard'; copyBtn.style.background = '#1a1a1a'; }, 2000);
+        }).catch(() => {
+          // Fallback for older browsers / Electron
+          const ta = document.createElement('textarea');
+          ta.value = document.getElementById('tiktok-caption-text').textContent;
+          document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+          const copyBtn = document.getElementById('tiktok-copy-caption');
+          copyBtn.textContent = 'Copied!';
+          copyBtn.style.background = '#065f46';
+          setTimeout(() => { copyBtn.textContent = 'Copy Caption to Clipboard'; copyBtn.style.background = '#1a1a1a'; }, 2000);
+        });
+      };
+      document.getElementById('tiktok-copy-caption').addEventListener('click', copyAction);
+      document.getElementById('tiktok-caption-text').addEventListener('click', copyAction);
+
     } catch (e) {
       status.style.background = 'rgba(239, 68, 68, 0.2)';
       status.style.color = '#fca5a5';
