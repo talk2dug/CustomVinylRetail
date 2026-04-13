@@ -1693,9 +1693,30 @@ Made to live in the light.</textarea>
         renderBody.campaignRunId = state.activeCampaignId;
         renderBody.theme = state.activeCampaignTheme;
         renderBody.isTikTokShopReel = document.getElementById('field-isTikTokShopReel').checked;
-        renderBody.chunkDesignIds = themeItems.map(i => i.designId).filter(Boolean);
-        renderBody.shopifyProductIds = themeItems.map(i => i.shopifyProductId).filter(Boolean);
         renderBody.caption = document.getElementById('field-hookText').value;
+
+        // Only include the designs actually SELECTED for this reel, not the
+        // entire theme. Match selected asset filenames back to campaign items
+        // so the landing page shows only the products featured in this video.
+        const selectedDesignIds = [];
+        const selectedShopifyIds = [];
+        for (const sel of state.selected) {
+          const fn = sel.asset?.url?.split('/').pop() || '';
+          for (const item of themeItems) {
+            if (item.designId && fn.includes(item.designId.substring(0, 20))) {
+              if (item.designId) selectedDesignIds.push(item.designId);
+              if (item.shopifyProductId) selectedShopifyIds.push(item.shopifyProductId);
+              break;
+            }
+          }
+        }
+        // Fall back to all theme items only if matching failed completely
+        renderBody.chunkDesignIds = selectedDesignIds.length
+          ? [...new Set(selectedDesignIds)]
+          : themeItems.map(i => i.designId).filter(Boolean);
+        renderBody.shopifyProductIds = selectedDesignIds.length
+          ? [...new Set(selectedShopifyIds)]
+          : themeItems.map(i => i.shopifyProductId).filter(Boolean);
       }
       const res = await fetch('/api/reel-studio/render', {
         method: 'POST',
@@ -2001,20 +2022,27 @@ Made to live in the light.</textarea>
       const brandTags = '#BlueRidgeCustomCo #AshevilleNC #MadeInAsheville #LocallyMade';
       const allTags = tags ? `${tags} ${brandTags}` : brandTags;
 
-      // Build campaign product links if attached
+      // Build product links for only the items selected in this reel
       let productLinks = '';
       if (state.activeCampaignId) {
         const camp = state.pendingCampaigns.find(c => c.id === state.activeCampaignId);
         if (camp) {
           const themeItems = camp.themes?.[state.activeCampaignTheme] || Object.values(camp.themes || {})[0] || [];
-          const shopLinks = themeItems
-            .filter(i => i.shopifyHandle)
-            .slice(0, 3)
-            .map(i => `https://blueridgecustomco.com/products/${i.shopifyHandle}`);
+          const selectedHandles = [];
+          for (const sel of state.selected) {
+            const fn = sel.asset?.url?.split('/').pop() || '';
+            for (const item of themeItems) {
+              if (item.designId && item.shopifyHandle && fn.includes(item.designId.substring(0, 20))) {
+                selectedHandles.push(item.shopifyHandle);
+                break;
+              }
+            }
+          }
+          const handles = selectedHandles.length ? selectedHandles : themeItems.filter(i => i.shopifyHandle).map(i => i.shopifyHandle);
+          const shopLinks = [...new Set(handles)].slice(0, 5).map(h => `https://blueridgecustomco.com/products/${h}`);
           if (shopLinks.length) productLinks = '\n' + shopLinks.join('\n');
         }
       }
-      // Fallback: use CTA URL if no campaign links
       if (!productLinks && cta) productLinks = '\n\n' + cta;
 
       const fullCaption = [
@@ -2104,10 +2132,19 @@ Made to live in the light.</textarea>
       const camp = state.pendingCampaigns.find(c => c.id === state.activeCampaignId);
       if (camp) {
         const themeItems = camp.themes?.[state.activeCampaignTheme] || Object.values(camp.themes || {})[0] || [];
-        const shopLinks = themeItems
-          .filter(i => i.shopifyHandle)
-          .slice(0, 3)
-          .map(i => `https://blueridgecustomco.com/products/${i.shopifyHandle}`);
+        // Only include links for items actually selected in this reel
+        const selectedHandles = [];
+        for (const sel of state.selected) {
+          const fn = sel.asset?.url?.split('/').pop() || '';
+          for (const item of themeItems) {
+            if (item.designId && item.shopifyHandle && fn.includes(item.designId.substring(0, 20))) {
+              selectedHandles.push(item.shopifyHandle);
+              break;
+            }
+          }
+        }
+        const handles = selectedHandles.length ? selectedHandles : themeItems.filter(i => i.shopifyHandle).map(i => i.shopifyHandle);
+        const shopLinks = [...new Set(handles)].slice(0, 5).map(h => `https://blueridgecustomco.com/products/${h}`);
         if (shopLinks.length) productLinks = shopLinks.join('\n');
       }
     }
