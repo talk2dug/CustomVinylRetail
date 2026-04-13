@@ -25834,7 +25834,8 @@ async function handleVinylList(req, res) {
     const batches = [];
 
     for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.startsWith('cut-')) {
+      // Include both cut-* and driver-names-* batch directories
+      if (entry.isDirectory() && (entry.name.startsWith('cut-') || entry.name.startsWith('driver-names-'))) {
         const batchDir = path.join(VINYL_OUTPUT_DIR, entry.name);
         try {
           const files = await fs.promises.readdir(batchDir);
@@ -25847,12 +25848,28 @@ async function handleVinylList(req, res) {
             manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf8'));
           } catch (e) {}
 
+          // Calculate total size of all files in the batch
+          let totalSize = 0;
+          const fileSizes = {};
+          for (const f of files) {
+            try {
+              const stat = await fs.promises.stat(path.join(batchDir, f));
+              totalSize += stat.size;
+              if (f.endsWith('.svg')) {
+                fileSizes[f] = stat.size;
+              }
+            } catch (e) {}
+          }
+
           batches.push({
             name: entry.name,
             files: svgFiles,
+            fileSizes,
+            totalSize,
             created: manifest?.created || null,
             colors: manifest?.colors || [],
-            itemCount: manifest?.itemCount || 0
+            itemCount: manifest?.itemCount || 0,
+            manifest: manifest || null
           });
         } catch (e) {
           console.warn('[Vinyl List] Error reading batch:', entry.name, e.message);

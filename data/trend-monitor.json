@@ -54,8 +54,8 @@
     ],
     "googleTrendsGeo": "US"
   },
-  "lastScanAt": "2026-04-13T19:41:57.661Z",
-  "scanCount": 188,
+  "lastScanAt": "2026-04-13T19:58:43.563Z",
+  "scanCount": 189,
   "trends": [
     {
       "id": "reddit_1riex53",
@@ -38995,6 +38995,166 @@
       "status": "new",
       "discoveredAt": "2026-04-13T19:41:56.589Z",
       "expiresAt": "2026-04-20T19:41:56.589Z"
+    },
+    {
+      "id": "reddit_1skl4q4",
+      "source": "reddit",
+      "sourceId": "1skl4q4",
+      "title": "Most Metaphorical Image of the Century",
+      "snippet": "      &#32; submitted by &#32;  /u/OldCopy496  &#32; to &#32;  r/pics   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/pics/comments/1skl4q4/most_metaphorical_image_of_the_century/",
+      "subreddit": "pics",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776108301,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": "all",
+        "timeliness": 55
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This title is a humorous take on an overused phrase.",
+        "suggestedPhrases": [
+          "Most Metaphorical Image of the Century",
+          "When life gives you lemons..."
+        ],
+        "suggestedVisuals": [
+          "a meme of a person holding a lemon with a thought bubble",
+          "a comic strip of a person surrounded by metaphors"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:56:04.477Z",
+      "expiresAt": "2026-04-20T19:56:04.477Z"
+    },
+    {
+      "id": "reddit_1skbv4q",
+      "source": "reddit",
+      "sourceId": "1skbv4q",
+      "title": "I closed Gyarados’s mouth and made him happy for once.",
+      "snippet": "      &#32; submitted by &#32;  /u/DTSaranya  &#32; to &#32;  r/pokemon   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/pokemon/comments/1skbv4q/i_closed_gyaradoss_mouth_and_made_him_happy_for/",
+      "subreddit": "pokemon",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776089180,
+      "score": 74,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 60,
+        "audienceMatch": 70,
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Pokémon fans will appreciate the witty reference to Gyarados.",
+        "suggestedPhrases": [
+          "Gyarados's happy face",
+          "Pokemon mastery"
+        ],
+        "suggestedVisuals": [
+          "Gyarados with a smile",
+          "Happy Pokémon character"
+        ],
+        "targetAudience": "genz|all",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:56:58.094Z",
+      "expiresAt": "2026-04-20T19:56:58.094Z"
+    },
+    {
+      "id": "reddit_1ski7sq",
+      "source": "reddit",
+      "sourceId": "1ski7sq",
+      "title": "Getting stopped for a train to pass mid race",
+      "snippet": "      &#32; submitted by &#32;  /u/Epelep  &#32; to &#32;  r/Wellthatsucks   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/Wellthatsucks/comments/1ski7sq/getting_stopped_for_a_train_to_pass_mid_race/",
+      "subreddit": "Wellthatsucks",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776102300,
+      "score": 54,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 70,
+        "apparelRelevance": 40,
+        "audienceMatch": 50,
+        "timeliness": 30
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Athletes and runners will appreciate the relatable joke.",
+        "suggestedPhrases": [
+          "Train of thought",
+          "Mid-race interruption"
+        ],
+        "suggestedVisuals": [
+          "Runner looking frustrated",
+          "Train crossing a track"
+        ],
+        "targetAudience": "genz|millennial|all",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:56:58.094Z",
+      "expiresAt": "2026-04-20T19:56:58.094Z"
+    },
+    {
+      "id": "reddit_1skex66",
+      "source": "reddit",
+      "sourceId": "1skex66",
+      "title": "Corporate needs you to find the differences between this picture and this picture.",
+      "snippet": "      &#32; submitted by &#32;  /u/Low_Creme2   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skex66/corporate_needs_you_to_find_the_differences/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776095549,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 100
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Memes about corporate tasks and boredom are relatable.",
+        "suggestedPhrases": [
+          "Corporate Tasks",
+          "Find the Differences"
+        ],
+        "suggestedVisuals": [
+          "fun illustrations of people trying to find differences in pictures",
+          "colorful graphics of people being bored at work"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|absurdist",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:57:27.757Z",
+      "expiresAt": "2026-04-20T19:57:27.757Z"
     }
   ],
   "designs": [
@@ -42751,8 +42911,8 @@
     }
   ],
   "stats": {
-    "totalScans": 188,
-    "totalTrendsFound": 1018,
+    "totalScans": 189,
+    "totalTrendsFound": 1022,
     "totalDesignsGenerated": 197,
     "totalApproved": 8,
     "totalListed": 8,

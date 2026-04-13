@@ -1504,61 +1504,569 @@ function removeVinylContourPoint() {
 // VINYL CUTS BROWSER
 // ============================================================================
 
+// ---- Cut Files Manager State ----
+let _cutBrowserState = {
+  allBatches: [],
+  filteredBatches: [],
+  selectedBatches: new Set(),
+  searchQuery: '',
+  sortBy: 'newest',
+  viewMode: 'grid',
+  expandedPreview: null  // { batchName, fileName }
+};
+
+function _cutBrowserServerBase() {
+  return (window.printStationConfig?.serverBaseUrl || 'https://blueridgecustomco.com').replace(/\/$/, '');
+}
+
+function _cutBrowserFormatDate(isoStr) {
+  if (!isoStr) return 'Unknown date';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+      ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch { return isoStr; }
+}
+
+function _cutBrowserFormatSize(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB'];
+  let i = 0;
+  let size = bytes;
+  while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+  return size.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+}
+
+function _cutBrowserExtractDate(batch) {
+  if (batch.created) return new Date(batch.created).getTime();
+  // Parse from batch name: cut-2026-04-13T19-55-31-655Z
+  const m = batch.name.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+  if (m) return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`).getTime();
+  return 0;
+}
+
+function _cutBrowserApplyFilters() {
+  const s = _cutBrowserState;
+  let result = [...s.allBatches];
+
+  // Search filter
+  if (s.searchQuery.trim()) {
+    const q = s.searchQuery.toLowerCase();
+    result = result.filter(b =>
+      b.name.toLowerCase().includes(q) ||
+      (b.colors || []).some(c => c.toLowerCase().includes(q))
+    );
+  }
+
+  // Sort
+  switch (s.sortBy) {
+    case 'oldest':
+      result.sort((a, b) => _cutBrowserExtractDate(a) - _cutBrowserExtractDate(b));
+      break;
+    case 'most-colors':
+      result.sort((a, b) => (b.colors?.length || 0) - (a.colors?.length || 0));
+      break;
+    case 'largest':
+      result.sort((a, b) => (b.totalSize || 0) - (a.totalSize || 0));
+      break;
+    case 'newest':
+    default:
+      result.sort((a, b) => _cutBrowserExtractDate(b) - _cutBrowserExtractDate(a));
+      break;
+  }
+
+  s.filteredBatches = result;
+}
+
 async function openVinylCutsBrowser() {
-  vinylShowToast('Loading generated cut files...', 'info');
+  vinylShowToast('Loading cut files...', 'info');
   try {
     const batches = await printStation.vinylCutter.list();
-    showVinylCutsBrowserModal(batches);
+    _cutBrowserState.allBatches = batches || [];
+    _cutBrowserState.selectedBatches.clear();
+    _cutBrowserState.searchQuery = '';
+    _cutBrowserState.sortBy = 'newest';
+    _cutBrowserState.expandedPreview = null;
+    _cutBrowserApplyFilters();
+    showVinylCutsBrowserModal();
   } catch (err) {
     vinylShowToast('Failed to load: ' + err.message, 'error');
   }
 }
 
-function showVinylCutsBrowserModal(batches) {
-  // Simple modal implementation - can be expanded
+function _cutBrowserInjectStyles() {
+  if (document.getElementById('cutBrowserStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'cutBrowserStyles';
+  style.textContent = `
+    #vinylCutsBrowserModal {
+      position: fixed; inset: 0; z-index: 9000;
+      display: none; align-items: center; justify-content: center;
+    }
+    #vinylCutsBrowserModal .vcb-backdrop {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.7);
+    }
+    #vinylCutsBrowserModal .vcb-dialog {
+      position: relative; z-index: 1;
+      width: 95vw; height: 90vh;
+      background: var(--bg-primary, #0f0f23);
+      border: 1px solid var(--border, #333);
+      border-radius: 12px;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    #vinylCutsBrowserModal .vcb-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--border, #333);
+      flex-shrink: 0;
+    }
+    #vinylCutsBrowserModal .vcb-header h3 {
+      margin: 0; font-size: 18px; color: var(--text, #eee);
+    }
+    #vinylCutsBrowserModal .vcb-header-right {
+      display: flex; align-items: center; gap: 8px;
+    }
+    #vinylCutsBrowserModal .vcb-toolbar {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 12px 20px; border-bottom: 1px solid var(--border, #333);
+      background: var(--bg-secondary, #1a1a2e); flex-shrink: 0;
+    }
+    #vinylCutsBrowserModal .vcb-search {
+      flex: 1; min-width: 200px; padding: 8px 12px;
+      background: var(--bg-primary, #0f0f23); color: var(--text, #eee);
+      border: 1px solid var(--border, #333); border-radius: 6px;
+      font-size: 13px; outline: none;
+    }
+    #vinylCutsBrowserModal .vcb-search:focus {
+      border-color: #6366f1;
+    }
+    #vinylCutsBrowserModal .vcb-select {
+      padding: 8px 10px; background: var(--bg-primary, #0f0f23);
+      color: var(--text, #eee); border: 1px solid var(--border, #333);
+      border-radius: 6px; font-size: 13px; cursor: pointer;
+    }
+    #vinylCutsBrowserModal .vcb-btn {
+      padding: 7px 14px; border-radius: 6px; font-size: 12px;
+      cursor: pointer; border: 1px solid var(--border, #333);
+      background: var(--bg-secondary, #1a1a2e); color: var(--text, #eee);
+      transition: background 0.15s;
+    }
+    #vinylCutsBrowserModal .vcb-btn:hover { background: rgba(255,255,255,0.1); }
+    #vinylCutsBrowserModal .vcb-btn-primary {
+      background: #6366f1; border-color: #6366f1; color: #fff;
+    }
+    #vinylCutsBrowserModal .vcb-btn-primary:hover { background: #5558e6; }
+    #vinylCutsBrowserModal .vcb-btn-danger {
+      color: #ef4444; border-color: rgba(239,68,68,0.3);
+    }
+    #vinylCutsBrowserModal .vcb-btn-danger:hover { background: rgba(239,68,68,0.15); }
+    #vinylCutsBrowserModal .vcb-btn-sm {
+      padding: 4px 10px; font-size: 11px;
+    }
+    #vinylCutsBrowserModal .vcb-body {
+      flex: 1; overflow-y: auto; padding: 16px 20px;
+    }
+    #vinylCutsBrowserModal .vcb-stats {
+      font-size: 12px; color: var(--text-muted, #888); white-space: nowrap;
+    }
+    #vinylCutsBrowserModal .vcb-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 14px;
+    }
+    #vinylCutsBrowserModal .vcb-card {
+      background: var(--card, #1e1e3a);
+      border: 1px solid var(--border, #333);
+      border-radius: 10px; overflow: hidden;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    #vinylCutsBrowserModal .vcb-card:hover {
+      border-color: #6366f1;
+    }
+    #vinylCutsBrowserModal .vcb-card.selected {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 2px rgba(99,102,241,0.3);
+    }
+    #vinylCutsBrowserModal .vcb-card-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; border-bottom: 1px solid var(--border, #333);
+      background: rgba(255,255,255,0.03);
+    }
+    #vinylCutsBrowserModal .vcb-card-header input[type=checkbox] {
+      accent-color: #6366f1; cursor: pointer;
+    }
+    #vinylCutsBrowserModal .vcb-card-title {
+      flex: 1; font-size: 13px; font-weight: 600;
+      color: var(--text, #eee); overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    #vinylCutsBrowserModal .vcb-card-date {
+      font-size: 11px; color: var(--text-muted, #888); white-space: nowrap;
+    }
+    #vinylCutsBrowserModal .vcb-card-previews {
+      display: flex; gap: 4px; padding: 10px 12px;
+      overflow-x: auto; min-height: 80px; align-items: center;
+      background: rgba(0,0,0,0.2);
+    }
+    #vinylCutsBrowserModal .vcb-thumb {
+      width: 70px; height: 70px; flex-shrink: 0;
+      border: 1px solid var(--border, #333); border-radius: 6px;
+      background: #fff; cursor: pointer; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    #vinylCutsBrowserModal .vcb-thumb:hover {
+      border-color: #6366f1; transform: scale(1.05);
+    }
+    #vinylCutsBrowserModal .vcb-thumb img {
+      width: 100%; height: 100%; object-fit: contain;
+    }
+    #vinylCutsBrowserModal .vcb-card-meta {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 12px; font-size: 11px; color: var(--text-muted, #888);
+    }
+    #vinylCutsBrowserModal .vcb-color-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.2); display: inline-block;
+    }
+    #vinylCutsBrowserModal .vcb-card-actions {
+      display: flex; gap: 6px; padding: 8px 12px; flex-wrap: wrap;
+      border-top: 1px solid var(--border, #333);
+    }
+    #vinylCutsBrowserModal .vcb-expanded-preview {
+      margin: 0 12px 12px; border: 1px solid var(--border, #333);
+      border-radius: 8px; background: #fff; overflow: hidden;
+      max-height: 400px; position: relative;
+    }
+    #vinylCutsBrowserModal .vcb-expanded-preview img {
+      width: 100%; height: auto; display: block; max-height: 380px;
+      object-fit: contain;
+    }
+    #vinylCutsBrowserModal .vcb-expanded-preview .vcb-preview-toolbar {
+      position: absolute; top: 8px; right: 8px;
+      display: flex; gap: 4px;
+    }
+    #vinylCutsBrowserModal .vcb-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 10px;
+      background: rgba(255,255,255,0.08); font-size: 11px;
+    }
+    #vinylCutsBrowserModal .vcb-empty {
+      text-align: center; padding: 60px 20px;
+      color: var(--text-muted, #888);
+    }
+    #vinylCutsBrowserModal .vcb-empty svg {
+      width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.4;
+    }
+    #vinylCutsBrowserModal .vcb-close-btn {
+      background: none; border: none; color: var(--text-muted, #888);
+      font-size: 24px; cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+    #vinylCutsBrowserModal .vcb-close-btn:hover { color: var(--text, #eee); }
+    #vinylCutsBrowserModal .vcb-view-toggle {
+      display: flex; border: 1px solid var(--border, #333); border-radius: 6px; overflow: hidden;
+    }
+    #vinylCutsBrowserModal .vcb-view-toggle button {
+      padding: 6px 10px; background: none; border: none; color: var(--text-muted, #888);
+      cursor: pointer; font-size: 13px;
+    }
+    #vinylCutsBrowserModal .vcb-view-toggle button.active {
+      background: rgba(99,102,241,0.2); color: #6366f1;
+    }
+    #vinylCutsBrowserModal .vcb-list .vcb-card {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      grid-template-rows: auto;
+      align-items: center;
+    }
+    #vinylCutsBrowserModal .vcb-list .vcb-card-header {
+      border-bottom: none; padding: 10px 12px;
+    }
+    #vinylCutsBrowserModal .vcb-list .vcb-card-previews {
+      min-height: 50px; padding: 6px 8px;
+      border-bottom: none; background: transparent;
+    }
+    #vinylCutsBrowserModal .vcb-list .vcb-thumb {
+      width: 44px; height: 44px;
+    }
+    #vinylCutsBrowserModal .vcb-select-all-wrap {
+      display: flex; align-items: center; gap: 6px; font-size: 12px;
+      color: var(--text-muted, #888);
+    }
+    #vinylCutsBrowserModal .vcb-select-all-wrap input { accent-color: #6366f1; cursor: pointer; }
+    @media (max-width: 700px) {
+      #vinylCutsBrowserModal .vcb-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function showVinylCutsBrowserModal() {
+  _cutBrowserInjectStyles();
+
   let modal = document.getElementById('vinylCutsBrowserModal');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'vinylCutsBrowserModal';
-    modal.className = 'modal';
     modal.innerHTML = `
-      <div class="modal-backdrop" onclick="closeVinylCutsBrowser()"></div>
-      <div class="modal-dialog" style="max-width:800px;max-height:80vh;overflow:auto;">
-        <div class="modal-header">
-          <h3>Generated Vinyl Cut Files</h3>
-          <button class="modal-close" onclick="closeVinylCutsBrowser()">&times;</button>
+      <div class="vcb-backdrop" onclick="closeVinylCutsBrowser()"></div>
+      <div class="vcb-dialog">
+        <div class="vcb-header">
+          <h3>Cut Files Manager</h3>
+          <div class="vcb-header-right">
+            <span class="vcb-stats" id="vcbStatsText"></span>
+            <button class="vcb-close-btn" onclick="closeVinylCutsBrowser()" title="Close">&times;</button>
+          </div>
         </div>
-        <div class="modal-body" id="vinylCutsBrowserContent">
+        <div class="vcb-toolbar" id="vcbToolbar">
+          <input type="text" class="vcb-search" id="vcbSearch" placeholder="Search batches..." />
+          <select class="vcb-select" id="vcbSort">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="most-colors">Most colors</option>
+            <option value="largest">Largest size</option>
+          </select>
+          <div class="vcb-view-toggle">
+            <button id="vcbViewGrid" class="active" title="Grid view" onclick="cutBrowserSetView('grid')">&#9638;</button>
+            <button id="vcbViewList" title="List view" onclick="cutBrowserSetView('list')">&#9776;</button>
+          </div>
+          <div class="vcb-select-all-wrap">
+            <input type="checkbox" id="vcbSelectAll" onchange="cutBrowserToggleSelectAll(this.checked)" />
+            <label for="vcbSelectAll">Select all</label>
+          </div>
+          <button class="vcb-btn vcb-btn-danger vcb-btn-sm" id="vcbBulkDeleteBtn" style="display:none;" onclick="cutBrowserBulkDelete()">
+            Delete selected (<span id="vcbSelectedCount">0</span>)
+          </button>
         </div>
+        <div class="vcb-body" id="vcbBody"></div>
       </div>
     `;
     document.body.appendChild(modal);
-  }
 
-  const content = document.getElementById('vinylCutsBrowserContent');
-  if (!batches || batches.length === 0) {
-    content.innerHTML = '<div class="placeholder" style="text-align:center;padding:40px;color:#888;">No cut files generated yet</div>';
-  } else {
-    content.innerHTML = batches.map(batch => `
-      <div class="vinyl-batch-card" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h4 style="margin:0;">${batch.name}</h4>
-          <button class="secondary" style="font-size:11px;color:#ef4444;" onclick="deleteVinylCutBatch('${batch.name}')">Delete</button>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          ${batch.files.map(file => `
-            <div style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.1);padding:4px 8px;border-radius:4px;">
-              <span style="font-size:12px;">${file}</span>
-              <button class="secondary" style="font-size:10px;padding:2px 6px;" onclick="previewVinylCutFile('${batch.name}', '${file}')">View</button>
-              <button class="primary" style="font-size:10px;padding:2px 6px;" onclick="sendVinylToSilhouette('${batch.name}', '${file}')">Cut</button>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `).join('');
+    // Wire up search
+    document.getElementById('vcbSearch').addEventListener('input', (e) => {
+      _cutBrowserState.searchQuery = e.target.value;
+      _cutBrowserApplyFilters();
+      _cutBrowserRenderCards();
+    });
+
+    // Wire up sort
+    document.getElementById('vcbSort').addEventListener('change', (e) => {
+      _cutBrowserState.sortBy = e.target.value;
+      _cutBrowserApplyFilters();
+      _cutBrowserRenderCards();
+    });
   }
 
   modal.style.display = 'flex';
+  _cutBrowserRenderCards();
+}
+
+function _cutBrowserRenderCards() {
+  const s = _cutBrowserState;
+  const body = document.getElementById('vcbBody');
+  const statsEl = document.getElementById('vcbStatsText');
+  const bulkBtn = document.getElementById('vcbBulkDeleteBtn');
+  const countEl = document.getElementById('vcbSelectedCount');
+
+  // Update stats
+  const totalColors = s.allBatches.reduce((sum, b) => sum + (b.colors?.length || 0), 0);
+  const totalSize = s.allBatches.reduce((sum, b) => sum + (b.totalSize || 0), 0);
+  statsEl.textContent = `${s.allBatches.length} batches | ${totalColors} colors | ${_cutBrowserFormatSize(totalSize)}`;
+
+  // Update bulk button
+  if (s.selectedBatches.size > 0) {
+    bulkBtn.style.display = '';
+    countEl.textContent = s.selectedBatches.size;
+  } else {
+    bulkBtn.style.display = 'none';
+  }
+
+  // Update select-all checkbox
+  const selAllCb = document.getElementById('vcbSelectAll');
+  if (selAllCb) {
+    selAllCb.checked = s.filteredBatches.length > 0 && s.filteredBatches.every(b => s.selectedBatches.has(b.name));
+    selAllCb.indeterminate = s.selectedBatches.size > 0 && !selAllCb.checked;
+  }
+
+  if (s.filteredBatches.length === 0) {
+    body.innerHTML = `
+      <div class="vcb-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+        </svg>
+        <div style="font-size:16px;margin-bottom:4px;">${s.searchQuery ? 'No batches match your search' : 'No cut files generated yet'}</div>
+        <div style="font-size:13px;">Generate cut files from the vinyl editor to see them here.</div>
+      </div>`;
+    return;
+  }
+
+  const isGrid = s.viewMode === 'grid';
+  const serverBase = _cutBrowserServerBase();
+
+  const cardsHtml = s.filteredBatches.map(batch => {
+    const isSelected = s.selectedBatches.has(batch.name);
+    const dateStr = _cutBrowserFormatDate(batch.created || batch.name.replace(/^(cut|driver-names)-/, '').replace(/T/, 'T').replace(/-(\d{2})-(\d{2})-(\d{2,3})Z$/, ':$1:$2'));
+    const colorCount = batch.colors?.length || 0;
+    const escapedName = batch.name.replace(/'/g, "\\'");
+
+    // SVG thumbnail previews
+    const thumbsHtml = (batch.files || []).map(f => {
+      const url = `${serverBase}/api/library/vinyl-cuts/${batch.name}/${f}`;
+      const escapedFile = f.replace(/'/g, "\\'");
+      return `<div class="vcb-thumb" onclick="cutBrowserTogglePreview('${escapedName}','${escapedFile}')" title="${f}">
+        <img src="${url}" alt="${f}" loading="lazy" />
+      </div>`;
+    }).join('');
+
+    // Color swatches
+    const swatchesHtml = (batch.colors || []).map(c =>
+      `<span class="vcb-color-dot" style="background:${c}" title="${c}"></span>`
+    ).join('');
+
+    // Expanded preview
+    let expandedHtml = '';
+    if (s.expandedPreview && s.expandedPreview.batchName === batch.name) {
+      const pUrl = `${serverBase}/api/library/vinyl-cuts/${batch.name}/${s.expandedPreview.fileName}`;
+      const pEscFile = s.expandedPreview.fileName.replace(/'/g, "\\'");
+      expandedHtml = `
+        <div class="vcb-expanded-preview">
+          <div class="vcb-preview-toolbar">
+            <button class="vcb-btn vcb-btn-sm" onclick="cutBrowserDownloadFile('${escapedName}','${pEscFile}')" title="Download">&#11015; Download</button>
+            <button class="vcb-btn vcb-btn-primary vcb-btn-sm" onclick="sendVinylToSilhouette('${escapedName}','${pEscFile}')" title="Send to cutter">&#9986; Cut</button>
+            <button class="vcb-btn vcb-btn-sm" onclick="cutBrowserClosePreview()" title="Close preview">&times;</button>
+          </div>
+          <img src="${pUrl}" alt="Preview" />
+          <div style="padding:6px 10px;background:rgba(0,0,0,0.05);font-size:11px;color:#555;">
+            ${s.expandedPreview.fileName}
+            ${batch.fileSizes?.[s.expandedPreview.fileName] ? ' | ' + _cutBrowserFormatSize(batch.fileSizes[s.expandedPreview.fileName]) : ''}
+          </div>
+        </div>`;
+    }
+
+    // File action buttons for each SVG
+    const fileActionsHtml = (batch.files || []).map(f => {
+      const ef = f.replace(/'/g, "\\'");
+      const colorHex = f.replace(/^cut_/, '').replace(/\.svg$/, '');
+      const sizeStr = batch.fileSizes?.[f] ? _cutBrowserFormatSize(batch.fileSizes[f]) : '';
+      return `<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.05);padding:3px 8px;border-radius:4px;font-size:11px;">
+        <span class="vcb-color-dot" style="width:10px;height:10px;background:#${colorHex};"></span>
+        <span style="color:var(--text-muted,#888);">${f}</span>
+        ${sizeStr ? `<span style="color:var(--text-muted,#666);font-size:10px;">(${sizeStr})</span>` : ''}
+        <button class="vcb-btn vcb-btn-sm" onclick="cutBrowserTogglePreview('${escapedName}','${ef}')" title="Preview">&#128065;</button>
+        <button class="vcb-btn vcb-btn-sm" onclick="cutBrowserDownloadFile('${escapedName}','${ef}')" title="Download">&#11015;</button>
+        <button class="vcb-btn vcb-btn-primary vcb-btn-sm" onclick="sendVinylToSilhouette('${escapedName}','${ef}')" title="Cut">&#9986;</button>
+      </div>`;
+    }).join('');
+
+    return `
+    <div class="vcb-card ${isSelected ? 'selected' : ''}" data-batch="${batch.name}">
+      <div class="vcb-card-header">
+        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="cutBrowserToggleSelect('${escapedName}', this.checked)" />
+        <div class="vcb-card-title" title="${batch.name}">${batch.name}</div>
+        <div class="vcb-card-date">${dateStr}</div>
+      </div>
+      <div class="vcb-card-previews">${thumbsHtml || '<span style="color:var(--text-muted,#888);font-size:12px;">No SVG files</span>'}</div>
+      ${expandedHtml}
+      <div class="vcb-card-meta">
+        <span class="vcb-badge">${colorCount} color${colorCount !== 1 ? 's' : ''}</span>
+        <span class="vcb-badge">${batch.itemCount || '?'} item${(batch.itemCount || 0) !== 1 ? 's' : ''}</span>
+        <span class="vcb-badge">${_cutBrowserFormatSize(batch.totalSize || 0)}</span>
+        <span style="display:flex;gap:2px;align-items:center;">${swatchesHtml}</span>
+      </div>
+      <div class="vcb-card-actions" style="flex-wrap:wrap;">
+        ${fileActionsHtml}
+      </div>
+      <div class="vcb-card-actions">
+        <button class="vcb-btn vcb-btn-danger vcb-btn-sm" onclick="deleteVinylCutBatch('${escapedName}')">Delete batch</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  body.innerHTML = `<div class="${isGrid ? 'vcb-grid' : 'vcb-list'}">${cardsHtml}</div>`;
+}
+
+function cutBrowserSetView(mode) {
+  _cutBrowserState.viewMode = mode;
+  document.getElementById('vcbViewGrid').classList.toggle('active', mode === 'grid');
+  document.getElementById('vcbViewList').classList.toggle('active', mode === 'list');
+  _cutBrowserRenderCards();
+}
+
+function cutBrowserToggleSelect(batchName, checked) {
+  if (checked) {
+    _cutBrowserState.selectedBatches.add(batchName);
+  } else {
+    _cutBrowserState.selectedBatches.delete(batchName);
+  }
+  _cutBrowserRenderCards();
+}
+
+function cutBrowserToggleSelectAll(checked) {
+  const s = _cutBrowserState;
+  if (checked) {
+    s.filteredBatches.forEach(b => s.selectedBatches.add(b.name));
+  } else {
+    s.selectedBatches.clear();
+  }
+  _cutBrowserRenderCards();
+}
+
+function cutBrowserTogglePreview(batchName, fileName) {
+  const s = _cutBrowserState;
+  if (s.expandedPreview && s.expandedPreview.batchName === batchName && s.expandedPreview.fileName === fileName) {
+    s.expandedPreview = null;
+  } else {
+    s.expandedPreview = { batchName, fileName };
+  }
+  _cutBrowserRenderCards();
+}
+
+function cutBrowserClosePreview() {
+  _cutBrowserState.expandedPreview = null;
+  _cutBrowserRenderCards();
+}
+
+function cutBrowserDownloadFile(batchName, fileName) {
+  const url = `${_cutBrowserServerBase()}/api/library/vinyl-cuts/${batchName}/${fileName}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function cutBrowserBulkDelete() {
+  const count = _cutBrowserState.selectedBatches.size;
+  if (count === 0) return;
+  if (!confirm(`Delete ${count} selected batch${count > 1 ? 'es' : ''}? This cannot be undone.`)) return;
+
+  const toDelete = [..._cutBrowserState.selectedBatches];
+  let deleted = 0, failed = 0;
+  for (const batchName of toDelete) {
+    try {
+      await printStation.vinylCutter.delete(batchName);
+      deleted++;
+    } catch (err) {
+      console.error('[CutBrowser] Failed to delete:', batchName, err);
+      failed++;
+    }
+  }
+  _cutBrowserState.selectedBatches.clear();
+  vinylShowToast(`Deleted ${deleted} batch${deleted !== 1 ? 'es' : ''}${failed > 0 ? `, ${failed} failed` : ''}`, failed > 0 ? 'warning' : 'success');
+  // Refresh
+  try {
+    const batches = await printStation.vinylCutter.list();
+    _cutBrowserState.allBatches = batches || [];
+    _cutBrowserApplyFilters();
+    _cutBrowserRenderCards();
+  } catch (err) {
+    vinylShowToast('Failed to refresh: ' + err.message, 'error');
+  }
 }
 
 function closeVinylCutsBrowser() {
@@ -1569,12 +2077,19 @@ function closeVinylCutsBrowser() {
 }
 
 async function deleteVinylCutBatch(batchName) {
-  if (!confirm(`Delete batch "${batchName}"?`)) return;
+  if (!confirm(`Delete batch "${batchName}"? This cannot be undone.`)) return;
 
   try {
     await printStation.vinylCutter.delete(batchName);
     vinylShowToast('Batch deleted', 'success');
-    openVinylCutsBrowser(); // Refresh
+    // Remove from state and re-render without full reload
+    _cutBrowserState.allBatches = _cutBrowserState.allBatches.filter(b => b.name !== batchName);
+    _cutBrowserState.selectedBatches.delete(batchName);
+    if (_cutBrowserState.expandedPreview?.batchName === batchName) {
+      _cutBrowserState.expandedPreview = null;
+    }
+    _cutBrowserApplyFilters();
+    _cutBrowserRenderCards();
   } catch (err) {
     vinylShowToast('Failed to delete: ' + err.message, 'error');
   }
@@ -2185,6 +2700,13 @@ window.removeVinylItemByIndex = removeVinylItemByIndex;
 window.previewVinylCutFile = previewVinylCutFile;
 window.sendVinylToSilhouette = sendVinylToSilhouette;
 window.deleteVinylCutBatch = deleteVinylCutBatch;
+window.cutBrowserSetView = cutBrowserSetView;
+window.cutBrowserToggleSelect = cutBrowserToggleSelect;
+window.cutBrowserToggleSelectAll = cutBrowserToggleSelectAll;
+window.cutBrowserTogglePreview = cutBrowserTogglePreview;
+window.cutBrowserClosePreview = cutBrowserClosePreview;
+window.cutBrowserDownloadFile = cutBrowserDownloadFile;
+window.cutBrowserBulkDelete = cutBrowserBulkDelete;
 window.importScreenshot = importScreenshot;
 window.importStudio3Files = importStudio3Files;
 window.addStudio3ItemToCanvas = addStudio3ItemToCanvas;
