@@ -276,62 +276,66 @@ async function runMetalPrintPipeline(options = {}) {
   progress('match-rooms', 2, 1, 1);
 
   // ── Step 3: Generate Room Mockups ─────────────────────────────────────
-  progress('room-mockups', 3, 0, designsWithPaths.length * roomMembers.length);
+  // One room per design (rotate through rooms, like apparel model matching)
+  const totalMockups = designsWithPaths.length;
+  progress('room-mockups', 3, 0, totalMockups);
 
   const mockupResults = [];
   const mockupMap = {}; // designId → [mockupPath, ...]
-  let mockupCount = 0;
-  const totalMockups = designsWithPaths.length * roomMembers.length;
 
+  // Resolve room images, filter out broken ones
+  const usableRooms = [];
   for (const room of roomMembers) {
     const roomPath = resolveRoomPath(room);
     if (!roomPath) {
       console.warn(`[MetalPrintPipeline] No image for room: ${room.title || room.name || room.id} (image_path: ${room.image_path || 'none'})`);
       continue;
     }
+    usableRooms.push({ ...room, _resolvedPath: roomPath });
+  }
 
+  if (!usableRooms.length) {
+    throw new Error('No rooms with valid images found in room group');
+  }
+
+  // Multi-print rooms (gallery walls) — one mockup with all designs
+  const multiPrintRooms = usableRooms.filter(r => r.multi_print === 1);
+  for (const room of multiPrintRooms) {
     const roomSlug = (room.title || room.name || room.id).replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 30);
     const roomType = room.group_room_type || room.room_type || 'default';
-    const isMultiPrint = room.multi_print === 1;
+    const result = await generateMultiPrintMockup(
+      designsWithPaths.map(d => d.filteredPath), room._resolvedPath,
+      { roomType, outputDir: campaignDir, roomSlug, designSlugs: designsWithPaths.map(d => d.slug) }
+    );
+    mockupResults.push(result);
+    if (result.outputPath && !result.error) {
+      for (const d of designsWithPaths) {
+        if (!mockupMap[d.id]) mockupMap[d.id] = [];
+        mockupMap[d.id].push(result.outputPath);
+      }
+    }
+    await sleep(3000);
+  }
 
-    if (isMultiPrint && designsWithPaths.length > 1) {
-      // Gallery wall: all filtered art in one room
-      const filteredPaths = designsWithPaths.map(d => d.filteredPath);
-      const result = await generateMultiPrintMockup(filteredPaths, roomPath, {
-        roomType,
-        outputDir: campaignDir,
-        roomSlug,
-        designSlugs: designsWithPaths.map(d => d.slug)
+  // Single-print rooms — rotate one room per design
+  const singleRooms = usableRooms.filter(r => r.multi_print !== 1);
+  if (singleRooms.length) {
+    for (let i = 0; i < designsWithPaths.length; i++) {
+      const design = designsWithPaths[i];
+      const room = singleRooms[i % singleRooms.length];
+      const roomSlug = (room.title || room.name || room.id).replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().substring(0, 30);
+      const roomType = room.group_room_type || room.room_type || 'default';
+
+      const result = await generateRoomMockup(design.filteredPath, room._resolvedPath, {
+        roomType, outputDir: campaignDir, designSlug: design.slug, roomSlug
       });
       mockupResults.push(result);
       if (result.outputPath && !result.error) {
-        // Associate with all designs
-        for (const d of designsWithPaths) {
-          if (!mockupMap[d.id]) mockupMap[d.id] = [];
-          mockupMap[d.id].push(result.outputPath);
-        }
+        if (!mockupMap[design.id]) mockupMap[design.id] = [];
+        mockupMap[design.id].push(result.outputPath);
       }
-      mockupCount += designsWithPaths.length;
-      progress('room-mockups', 3, mockupCount, totalMockups);
+      progress('room-mockups', 3, i + 1, totalMockups);
       await sleep(3000);
-    } else {
-      // Single print per design per room
-      for (const design of designsWithPaths) {
-        const result = await generateRoomMockup(design.filteredPath, roomPath, {
-          roomType,
-          outputDir: campaignDir,
-          designSlug: design.slug,
-          roomSlug
-        });
-        mockupResults.push(result);
-        if (result.outputPath && !result.error) {
-          if (!mockupMap[design.id]) mockupMap[design.id] = [];
-          mockupMap[design.id].push(result.outputPath);
-        }
-        mockupCount++;
-        progress('room-mockups', 3, mockupCount, totalMockups);
-        await sleep(3000);
-      }
     }
   }
 
