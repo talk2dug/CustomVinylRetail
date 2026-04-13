@@ -5449,13 +5449,17 @@ Return ONLY valid JSON, nothing else:
         const imageBuffer = fsNode.readFileSync(filePath);
         const base64Data = imageBuffer.toString('base64');
 
-        console.log(`[Import Screenshot] Uploading ${baseName} (${(imageBuffer.length / 1024).toFixed(0)} KB)...`);
+        const fileSizeKB = (imageBuffer.length / 1024).toFixed(0);
+        const base64SizeKB = (base64Data.length / 1024).toFixed(0);
+        console.log(`[Import Screenshot] Uploading ${baseName} (file: ${fileSizeKB} KB, base64: ${base64SizeKB} KB)...`);
 
         const uploadResult = await httpRequest('/api/vinyl-cutter/import-screenshot', {
           method: 'POST',
           body: { base64: base64Data, filename: baseName },
-          timeout: 60000
+          timeout: 120000
         });
+
+        console.log(`[Import Screenshot] Server response:`, JSON.stringify(uploadResult).substring(0, 200));
 
         if (uploadResult && uploadResult.success) {
           imported.push({
@@ -5463,12 +5467,12 @@ Return ONLY valid JSON, nothing else:
             serverPath: uploadResult.path,
             filename: uploadResult.filename
           });
-          console.log(`[Import Screenshot] Uploaded: ${uploadResult.path}`);
+          console.log(`[Import Screenshot] Success: ${uploadResult.path}`);
         } else {
-          console.error('[Import Screenshot] Upload failed:', uploadResult?.error || 'Unknown error');
+          console.error('[Import Screenshot] Upload returned failure:', uploadResult?.error || JSON.stringify(uploadResult));
         }
       } catch (err) {
-        console.error('[Import Screenshot] Failed:', filePath, err.message);
+        console.error('[Import Screenshot] EXCEPTION:', filePath, err.message, err.stack);
       }
     }
 
