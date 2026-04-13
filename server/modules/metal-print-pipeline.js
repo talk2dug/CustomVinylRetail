@@ -64,6 +64,9 @@ function resolveDesignPath(design) {
       fsPath = path.join('/mnt/websit', fsPath.replace('/library/', ''));
     } else if (fsPath.startsWith('/web/library/')) {
       fsPath = path.join('/mnt/websit', fsPath.replace('/web/library/', ''));
+    } else if (fsPath.startsWith('library/')) {
+      // Relative path like "library/uploads/custom-art/..."
+      fsPath = path.join('/mnt/websit', fsPath.replace('library/', ''));
     }
 
     if (fs.existsSync(fsPath)) return fsPath;
@@ -72,38 +75,74 @@ function resolveDesignPath(design) {
 }
 
 /**
- * Load designs from the catalog by IDs or category.
- * Catalog format: { categories: [ { name, slug, designs: [...] }, ... ] }
+ * Load designs by IDs or category.
+ * Supports both custom art artwork (art_* IDs from DB) and catalog designs.
  */
 function loadDesigns({ designIds, category, limit }) {
-  const catalogData = loadCatalog();
-  const categories = catalogData.categories || catalogData || [];
-
-  // Flatten all designs with their category
-  let allDesigns = [];
-  for (const cat of categories) {
-    const catDesigns = (cat.designs || []).map(d => ({
-      ...d,
-      category: d.category || cat.name || cat.slug || ''
-    }));
-    allDesigns.push(...catDesigns);
-  }
-
+  const db = require('../db');
   let designs = [];
 
   if (designIds && designIds.length) {
-    for (const d of allDesigns) {
-      if (designIds.includes(d.id) || designIds.includes(d.name)) {
-        designs.push(d);
+    // Custom art artwork (art_* IDs)
+    for (const id of designIds) {
+      if (id.startsWith('art_')) {
+        const artwork = db.getCustomArtArtworkById ? db.getCustomArtArtworkById(id) : null;
+        if (artwork) {
+          designs.push({
+            id: artwork.id,
+            name: artwork.title || artwork.id,
+            category: artwork.category || '',
+            image: artwork.file_path || '',
+            previewImage: artwork.preview_path || artwork.thumbnail_path || '',
+            sources: {}
+          });
+        }
+      }
+    }
+
+    // Fall back to catalog for non-art_ IDs or if nothing found
+    if (!designs.length) {
+      try {
+        const catalogData = loadCatalog();
+        for (const cat of (catalogData.categories || [])) {
+          for (const d of (cat.designs || [])) {
+            if (designIds.includes(d.id) || designIds.includes(d.name)) {
+              designs.push({ ...d, category: d.category || cat.name || '' });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[MetalPrintPipeline] Catalog load failed:', e.message);
       }
     }
   } else if (category) {
-    // Match category name (case-insensitive, partial match)
-    const catLower = category.toLowerCase();
-    designs = allDesigns.filter(d =>
-      (d.category || '').toLowerCase() === catLower ||
-      (d.category || '').toLowerCase().includes(catLower)
-    );
+    // Search custom art artwork by category first
+    const allArtwork = db.listCustomArtArtwork ? db.listCustomArtArtwork({ category }) : [];
+    if (allArtwork && allArtwork.length) {
+      designs = allArtwork.map(a => ({
+        id: a.id,
+        name: a.title || a.id,
+        category: a.category || category,
+        image: a.file_path || '',
+        previewImage: a.preview_path || a.thumbnail_path || '',
+        sources: {}
+      }));
+    }
+
+    // Also search catalog
+    if (!designs.length) {
+      try {
+        const catalogData = loadCatalog();
+        const catLower = category.toLowerCase();
+        for (const cat of (catalogData.categories || [])) {
+          if ((cat.name || '').toLowerCase().includes(catLower) || (cat.slug || '').toLowerCase().includes(catLower)) {
+            designs.push(...(cat.designs || []).map(d => ({ ...d, category: cat.name || '' })));
+          }
+        }
+      } catch (e) {
+        console.warn('[MetalPrintPipeline] Catalog load failed:', e.message);
+      }
+    }
   }
 
   if (limit && designs.length > limit) {
