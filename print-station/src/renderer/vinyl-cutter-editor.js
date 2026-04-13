@@ -2054,7 +2054,14 @@ async function importScreenshot() {
     updateVinylStatus('Selecting screenshots...');
     const result = await window.printStation.vinylCutter.importScreenshot();
 
-    if (!result.success || result.canceled) {
+    if (result.canceled) {
+      updateVinylStatus('Ready');
+      return;
+    }
+
+    if (!result.success) {
+      vinylShowToast(`Import failed: ${result.error || 'Unknown error'}`, 'error');
+      console.error('[Screenshot Import] IPC error:', JSON.stringify(result));
       updateVinylStatus('Ready');
       return;
     }

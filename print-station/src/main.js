@@ -5440,6 +5440,7 @@ Return ONLY valid JSON, nothing else:
     }
 
     const imported = [];
+    const errors = [];
     for (const filePath of result.filePaths) {
       try {
         const ext = pathNode.extname(filePath).toLowerCase();
@@ -5473,11 +5474,14 @@ Return ONLY valid JSON, nothing else:
         }
       } catch (err) {
         console.error('[Import Screenshot] EXCEPTION:', filePath, err.message, err.stack);
-        return { success: false, error: `Upload failed: ${err.message}`, filePath };
+        errors.push(`${pathNode.basename(filePath)}: ${err.message}`);
       }
     }
 
-    return { success: true, imported, errors: imported.length === 0 ? 'All uploads failed — check serverBaseUrl config' : null };
+    if (imported.length === 0) {
+      return { success: false, error: errors.join('; ') || 'All uploads failed' };
+    }
+    return { success: true, imported };
   });
 
   // Vectorize an image for vinyl cutting (with color detection)
