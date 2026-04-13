@@ -411,7 +411,7 @@
   "teamMembers": {
     "salesAgent": {
       "status": "active",
-      "lastCycle": "2026-04-13T19:45:41.599Z"
+      "lastCycle": "2026-04-13T19:47:39.492Z"
     },
     "trendMonitor": {
       "status": "active",
@@ -419,7 +419,7 @@
     },
     "shopifyAnalytics": {
       "status": "active",
-      "lastPull": "2026-04-13T19:46:42.042Z"
+      "lastPull": "2026-04-13T19:48:49.519Z"
     },
     "contentCreator": {
       "status": "active",
