@@ -92,8 +92,8 @@ function loadDesigns({ designIds, category, limit }) {
             id: artwork.id,
             name: artwork.title || artwork.id,
             category: artwork.category || '',
-            image: artwork.file_path || '',
-            previewImage: artwork.preview_path || artwork.thumbnail_path || '',
+            image: artwork.filePath || artwork.file_path || '',
+            previewImage: artwork.previewPath || artwork.thumbnailPath || artwork.preview_path || artwork.thumbnail_path || '',
             sources: {}
           });
         }
@@ -123,8 +123,8 @@ function loadDesigns({ designIds, category, limit }) {
         id: a.id,
         name: a.title || a.id,
         category: a.category || category,
-        image: a.file_path || '',
-        previewImage: a.preview_path || a.thumbnail_path || '',
+        image: a.filePath || a.file_path || '',
+        previewImage: a.previewPath || a.thumbnailPath || a.preview_path || a.thumbnail_path || '',
         sources: {}
       }));
     }
