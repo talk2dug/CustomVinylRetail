@@ -14,7 +14,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const { METAL_PRINT_PIPELINE_DIR, PIPELINE_OUTPUT_DIR } = require('../paths');
 const { apiFetch, sleep } = require('../modules/pipeline-utils');
-const NanoBananaAI = require('../nano-banana-ai');
+const { NanoBananaAI } = require('../nano-banana-ai');
 
 fs.mkdirSync(METAL_PRINT_PIPELINE_DIR, { recursive: true });
 
