@@ -35,28 +35,37 @@ fs.mkdirSync(METAL_PRINT_PIPELINE_DIR, { recursive: true });
 
 /**
  * Resolve a design's graphic file to a local filesystem path.
+ * Catalog designs have: image (URL), sources: { svg, png, jpg }
  */
 function resolveDesignPath(design) {
-  // Try common patterns from the catalog
   const candidates = [
+    design.image,
     design.previewImage,
     design.preview,
+    design.sources?.png,
+    design.sources?.jpg,
+    design.sources?.svg,
     design.pngSource,
     design.svgSource,
-    design.jpgSource,
     design.source
   ].filter(Boolean);
 
   for (const candidate of candidates) {
-    // If it's a web path, resolve to filesystem
     let fsPath = candidate;
-    if (candidate.startsWith('/library/')) {
-      fsPath = path.join('/mnt/websit', candidate.replace('/library/', ''));
-    } else if (candidate.startsWith('/web/library/')) {
-      fsPath = path.join('/mnt/websit', candidate.replace('/web/library/', ''));
-    } else if (candidate.startsWith('/')) {
-      fsPath = candidate;
+
+    // Full URL: extract the /library/ path portion
+    if (candidate.startsWith('http')) {
+      const urlObj = new URL(candidate);
+      fsPath = urlObj.pathname;
     }
+
+    // Web path → filesystem
+    if (fsPath.startsWith('/library/')) {
+      fsPath = path.join('/mnt/websit', fsPath.replace('/library/', ''));
+    } else if (fsPath.startsWith('/web/library/')) {
+      fsPath = path.join('/mnt/websit', fsPath.replace('/web/library/', ''));
+    }
+
     if (fs.existsSync(fsPath)) return fsPath;
   }
   return null;
@@ -64,21 +73,36 @@ function resolveDesignPath(design) {
 
 /**
  * Load designs from the catalog by IDs or category.
+ * Catalog format: { categories: [ { name, slug, designs: [...] }, ... ] }
  */
 function loadDesigns({ designIds, category, limit }) {
-  const catalog = loadCatalog();
+  const catalogData = loadCatalog();
+  const categories = catalogData.categories || catalogData || [];
+
+  // Flatten all designs with their category
+  let allDesigns = [];
+  for (const cat of categories) {
+    const catDesigns = (cat.designs || []).map(d => ({
+      ...d,
+      category: d.category || cat.name || cat.slug || ''
+    }));
+    allDesigns.push(...catDesigns);
+  }
+
   let designs = [];
 
   if (designIds && designIds.length) {
-    // Load specific designs by ID
-    for (const item of catalog) {
-      if (designIds.includes(item.id) || designIds.includes(item.name)) {
-        designs.push(item);
+    for (const d of allDesigns) {
+      if (designIds.includes(d.id) || designIds.includes(d.name)) {
+        designs.push(d);
       }
     }
   } else if (category) {
-    designs = catalog.filter(item =>
-      (item.category || '').toLowerCase() === category.toLowerCase()
+    // Match category name (case-insensitive, partial match)
+    const catLower = category.toLowerCase();
+    designs = allDesigns.filter(d =>
+      (d.category || '').toLowerCase() === catLower ||
+      (d.category || '').toLowerCase().includes(catLower)
     );
   }
 
