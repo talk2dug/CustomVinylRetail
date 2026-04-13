@@ -18,11 +18,13 @@
   const NO_IMG = "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 160 100%22><rect fill=%22%231a1a2e%22 width=%22160%22 height=%22100%22/><text x=%2280%22 y=%2250%22 fill=%22%23555%22 text-anchor=%22middle%22 font-size=%228%22>No Image</text></svg>";
 
   function getThumbUrl(room) {
-    const p = room.image_path || room.imagePath || room.thumbnail_path || room.thumbnailPath || room.preview || '';
+    let p = room.image_path || room.imagePath || room.thumbnail_path || room.thumbnailPath || room.preview || '';
     if (!p) return NO_IMG;
     if (p.startsWith('http') || p.startsWith('data:')) return p;
+    // Normalize: ensure leading slash for server-relative paths
+    if (!p.startsWith('/')) p = '/' + p;
     const serverBase = window.printStationConfig?.serverBaseUrl || window.state?.config?.serverBaseUrl || '';
-    if (serverBase && p.startsWith('/')) return serverBase + p;
+    if (serverBase) return serverBase + p;
     return p;
   }
 
@@ -246,10 +248,11 @@
 
     if (!rgState.allRooms.length) {
       try {
-        const resp = await window.printStation.customArt?.rooms?.list?.() || { rooms: [] };
+        const resp = await window.printStation.customArt.listRooms({ limit: 2000 });
         rgState.allRooms = resp.rooms || resp.items || resp || [];
       } catch (err) {
         console.error('[RoomGroups] rooms list fetch failed:', err);
+        rgState.allRooms = [];
       }
     }
 
@@ -267,11 +270,13 @@
     if (!grid) return;
 
     const search = (document.getElementById('rgRoomSearch')?.value || '').toLowerCase();
+    const typeFilter = document.getElementById('rgRoomTypeFilter')?.value || '';
     const existingIds = new Set(rgState.selectedGroupMembers.map(m => m.id));
 
     const filtered = rgState.allRooms.filter(r => {
       if (existingIds.has(r.id)) return false;
-      if (search && !(r.title || r.name || '').toLowerCase().includes(search) && !(r.description || '').toLowerCase().includes(search)) return false;
+      if (search && !(r.title || r.name || '').toLowerCase().includes(search) && !(r.description || '').toLowerCase().includes(search) && !(r.roomType || r.room_type || '').toLowerCase().includes(search)) return false;
+      if (typeFilter && (r.roomType || r.room_type || '') !== typeFilter) return false;
       return true;
     });
 
@@ -290,8 +295,8 @@
                onerror="this.style.height='120px';this.style.background='#1a1a2e';" />
           ${selected ? '<div style="position:absolute;top:4px;right:4px;background:var(--accent);color:white;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">&#10003;</div>' : ''}
           <div style="padding:4px 6px;">
-            <div style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.title || r.name || r.id)}</div>
-            <div style="font-size:10px;color:var(--text-secondary);">${esc(r.room_type || r.description || '')}</div>
+            <div style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.title || r.name || r.id)}">${esc((r.title || r.name || r.id).substring(0, 35))}</div>
+            <div style="font-size:10px;color:var(--text-secondary);">${esc(r.roomType || r.room_type || 'room')}</div>
           </div>
         </div>`;
     }).join('');
@@ -322,10 +327,15 @@
   async function handleModalAdd() {
     if (!rgState.modalSelected.size || !rgState.selectedGroupId) return;
     const roomIds = Array.from(rgState.modalSelected);
-    const roomType = document.getElementById('rgModalRoomType')?.value || 'living-room';
+    const overrideRoomType = document.getElementById('rgModalRoomType')?.value || '';
     const multiPrint = document.getElementById('rgModalMultiPrint')?.checked || false;
 
-    const rooms = roomIds.map(id => ({ roomId: id, roomType, multiPrint }));
+    // Use each room's actual type unless user overrides
+    const rooms = roomIds.map(id => {
+      const room = rgState.allRooms.find(r => r.id === id);
+      const roomType = overrideRoomType || room?.roomType || room?.room_type || 'living-room';
+      return { roomId: id, roomType, multiPrint };
+    });
     try {
       await api().addRooms(rgState.selectedGroupId, rooms);
       closeAddRoomsModal();
@@ -428,6 +438,8 @@
     let searchTimer;
     const searchEl = document.getElementById('rgRoomSearch');
     if (searchEl) searchEl.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderModalGrid, 250); };
+    const typeFilterEl = document.getElementById('rgRoomTypeFilter');
+    if (typeFilterEl) typeFilterEl.onchange = renderModalGrid;
 
     const addModal = document.getElementById('rgAddRoomsModal');
     if (addModal) addModal.onclick = (e) => { if (e.target === addModal) closeAddRoomsModal(); };

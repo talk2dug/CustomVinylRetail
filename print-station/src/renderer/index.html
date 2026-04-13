@@ -6732,6 +6732,20 @@
               <h3 style="margin:0;">Add Rooms to Group</h3>
               <div style="display:flex;gap:8px;align-items:center;">
                 <input id="rgRoomSearch" type="text" placeholder="Search rooms..." style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);width:200px;">
+                <select id="rgRoomTypeFilter" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);">
+                  <option value="">All Room Types</option>
+                  <option value="living-room">Living Room</option>
+                  <option value="bedroom-office">Bedroom/Office</option>
+                  <option value="garage">Garage</option>
+                  <option value="office">Office</option>
+                  <option value="front-porch">Front Porch</option>
+                  <option value="buisness">Business</option>
+                  <option value="hallway">Hallway</option>
+                  <option value="staircase">Staircase</option>
+                  <option value="art-studio">Art Studio</option>
+                  <option value="sim-rig">Sim Rig</option>
+                  <option value="workbench">Workbench</option>
+                </select>
                 <button id="rgModalCloseBtn" class="btn" style="padding:4px 10px;">Close</button>
               </div>
             </div>
@@ -6739,12 +6753,17 @@
               <div style="display:flex;gap:12px;align-items:center;">
                 <span id="rgModalSelectedCount" style="font-size:13px;color:var(--text-secondary);">0 selected</span>
                 <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
+                  Type:
                   <select id="rgModalRoomType" style="padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);font-size:12px;">
+                    <option value="">Auto (from room)</option>
                     <option value="living-room">Living Room</option>
                     <option value="garage">Garage</option>
                     <option value="hallway">Hallway</option>
                     <option value="bedroom">Bedroom</option>
                     <option value="office">Office</option>
+                    <option value="front-porch">Front Porch</option>
+                    <option value="staircase">Staircase</option>
+                    <option value="art-studio">Art Studio</option>
                   </select>
                 </label>
                 <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
