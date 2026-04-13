@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const { METAL_PRINT_PIPELINE_DIR, PIPELINE_OUTPUT_DIR } = require('../paths');
 const { apiFetch, sleep } = require('../modules/pipeline-utils');
+const NanoBananaAI = require('../nano-banana-ai');
 
 fs.mkdirSync(METAL_PRINT_PIPELINE_DIR, { recursive: true });
 
@@ -113,15 +114,8 @@ async function generateRoomMockup(filteredArtPath, roomImagePath, options = {}) 
   const prompt = prompts.single;
 
   try {
-    const result = await apiFetch('/api/ai-images/composite', {
-      method: 'POST',
-      body: JSON.stringify({
-        imagePaths: [roomImagePath, filteredArtPath],
-        prompt,
-        model: 'gemini-2.0-flash-exp'
-      }),
-      timeout: 180000
-    });
+    const ai = new NanoBananaAI(process.env.GEMINI_API_KEY);
+    const result = await ai.compositeImages([roomImagePath, filteredArtPath], prompt);
 
     if (result.images && result.images.length > 0) {
       const imgData = Buffer.from(result.images[0].data, 'base64');
@@ -130,7 +124,7 @@ async function generateRoomMockup(filteredArtPath, roomImagePath, options = {}) 
       console.log(`[RoomMockup] Generated: ${outputFilename} (${(imgData.length / 1024).toFixed(0)}KB)`);
       return { outputPath, outputFilename, skipped: false };
     }
-    throw new Error('No images returned from compositing API');
+    throw new Error('No images returned from Gemini compositing');
   } catch (err) {
     console.error(`[RoomMockup] Failed for ${designSlug}/${roomSlug}:`, err.message);
     return { outputPath: null, outputFilename, error: err.message };
@@ -151,15 +145,8 @@ async function generateMultiPrintMockup(filteredArtPaths, roomImagePath, options
   const prompt = prompts.multi;
 
   try {
-    const result = await apiFetch('/api/ai-images/composite', {
-      method: 'POST',
-      body: JSON.stringify({
-        imagePaths: [roomImagePath, ...filteredArtPaths],
-        prompt,
-        model: 'gemini-2.0-flash-exp'
-      }),
-      timeout: 240000
-    });
+    const ai = new NanoBananaAI(process.env.GEMINI_API_KEY);
+    const result = await ai.compositeImages([roomImagePath, ...filteredArtPaths], prompt);
 
     if (result.images && result.images.length > 0) {
       const imgData = Buffer.from(result.images[0].data, 'base64');
@@ -168,7 +155,7 @@ async function generateMultiPrintMockup(filteredArtPaths, roomImagePath, options
       console.log(`[RoomMockup] Gallery generated: ${outputFilename} (${(imgData.length / 1024).toFixed(0)}KB)`);
       return { outputPath, outputFilename, skipped: false };
     }
-    throw new Error('No images returned from compositing API');
+    throw new Error('No images returned from Gemini compositing');
   } catch (err) {
     console.error(`[RoomMockup] Gallery failed for ${roomSlug}:`, err.message);
     return { outputPath: null, outputFilename, error: err.message };
