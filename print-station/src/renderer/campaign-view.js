@@ -14,7 +14,7 @@ const campaignViewState = {
   currentRunId: null
 };
 
-const PIPELINE_STEPS = [
+const APPAREL_PIPELINE_STEPS = [
   { key: 'load',              label: 'Loading' },
   { key: 'categorize',        label: 'Categorizing' },
   { key: 'match-models',      label: 'Matching Models' },
@@ -25,6 +25,22 @@ const PIPELINE_STEPS = [
   { key: 'landing-pages',     label: 'Landing Pages' },
   { key: 'complete',          label: 'Complete' }
 ];
+
+const METAL_PRINT_PIPELINE_STEPS = [
+  { key: 'load',             label: 'Loading Designs' },
+  { key: 'filter',           label: 'Metal Filter' },
+  { key: 'match-rooms',      label: 'Matching Rooms' },
+  { key: 'room-mockups',     label: 'Room Mockups' },
+  { key: 'shopify-publish',  label: 'Shopify Publish' },
+  { key: 'complete',         label: 'Complete' }
+];
+
+// Dynamic getter based on current product type
+function getPipelineSteps() {
+  const productType = document.getElementById('campaignProductType')?.value || '';
+  return productType === 'metal-print' ? METAL_PRINT_PIPELINE_STEPS : APPAREL_PIPELINE_STEPS;
+}
+const PIPELINE_STEPS = APPAREL_PIPELINE_STEPS; // legacy reference
 
 // ============================================================================
 // INIT
@@ -47,6 +63,8 @@ function initCampaignView() {
 
   // Model group dropdown
   loadModelGroupDropdown();
+  // Room group dropdown
+  loadRoomGroupDropdown();
 
   // Pipeline run button
   const runBtn = document.getElementById('campaignRunPipelineBtn');
@@ -62,6 +80,18 @@ function initCampaignView() {
   const mgSelect = document.getElementById('campaignModelGroupSelect');
   if (mgSelect) {
     mgSelect.addEventListener('focus', loadModelGroupDropdown);
+  }
+  const rgSelect = document.getElementById('campaignRoomGroupSelect');
+  if (rgSelect) {
+    rgSelect.addEventListener('focus', loadRoomGroupDropdown);
+  }
+
+  // Toggle model group vs room group based on product type
+  const productTypeSelect = document.getElementById('campaignProductType');
+  if (productTypeSelect) {
+    productTypeSelect.addEventListener('change', updatePipelineControlsForType);
+    // Set initial state
+    updatePipelineControlsForType();
   }
 
   // Analytics refresh
@@ -94,6 +124,43 @@ async function loadModelGroupDropdown() {
 }
 window.loadModelGroupDropdown = loadModelGroupDropdown;
 
+async function loadRoomGroupDropdown() {
+  const select = document.getElementById('campaignRoomGroupSelect');
+  if (!select) return;
+  try {
+    const resp = await window.printStation.roomGroups.list();
+    const groups = resp.groups || resp || [];
+    const current = select.value;
+    select.innerHTML = '<option value="">Select room group...</option>';
+    for (const g of groups) {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = `${g.name} (${g.member_count || 0} rooms)`;
+      select.appendChild(opt);
+    }
+    if (current) select.value = current;
+  } catch (err) {
+    console.warn('[Campaign] room groups load failed:', err.message);
+  }
+}
+window.loadRoomGroupDropdown = loadRoomGroupDropdown;
+
+function updatePipelineControlsForType() {
+  const productType = document.getElementById('campaignProductType')?.value || '';
+  const isMetalPrint = productType === 'metal-print';
+  const mgSelect = document.getElementById('campaignModelGroupSelect');
+  const rgSelect = document.getElementById('campaignRoomGroupSelect');
+  const runBtn = document.getElementById('campaignRunPipelineBtn');
+  const apparelCard = document.getElementById('campaignApparelCard');
+
+  if (mgSelect) mgSelect.style.display = isMetalPrint ? 'none' : '';
+  if (rgSelect) rgSelect.style.display = isMetalPrint ? '' : 'none';
+  if (runBtn) runBtn.textContent = isMetalPrint ? 'Run Metal Print Pipeline' : 'Run Pipeline';
+  // Hide apparel choices for metal print
+  if (apparelCard) apparelCard.style.display = isMetalPrint ? 'none' : '';
+}
+window.updatePipelineControlsForType = updatePipelineControlsForType;
+
 // Called when a campaign is loaded — refresh pipeline-specific data
 function onCampaignLoaded(campaign) {
   if (!campaign) return;
@@ -117,6 +184,9 @@ function onCampaignLoaded(campaign) {
   if (progEl) progEl.hidden = true;
   const statusEl = document.getElementById('campaignPipelineStatus');
   if (statusEl) statusEl.textContent = 'Ready';
+
+  // Update pipeline controls for the campaign's product type
+  updatePipelineControlsForType();
 }
 window.onCampaignLoaded = onCampaignLoaded;
 
@@ -227,10 +297,24 @@ async function handleRunPipeline() {
     return;
   }
 
-  const apparelChoices = getApparelChoicesForPipeline();
-  if (apparelChoices.length < 1) {
-    showToast('Select at least one apparel choice.', 'error');
-    return;
+  const productType = document.getElementById('campaignProductType')?.value || '';
+  const isMetalPrint = productType === 'metal-print';
+
+  if (!isMetalPrint) {
+    // Apparel pipeline — needs apparel choices
+    const apparelChoices = getApparelChoicesForPipeline();
+    if (apparelChoices.length < 1) {
+      showToast('Select at least one apparel choice.', 'error');
+      return;
+    }
+  }
+
+  if (isMetalPrint) {
+    const roomGroupId = document.getElementById('campaignRoomGroupSelect')?.value;
+    if (!roomGroupId) {
+      showToast('Select a room group for metal print pipeline.', 'error');
+      return;
+    }
   }
 
   // Collect design IDs from campaign items
@@ -244,6 +328,7 @@ async function handleRunPipeline() {
   }
 
   const runBtn = document.getElementById('campaignRunPipelineBtn');
+  const btnLabel = isMetalPrint ? 'Run Metal Print Pipeline' : 'Run Pipeline';
   if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Starting...'; }
 
   try {
@@ -252,25 +337,41 @@ async function handleRunPipeline() {
       await window.handleCampaignSaveSilently();
     }
 
-    const modelGroupId = document.getElementById('campaignModelGroupSelect')?.value || undefined;
-    const result = await window.printStation.pipeline.run({
-      designIds,
-      campaignSlug: campaign.slug,
-      campaignTitle: campaign.title || campaign.slug,
-      apparelChoices,
-      modelGroupId
-    });
+    let result;
+    if (isMetalPrint) {
+      // Metal Print Pipeline
+      const roomGroupId = document.getElementById('campaignRoomGroupSelect')?.value || undefined;
+      const skipShopify = document.getElementById('campaignSkipShopify')?.checked || false;
+      result = await window.printStation.metalPrintPipeline.run({
+        designIds,
+        campaignSlug: campaign.slug,
+        campaignTitle: campaign.title || campaign.slug,
+        roomGroupId,
+        skipShopify
+      });
+    } else {
+      // Apparel Pipeline
+      const apparelChoices = getApparelChoicesForPipeline();
+      const modelGroupId = document.getElementById('campaignModelGroupSelect')?.value || undefined;
+      result = await window.printStation.pipeline.run({
+        designIds,
+        campaignSlug: campaign.slug,
+        campaignTitle: campaign.title || campaign.slug,
+        apparelChoices,
+        modelGroupId
+      });
+    }
 
     if (result.runId) {
       campaignViewState.currentRunId = result.runId;
       startPipelinePolling(result.runId);
-      showToast('Pipeline started.', 'success');
+      showToast(`${isMetalPrint ? 'Metal Print' : 'Apparel'} pipeline started.`, 'success');
     } else {
       showToast('Pipeline started (no run ID returned).', 'warning');
     }
   } catch (err) {
     showToast('Pipeline failed to start: ' + (err.message || err), 'error');
-    if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Run Pipeline'; }
+    if (runBtn) { runBtn.disabled = false; runBtn.textContent = btnLabel; }
   }
 }
 
@@ -297,12 +398,13 @@ function startPipelinePolling(runId) {
       const status = await window.printStation.pipeline.getStatus(runId);
       renderPipelineProgress(status);
 
-      if (status.status === 'complete' || status.status === 'error') {
+      if (status.status === 'complete' || status.status === 'error' || status.status === 'pending-reels') {
         clearInterval(campaignViewState.pipelinePollingInterval);
         campaignViewState.pipelinePollingInterval = null;
 
         const runBtn = document.getElementById('campaignRunPipelineBtn');
-        if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Run Pipeline'; }
+        const isMP = document.getElementById('campaignProductType')?.value === 'metal-print';
+        if (runBtn) { runBtn.disabled = false; runBtn.textContent = isMP ? 'Run Metal Print Pipeline' : 'Run Pipeline'; }
 
         const statusEl = document.getElementById('campaignPipelineStatus');
 
@@ -325,10 +427,11 @@ function renderPipelineSteps(currentStep) {
   const container = document.getElementById('campaignPipelineSteps');
   if (!container) return;
 
-  container.innerHTML = PIPELINE_STEPS.map(step => {
-    const stepDef = PIPELINE_STEPS.find(s => s.key === currentStep);
-    const currentIdx = stepDef ? stepDef.index : -1;
-    const thisIdx = PIPELINE_STEPS.indexOf(step);
+  const steps = getPipelineSteps();
+  container.innerHTML = steps.map(step => {
+    const stepDef = steps.find(s => s.key === currentStep);
+    const currentIdx = stepDef ? steps.indexOf(stepDef) : -1;
+    const thisIdx = steps.indexOf(step);
 
     let cls = 'pipeline-step';
     let icon = '';
@@ -360,9 +463,11 @@ function renderPipelineProgress(status) {
   const label = document.getElementById('campaignPipelineProgressLabel');
   const stepLabel = document.getElementById('campaignPipelineStepLabel');
 
-  const stepDef = PIPELINE_STEPS.find(s => s.key === status.current_step);
+  const steps = getPipelineSteps();
+  const stepDef = steps.find(s => s.key === status.current_step);
+  const stepIdx = stepDef ? steps.indexOf(stepDef) : 0;
   const overallPct = stepDef
-    ? Math.round(((stepDef.index || 0) / PIPELINE_STEPS.length) * 100)
+    ? Math.round((stepIdx / steps.length) * 100)
     : 0;
 
   if (bar) bar.style.width = overallPct + '%';

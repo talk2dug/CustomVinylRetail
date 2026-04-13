@@ -1812,9 +1812,17 @@
         <div class="inventory-card" id="campaignPipelineCard">
           <h3>Pipeline</h3>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <!-- Model Group (for apparel pipeline) -->
             <select id="campaignModelGroupSelect" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:12px;">
               <option value="">Auto model selection</option>
             </select>
+            <!-- Room Group (for metal print pipeline) -->
+            <select id="campaignRoomGroupSelect" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:12px;display:none;">
+              <option value="">Select room group...</option>
+            </select>
+            <label id="campaignSkipShopifyLabel" style="font-size:12px;display:flex;align-items:center;gap:4px;">
+              <input id="campaignSkipShopify" type="checkbox"> Skip Shopify
+            </label>
             <button id="campaignRunPipelineBtn" class="primary" type="button">Run Pipeline</button>
             <span id="campaignPipelineStatus" class="muted">Ready</span>
           </div>
