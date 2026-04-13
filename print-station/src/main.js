@@ -5979,6 +5979,34 @@ Return ONLY valid JSON, nothing else:
     httpRequest(`/api/model-groups/${encodeURIComponent(groupId)}/models/remove`, { method: 'POST', body: { modelIds } })
   );
 
+  // Room Groups
+  ipcMain.handle('room-groups:list', () =>
+    httpRequest('/api/custom-art/room-groups', { method: 'GET' })
+  );
+  ipcMain.handle('room-groups:get', (_event, id) =>
+    httpRequest(`/api/custom-art/room-groups/${encodeURIComponent(id)}`, { method: 'GET' })
+  );
+  ipcMain.handle('room-groups:create', (_event, payload) =>
+    httpRequest('/api/custom-art/room-groups', { method: 'POST', body: payload })
+  );
+  ipcMain.handle('room-groups:update', (_event, { id, payload }) =>
+    httpRequest(`/api/custom-art/room-groups/${encodeURIComponent(id)}`, { method: 'PUT', body: payload })
+  );
+  ipcMain.handle('room-groups:delete', (_event, id) =>
+    httpRequest(`/api/custom-art/room-groups/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  );
+  ipcMain.handle('room-groups:add-rooms', (_event, { groupId, rooms }) =>
+    httpRequest(`/api/custom-art/room-groups/${encodeURIComponent(groupId)}/members`, { method: 'POST', body: { rooms } })
+  );
+  ipcMain.handle('room-groups:remove-rooms', (_event, { groupId, roomIds }) =>
+    httpRequest(`/api/custom-art/room-groups/${encodeURIComponent(groupId)}/members/remove`, { method: 'POST', body: { roomIds } })
+  );
+
+  // Metal Print Pipeline
+  ipcMain.handle('metal-print-pipeline:run', (_event, payload) =>
+    httpRequest('/api/metal-print-pipeline/run', { method: 'POST', body: payload })
+  );
+
   ipcMain.handle('human-models:select-file', async (_event, options) => {
     const result = await dialog.showOpenDialog({
       title: options?.title || 'Select Model Image',

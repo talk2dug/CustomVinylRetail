@@ -1822,6 +1822,11 @@ function switchView(viewId) {
     if (typeof window.initModelGroupsView === 'function') window.initModelGroupsView();
   }
 
+  // Room Groups view
+  if (viewId === 'roomGroupsView') {
+    if (typeof window.initRoomGroupsView === 'function') window.initRoomGroupsView();
+  }
+
   // Sticker Sheets view
   if (viewId === 'stickerSheetsView') {
     initStickerSheetsView();

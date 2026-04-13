@@ -2873,6 +2873,30 @@ function initCustomArtTables() {
     CREATE INDEX IF NOT EXISTS idx_mgm_model ON model_group_members(model_id);
   `);
 
+  // Room Groups (curated collections of rooms for metal print campaigns)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS room_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS room_group_members (
+      group_id TEXT NOT NULL,
+      room_id TEXT NOT NULL,
+      room_type TEXT DEFAULT 'living-room',
+      multi_print INTEGER DEFAULT 0,
+      added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (group_id, room_id),
+      FOREIGN KEY (group_id) REFERENCES room_groups(id) ON DELETE CASCADE,
+      FOREIGN KEY (room_id) REFERENCES custom_art_rooms(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_rgm_group ON room_group_members(group_id);
+    CREATE INDEX IF NOT EXISTS idx_rgm_room ON room_group_members(room_id);
+  `);
+
   // Materials (canvas, metal, wood, acrylic, etc.)
   db.exec(`
     CREATE TABLE IF NOT EXISTS custom_art_materials (
@@ -3825,6 +3849,7 @@ function initCustomArtTables() {
   // When a pipeline finishes steps 1-6 with skipReels=true, it persists the
   // state needed by server/modules/reel-followup.js so reels can be made
   // manually in reel-studio and then "finalized" (step 7b/7c) on demand.
+  ensureColumn('pipeline_runs', 'product_type', "TEXT DEFAULT 'apparel'");
   ensureColumn('pipeline_runs', 'collection', 'TEXT');
   ensureColumn('pipeline_runs', 'theme_groups', 'TEXT');
   ensureColumn('pipeline_runs', 'publish_manifest', 'TEXT');
@@ -4345,6 +4370,72 @@ function addModelsToGroup(groupId, modelIds) {
 function removeModelsFromGroup(groupId, modelIds) {
   const placeholders = modelIds.map(() => '?').join(',');
   db.prepare(`DELETE FROM model_group_members WHERE group_id = ? AND model_id IN (${placeholders})`).run(groupId, ...modelIds);
+}
+
+// --- ROOM GROUPS CRUD ---
+function createRoomGroup({ name, description }) {
+  const id = 'rg_' + crypto.randomBytes(8).toString('hex');
+  db.prepare('INSERT INTO room_groups (id, name, description) VALUES (?, ?, ?)').run(id, name, description || '');
+  return { id, name, description: description || '', created_at: new Date().toISOString() };
+}
+
+function updateRoomGroup(id, { name, description }) {
+  const sets = [];
+  const params = [];
+  if (name !== undefined) { sets.push('name = ?'); params.push(name); }
+  if (description !== undefined) { sets.push('description = ?'); params.push(description); }
+  if (!sets.length) return getRoomGroupById(id);
+  sets.push("updated_at = datetime('now')");
+  params.push(id);
+  db.prepare(`UPDATE room_groups SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getRoomGroupById(id);
+}
+
+function deleteRoomGroup(id) {
+  db.prepare('DELETE FROM room_group_members WHERE group_id = ?').run(id);
+  const info = db.prepare('DELETE FROM room_groups WHERE id = ?').run(id);
+  return info.changes > 0;
+}
+
+function getRoomGroupById(id) {
+  return db.prepare('SELECT * FROM room_groups WHERE id = ?').get(id) || null;
+}
+
+function listRoomGroups() {
+  return db.prepare(`
+    SELECT g.*, COUNT(m.room_id) as member_count
+    FROM room_groups g
+    LEFT JOIN room_group_members m ON g.id = m.group_id
+    GROUP BY g.id
+    ORDER BY g.name
+  `).all();
+}
+
+function getRoomGroupMembers(groupId) {
+  return db.prepare(`
+    SELECT r.*, rgm.room_type AS group_room_type, rgm.multi_print FROM custom_art_rooms r
+    INNER JOIN room_group_members rgm ON r.id = rgm.room_id
+    WHERE rgm.group_id = ?
+    ORDER BY r.title
+  `).all(groupId);
+}
+
+function addRoomsToGroup(groupId, roomEntries) {
+  const stmt = db.prepare('INSERT OR IGNORE INTO room_group_members (group_id, room_id, room_type, multi_print) VALUES (?, ?, ?, ?)');
+  const tx = db.transaction((entries) => {
+    for (const entry of entries) {
+      const roomId = typeof entry === 'string' ? entry : entry.roomId;
+      const roomType = (typeof entry === 'object' && entry.roomType) || 'living-room';
+      const multiPrint = (typeof entry === 'object' && entry.multiPrint) ? 1 : 0;
+      stmt.run(groupId, roomId, roomType, multiPrint);
+    }
+  });
+  tx(roomEntries);
+}
+
+function removeRoomsFromGroup(groupId, roomIds) {
+  const placeholders = roomIds.map(() => '?').join(',');
+  db.prepare(`DELETE FROM room_group_members WHERE group_id = ? AND room_id IN (${placeholders})`).run(groupId, ...roomIds);
 }
 
 // --- MATERIALS CRUD ---
@@ -8413,7 +8504,8 @@ function updatePipelineRun(id, updates) {
   const allowed = ['status', 'current_step', 'current_step_index', 'total_steps',
     'step_progress', 'step_total', 'apparel_choices', 'design_ids', 'design_count',
     'results_json', 'error_message', 'started_at', 'completed_at',
-    'collection', 'theme_groups', 'publish_manifest', 'mockup_dir', 'finalized_at'];
+    'collection', 'theme_groups', 'publish_manifest', 'mockup_dir', 'finalized_at',
+    'product_type'];
   const sets = [];
   const params = [];
   for (const [key, val] of Object.entries(updates)) {
@@ -8597,6 +8689,15 @@ module.exports = {
   getModelGroupMembers,
   addModelsToGroup,
   removeModelsFromGroup,
+  // Room Groups
+  createRoomGroup,
+  updateRoomGroup,
+  deleteRoomGroup,
+  getRoomGroupById,
+  listRoomGroups,
+  getRoomGroupMembers,
+  addRoomsToGroup,
+  removeRoomsFromGroup,
   // Raw database instance (for scripts that need direct access)
   db,
   // Custom Art - Materials

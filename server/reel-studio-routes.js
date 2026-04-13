@@ -11,7 +11,7 @@ const crypto = require('crypto');
 const { parseBody, sendJson, sendError } = require('./utils/http');
 const { renderVideo, OUT_DIR } = require('../remotion/render-api');
 
-const { PIPELINE_OUTPUT_DIR } = require('./paths');
+const { PIPELINE_OUTPUT_DIR, METAL_PRINT_PIPELINE_DIR } = require('./paths');
 const AUDIO_DIR = path.join(__dirname, '..', 'data', 'reel-studio-audio');
 const HISTORY_FILE = path.join(__dirname, '..', 'data', 'reel-studio-history.json');
 const CATALOG_PATH = path.join(__dirname, '..', 'web', 'catalog.json');
@@ -213,9 +213,13 @@ function handleReelStudioRoute(pathname, req, res) {
     if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
       return sendError(res, 400, 'Invalid filename');
     }
-    const filePath = path.join(PIPELINE_OUTPUT_DIR, filename);
+    // Try apparel pipeline dir first, then metal-print pipeline dir
+    let filePath = path.join(PIPELINE_OUTPUT_DIR, filename);
     if (!filePath.startsWith(PIPELINE_OUTPUT_DIR) || !fs.existsSync(filePath)) {
-      return sendError(res, 404, 'Mockup not found');
+      filePath = path.join(METAL_PRINT_PIPELINE_DIR, filename);
+      if (!filePath.startsWith(METAL_PRINT_PIPELINE_DIR) || !fs.existsSync(filePath)) {
+        return sendError(res, 404, 'Mockup not found');
+      }
     }
     const ext = path.extname(filename).toLowerCase();
     const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
@@ -277,14 +281,22 @@ function handleReelStudioRoute(pathname, req, res) {
         // Reels already created for this run
         const existingReels = db.getPipelineRunReels(run.id) || [];
 
+        // Template hint for reel-studio UI
+        const productType = run.product_type || 'apparel';
+        const templateHint = productType === 'metal-print'
+          ? { composition: 'MockupReel', style: 'art-to-mockup-interleave', note: 'Alternate original art → room mockup for metal print campaigns' }
+          : null;
+
         return {
           id: run.id,
           campaignSlug: run.campaign_slug,
           collection: run.collection,
           status: run.status,
+          productType,
           createdAt: run.created_at,
           apparelChoices,
           themes,
+          templateHint,
           existingReelCount: existingReels.length,
           existingReels: existingReels.map(r => ({
             id: r.id,

@@ -99,7 +99,11 @@ const { handleReelStudioRoute } = require('./reel-studio-routes');
 const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
 const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
 const { handleModelGroupsRoute } = require('./model-groups');
+const { handleRoomGroupsRoute } = require('./room-groups');
+const { handleBatchRoomMockupRoute } = require('./scripts/batch-room-mockup-generator');
+const { handleShopifyMetalPrintRoute } = require('./scripts/shopify-metal-print-publisher');
 const { runFullPipeline } = require('./modules/apparel-pipeline');
+const { runMetalPrintPipeline } = require('./modules/metal-print-pipeline');
 const { generateCategoryMetadata, updateCatalogMetadata } = require('./catalog-metadata-generator');
 const { runCategoryOcr, updateCatalogWithOcr, getCategoryItems: getOcrCategoryItems, findCategoryDirectory } = require('./catalog-ocr-generator');
 const { describeCatalogDesign } = require('../scripts/claude-describe');
@@ -10121,6 +10125,36 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // Room Groups API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/custom-art/room-groups')) {
+    if (!requireInternalKey(req, res)) return;
+    handleRoomGroupsRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Room Groups API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Batch Room Mockup Generator API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/batch-room-mockups')) {
+    if (!requireInternalKey(req, res)) return;
+    handleBatchRoomMockupRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Batch Room Mockup API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
+  // Shopify Metal Print Publisher API
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/shopify-metal-print')) {
+    if (!requireInternalKey(req, res)) return;
+    handleShopifyMetalPrintRoute(parsedUrl.pathname, req, res, db).catch(err => {
+      console.error('[Shopify Metal Print API Error]', err);
+      sendJson(res, 500, { error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
   // Batch Mockup Generator API
   if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/batch-mockups')) {
     if (!requireInternalKey(req, res)) return;
@@ -10213,6 +10247,96 @@ Keep it concise and actionable.`;
         sendJson(res, 400, { error: e.message });
       }
     });
+    return;
+  }
+
+  // Metal Print Pipeline — full end-to-end run
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/metal-print-pipeline/run') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) { sendJson(res, 413, { error: error.message }); return; }
+      try {
+        const { designIds, category, roomGroupId, campaignSlug, campaignTitle, limit, skipShopify } = JSON.parse(body || '{}');
+        if (!category && (!designIds || !designIds.length)) {
+          sendJson(res, 400, { error: 'category or designIds is required' }); return;
+        }
+
+        // Create pipeline run record for tracking
+        const run = db.createPipelineRun({
+          campaign_slug: campaignSlug || null,
+          status: 'running',
+          current_step: 'load',
+          current_step_index: 0,
+          total_steps: 6,
+          design_ids: designIds ? JSON.stringify(designIds) : null,
+          design_count: designIds ? designIds.length : (limit || 0),
+          started_at: new Date().toISOString()
+        });
+        const runId = run.id;
+        db.updatePipelineRun(runId, { product_type: 'metal-print' });
+
+        const pipelineOpts = {
+          designIds, category, roomGroupId, campaignSlug, campaignTitle,
+          limit, skipShopify,
+          pipelineRunId: runId,
+          onProgress: ({ step, stepIndex, progress, total }) => {
+            try {
+              db.updatePipelineRun(runId, {
+                current_step: step,
+                current_step_index: stepIndex,
+                step_progress: progress || 0,
+                step_total: total || 0
+              });
+            } catch (_) {}
+          }
+        };
+
+        // Run pipeline in background
+        runMetalPrintPipeline(pipelineOpts).then(results => {
+          db.updatePipelineRun(runId, {
+            status: 'pending-reels',
+            current_step: 'awaiting-reels',
+            current_step_index: 5,
+            results_json: JSON.stringify(results),
+            completed_at: new Date().toISOString()
+          });
+        }).catch(err => {
+          console.error('[Metal Print Pipeline Error]', err);
+          db.updatePipelineRun(runId, {
+            status: 'error',
+            error_message: err.message,
+            completed_at: new Date().toISOString()
+          });
+        });
+
+        sendJson(res, 200, { status: 'started', runId, category: category || campaignTitle || 'Metal Print Campaign' });
+      } catch (e) {
+        sendJson(res, 400, { error: e.message });
+      }
+    });
+    return;
+  }
+
+  // Serve metal print mockup files (for Shopify image imports + reel-studio)
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/metal-print-mockups/')) {
+    const filename = decodeURIComponent(parsedUrl.pathname.replace('/metal-print-mockups/', ''));
+    if (filename.includes('..') || filename.includes('\\')) {
+      sendJson(res, 400, { error: 'Invalid filename' }); return;
+    }
+    // Support nested campaign dirs: /metal-print-mockups/campaign-xxx/file.png
+    const filePath = path.join('/mnt/dbFiles/metal-print-pipeline', filename);
+    if (!filePath.startsWith('/mnt/dbFiles/metal-print-pipeline') || !fs.existsSync(filePath)) {
+      sendJson(res, 404, { error: 'Mockup not found' }); return;
+    }
+    const ext = path.extname(filename).toLowerCase();
+    const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, {
+      'Content-Type': mime[ext] || 'application/octet-stream',
+      'Content-Length': stat.size,
+      'Cache-Control': 'public, max-age=3600',
+    });
+    fs.createReadStream(filePath).pipe(res);
     return;
   }
 

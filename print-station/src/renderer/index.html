@@ -44,6 +44,7 @@
           <button class="dropdown-item" data-view="uploadView">Upload Artwork</button>
           <button class="dropdown-item" data-view="humanModelsView">Human Models</button>
           <button class="dropdown-item" data-view="modelGroupsView">Model Groups</button>
+          <button class="dropdown-item" data-view="roomGroupsView">Room Groups</button>
         </div>
       </div>
 
@@ -6683,6 +6684,109 @@
       </section>
 
       <!-- ================================================================== -->
+      <!-- ROOM GROUPS VIEW                                                    -->
+      <!-- ================================================================== -->
+      <section id="roomGroupsView" class="view">
+        <div class="view-toolbar">
+          <h2 style="margin:0;">Room Groups</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="rgNewGroupBtn" class="btn btn-primary" style="padding:6px 14px;">+ New Group</button>
+            <button id="rgLaunchPipelineBtn" class="btn" style="padding:6px 14px;background:var(--accent-orange,#e67e22);color:#fff;">Launch Metal Print Pipeline</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:16px;margin-top:12px;height:calc(100vh - 140px);">
+          <!-- Left: Group List -->
+          <div id="rgGroupList" style="width:280px;min-width:280px;overflow-y:auto;border-right:1px solid var(--border);padding-right:12px;">
+            <div id="rgGroupCards" style="display:flex;flex-direction:column;gap:8px;"></div>
+          </div>
+
+          <!-- Right: Group Detail -->
+          <div id="rgGroupDetail" style="flex:1;overflow-y:auto;padding:0 8px;">
+            <div id="rgDetailPlaceholder" style="text-align:center;color:var(--text-secondary);padding:60px 20px;">
+              <p style="font-size:18px;">Select a group or create a new one</p>
+              <p style="font-size:13px;margin-top:8px;">Room groups let you curate sets of rooms for metal print campaigns — garages, living rooms, offices, etc.</p>
+            </div>
+            <div id="rgDetailContent" style="display:none;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div>
+                  <h3 id="rgDetailName" style="margin:0;"></h3>
+                  <p id="rgDetailDesc" style="margin:4px 0 0;color:var(--text-secondary);font-size:13px;"></p>
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button id="rgEditGroupBtn" class="btn" style="padding:4px 12px;">Edit</button>
+                  <button id="rgAddRoomsBtn" class="btn btn-primary" style="padding:4px 12px;">+ Add Rooms</button>
+                  <button id="rgDeleteGroupBtn" class="btn btn-danger" style="padding:4px 12px;">Delete</button>
+                </div>
+              </div>
+              <div id="rgMemberCount" style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;"></div>
+              <div id="rgMemberGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Rooms Modal -->
+        <div id="rgAddRoomsModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:1000;justify-content:center;align-items:center;">
+          <div style="background:var(--bg-primary);border-radius:12px;width:80%;max-width:900px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);">
+              <h3 style="margin:0;">Add Rooms to Group</h3>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input id="rgRoomSearch" type="text" placeholder="Search rooms..." style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);width:200px;">
+                <button id="rgModalCloseBtn" class="btn" style="padding:4px 10px;">Close</button>
+              </div>
+            </div>
+            <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+              <div style="display:flex;gap:12px;align-items:center;">
+                <span id="rgModalSelectedCount" style="font-size:13px;color:var(--text-secondary);">0 selected</span>
+                <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
+                  <select id="rgModalRoomType" style="padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);font-size:12px;">
+                    <option value="living-room">Living Room</option>
+                    <option value="garage">Garage</option>
+                    <option value="hallway">Hallway</option>
+                    <option value="bedroom">Bedroom</option>
+                    <option value="office">Office</option>
+                  </select>
+                </label>
+                <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
+                  <input id="rgModalMultiPrint" type="checkbox"> Multi-print (gallery wall)
+                </label>
+              </div>
+              <button id="rgModalAddBtn" class="btn btn-primary" style="padding:6px 16px;" disabled>Add Selected</button>
+            </div>
+            <div id="rgModalGrid" style="flex:1;overflow-y:auto;padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;"></div>
+          </div>
+        </div>
+
+        <!-- Metal Print Pipeline Modal -->
+        <div id="rgPipelineModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:1000;justify-content:center;align-items:center;">
+          <div style="background:var(--bg-primary);border-radius:12px;width:550px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4);padding:24px;">
+            <h3 style="margin:0 0 16px;">Launch Metal Print Pipeline</h3>
+            <label style="font-size:13px;margin-bottom:4px;color:var(--text-secondary);">Design Category or IDs</label>
+            <input id="rgPipelineCategory" type="text" placeholder="Category name (e.g. 'Nature Landscapes')" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);margin-bottom:12px;">
+            <label style="font-size:13px;margin-bottom:4px;color:var(--text-secondary);">Room Group</label>
+            <select id="rgPipelineRoomGroup" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);margin-bottom:12px;">
+              <option value="">Select a room group...</option>
+            </select>
+            <label style="font-size:13px;margin-bottom:4px;color:var(--text-secondary);">Campaign Title (optional)</label>
+            <input id="rgPipelineTitle" type="text" placeholder="My Metal Print Campaign" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);margin-bottom:12px;">
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;">
+              <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
+                <input id="rgPipelineSkipShopify" type="checkbox"> Skip Shopify publish
+              </label>
+              <label style="font-size:13px;display:flex;align-items:center;gap:4px;">
+                Limit: <input id="rgPipelineLimit" type="number" min="1" max="50" value="10" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);">
+              </label>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+              <button id="rgPipelineCancelBtn" class="btn" style="padding:8px 16px;">Cancel</button>
+              <button id="rgPipelineRunBtn" class="btn btn-primary" style="padding:8px 16px;">Run Pipeline</button>
+            </div>
+            <div id="rgPipelineStatus" style="display:none;margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:8px;font-size:13px;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
       <!-- MOCKUP BACKGROUNDS VIEW                                             -->
       <!-- ================================================================== -->
       <section id="mockupBackgroundsView" class="view">
@@ -8734,6 +8838,7 @@
     <script src="./dog-tag-view.js"></script>
     <script src="./inventory-input-view.js"></script>
     <script src="./model-groups-view.js"></script>
+    <script src="./room-groups-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>

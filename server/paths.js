@@ -43,6 +43,7 @@ const PATHS = {
   DB_FILES:              '/mnt/dbFiles',
   DECAL_ICONS_DIR:       '/mnt/dbFiles/DecalCreatorIcons',
   PIPELINE_OUTPUT_DIR:   '/mnt/dbFiles/apparel-pipeline',
+  METAL_PRINT_PIPELINE_DIR: '/mnt/dbFiles/metal-print-pipeline',
   PRODUCT_BLANKS_DIR:    '/mnt/dbFiles/product-blank-mockups',
   BLANK_IMAGES_DIR:      '/mnt/dbFiles/blank-images',
   SAVED_DESIGNS_DIR:     '/mnt/dbFiles/saved-designs',

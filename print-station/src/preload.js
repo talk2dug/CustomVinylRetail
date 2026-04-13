@@ -502,6 +502,22 @@ contextBridge.exposeInMainWorld('printStation', {
     removeModels: (groupId, modelIds) => ipcRenderer.invoke('model-groups:remove-models', { groupId, modelIds })
   },
 
+  // Room Groups API
+  roomGroups: {
+    list: () => ipcRenderer.invoke('room-groups:list'),
+    get: (id) => ipcRenderer.invoke('room-groups:get', id),
+    create: (payload) => ipcRenderer.invoke('room-groups:create', payload),
+    update: (id, payload) => ipcRenderer.invoke('room-groups:update', { id, payload }),
+    delete: (id) => ipcRenderer.invoke('room-groups:delete', id),
+    addRooms: (groupId, rooms) => ipcRenderer.invoke('room-groups:add-rooms', { groupId, rooms }),
+    removeRooms: (groupId, roomIds) => ipcRenderer.invoke('room-groups:remove-rooms', { groupId, roomIds })
+  },
+
+  // Metal Print Pipeline
+  metalPrintPipeline: {
+    run: (payload) => ipcRenderer.invoke('metal-print-pipeline:run', payload)
+  },
+
   // Mockup Backgrounds API (for decal mockups)
   mockupBackgrounds: {
     list: (query) => ipcRenderer.invoke('mockup-backgrounds:list', query || {}),
