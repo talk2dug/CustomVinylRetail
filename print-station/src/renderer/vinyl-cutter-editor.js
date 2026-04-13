@@ -594,7 +594,7 @@ async function addItemToVinylCanvas(design) {
   const scale = config.displayScale;
 
   // Get image URL
-  const rawPath = design.thumbnailUrl || design.imageUrl || design.imagePath;
+  const rawPath = design.thumbnailUrl || design.imageUrl || design.imagePath || design.image;
   const imageUrl = getVinylImageUrl(rawPath);
 
   console.log('[VinylCutter] Adding item:', {

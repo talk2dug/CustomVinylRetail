@@ -12703,6 +12703,12 @@ function updateCatalogSelectionUI() {
     fbBtn.textContent = count > 0 ? `Use checked (${Math.min(count, 6)}) in Facebook Post` : 'Use checked in Facebook Post';
     fbBtn.disabled = count === 0;
   }
+  // Also update Vinyl Cutter button
+  const vinylBtn = document.getElementById('catalogSendToVinylCutterBtn');
+  if (vinylBtn) {
+    vinylBtn.textContent = count > 0 ? `Send to Vinyl Cutter (${count})` : 'Send to Vinyl Cutter';
+    vinylBtn.disabled = count === 0;
+  }
 }
 
 function getFilteredCatalogDesigns() {
@@ -14449,6 +14455,37 @@ async function init() {
       renderSocialSelectedItems();
       updateSocialPreview();
       showToast(`Added ${selectedItems.length} item${selectedItems.length === 1 ? '' : 's'} to Facebook post.`, 'success');
+    });
+  }
+
+  // Catalog: Send selected to Vinyl Cutter
+  const catalogSendToVinylCutterBtn = document.getElementById('catalogSendToVinylCutterBtn');
+  if (catalogSendToVinylCutterBtn) {
+    catalogSendToVinylCutterBtn.addEventListener('click', async () => {
+      if (!state.catalogSelection || state.catalogSelection.size === 0) {
+        showToast('No designs selected. Check some items first.', 'warning');
+        return;
+      }
+      const designs = [];
+      state.catalogSelection.forEach((designId) => {
+        const design = state.catalogDesignMap.get(designId);
+        if (design) designs.push(design);
+      });
+      if (designs.length === 0) {
+        showToast('No valid designs found.', 'warning');
+        return;
+      }
+      // Switch to Vinyl Cutter view
+      switchView('vinylCutterView');
+      // Add each design to the vinyl canvas
+      for (const design of designs) {
+        try {
+          await addItemToVinylCanvas(design);
+        } catch (err) {
+          console.error('[VinylCutter] Failed to add design:', design.name || design.id, err);
+        }
+      }
+      showToast(`Sent ${designs.length} design${designs.length === 1 ? '' : 's'} to Vinyl Cutter.`, 'success');
     });
   }
 
