@@ -68,10 +68,13 @@ function getVinylImageUrl(path) {
   } else if (path.includes('\\library\\')) {
     libraryPath = path.split('\\library\\')[1].replace(/\\/g, '/');
   } else if (path.startsWith('/')) {
-    // Absolute path on server - extract from web folder
+    // Absolute path on server - extract from web folder or /mnt/websit/
     const webMatch = path.match(/\/web\/library\/(.+)$/);
+    const websitMatch = path.match(/\/mnt\/websit\/(.+)$/);
     if (webMatch) {
       libraryPath = webMatch[1];
+    } else if (websitMatch) {
+      libraryPath = websitMatch[1];
     } else {
       // Fallback - just use the path
       return serverBase + path;

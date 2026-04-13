@@ -5420,10 +5420,11 @@ Return ONLY valid JSON, nothing else:
   // Vinyl Cutter handlers
   // ============================================================================
 
-  // Import screenshot (e.g. from Cricut) — open file dialog, read, upload to server
+  // Import screenshot (e.g. from Cricut) — open file dialog, copy to server imports dir
   ipcMain.handle('vinyl-cutter:import-screenshot', async () => {
     const { dialog } = require('electron');
     const fsNode = require('fs');
+    const pathNode = require('path');
 
     const result = await dialog.showOpenDialog({
       title: 'Import Screenshot (Cricut, etc.)',
@@ -5438,30 +5439,30 @@ Return ONLY valid JSON, nothing else:
       return { success: false, canceled: true };
     }
 
+    // Copy files directly to the server's import directory (same machine)
+    const importsDir = '/mnt/websit/cricut-imports';
+    if (!fsNode.existsSync(importsDir)) {
+      fsNode.mkdirSync(importsDir, { recursive: true });
+    }
+
     const imported = [];
     for (const filePath of result.filePaths) {
       try {
-        const imageBuffer = fsNode.readFileSync(filePath);
-        const ext = require('path').extname(filePath).toLowerCase();
-        const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
-        const base64 = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
-        const filename = require('path').basename(filePath, ext);
+        const ext = pathNode.extname(filePath).toLowerCase();
+        const baseName = pathNode.basename(filePath, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const destFilename = `${baseName}_${Date.now()}${ext}`;
+        const destPath = pathNode.join(importsDir, destFilename);
 
-        const uploadResult = await httpRequest('/api/vinyl-cutter/import-screenshot', {
-          method: 'POST',
-          body: { base64, filename },
-          timeout: 30000
+        fsNode.copyFileSync(filePath, destPath);
+        console.log(`[Import Screenshot] Copied: ${filePath} -> ${destPath}`);
+
+        imported.push({
+          originalPath: filePath,
+          serverPath: destPath,
+          filename: destFilename
         });
-
-        if (uploadResult.success) {
-          imported.push({
-            originalPath: filePath,
-            serverPath: uploadResult.path,
-            filename: uploadResult.filename
-          });
-        }
       } catch (err) {
-        console.error('[Import Screenshot] Failed:', filePath, err.message);
+        console.error('[Import Screenshot] Failed to copy:', filePath, err.message);
       }
     }
 

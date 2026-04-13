@@ -54,8 +54,8 @@
     ],
     "googleTrendsGeo": "US"
   },
-  "lastScanAt": "2026-04-13T19:16:18.082Z",
-  "scanCount": 186,
+  "lastScanAt": "2026-04-13T19:26:18.337Z",
+  "scanCount": 187,
   "trends": [
     {
       "id": "reddit_1riex53",
@@ -38766,6 +38766,158 @@
       "status": "new",
       "discoveredAt": "2026-04-13T19:16:16.966Z",
       "expiresAt": "2026-04-20T19:16:16.966Z"
+    },
+    {
+      "id": "reddit_1skanio",
+      "source": "reddit",
+      "sourceId": "1skanio",
+      "title": "Joaquin Phoenix, Ben Stiller, Kristen Stewart and 1,000-Plus Hollywood Names Oppose Paramount-Warner Deal in Open Letter: ‘Block the Merger’",
+      "snippet": "      &#32; submitted by &#32;  /u/MoneyLibrarian9032  &#32; to &#32;  r/movies   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/movies/comments/1skanio/joaquin_phoenix_ben_stiller_kristen_stewart_and/",
+      "subreddit": "movies",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776086442,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 40,
+        "apparelRelevance": 50,
+        "audienceMatch": "millennial|genx",
+        "timeliness": 30
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The phrase 'Block the Merger' can be used to create a sarcastic design about corporate takeovers.",
+        "suggestedPhrases": [
+          "Block the Merger",
+          "Hollywood Politics"
+        ],
+        "suggestedVisuals": [
+          "Image of a movie camera or a Hollywood sign"
+        ],
+        "targetAudience": "millennial|genx",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:25:24.446Z",
+      "expiresAt": "2026-04-20T19:25:24.446Z"
+    },
+    {
+      "id": "reddit_1sk8kwb",
+      "source": "reddit",
+      "sourceId": "1sk8kwb",
+      "title": "Is this just nostalgia, or did previous generations genuinely have a better work-life balance and social life than we do today?",
+      "snippet": "      &#32; submitted by &#32;  /u/Unstoppable_X_Force  &#32; to &#32;  r/SipsTea   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/SipsTea/comments/1sk8kwb/is_this_just_nostalgia_or_did_previous/",
+      "subreddit": "SipsTea",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776081277,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 30,
+        "apparelRelevance": 80,
+        "audienceMatch": "millennial|genx",
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The question about previous generations can be used to create a witty and relatable design.",
+        "suggestedPhrases": [
+          "Work-Life Balance",
+          "Previous Generations"
+        ],
+        "suggestedVisuals": [
+          "Image of a person working or relaxing in the past versus present"
+        ],
+        "targetAudience": "millennial|genx",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:25:24.446Z",
+      "expiresAt": "2026-04-20T19:25:24.446Z"
+    },
+    {
+      "id": "reddit_1sjxwki",
+      "source": "reddit",
+      "sourceId": "1sjxwki",
+      "title": "It's the worst experience",
+      "snippet": "      &#32; submitted by &#32;  /u/Ranger_Hawk3046   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1sjxwki/its_the_worst_experience/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776046825,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 70,
+        "apparelRelevance": 60,
+        "audienceMatch": "genz|millennial",
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The phrase is relatable and humorous, making it a great fit for a t-shirt.",
+        "suggestedPhrases": [
+          "It's the worst experience",
+          "I've had worse days"
+        ],
+        "suggestedVisuals": [],
+        "targetAudience": "genz|millennial",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:26:17.262Z",
+      "expiresAt": "2026-04-20T19:26:17.262Z"
+    },
+    {
+      "id": "reddit_1skh95o",
+      "source": "reddit",
+      "sourceId": "1skh95o",
+      "title": "Excuse me?",
+      "snippet": "      &#32; submitted by &#32;  /u/arlumpen   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skh95o/excuse_me/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776100334,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 80,
+        "apparelRelevance": 70,
+        "audienceMatch": "genx|millennial",
+        "timeliness": 40
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The phrase is a common expression of frustration, making it humorous and relatable.",
+        "suggestedPhrases": [
+          "Excuse me?",
+          "Mind your own business"
+        ],
+        "suggestedVisuals": [],
+        "targetAudience": "genx|millennial",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:26:17.262Z",
+      "expiresAt": "2026-04-20T19:26:17.262Z"
     }
   ],
   "designs": [
@@ -42522,8 +42674,8 @@
     }
   ],
   "stats": {
-    "totalScans": 186,
-    "totalTrendsFound": 1012,
+    "totalScans": 187,
+    "totalTrendsFound": 1016,
     "totalDesignsGenerated": 197,
     "totalApproved": 8,
     "totalListed": 8,
