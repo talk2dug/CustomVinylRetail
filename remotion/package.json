@@ -16,7 +16,9 @@
   "license": "ISC",
   "dependencies": {
     "@remotion/cli": "^4.0.447",
+    "@remotion/media-utils": "4.0.447",
     "@remotion/renderer": "^4.0.447",
+    "@remotion/rounded-text-box": "4.0.447",
     "@remotion/studio": "^4.0.447",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

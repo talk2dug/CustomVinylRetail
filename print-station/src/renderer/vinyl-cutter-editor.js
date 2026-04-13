@@ -610,20 +610,29 @@ async function addItemToVinylCanvas(design) {
     // Load image
     const img = await loadVinylImage(imageUrl);
 
-    // Default size: 4 inches for vinyl
-    const targetSizeInches = 4;
-    const targetSizePx = targetSizeInches * config.dpi;
-
-    // Calculate scaled dimensions
+    // Use custom dimensions from screenshot import, or default 4 inches
     const aspectRatio = img.width / img.height;
     let itemWidth, itemHeight;
 
-    if (aspectRatio > 1) {
-      itemWidth = targetSizePx;
-      itemHeight = targetSizePx / aspectRatio;
+    if (design._importWidthInches && design._importHeightInches) {
+      itemWidth = design._importWidthInches * config.dpi;
+      itemHeight = design._importHeightInches * config.dpi;
+    } else if (design._importWidthInches) {
+      itemWidth = design._importWidthInches * config.dpi;
+      itemHeight = itemWidth / aspectRatio;
+    } else if (design._importHeightInches) {
+      itemHeight = design._importHeightInches * config.dpi;
+      itemWidth = itemHeight * aspectRatio;
     } else {
-      itemHeight = targetSizePx;
-      itemWidth = targetSizePx * aspectRatio;
+      const targetSizeInches = 4;
+      const targetSizePx = targetSizeInches * config.dpi;
+      if (aspectRatio > 1) {
+        itemWidth = targetSizePx;
+        itemHeight = targetSizePx / aspectRatio;
+      } else {
+        itemHeight = targetSizePx;
+        itemWidth = targetSizePx * aspectRatio;
+      }
     }
 
     // Create Fabric image
@@ -2025,6 +2034,117 @@ async function addStudio3ItemToCanvas(studio3Data) {
 }
 
 // ============================================================================
+// CRICUT SCREENSHOT IMPORT
+// ============================================================================
+
+/**
+ * Import screenshots from Cricut Design Space (or any image).
+ * Opens file picker, asks for dimensions, AI vectorizes, adds to canvas.
+ */
+async function importScreenshot() {
+  if (!window.printStation?.vinylCutter?.importScreenshot) {
+    vinylShowToast('Screenshot import not available', 'error');
+    return;
+  }
+
+  try {
+    updateVinylStatus('Selecting screenshots...');
+    const result = await window.printStation.vinylCutter.importScreenshot();
+
+    if (!result.success || result.canceled) {
+      updateVinylStatus('Ready');
+      return;
+    }
+
+    if (!result.imported || result.imported.length === 0) {
+      vinylShowToast('Failed to upload screenshots', 'error');
+      updateVinylStatus('Ready');
+      return;
+    }
+
+    // Ask for dimensions
+    const dimensions = await showScreenshotDimensionsModal(result.imported);
+    if (!dimensions) {
+      updateVinylStatus('Ready');
+      return; // Canceled
+    }
+
+    // Add each imported screenshot to canvas with AI vectorization
+    let added = 0;
+    for (const item of result.imported) {
+      try {
+        updateVinylStatus(`Vectorizing ${item.filename}...`);
+        await addItemToVinylCanvas({
+          title: item.filename,
+          imagePath: item.serverPath,
+          _importWidthInches: dimensions.widthInches,
+          _importHeightInches: dimensions.heightInches,
+          _isScreenshotImport: true
+        });
+        added++;
+      } catch (err) {
+        console.error('[Screenshot Import] Failed to add:', item.filename, err);
+        vinylShowToast(`Failed to add ${item.filename}: ${err.message}`, 'error');
+      }
+    }
+
+    if (added > 0) {
+      vinylShowToast(`Imported ${added} screenshot${added === 1 ? '' : 's'} to vinyl cutter`, 'success');
+    }
+    updateVinylStatus('Ready');
+  } catch (err) {
+    console.error('[Screenshot Import Error]', err);
+    vinylShowToast('Import failed: ' + err.message, 'error');
+    updateVinylStatus('Ready');
+  }
+}
+
+/**
+ * Show a modal asking the user for the physical dimensions of the imported screenshot(s)
+ */
+function showScreenshotDimensionsModal(imported) {
+  return new Promise((resolve) => {
+    const fileList = imported.map(i => i.filename).join(', ');
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:var(--bg-secondary,#1a1a2e);border:1px solid var(--border,#333);border-radius:12px;padding:28px;max-width:440px;width:90%;">
+        <h3 style="margin:0 0 8px;color:var(--text,#eee);">Screenshot Dimensions</h3>
+        <p style="margin:0 0 6px;color:var(--text-muted,#888);font-size:13px;">Importing: ${imported.length} file${imported.length > 1 ? 's' : ''}</p>
+        <p style="margin:0 0 18px;color:var(--text-muted,#888);font-size:12px;">Enter the actual physical size of the design as it was in Cricut (or desired cut size).</p>
+        <div style="display:flex;gap:16px;margin-bottom:18px;">
+          <label style="flex:1;font-size:13px;color:var(--text,#eee);">
+            <span>Width (inches)</span>
+            <input type="number" id="ssImportWidth" value="4" min="0.5" max="24" step="0.25" style="width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border,#444);background:var(--bg-primary,#111);color:var(--text,#eee);font-size:14px;" />
+          </label>
+          <label style="flex:1;font-size:13px;color:var(--text,#eee);">
+            <span>Height (inches)</span>
+            <input type="number" id="ssImportHeight" value="4" min="0.5" max="24" step="0.25" style="width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border,#444);background:var(--bg-primary,#111);color:var(--text,#eee);font-size:14px;" />
+          </label>
+        </div>
+        <p style="margin:0 0 12px;color:#f59e0b;font-size:11px;">Tip: If you only know one dimension, set it and leave the other — aspect ratio will be preserved from the image.</p>
+        <div style="display:flex;gap:12px;">
+          <button id="ssImportOk" style="flex:1;padding:10px;border-radius:6px;border:none;background:#3b82f6;color:white;cursor:pointer;font-size:14px;font-weight:600;">Import & Vectorize</button>
+          <button id="ssImportCancel" style="padding:10px 20px;border-radius:6px;border:1px solid var(--border,#444);background:transparent;color:var(--text-muted,#888);cursor:pointer;font-size:13px;">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#ssImportOk').onclick = () => {
+      const w = parseFloat(overlay.querySelector('#ssImportWidth').value) || 4;
+      const h = parseFloat(overlay.querySelector('#ssImportHeight').value) || 4;
+      overlay.remove();
+      resolve({ widthInches: w, heightInches: h });
+    };
+    overlay.querySelector('#ssImportCancel').onclick = () => {
+      overlay.remove();
+      resolve(null);
+    };
+  });
+}
+
+// ============================================================================
 // EXPOSE TO GLOBAL SCOPE
 // ============================================================================
 
@@ -2053,6 +2173,7 @@ window.removeVinylItemByIndex = removeVinylItemByIndex;
 window.previewVinylCutFile = previewVinylCutFile;
 window.sendVinylToSilhouette = sendVinylToSilhouette;
 window.deleteVinylCutBatch = deleteVinylCutBatch;
+window.importScreenshot = importScreenshot;
 window.importStudio3Files = importStudio3Files;
 window.addStudio3ItemToCanvas = addStudio3ItemToCanvas;
 window.uploadStudio3ToServer = uploadStudio3ToServer;

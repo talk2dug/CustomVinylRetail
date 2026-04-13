@@ -1,0 +1,13 @@
+{
+  "lastRun": "2026-04-03T00:01:07.878Z",
+  "lastEventbriteRun": "2026-04-02T23:50:40.530Z",
+  "lastWebSearchRun": "2026-04-02T23:51:29.248Z",
+  "totalLeadsFound": 34,
+  "settings": {
+    "enabled": true,
+    "radiusMiles": 60,
+    "autoRunIntervalHours": 168,
+    "notifyTelegram": true,
+    "minFitScore": 50
+  }
+}

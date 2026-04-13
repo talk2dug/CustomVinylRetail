@@ -1,0 +1,8 @@
+{
+  "carts": {},
+  "stats": {
+    "total_abandoned": 0,
+    "total_recovered": 0,
+    "total_revenue_recovered": 0
+  }
+}

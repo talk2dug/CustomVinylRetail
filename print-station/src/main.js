@@ -5420,6 +5420,54 @@ Return ONLY valid JSON, nothing else:
   // Vinyl Cutter handlers
   // ============================================================================
 
+  // Import screenshot (e.g. from Cricut) — open file dialog, read, upload to server
+  ipcMain.handle('vinyl-cutter:import-screenshot', async () => {
+    const { dialog } = require('electron');
+    const fsNode = require('fs');
+
+    const result = await dialog.showOpenDialog({
+      title: 'Import Screenshot (Cricut, etc.)',
+      filters: [
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile', 'multiSelections']
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+
+    const imported = [];
+    for (const filePath of result.filePaths) {
+      try {
+        const imageBuffer = fsNode.readFileSync(filePath);
+        const ext = require('path').extname(filePath).toLowerCase();
+        const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
+        const base64 = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+        const filename = require('path').basename(filePath, ext);
+
+        const uploadResult = await httpRequest('/api/vinyl-cutter/import-screenshot', {
+          method: 'POST',
+          body: { base64, filename },
+          timeout: 30000
+        });
+
+        if (uploadResult.success) {
+          imported.push({
+            originalPath: filePath,
+            serverPath: uploadResult.path,
+            filename: uploadResult.filename
+          });
+        }
+      } catch (err) {
+        console.error('[Import Screenshot] Failed:', filePath, err.message);
+      }
+    }
+
+    return { success: true, imported };
+  });
+
   // Vectorize an image for vinyl cutting (with color detection)
   // Supports useAi flag to route through Gemini AI vectorizer
   // Vectorize for vinyl cutting — server handles AI vs potrace decision

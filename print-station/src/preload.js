@@ -428,6 +428,7 @@ contextBridge.exposeInMainWorld('printStation', {
     delete: (batchName) => ipcRenderer.invoke('vinyl-cutter:delete', { batchName }),
     sendToSilhouette: (payload) => ipcRenderer.invoke('vinyl-cutter:send-to-silhouette', payload || {}),
     generateDriverNames: (data) => ipcRenderer.invoke('vinyl-cutter:driver-names', data || {}),
+    importScreenshot: () => ipcRenderer.invoke('vinyl-cutter:import-screenshot'),
     // AI-powered methods
     aiContour: (imagePath, options) => ipcRenderer.invoke('vinyl-cutter:ai-contour', { imagePath, ...(options || {}) }),
     aiColorSeparate: (imagePath, options) => ipcRenderer.invoke('vinyl-cutter:ai-color-separate', { imagePath, ...(options || {}) }),

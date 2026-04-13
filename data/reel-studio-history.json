@@ -1,0 +1,1158 @@
+[
+  {
+    "id": "reel_1776041000360",
+    "template": "MockupReel",
+    "label": "New drops straight from the heart of Ash",
+    "props": {
+      "source": "all",
+      "limit": 5,
+      "hookText": "New drops straight from the heart of Ash",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Supporting local since '09",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "zoom",
+      "panMode": "ken-burns",
+      "imageScale": 1,
+      "imageOffsetX": 0,
+      "imageOffsetY": 0,
+      "panDistance": 30,
+      "slideSeconds": 2.5,
+      "panSpeed": 1,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "ctaUrl": "",
+      "ctaLabel": "Shop Now:",
+      "mockupImages": [
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-39-1763084350407_hm_9e8d6fe55e091d61_1776024337050.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-38-1763084349048_hm_404be846eee6c146_1776024321902.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-37-1763084347709_hm_a5f89984fad51475_1776024307920.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-36-1763084346338_hm_ef989079b6dcbcc5_1776024293723.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-19-1763084320284_hm_e798f11b815e79b5_1776024198257.jpg"
+      ],
+      "labels": [
+        "pinupgirls-39-1763084350407_hm_9e8d6fe55",
+        "pinupgirls-38-1763084349048_hm_404be846e",
+        "pinupgirls-37-1763084347709_hm_a5f89984f",
+        "pinupgirls-36-1763084346338_hm_ef989079b",
+        "pinupgirls-19-1763084320284_hm_e798f11b8"
+      ],
+      "captions": [
+        "Girly Swag Revival",
+        "Sassy in the Mountains",
+        "Girl Power Motel",
+        "Vintage Vixen Vibes",
+        "Rebel at Heart"
+      ],
+      "subtitles": [
+        "Pinup girls unite, Asheville s",
+        "Ride or die, mountain queen",
+        "Retro vibes meet rebel hearts",
+        "Asheville's own pinup girl squ",
+        "Wildflower-inspired, made loca"
+      ],
+      "itemEffects": [
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.6,
+          "imageOffsetX": 0,
+          "imageOffsetY": 20,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.6,
+          "imageOffsetX": 0,
+          "imageOffsetY": 22,
+          "panDistance": 30,
+          "panSpeed": 0.45,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "ken-burns",
+          "imageScale": 0.6,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.35,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "ken-burns",
+          "imageScale": 1,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        }
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1776040946519.mp4",
+    "filename": "reel-mockupreel-1776040946519.mp4",
+    "durationMs": 53839,
+    "campaignRunId": "pr_acdb6ef3eb3c2342",
+    "createdAt": "2026-04-13T00:43:20.360Z"
+  },
+  {
+    "id": "reel_1776031722028",
+    "template": "MockupReel",
+    "label": "Pin Up Girls!!  Classic pin ups from the 20s",
+    "props": {
+      "source": "all",
+      "limit": 6,
+      "hookText": "Pin Up Girls!!  Classic pin ups from the 20s",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Printed in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "zoom",
+      "panMode": "pan-left-right",
+      "imageScale": 1.4,
+      "imageOffsetX": 0,
+      "imageOffsetY": 20,
+      "panDistance": 30,
+      "slideSeconds": 2.5,
+      "panSpeed": 0.7,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "ctaUrl": "",
+      "ctaLabel": "Shop Now:",
+      "mockupImages": [
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-37-1763084347709_hm_a5f89984fad51475_1776024307920.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-34-1763084343564_hm_0a7e7acde44ff875_1776024260032.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-17-1763084317509_hm_a5f89984fad51475_1776024169007.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-16-1763084316060_hm_404be846eee6c146_1776024154701.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_pinupgirls-12-1763084310534_hm_fb799136edd00b73_1776024097937.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_001-95-1763415607911_hm_05427d0fb07ee416_1776024024983.jpg"
+      ],
+      "labels": [
+        "pinupgirls-37-1763084347709_hm_a5f89984f",
+        "pinupgirls-34-1763084343564_hm_0a7e7acde",
+        "pinupgirls-17-1763084317509_hm_a5f89984f",
+        "pinupgirls-16-1763084316060_hm_404be846e",
+        "pinupgirls-12-1763084310534_hm_fb799136e",
+        "001-95-1763415607911_hm_05427d0fb07ee416"
+      ],
+      "captions": [
+        "pinupgirls-37-17630843477",
+        "pinupgirls-34-17630843435",
+        "pinupgirls-17-17630843175",
+        "pinupgirls-16-17630843160",
+        "pinupgirls-12-17630843105",
+        "001-95-1763415607911_hm_0"
+      ],
+      "subtitles": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "itemEffects": [
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.35,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.35,
+          "imageOffsetX": -2,
+          "imageOffsetY": 14,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.5,
+          "imageOffsetX": 0,
+          "imageOffsetY": 14,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.35,
+          "imageOffsetX": 0,
+          "imageOffsetY": 12,
+          "panDistance": 30,
+          "panSpeed": 0.45,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.45,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 0.7,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.4,
+          "imageOffsetX": 0,
+          "imageOffsetY": 20,
+          "panDistance": 30,
+          "panSpeed": 0.7,
+          "slideSeconds": 2.5
+        }
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1776031655818.mp4",
+    "filename": "reel-mockupreel-1776031655818.mp4",
+    "durationMs": 66209,
+    "campaignRunId": "pr_acdb6ef3eb3c2342",
+    "createdAt": "2026-04-12T22:08:42.028Z"
+  },
+  {
+    "id": "reel_1776022521176",
+    "template": "MockupReel",
+    "label": "The attitude is real, and hot!",
+    "props": {
+      "source": "all",
+      "limit": 4,
+      "hookText": "The attitude is real, and hot!",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "zoom",
+      "panMode": "pan-right-left",
+      "imageScale": 1.45,
+      "imageOffsetX": 0,
+      "imageOffsetY": 0,
+      "panDistance": 30,
+      "slideSeconds": 2.5,
+      "panSpeed": 1,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "ctaUrl": "",
+      "ctaLabel": "Shop Now:",
+      "mockupImages": [
+        "https://blueridgecustomco.com/apparel-mockups/mockup_retro-wife-012-1763390860184_hm_ef989079b6dcbcc5_1775949577683.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_retro-wife-010-1763390855976_hm_dd8eda3684c18435_1775949547212.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_retro-wife-007-1763390850415_hm_fb799136edd00b73_1775949497224.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_retro-wife-006-1763390848724_hm_ef989079b6dcbcc5_1775949482397.jpg"
+      ],
+      "labels": [
+        "retro-wife-012-1763390860184_hm_ef989079",
+        "retro-wife-010-1763390855976_hm_dd8eda36",
+        "retro-wife-007-1763390850415_hm_fb799136",
+        "retro-wife-006-1763390848724_hm_ef989079"
+      ],
+      "captions": [
+        "",
+        "",
+        "",
+        ""
+      ],
+      "subtitles": [
+        "",
+        "",
+        "",
+        ""
+      ],
+      "itemEffects": [
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.65,
+          "imageOffsetX": 6,
+          "imageOffsetY": 26,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.55,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.45,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        }
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1776022462505.mp4",
+    "filename": "reel-mockupreel-1776022462505.mp4",
+    "durationMs": 58671,
+    "campaignRunId": "pr_7369d39485e12c78",
+    "createdAt": "2026-04-12T19:35:21.176Z"
+  },
+  {
+    "id": "reel_1775950063754",
+    "template": "MockupReel",
+    "label": "Classy yet Saucy ",
+    "props": {
+      "source": "all",
+      "limit": 5,
+      "hookText": "Classy yet Saucy ",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "fade",
+      "panMode": "pan-left-right",
+      "imageScale": 1.5,
+      "imageOffsetX": 30,
+      "imageOffsetY": 8,
+      "panDistance": 30,
+      "slideSeconds": 2.6,
+      "panSpeed": 0.5,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "ctaUrl": "",
+      "ctaLabel": "Shop Now:",
+      "mockupImages": [
+        "https://blueridgecustomco.com/apparel-mockups/mockup_retro-wife-001-1763390835719_hm_0a7e7acde44ff875_1775949405598.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_retro-wife-002-1763390838187_hm_8d8bf0236114556a_1775949420503.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_retro-wife-003-1763390841091_hm_05427d0fb07ee416_1775949436700.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_retro-wife-004-1763390844280_hm_404be846eee6c146_1775949452988.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_retro-wife-011-1763390857981_hm_a5f89984fad51475_1775949563229.jpg"
+      ],
+      "labels": [
+        "retro-wife-001-1763390835719_hm_0a7e7acd",
+        "retro-wife-002-1763390838187_hm_8d8bf023",
+        "retro-wife-003-1763390841091_hm_05427d0f",
+        "retro-wife-004-1763390844280_hm_404be846",
+        "retro-wife-011-1763390857981_hm_a5f89984"
+      ],
+      "captions": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "subtitles": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "itemEffects": [
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.3,
+          "imageOffsetX": 18,
+          "imageOffsetY": 0,
+          "panDistance": 20,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.35,
+          "imageOffsetX": 28,
+          "imageOffsetY": 0,
+          "panDistance": 15,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.65,
+          "imageOffsetX": 0,
+          "imageOffsetY": 20,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.5,
+          "imageOffsetX": 30,
+          "imageOffsetY": 8,
+          "panDistance": 30,
+          "panSpeed": 0.5,
+          "slideSeconds": 2.6
+        }
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775950005375.mp4",
+    "filename": "reel-mockupreel-1775950005375.mp4",
+    "durationMs": 58378,
+    "campaignRunId": "pr_afe2b00cfd81adbc",
+    "createdAt": "2026-04-11T23:27:43.754Z"
+  },
+  {
+    "id": "reel_1775874341413",
+    "template": "MockupReel",
+    "label": "New merch dropping now",
+    "props": {
+      "source": "all",
+      "limit": 6,
+      "hookText": "New merch dropping now",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "fade",
+      "panMode": "ken-burns",
+      "imageScale": 0.7,
+      "imageOffsetX": 50,
+      "imageOffsetY": 0,
+      "panDistance": 40,
+      "slideSeconds": 2.5,
+      "panSpeed": 1,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "ctaUrl": "",
+      "ctaLabel": "Shop Now:",
+      "mockupImages": [
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-062-1762126202290_hm_0480f1b85ea9fd57_1774914573257.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-059-1762126197664_hm_ec222f687ef6fbe5_1774914529384.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-055-1762126190928_hm_e8150fe2d0d90487_1774914470516.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-044-1762126173097_hm_a50e33071a93b8c0_1774914296876.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-038-1762126163153_hm_2e15127d16f569de_1774914209321.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-032-1762126152889_hm_404653909b85a4d0_1774914120407.jpg"
+      ],
+      "labels": [
+        "sarcastic-moods-062-1762126202290_hm_048",
+        "sarcastic-moods-059-1762126197664_hm_ec2",
+        "sarcastic-moods-055-1762126190928_hm_e81",
+        "sarcastic-moods-044-1762126173097_hm_a50",
+        "sarcastic-moods-038-1762126163153_hm_2e1",
+        "sarcastic-moods-032-1762126152889_hm_404"
+      ],
+      "captions": [
+        "Sarcastic Vibes",
+        "Mood Swings Ahead",
+        "Goodbye, Good Riddance",
+        "Local Legends Only",
+        "Motorcycle Vibes",
+        "Good Times Ahead"
+      ],
+      "subtitles": [
+        "Asheville's Sassy Side",
+        "Stay Lit with Sarcastic Moods",
+        "Shirts for the Restless",
+        "Sarcastic Shirts for the Ashev",
+        "Ride with Sarcastic Moods",
+        "Sarcastic Shirts for Life's Ad"
+      ],
+      "itemEffects": [
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.3,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 2,
+          "imageOffsetX": 44,
+          "imageOffsetY": 16,
+          "panDistance": 35,
+          "panSpeed": 0.8,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.4,
+          "imageOffsetX": 28,
+          "imageOffsetY": -6,
+          "panDistance": 15,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "ken-burns",
+          "imageScale": 0.5,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 90,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "ken-burns",
+          "imageScale": 0.7,
+          "imageOffsetX": 50,
+          "imageOffsetY": 0,
+          "panDistance": 40,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        }
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775874285483.mp4",
+    "filename": "reel-mockupreel-1775874285483.mp4",
+    "durationMs": 55928,
+    "createdAt": "2026-04-11T02:25:41.413Z"
+  },
+  {
+    "id": "reel_1775872559729",
+    "template": "MockupReel",
+    "label": "Dress up the garage!!",
+    "props": {
+      "source": "all",
+      "limit": 3,
+      "hookText": "Dress up the garage!!",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Metal Prints Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "zoom",
+      "panMode": "pan-left-right",
+      "imageScale": 0.7,
+      "imageOffsetX": -14,
+      "imageOffsetY": 0,
+      "panDistance": 15,
+      "slideSeconds": 2.9,
+      "panSpeed": 0.6,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "ctaUrl": "",
+      "ctaLabel": "Shop Now:",
+      "mockupImages": [
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_6be0f2ec78db013a-1775851657801.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_88e6e36e77749031-1775682067658.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_5bb68359d7e4535a-1775681974595.jpg"
+      ],
+      "labels": [
+        "Melbourne Grand Prix Circuit - Room",
+        "Classic Drive Through Autumn - Room",
+        "Classic Diner Cruiser - Room"
+      ],
+      "itemEffects": [
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.15,
+          "imageOffsetX": -38,
+          "imageOffsetY": 0,
+          "panDistance": 100,
+          "panSpeed": 0.9,
+          "slideSeconds": 4
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 0.65,
+          "imageOffsetX": -12,
+          "imageOffsetY": 0,
+          "panDistance": 35,
+          "panSpeed": 0.45,
+          "slideSeconds": 3.1
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 0.7,
+          "imageOffsetX": -14,
+          "imageOffsetY": 0,
+          "panDistance": 15,
+          "panSpeed": 0.6,
+          "slideSeconds": 2.9
+        }
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775872512311.mp4",
+    "filename": "reel-mockupreel-1775872512311.mp4",
+    "durationMs": 47414,
+    "createdAt": "2026-04-11T01:55:59.729Z"
+  },
+  {
+    "id": "reel_1775870388395",
+    "template": "MockupReel",
+    "label": "HAHAH, yeah this sums it up perfectly!!",
+    "props": {
+      "source": "all",
+      "limit": 7,
+      "hookText": "HAHAH, yeah this sums it up perfectly!!",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Hand Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#c3c0de",
+      "transition": "zoom",
+      "panMode": "ken-burns",
+      "imageScale": 0.85,
+      "imageOffsetX": 16,
+      "imageOffsetY": 20,
+      "panDistance": 20,
+      "slideSeconds": 2.5,
+      "panSpeed": 1,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-024-1762126139821_hm_e9aa3f00787ce05c_1774913997704.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-023-1762126138263_hm_ec222f687ef6fbe5_1774913983041.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-018-1762126129724_hm_243dd7903a06befd_1774913909760.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-017-1762126127288_hm_3a7d9f446cccb60d_1774913895035.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-011-1762126118096_hm_59ac5d9637b42fef_1774913803695.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-009-1762126115060_hm_f03675bd5b2f07e7_1774913771930.jpg",
+        "https://blueridgecustomco.com/apparel-mockups/mockup_sarcastic-moods-002-1762126103360_hm_01576550ae6c6242_1774913634569.jpg"
+      ],
+      "labels": [
+        "sarcastic-moods-024-1762126139821_hm_e9a",
+        "sarcastic-moods-023-1762126138263_hm_ec2",
+        "sarcastic-moods-018-1762126129724_hm_243",
+        "sarcastic-moods-017-1762126127288_hm_3a7",
+        "sarcastic-moods-011-1762126118096_hm_59a",
+        "sarcastic-moods-009-1762126115060_hm_f03",
+        "sarcastic-moods-002-1762126103360_hm_015"
+      ],
+      "itemEffects": [
+        {
+          "panMode": "pan-bottom-top",
+          "imageScale": 1.7,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 0.85,
+          "slideSeconds": 3
+        },
+        {
+          "panMode": "pan-top-bottom",
+          "imageScale": 2.05,
+          "imageOffsetX": 0,
+          "imageOffsetY": -16,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "ken-burns",
+          "imageScale": 0.7,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 40,
+          "panSpeed": 1.4,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 1.65,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 0.75,
+          "slideSeconds": 3.4
+        },
+        {
+          "panMode": "ken-burns",
+          "imageScale": 0.75,
+          "imageOffsetX": 0,
+          "imageOffsetY": -24,
+          "panDistance": 5,
+          "panSpeed": 0.45,
+          "slideSeconds": 2.2
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 1.5,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 0.65,
+          "slideSeconds": 3
+        },
+        {
+          "panMode": "ken-burns",
+          "imageScale": 0.85,
+          "imageOffsetX": 16,
+          "imageOffsetY": 20,
+          "panDistance": 20,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        }
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775870321387.mp4",
+    "filename": "reel-mockupreel-1775870321387.mp4",
+    "durationMs": 67007,
+    "createdAt": "2026-04-11T01:19:48.395Z"
+  },
+  {
+    "id": "reel_1775854052321",
+    "template": "MockupReel",
+    "label": "Check out our latest drops",
+    "props": {
+      "source": "all",
+      "limit": 5,
+      "hookText": "Check out our latest drops",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "fade",
+      "panMode": "pan-right-left",
+      "imageScale": 0.65,
+      "imageOffsetX": -22,
+      "imageOffsetY": 0,
+      "panDistance": 30,
+      "slideSeconds": 2.5,
+      "panSpeed": 1,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_6be0f2ec78db013a-1775851657801.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_7cbbb897725620d5-1775851104745.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_74cc5626b061c811-1775849753059.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_326d3cb971c1165a-1775788906411.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_9bbe7ad323e8a787-1775683907202.jpg"
+      ],
+      "labels": [
+        "Melbourne Grand Prix Circuit - Room",
+        "Mountain Bike Air - Room",
+        "Forest Descent Mountain Biker - Room",
+        "Audi R8 LMS GT3 EVO II - Room",
+        "Catalunya Grand Prix Circuit - Room"
+      ],
+      "itemEffects": [
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 0.65,
+          "imageOffsetX": -22,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 0.6,
+          "imageOffsetX": 6,
+          "imageOffsetY": 0,
+          "panDistance": 40,
+          "panSpeed": 0.8,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-top-bottom",
+          "imageScale": 2.75,
+          "imageOffsetX": 4,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 0.5,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 0.9,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 0.75,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        }
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775854004801.mp4",
+    "filename": "reel-mockupreel-1775854004801.mp4",
+    "durationMs": 47519,
+    "createdAt": "2026-04-10T20:47:32.321Z"
+  },
+  {
+    "id": "reel_1775853959742",
+    "template": "MockupReel",
+    "label": "Check out our latest drops",
+    "props": {
+      "source": "all",
+      "limit": 5,
+      "hookText": "Check out our latest drops",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "slide",
+      "panMode": "pan-left-right",
+      "imageScale": 0.75,
+      "imageOffsetX": 0,
+      "imageOffsetY": 0,
+      "panDistance": 30,
+      "slideSeconds": 2.5,
+      "panSpeed": 1,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_6be0f2ec78db013a-1775851657801.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_7cbbb897725620d5-1775851104745.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_74cc5626b061c811-1775849753059.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_326d3cb971c1165a-1775788906411.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_9bbe7ad323e8a787-1775683907202.jpg"
+      ],
+      "labels": [
+        "Melbourne Grand Prix Circuit - Room",
+        "Mountain Bike Air - Room",
+        "Forest Descent Mountain Biker - Room",
+        "Audi R8 LMS GT3 EVO II - Room",
+        "Catalunya Grand Prix Circuit - Room"
+      ],
+      "itemEffects": [
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 0.65,
+          "imageOffsetX": -22,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 0.6,
+          "imageOffsetX": 6,
+          "imageOffsetY": 0,
+          "panDistance": 40,
+          "panSpeed": 0.8,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-top-bottom",
+          "imageScale": 2.75,
+          "imageOffsetX": 4,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 0.5,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-right-left",
+          "imageScale": 0.9,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        },
+        {
+          "panMode": "pan-left-right",
+          "imageScale": 0.75,
+          "imageOffsetX": 0,
+          "imageOffsetY": 0,
+          "panDistance": 30,
+          "panSpeed": 1,
+          "slideSeconds": 2.5
+        }
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775853912332.mp4",
+    "filename": "reel-mockupreel-1775853912332.mp4",
+    "durationMs": 47410,
+    "createdAt": "2026-04-10T20:45:59.742Z"
+  },
+  {
+    "id": "reel_1775852710326",
+    "template": "MockupReel",
+    "label": "Check out our latest drops",
+    "props": {
+      "source": "all",
+      "limit": 5,
+      "hookText": "Check out our latest drops",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "zoom",
+      "panMode": "pan-left-right",
+      "imageScale": 0.5,
+      "imageOffsetX": 26,
+      "imageOffsetY": 0,
+      "panDistance": 0,
+      "slideSeconds": 2.7,
+      "panSpeed": 0.55,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_6be0f2ec78db013a-1775851657801.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_7cbbb897725620d5-1775851104745.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_9bbe7ad323e8a787-1775683907202.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_88e6e36e77749031-1775682067658.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_5bb68359d7e4535a-1775681974595.jpg"
+      ],
+      "labels": [
+        "Melbourne Grand Prix Circuit - Room",
+        "Mountain Bike Air - Room",
+        "Catalunya Grand Prix Circuit - Room",
+        "Classic Drive Through Autumn - Room",
+        "Classic Diner Cruiser - Room"
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775852663710.mp4",
+    "filename": "reel-mockupreel-1775852663710.mp4",
+    "durationMs": 46615,
+    "createdAt": "2026-04-10T20:25:10.326Z"
+  },
+  {
+    "id": "reel_1775852395350",
+    "template": "MockupReel",
+    "label": "Check out our latest drops",
+    "props": {
+      "source": "all",
+      "limit": 4,
+      "hookText": "Check out our latest drops",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "zoom",
+      "panMode": "pan-left-right",
+      "imageScale": 0.5,
+      "imageOffsetX": -2,
+      "imageOffsetY": -4,
+      "panDistance": 20,
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_7cbbb897725620d5-1775851104745.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_326d3cb971c1165a-1775788906411.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_74cc5626b061c811-1775849753059.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_9bbe7ad323e8a787-1775683907202.jpg"
+      ],
+      "labels": [
+        "Mountain Bike Air - Room",
+        "Audi R8 LMS GT3 EVO II - Room",
+        "Forest Descent Mountain Biker - Room",
+        "Catalunya Grand Prix Circuit - Room"
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775852368300.mp4",
+    "filename": "reel-mockupreel-1775852368300.mp4",
+    "durationMs": 27050,
+    "createdAt": "2026-04-10T20:19:55.350Z"
+  },
+  {
+    "id": "reel_1775851002209",
+    "template": "MockupReel",
+    "label": "Metal Prints for every room",
+    "props": {
+      "source": "all",
+      "limit": 7,
+      "hookText": "Metal Prints for every room",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "fade",
+      "panMode": "pan-left-right",
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_326d3cb971c1165a-1775788906411.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_74cc5626b061c811-1775849753059.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_9bbe7ad323e8a787-1775683907202.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_0926215312649d8d-1775682148774.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_45108f7bec5e528a-1775667998345.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_5bb68359d7e4535a-1775681974595.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_88e6e36e77749031-1775682067658.jpg"
+      ],
+      "labels": [
+        "Audi R8 LMS GT3 EVO II - Room",
+        "Forest Descent Mountain Biker - Room",
+        "Catalunya Grand Prix Circuit - Room",
+        "Misty Morning Canoe - Room",
+        "Old Point Loma Lighthouse, San Diego, California - Room",
+        "Classic Diner Cruiser - Room",
+        "Classic Drive Through Autumn - Room"
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775850957605.mp4",
+    "filename": "reel-mockupreel-1775850957605.mp4",
+    "durationMs": 44604,
+    "createdAt": "2026-04-10T19:56:42.209Z"
+  },
+  {
+    "id": "reel_1775850008917",
+    "template": "MockupReel",
+    "label": "Metal Prints for any room!!",
+    "props": {
+      "source": "all",
+      "limit": 7,
+      "hookText": "Metal Prints for any room!!",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#040bec",
+      "transition": "fade",
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_74cc5626b061c811-1775849753059.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_9bbe7ad323e8a787-1775683907202.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_326d3cb971c1165a-1775788906411.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_45108f7bec5e528a-1775667998345.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_88e6e36e77749031-1775682067658.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_5bb68359d7e4535a-1775681974595.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_0926215312649d8d-1775682148774.jpg"
+      ],
+      "labels": [
+        "Forest Descent Mountain Biker - Room",
+        "Catalunya Grand Prix Circuit - Room",
+        "Audi R8 LMS GT3 EVO II - Room",
+        "Old Point Loma Lighthouse, San Diego, California - Room",
+        "Classic Drive Through Autumn - Room",
+        "Classic Diner Cruiser - Room",
+        "Misty Morning Canoe - Room"
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775849938407.mp4",
+    "filename": "reel-mockupreel-1775849938407.mp4",
+    "durationMs": 70508,
+    "createdAt": "2026-04-10T19:40:08.917Z"
+  },
+  {
+    "id": "reel_1775849537108",
+    "template": "MockupReel",
+    "label": "Metal Print For Every Room",
+    "props": {
+      "source": "all",
+      "limit": 6,
+      "hookText": "Metal Print For Every Room",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "slide",
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_9bbe7ad323e8a787-1775683907202.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_326d3cb971c1165a-1775788906411.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_88e6e36e77749031-1775682067658.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_0926215312649d8d-1775682148774.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_45108f7bec5e528a-1775667998345.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_5bb68359d7e4535a-1775681974595.jpg"
+      ],
+      "labels": [
+        "Catalunya Grand Prix Circuit - Room",
+        "Audi R8 LMS GT3 EVO II - Room",
+        "Classic Drive Through Autumn - Room",
+        "Misty Morning Canoe - Room",
+        "Old Point Loma Lighthouse, San Diego, California - Room",
+        "Classic Diner Cruiser - Room"
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775849493314.mp4",
+    "filename": "reel-mockupreel-1775849493314.mp4",
+    "durationMs": 43794,
+    "createdAt": "2026-04-10T19:32:17.108Z"
+  },
+  {
+    "id": "reel_1775799777628",
+    "template": "MockupReel",
+    "label": "Check out our latest drops",
+    "props": {
+      "source": "all",
+      "limit": 2,
+      "hookText": "Check out our latest drops",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Made in Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "slide",
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_326d3cb971c1165a-1775788906411.jpg",
+        "https://store.swayzecustomvinyl.com/images/custom-art/mockup-prod_9bbe7ad323e8a787-1775683907202.jpg"
+      ],
+      "labels": [
+        "Audi R8 LMS GT3 EVO II - Room",
+        "Catalunya Grand Prix Circuit - Room"
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775799751666.mp4",
+    "filename": "reel-mockupreel-1775799751666.mp4",
+    "durationMs": 25962,
+    "createdAt": "2026-04-10T05:42:57.628Z"
+  },
+  {
+    "id": "reel_1775797132453",
+    "template": "MockupReel",
+    "label": "test-from-studio-ui",
+    "props": {
+      "source": "all",
+      "limit": 3,
+      "hookText": "Testing Reel Studio",
+      "brandName": "BlueRidge Custom Co.",
+      "location": "Asheville, NC",
+      "bgColor": "#111111",
+      "accent": "#ff6b35",
+      "transition": "zoom",
+      "audioUrl": "",
+      "audioVolume": 1,
+      "mockupImages": [
+        "http://localhost:4000/apparel-mockups/mockup_sarcastic-moods-065-1762126207472_hm_c5eef086d4db8e7e_1774914620167.jpg",
+        "http://localhost:4000/apparel-mockups/mockup_sarcastic-moods-064-1762126205755_hm_1fad83fdaf38c983_1774914604949.jpg",
+        "http://localhost:4000/apparel-mockups/mockup_sarcastic-moods-063-1762126203923_hm_4ad91ebed7956e05_1774914588663.jpg"
+      ],
+      "labels": [
+        "Design 1",
+        "Design 2",
+        "Design 3"
+      ]
+    },
+    "videoUrl": "/api/remotion/output/reel-mockupreel-1775797100406.mp4",
+    "filename": "reel-mockupreel-1775797100406.mp4",
+    "durationMs": 32047,
+    "createdAt": "2026-04-10T04:58:52.453Z"
+  }
+]

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+  <path d="M 20,-4 H 620 C 633.25,-4, 644,6.75, 644,20 V 380 C 644,393.25, 633.25,404, 620,404 H 20 C 6.75,404, -4,393.25, -4,380 V 20 C -4,6.75, 6.75,-4, 20,-4 Z" fill="none" stroke="red" stroke-width="2"/>
+</svg>

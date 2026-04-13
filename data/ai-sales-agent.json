@@ -2,7 +2,7 @@
   "version": 2,
   "agentState": {
     "enabled": true,
-    "lastCycleAt": "2026-03-06T00:04:08.528Z",
+    "lastCycleAt": "2026-04-13T19:13:47.396Z",
     "cycleCount": 1,
     "currentStrategy": null
   },
@@ -11,9 +11,9 @@
       "enabled": true,
       "postsPerDay": 2,
       "bestHours": [
-        17,
-        15,
-        13
+        10,
+        14,
+        19
       ],
       "maxPostsPerWeek": 14
     },
@@ -47,7 +47,7 @@
     "metal-print": {
       "displayName": "Metal Prints",
       "enabled": true,
-      "postingWeight": 0.2,
+      "postingWeight": 0.21,
       "fbPage": "blueridge",
       "shopifyProductTypes": [
         "Metal Print",
@@ -68,7 +68,7 @@
     "tshirt": {
       "displayName": "T-Shirts & Apparel",
       "enabled": true,
-      "postingWeight": 0.15,
+      "postingWeight": 0.16,
       "fbPage": "swayze",
       "shopifyProductTypes": [
         "tshirt",
@@ -86,7 +86,7 @@
     "sticker": {
       "displayName": "Stickers & Decals",
       "enabled": true,
-      "postingWeight": 0.15,
+      "postingWeight": 0.16,
       "fbPage": "swayze",
       "shopifyProductTypes": [
         "sticker",
@@ -108,7 +108,7 @@
     "racing": {
       "displayName": "Race Car Decals & Apparel",
       "enabled": true,
-      "postingWeight": 0.15,
+      "postingWeight": 0.12,
       "fbPage": "swayze",
       "shopifyProductTypes": [
         "racing",
@@ -128,7 +128,7 @@
     "custom-vinyl": {
       "displayName": "Custom Vinyl",
       "enabled": true,
-      "postingWeight": 0.15,
+      "postingWeight": 0.16,
       "fbPage": "swayze",
       "shopifyProductTypes": [
         "custom-vinyl",

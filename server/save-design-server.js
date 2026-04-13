@@ -8486,6 +8486,18 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // ===== CRICUT SCREENSHOT IMPORT =====
+
+  // Upload a screenshot image for vinyl cutter import
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/vinyl-cutter/import-screenshot') {
+    if (!requireInternalKey(req, res)) return;
+    handleImportScreenshot(req, res).catch(err => {
+      console.error('[Import Screenshot Error]', err);
+      sendJson(res, 500, { success: false, error: err.message || 'Internal server error' });
+    });
+    return;
+  }
+
   // ===== GEMINI AI VECTORIZER API =====
 
   // AI-powered vinyl vectorization (raster → cut-ready vector shapes)
@@ -25182,6 +25194,58 @@ function getGeminiVectorizer() {
     _geminiVectorizer = new GeminiVectorizer();
   }
   return _geminiVectorizer;
+}
+
+/**
+ * Import a screenshot image (e.g. from Cricut Design Space)
+ * Saves to /mnt/websit/cricut-imports/ and returns the saved path
+ * POST /api/vinyl-cutter/import-screenshot
+ * Body: { base64, filename?, widthInches?, heightInches? }
+ */
+async function handleImportScreenshot(req, res) {
+  try {
+    const body = await getReqBodyJson(req);
+    const { base64, filename, widthInches, heightInches } = body;
+
+    if (!base64) {
+      return sendJson(res, 400, { success: false, error: 'base64 image data is required' });
+    }
+
+    const importsDir = path.join(LIBRARY_ROOT, 'cricut-imports');
+    if (!fs.existsSync(importsDir)) {
+      fs.mkdirSync(importsDir, { recursive: true });
+    }
+
+    // Determine file extension from base64 header or default to png
+    let ext = 'png';
+    let imageData = base64;
+    if (base64.startsWith('data:image/')) {
+      const match = base64.match(/^data:image\/(png|jpeg|jpg|webp);base64,/);
+      if (match) {
+        ext = match[1] === 'jpeg' ? 'jpg' : match[1];
+        imageData = base64.replace(/^data:image\/[^;]+;base64,/, '');
+      }
+    }
+
+    const safeName = (filename || `cricut-import-${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const savedFilename = `${safeName}_${Date.now()}.${ext}`;
+    const savedPath = path.join(importsDir, savedFilename);
+
+    fs.writeFileSync(savedPath, Buffer.from(imageData, 'base64'));
+
+    console.log(`[Import Screenshot] Saved: ${savedPath} (${widthInches || '?'}x${heightInches || '?'} inches)`);
+
+    sendJson(res, 200, {
+      success: true,
+      path: savedPath,
+      filename: savedFilename,
+      widthInches: widthInches || null,
+      heightInches: heightInches || null
+    });
+  } catch (err) {
+    console.error('[Import Screenshot Error]', err);
+    sendJson(res, 500, { success: false, error: err.message });
+  }
 }
 
 /**

@@ -1,0 +1,52 @@
+{
+  "orders": [
+    {
+      "id": 6600624111904,
+      "channel": "shopify",
+      "totalCents": 1990,
+      "itemCount": 1,
+      "items": [
+        {
+          "category": "other",
+          "title": "Premium Metal Prints",
+          "priceCents": 1500,
+          "quantity": 1
+        }
+      ],
+      "isNewCustomer": false,
+      "source": "web",
+      "createdAt": "2026-03-12T14:56:21.269Z"
+    }
+  ],
+  "revenue": {
+    "total": 1990,
+    "byChannel": {
+      "shopify": 1990
+    },
+    "byProduct": {
+      "Premium Metal Prints": 1500
+    },
+    "byCategory": {
+      "other": 1500
+    }
+  },
+  "customers": {
+    "total": 0,
+    "new": 0,
+    "returning": 0,
+    "emails": []
+  },
+  "email": {
+    "sent": 0,
+    "opened": 0,
+    "clicked": 0,
+    "bySequence": {}
+  },
+  "ads": {
+    "spend": 0,
+    "impressions": 0,
+    "clicks": 0,
+    "conversions": 0
+  },
+  "lastUpdated": "2026-03-12T14:56:21.269Z"
+}

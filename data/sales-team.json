@@ -1,0 +1,199 @@
+{
+  "lastDailyReview": "2026-04-13T13:00:34.068Z",
+  "lastWeeklyPlanning": "2026-04-13T14:00:49.110Z",
+  "lastSeasonalCheck": "2026-04-13T16:00:15.372Z",
+  "activePromotions": [],
+  "cooldowns": {
+    "metal-prints": {
+      "lastFlashSale": "2026-03-12T15:21:55.772Z"
+    }
+  },
+  "weeklyPlan": null,
+  "seasonalCampaignsTriggered": [
+    "St. Patrick's Day-2026",
+    "Race Season Start-2026"
+  ],
+  "productLinePerformance": {},
+  "journal": [
+    {
+      "timestamp": "2026-03-12T15:21:56.608Z",
+      "type": "decision",
+      "productLine": "metal-prints",
+      "action": "Created flash_sale: METALFLASHAAE9 (15% off, 48h)",
+      "context": "Spring Metal Print Sale",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-12T16:01:03.563Z",
+      "type": "decision",
+      "productLine": "racing-sim",
+      "action": "Created seasonal: RACESEASON30A9 (15% off, 72h)",
+      "context": "Race Season Start - Racing & Sim Racing",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-12T16:01:04.784Z",
+      "type": "decision",
+      "productLine": "racing-sim",
+      "action": "Created seasonal: RACESEASON1770 (15% off, 72h)",
+      "context": "Race Season Start - Racing & Sim Racing",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-12T16:01:05.983Z",
+      "type": "decision",
+      "productLine": "racing-sim",
+      "action": "Created seasonal: RACESEASON2238 (12% off, 72h)",
+      "context": "Race Season Start - Racing & Sim Racing",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-12T16:01:07.178Z",
+      "type": "decision",
+      "productLine": "racing-sim",
+      "action": "Created seasonal: RACESEASONF209 (18% off, 72h)",
+      "context": "Race Season Start - Racing & Sim Racing",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-12T16:01:08.404Z",
+      "type": "decision",
+      "productLine": "racing-sim",
+      "action": "Created seasonal: RACESEASON58D8 (10% off, 72h)",
+      "context": "Race Season Start - Racing & Sim Racing",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-12T16:01:09.621Z",
+      "type": "decision",
+      "productLine": "racing-sim",
+      "action": "Created seasonal: RACESEASON7ADD (12% off, 72h)",
+      "context": "Race Season Start - Racing & Sim Racing",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-12T16:01:10.821Z",
+      "type": "decision",
+      "productLine": "racing-sim",
+      "action": "Created seasonal: RACESEASONA2CE (15% off, 72h)",
+      "context": "Race Season Start - Racing & Sim Racing",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-15T16:01:37.019Z",
+      "type": "outcome",
+      "productLine": "racing-sim",
+      "action": "Promotion expired: RACESEASON30A9",
+      "context": "0 redemptions, $0.00 revenue",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-15T16:01:37.479Z",
+      "type": "outcome",
+      "productLine": "racing-sim",
+      "action": "Promotion expired: RACESEASON1770",
+      "context": "0 redemptions, $0.00 revenue",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-15T16:01:38.067Z",
+      "type": "outcome",
+      "productLine": "racing-sim",
+      "action": "Promotion expired: RACESEASON2238",
+      "context": "0 redemptions, $0.00 revenue",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-15T16:01:38.691Z",
+      "type": "outcome",
+      "productLine": "racing-sim",
+      "action": "Promotion expired: RACESEASONF209",
+      "context": "0 redemptions, $0.00 revenue",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-15T16:01:39.291Z",
+      "type": "outcome",
+      "productLine": "racing-sim",
+      "action": "Promotion expired: RACESEASON58D8",
+      "context": "0 redemptions, $0.00 revenue",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-15T16:01:39.898Z",
+      "type": "outcome",
+      "productLine": "racing-sim",
+      "action": "Promotion expired: RACESEASON7ADD",
+      "context": "0 redemptions, $0.00 revenue",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    },
+    {
+      "timestamp": "2026-03-15T16:01:40.479Z",
+      "type": "outcome",
+      "productLine": "racing-sim",
+      "action": "Promotion expired: RACESEASONA2CE",
+      "context": "0 redemptions, $0.00 revenue",
+      "outcome": null,
+      "score": null,
+      "tags": null
+    }
+  ],
+  "lastStandup": "2026-04-13T13:00:34.068Z",
+  "lastWeeklyMeeting": "2026-04-13T14:00:49.110Z",
+  "pendingApprovals": [],
+  "meetingLog": [
+    {
+      "type": "weekly_strategy",
+      "date": "2026-03-16T14:00:45.884Z",
+      "summary": "**Weekly Review and Planning**\n\n**Product Lines Performance**\n\n* Racing & Sim Racing: No sales or promotions were successful in the last week. We need to re-strategize and optimize our promotions for this product line.\n* Metal Prints: The seasonal promotion \"Spring Metal Print Sale\" was paused after 2 days. We need to review the performance of this promotion and decide whether to revive or replace it.\n* Multiboard, Apparel & Stickers, Laser / 3D / Handmade: No sales or promotions were successful in the last week. We need to review their performance and adjust our strategies accordingly.\n\n**Promotions and Campaigns**\n\n* We had 9 seasonal promotions for Racing & Sim Racing, all of which expired without generating any sales or revenue.\n* The Metal Prints seasonal promotion was paused after 2 days without generating any sales or revenue.\n* We have no active promotions for any product line.\n\n**Recommendations**\n\n1. **Racing & Sim Racing**: Create new seasonal promotions with a different approach, such as highlighting the unique features of our products or offering exclusive discounts for first-time customers.\n2. **Metal Prints**: Review the performance of the Metal Prints seasonal promotion and decide whether to revive or replace it. Consider offering a new promotion or bundle deal to attract customers.\n3. **Multiboard, Apparel & Stickers, Laser / 3D / Handmade**: Review the performance of these product lines and adjust our strategies accordingly. Consider offering new promotions, bundle deals, or local marketplaces to attract customers.\n4. **Channel Attribution**: We need to review the channel attribution report to understand which channels are driving sales and optimize our marketing efforts accordingly.\n\n**Action Items**\n\n1. Create new seasonal promotions for Racing & Sim Racing.\n2. Review and decide on the fate of the Metal Prints seasonal promotion.\n3. Review and adjust strategies for Multiboard, Apparel & Stickers, Laser / 3D / Handmade.\n4. Review channel attributi"
+    },
+    {
+      "type": "weekly_strategy",
+      "date": "2026-03-23T14:00:50.683Z",
+      "summary": "**Weekly Strategy Meeting Report**\n\n**Performance Review**\n\n* All product lines have zero revenue, orders, and items sold for the past 7 days. This indicates that our campaigns and strategies need to be re-evaluated.\n* No product line has shown any significant activity or sales.\n\n**Campaign Plan for Next Week**\n\n1. **Metal Prints**: Launch a new collection rotation campaign on Facebook and Instagram, highlighting 3-4 new designs per week. This will create a sense of urgency and encourage customers to purchase.\n2. **Multiboard**: Run a problem-solution campaign on Facebook and Facebook Marketplace, focusing on the benefits of Multiboard's modular wall organization system. Highlight customer testimonials and showcase the product's ease of use.\n3. **Apparel & Stickers**: Create a flash sale on Facebook and Instagram, offering 20% off all apparel and stickers for a limited time. This will drive sales and encourage customers to make a purchase.\n4. **Laser / 3D / Handmade**: Launch a \"local pickup\" campaign on Facebook Marketplace and Facebook, emphasizing the benefits of supporting local artisans and the option to pick up products in-store.\n5. **Racing & Sim Racing**: Run an event-driven campaign on Facebook and Instagram, promoting products related to upcoming racing events and sim racing tournaments.\n\n**Promotions to Create or Retire**\n\n* Create a new promotion for Metal Prints, offering a free metal print with the purchase of a certain product (e.g., a specific design or a bundle deal).\n* Retire the \"local pickup\" campaign for Laser / 3D / Handmade, as it has not shown significant results.\n\n**Product Line Special Attention**\n\n* **Multiboard**: Due to its zero sales and revenue, Multiboard requires special attention. Review and adjust the product's description, product line strategies, and active campaigns to ensure they align with the target audience's needs.\n* **Laser / 3D / Handmade**: This product line also requires attention, as its sales and revenue are significa"
+    },
+    {
+      "type": "weekly_strategy",
+      "date": "2026-03-30T14:01:30.326Z",
+      "summary": "**Weekly Strategy Meeting Report**\n\n**Performance Review per Product Line:**\n\n* Metal Prints: No sales, orders, or revenue generated in the last 7 days. We need to revisit our collection rotation and seasonal campaigns strategies.\n* Multiboard: Also no sales, orders, or revenue generated in the last 7 days. Starter Kit Bundles and local marketplace strategies may not be effective without a stronger online presence.\n* Apparel & Stickers: Similar performance to Metal Prints and Multiboard, with zero sales, orders, or revenue. Trend-driven campaigns and flash sales might need reassessment.\n* Laser/3D/Handmade: No sales, orders, or revenue generated in the last 7 days. Local pickup, gift occasions, and custom orders strategies may require more targeted marketing efforts.\n* Racing & Sim Racing: Also zero sales, orders, or revenue in the last 7 days. Event-driven campaigns, crew bundles, and group targeting might need reevaluation.\n\n**Specific Campaign Plan for Next Week per Product Line:**\n\n1. Metal Prints:\n\t* Launch a \"Made Locally\" Facebook campaign highlighting Asheville's unique metal print market.\n\t* Offer bundle deals on popular metal prints with local pickup incentives.\n2. Multiboard:\n\t* Create a starter kit bundle promotion through Facebook Marketplace, emphasizing the benefits of 3D printed modular wall organization.\n\t* Rebrand and relaunch Multiboard as a locally made product line, emphasizing its connection to Asheville's community.\n3. Apparel & Stickers:\n\t* Develop flash sales for best-selling apparel items on Instagram, highlighting limited-time discounts and free shipping.\n\t* Create a \"Trendy Tees\" campaign showcasing current fashion trends in local Asheville influencers' feeds.\n4. Laser/3D/Handmade:\n\t* Launch a custom order promotion through Facebook Marketplace, offering made-to-order products with local pickup incentives.\n\t* Develop a \"Gift Occasions\" campaign highlighting handcrafted items suitable for special occasions and holidays.\n5. Racing & Sim Rac"
+    },
+    {
+      "type": "weekly_strategy",
+      "date": "2026-04-06T14:01:19.335Z",
+      "summary": "**Weekly Strategy Meeting Report**\n\n**Performance Review:**\n\n* All product lines have had zero revenue, orders, and items sold in the past 7 days. This suggests that our marketing efforts need to be re-evaluated.\n* We didn't see any traction on social media platforms like Facebook and Instagram.\n\n**Specific Campaign Plan for Next Week:**\n\n1. **Metal Prints:**\n\t* Launch a collection rotation campaign on Instagram, showcasing new metal print designs every week. Use relevant hashtags like #metalart and #walldecor.\n\t* Create a bundle deal offering 3-4 prints together at a discounted price to incentivize sales.\n2. **Multiboard:**\n\t* Run a problem-solution ad on Facebook Marketplace highlighting the benefits of using Multiboard for organizing cluttered spaces.\n\t* Offer a starter kit bundle with a free installation service to new customers, targeting local Asheville residents.\n3. **Apparel & Stickers:**\n\t* Create a flash sale on popular designs, offering 20% off all orders for a limited time (e.g., Friday-Sunday).\n\t* Use Instagram's \"Shopping\" feature to tag relevant products and enable customers to purchase directly from the app.\n4. **Laser / 3D / Handmade:**\n\t* Promote local pickup options by creating a Facebook Marketplace ad, targeting Asheville residents who may be interested in custom, handmade items.\n\t* Emphasize the \"Asheville Made\" aspect of our products and encourage customers to share their experiences with our brand on social media.\n5. **Racing & Sim Racing:**\n\t* Run an event-driven campaign on Facebook, highlighting upcoming racing events and offering exclusive discounts on liveries, number kits, and crew apparel.\n\t* Target group interests related to motorsports and sim racing to reach a broader audience.\n\n**Promotions:**\n\n* Retire the \"quantity discounts\" promotion for Apparel & Stickers as it didn't generate any sales in the past 7 days.\n* Create a new promotion for Metal Prints: \"Design of the Month,\" where we feature a unique design every month and offer a"
+    },
+    {
+      "type": "weekly_strategy",
+      "date": "2026-04-13T14:00:48.694Z",
+      "summary": "**Weekly Strategy Meeting Report**\n\n**Performance Review per Product Line:**\n\n1. **Metal Prints**: No sales or revenue generated in the past week. Campaigns are inactive, and no daily breakdown is provided. Recommendation: Re-activate campaigns focused on collection rotation, bundle deals, and seasonal themes.\n2. **Multiboard**: Also with zero sales and revenue, Multiboard campaigns remain inactive. Consider running a \"starter kit bundles\" campaign to drive interest in this product line.\n3. **Apparel & Stickers**: Zero revenue and orders indicate a need for targeted promotions. Suggest creating flash sales or quantity discounts on best-selling items.\n4. **Laser / 3D / Handmade**: With zero sales, focus on promoting local pickup and Asheville-made products to leverage the \"locally made\" advantage.\n5. **Racing & Sim Racing**: No revenue generated in the past week, but campaigns are active. Consider refining targeting through group targeting or event-driven promotions.\n\n**Campaign Plan for Next Week:**\n\n1. **Metal Prints**: Re-activate collection rotation campaign and create a bundle deal offer featuring popular metal prints.\n2. **Multiboard**: Launch starter kit bundles campaign to encourage customers to try Multiboard products.\n3. **Apparel & Stickers**: Create flash sale on best-selling t-shirts, offering 20% off for a limited time.\n\n**Promotions:**\n\n* Retire \"Asheville Made\" campaign in Laser / 3D / Handmade product line, as it has not generated sales.\n* Consider creating a new promotion for Metal Prints, focusing on seasonal themes (e.g., summer or fall collections).\n\n**Product Lines Requiring Special Attention:**\n\n1. **Laser / 3D / Handmade**: Focus on promoting local pickup and Asheville-made products to drive sales.\n2. **Racing & Sim Racing**: Refine targeting through group targeting or event-driven promotions.\n\n**Actionable Items for Next Week:**\n\n1. Reactivate Metal Prints campaigns and create bundle deal offer.\n2. Launch starter kit bundles campaign for Mult"
+    }
+  ]
+}

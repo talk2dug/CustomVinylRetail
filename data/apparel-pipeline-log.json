@@ -1,0 +1,176 @@
+[
+  {
+    "type": "pipeline-run",
+    "category": "PINUP GILRS BUNDLE",
+    "results": {
+      "categorized": 109,
+      "mockups": 0,
+      "shopify": 0,
+      "reels": 0,
+      "errors": 1
+    },
+    "durationMin": 110,
+    "timestamp": "2026-03-29T02:10:54.198Z"
+  },
+  {
+    "type": "pipeline-error",
+    "error": "cat is not defined",
+    "timestamp": "2026-03-29T20:48:12.624Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 65,
+      "mockups": 65,
+      "shopify": 0,
+      "reels": 13,
+      "errors": 0
+    },
+    "durationMin": 7,
+    "timestamp": "2026-03-30T01:00:21.864Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 65,
+      "mockups": 65,
+      "shopify": 0,
+      "reels": 13,
+      "errors": 0
+    },
+    "durationMin": 7,
+    "timestamp": "2026-03-30T01:15:58.823Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 65,
+      "mockups": 65,
+      "shopify": 65,
+      "reels": 13,
+      "errors": 0
+    },
+    "durationMin": 30,
+    "timestamp": "2026-03-30T13:54:50.744Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 65,
+      "mockups": 57,
+      "shopify": 64,
+      "reels": 13,
+      "errors": 0
+    },
+    "durationMin": 44,
+    "timestamp": "2026-03-30T18:17:37.426Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 65,
+      "mockups": 59,
+      "shopify": 65,
+      "reels": 13,
+      "errors": 0
+    },
+    "durationMin": 45,
+    "timestamp": "2026-03-30T20:07:13.740Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 65,
+      "mockups": 61,
+      "shopify": 65,
+      "reels": 13,
+      "errors": 0
+    },
+    "durationMin": 45,
+    "timestamp": "2026-03-31T00:18:18.400Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 65,
+      "mockups": 65,
+      "shopify": 65,
+      "reels": 0,
+      "errors": 13
+    },
+    "durationMin": 22,
+    "timestamp": "2026-03-31T15:42:43.449Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 12,
+      "mockups": 0,
+      "shopify": 0,
+      "reels": 0,
+      "errors": 0
+    },
+    "durationMin": 16,
+    "timestamp": "2026-04-08T03:48:44.041Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 12,
+      "mockups": 0,
+      "shopify": 0,
+      "reels": 0,
+      "errors": 0
+    },
+    "durationMin": 16,
+    "timestamp": "2026-04-08T16:49:01.968Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 12,
+      "mockups": 0,
+      "shopify": 0,
+      "reels": 0,
+      "errors": 0
+    },
+    "durationMin": 16,
+    "timestamp": "2026-04-11T02:44:31.081Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 12,
+      "mockups": 12,
+      "shopify": 12,
+      "reels": 0,
+      "errors": 0
+    },
+    "durationMin": 10,
+    "timestamp": "2026-04-11T03:34:04.454Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 12,
+      "mockups": 12,
+      "shopify": 4,
+      "reels": 0,
+      "errors": 0
+    },
+    "durationMin": 3,
+    "timestamp": "2026-04-11T03:57:08.236Z"
+  },
+  {
+    "type": "pipeline-run",
+    "results": {
+      "categorized": 12,
+      "mockups": 12,
+      "shopify": 12,
+      "reels": 0,
+      "errors": 0
+    },
+    "durationMin": 10,
+    "timestamp": "2026-04-11T23:26:37.936Z"
+  }
+]
