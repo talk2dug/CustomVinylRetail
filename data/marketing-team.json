@@ -411,15 +411,15 @@
   "teamMembers": {
     "salesAgent": {
       "status": "active",
-      "lastCycle": "2026-04-13T19:55:34.694Z"
+      "lastCycle": "2026-04-13T22:01:23.289Z"
     },
     "trendMonitor": {
       "status": "active",
-      "lastScan": "2026-04-13T19:58:43.563Z"
+      "lastScan": "2026-04-13T20:05:41.036Z"
     },
     "shopifyAnalytics": {
       "status": "active",
-      "lastPull": "2026-04-13T20:00:24.609Z"
+      "lastPull": "2026-04-13T22:02:12.904Z"
     },
     "contentCreator": {
       "status": "active",

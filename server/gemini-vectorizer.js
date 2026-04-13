@@ -76,6 +76,121 @@ class GeminiVectorizer {
     };
   }
 
+  /**
+   * Remove checkerboard transparency pattern from screenshots.
+   * Detects the classic gray/white checkerboard and replaces with solid white + transparency.
+   * Returns path to cleaned image (or original path if no checkerboard detected).
+   */
+  async _removeCheckerboard(imagePath) {
+    const { data, info } = await sharp(imagePath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { width, height, channels } = info;
+
+    const checkSize = this._detectCheckerSize(data, width, height, channels);
+    if (!checkSize) {
+      return imagePath; // No checkerboard detected
+    }
+
+    console.log(`[GeminiVectorizer] Detected checkerboard pattern (block size ~${checkSize}px), removing...`);
+
+    const bgColors = this._identifyCheckerColors(data, width, height, channels, checkSize);
+    if (!bgColors) return imagePath;
+
+    // Replace checkerboard pixels with transparent
+    const output = Buffer.from(data);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * channels;
+        const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+
+        if (this._colorMatchesChecker(r, g, b, bgColors)) {
+          output[idx] = 255;
+          output[idx + 1] = 255;
+          output[idx + 2] = 255;
+          output[idx + 3] = 0; // transparent
+        }
+      }
+    }
+
+    const cleanPath = path.join(TEMP_DIR, `nochecker_${Date.now()}.png`);
+    await sharp(output, { raw: { width, height, channels } }).png().toFile(cleanPath);
+    console.log(`[GeminiVectorizer] Checkerboard removed, saved to ${cleanPath}`);
+    return cleanPath;
+  }
+
+  _detectCheckerSize(data, width, height, channels) {
+    const sampleLen = Math.min(200, width);
+    const transitions = [];
+    let lastGray = null;
+
+    for (let x = 0; x < sampleLen; x++) {
+      const idx = x * channels;
+      const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+      if (Math.abs(r - g) >= 10 || Math.abs(g - b) >= 10) continue;
+
+      const brightness = (r + g + b) / 3;
+      const category = brightness >= 230 ? 'w' : (brightness > 150 ? 'g' : null);
+      if (!category) continue;
+
+      if (lastGray !== null && lastGray !== category) {
+        transitions.push(x);
+      }
+      lastGray = category;
+    }
+
+    if (transitions.length < 6) return null;
+
+    const gaps = [];
+    for (let i = 1; i < transitions.length; i++) {
+      gaps.push(transitions[i] - transitions[i - 1]);
+    }
+
+    const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    const consistent = gaps.filter(g => Math.abs(g - avgGap) <= 2).length;
+
+    if (consistent / gaps.length > 0.6 && avgGap >= 4 && avgGap <= 40) {
+      return Math.round(avgGap);
+    }
+    return null;
+  }
+
+  _identifyCheckerColors(data, width, height, channels, checkSize) {
+    const samplePoints = [
+      [0, 0], [checkSize, 0], [0, checkSize], [checkSize, checkSize],
+      [width - 1, 0], [width - 1 - checkSize, 0],
+      [0, height - 1], [checkSize, height - 1]
+    ];
+
+    const colors = new Map();
+    for (const [x, y] of samplePoints) {
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+      const idx = (y * width + x) * channels;
+      const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+      if (Math.abs(r - g) < 10 && Math.abs(g - b) < 10) {
+        const qr = Math.round(r / 8) * 8;
+        colors.set(`${qr}`, (colors.get(`${qr}`) || 0) + 1);
+      }
+    }
+
+    const sorted = Array.from(colors.entries()).sort((a, b) => b[1] - a[1]);
+    if (sorted.length < 2) return null;
+
+    const c1 = parseInt(sorted[0][0]);
+    const c2 = parseInt(sorted[1][0]);
+
+    if (c1 < 150 || c2 < 150) return null;
+    if (Math.abs(c1 - c2) < 10) return null;
+
+    return { color1: c1, color2: c2 };
+  }
+
+  _colorMatchesChecker(r, g, b, bgColors) {
+    const tolerance = 15;
+    if (Math.abs(r - g) > tolerance || Math.abs(g - b) > tolerance) return false;
+    const brightness = (r + g + b) / 3;
+    return (Math.abs(brightness - bgColors.color1) < tolerance ||
+            Math.abs(brightness - bgColors.color2) < tolerance);
+  }
+
   // ==========================================================================
   // STRATEGY 1: Direct SVG Path Generation
   // Gemini analyzes image and returns SVG path data as text
@@ -92,13 +207,17 @@ class GeminiVectorizer {
   async generateContourSVG(imagePath, options = {}) {
     const { offset = 1.0 } = options;
 
+    // Pre-process: remove checkerboard transparency pattern
+    const cleanedPath = await this._removeCheckerboard(imagePath);
+    const srcPath = cleanedPath !== imagePath ? cleanedPath : imagePath;
+
     // Get image dimensions
-    const metadata = await sharp(imagePath).metadata();
+    const metadata = await sharp(srcPath).metadata();
     const { width, height } = metadata;
 
     // Scale down for Gemini if too large (saves tokens, Gemini doesn't need full res)
     const MAX_DIM = 1024;
-    let processPath = imagePath;
+    let processPath = srcPath;
     let scale = 1;
 
     if (width > MAX_DIM || height > MAX_DIM) {
@@ -106,7 +225,7 @@ class GeminiVectorizer {
       const scaledW = Math.round(width * scale);
       const scaledH = Math.round(height * scale);
       processPath = path.join(TEMP_DIR, `contour_input_${Date.now()}.png`);
-      await sharp(imagePath).resize(scaledW, scaledH).png().toFile(processPath);
+      await sharp(srcPath).resize(scaledW, scaledH).png().toFile(processPath);
     }
 
     const processedMeta = await sharp(processPath).metadata();
@@ -205,12 +324,16 @@ The confidence should be 0.0-1.0 indicating how well you could identify the desi
     const { maxColors = 6 } = options;
     const potrace = require('potrace');
 
-    const metadata = await sharp(imagePath).metadata();
+    // Pre-process: remove checkerboard transparency pattern (from Cricut screenshots, etc.)
+    const cleanedPath = await this._removeCheckerboard(imagePath);
+    const srcPath = cleanedPath !== imagePath ? cleanedPath : imagePath;
+
+    const metadata = await sharp(srcPath).metadata();
     const { width, height } = metadata;
 
     // Scale for Gemini
     const MAX_DIM = 800;
-    let processPath = imagePath;
+    let processPath = srcPath;
     if (width > MAX_DIM || height > MAX_DIM) {
       const s = MAX_DIM / Math.max(width, height);
       processPath = path.join(TEMP_DIR, `vinyl_input_${Date.now()}.png`);
@@ -223,12 +346,14 @@ The confidence should be 0.0-1.0 indicating how well you could identify the desi
     // STEP 1: Gemini creates a CLEAN flat-color version (image output — reliable)
     const cleanPrompt = `Convert this image into a PURE FLAT COLOR version for vinyl cutting. This will be traced by software.
 
+IMPORTANT: If you see a checkerboard pattern of gray and white squares, that is a TRANSPARENCY INDICATOR from design software — it is NOT part of the design. Treat all checkerboard areas as empty/transparent background.
+
 CRITICAL — the output MUST have:
 - ONLY ${maxColors} or fewer PURE SOLID colors plus white background
 - ZERO gradients, ZERO shading, ZERO anti-aliasing, ZERO blending
 - Every pixel must be one of the exact solid colors — no in-between values
 - Edges between colors must be HARD 1-pixel boundaries — like a GIF, not a JPEG
-- Background = PURE WHITE (#FFFFFF)
+- Background = PURE WHITE (#FFFFFF) — this includes any area that was checkerboard/transparent
 - Black areas = PURE BLACK (#000000) — not dark gray, not #333, but #000000
 - Same dimensions as input
 - Preserve all shapes, letters, and design details accurately
