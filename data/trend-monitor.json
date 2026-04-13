@@ -54,8 +54,8 @@
     ],
     "googleTrendsGeo": "US"
   },
-  "lastScanAt": "2026-04-13T19:26:18.337Z",
-  "scanCount": 187,
+  "lastScanAt": "2026-04-13T19:41:57.661Z",
+  "scanCount": 188,
   "trends": [
     {
       "id": "reddit_1riex53",
@@ -38918,6 +38918,83 @@
       "status": "new",
       "discoveredAt": "2026-04-13T19:26:17.262Z",
       "expiresAt": "2026-04-20T19:26:17.262Z"
+    },
+    {
+      "id": "reddit_1skjrqp",
+      "source": "reddit",
+      "sourceId": "1skjrqp",
+      "title": "Me_irl",
+      "snippet": "      &#32; submitted by &#32;  /u/DravidVanol  &#32; to &#32;  r/me_irl   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/me_irl/comments/1skjrqp/me_irl/",
+      "subreddit": "me_irl",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776105488,
+      "score": 79,
+      "scoreBreakdown": {
+        "virality": 85,
+        "humorPotential": 92,
+        "apparelRelevance": 75,
+        "audienceMatch": 65,
+        "timeliness": 55
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Funny image macro about relatable moments.",
+        "suggestedPhrases": [
+          "Me_irl",
+          "Relatable struggles"
+        ],
+        "suggestedVisuals": [
+          "cartoon of a person with an expressionless face"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:40:24.417Z",
+      "expiresAt": "2026-04-20T19:40:24.417Z"
+    },
+    {
+      "id": "reddit_1sk54m3",
+      "source": "reddit",
+      "sourceId": "1sk54m3",
+      "title": "Respect for grandma",
+      "snippet": "      &#32; submitted by &#32;  /u/Real-Product-3276   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1sk54m3/respect_for_grandma/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776070172,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 80,
+        "apparelRelevance": 70,
+        "audienceMatch": "all",
+        "timeliness": 90
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This meme's lighthearted and playful take on a relatable situation would make for a funny t-shirt.",
+        "suggestedPhrases": [
+          "Respect for grandma"
+        ],
+        "suggestedVisuals": [
+          "a simple, bold font with a comical illustration of someone showing respect to their grandmother"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T19:41:56.589Z",
+      "expiresAt": "2026-04-20T19:41:56.589Z"
     }
   ],
   "designs": [
@@ -42674,8 +42751,8 @@
     }
   ],
   "stats": {
-    "totalScans": 187,
-    "totalTrendsFound": 1016,
+    "totalScans": 188,
+    "totalTrendsFound": 1018,
     "totalDesignsGenerated": 197,
     "totalApproved": 8,
     "totalListed": 8,

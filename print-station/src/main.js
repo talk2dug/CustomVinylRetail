@@ -5420,7 +5420,7 @@ Return ONLY valid JSON, nothing else:
   // Vinyl Cutter handlers
   // ============================================================================
 
-  // Import screenshot (e.g. from Cricut) — open file dialog, copy to server imports dir
+  // Import screenshot (e.g. from Cricut) — open file dialog, upload to server
   ipcMain.handle('vinyl-cutter:import-screenshot', async () => {
     const { dialog } = require('electron');
     const fsNode = require('fs');
@@ -5439,30 +5439,36 @@ Return ONLY valid JSON, nothing else:
       return { success: false, canceled: true };
     }
 
-    // Copy files directly to the server's import directory (same machine)
-    const importsDir = '/mnt/websit/cricut-imports';
-    if (!fsNode.existsSync(importsDir)) {
-      fsNode.mkdirSync(importsDir, { recursive: true });
-    }
-
     const imported = [];
     for (const filePath of result.filePaths) {
       try {
         const ext = pathNode.extname(filePath).toLowerCase();
         const baseName = pathNode.basename(filePath, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
-        const destFilename = `${baseName}_${Date.now()}${ext}`;
-        const destPath = pathNode.join(importsDir, destFilename);
 
-        fsNode.copyFileSync(filePath, destPath);
-        console.log(`[Import Screenshot] Copied: ${filePath} -> ${destPath}`);
+        // Read file and convert to base64 — strip data URI prefix for smaller payload
+        const imageBuffer = fsNode.readFileSync(filePath);
+        const base64Data = imageBuffer.toString('base64');
 
-        imported.push({
-          originalPath: filePath,
-          serverPath: destPath,
-          filename: destFilename
+        console.log(`[Import Screenshot] Uploading ${baseName} (${(imageBuffer.length / 1024).toFixed(0)} KB)...`);
+
+        const uploadResult = await httpRequest('/api/vinyl-cutter/import-screenshot', {
+          method: 'POST',
+          body: { base64: base64Data, filename: baseName },
+          timeout: 60000
         });
+
+        if (uploadResult && uploadResult.success) {
+          imported.push({
+            originalPath: filePath,
+            serverPath: uploadResult.path,
+            filename: uploadResult.filename
+          });
+          console.log(`[Import Screenshot] Uploaded: ${uploadResult.path}`);
+        } else {
+          console.error('[Import Screenshot] Upload failed:', uploadResult?.error || 'Unknown error');
+        }
       } catch (err) {
-        console.error('[Import Screenshot] Failed to copy:', filePath, err.message);
+        console.error('[Import Screenshot] Failed:', filePath, err.message);
       }
     }
 
