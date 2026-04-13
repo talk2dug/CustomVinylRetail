@@ -96,6 +96,7 @@ const { handleTikTokStudioRoute } = require('./modules/tiktok-studio-routes');
 const { handleRemotionRoute } = require('./remotion-routes');
 const { handleMeshyRoute } = require('./meshy-routes');
 const { handleReelStudioRoute } = require('./reel-studio-routes');
+const { handleDecalMakerRoute } = require('./decal-maker-routes');
 const { handleBatchMockupRoute } = require('./scripts/batch-mockup-generator');
 const { handleShopifyApparelRoute } = require('./scripts/shopify-apparel-publisher');
 const { handleModelGroupsRoute } = require('./model-groups');
@@ -10059,6 +10060,12 @@ Keep it concise and actionable.`;
       sendJson(res, 500, { error: err.message || 'Internal server error' });
     });
     return;
+  }
+
+  // Decal Maker API (canvas-based decal/sticker projects)
+  if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/decal-maker')) {
+    if (!requireInternalKey(req, res)) return;
+    if (handleDecalMakerRoute(parsedUrl.pathname, req.method, req, res, db)) return;
   }
 
   // Meshy 3D AI generation API

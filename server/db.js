@@ -3897,6 +3897,33 @@ function initCustomArtTables() {
     );
   `);
 
+  // Decal Maker — canvas-based decal/sticker projects
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS decal_projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      canvas_json TEXT NOT NULL,
+      canvas_width_inches REAL DEFAULT 4,
+      canvas_height_inches REAL DEFAULT 4,
+      preview_png TEXT,
+      category TEXT DEFAULT 'BRCC Created',
+      color_count INTEGER DEFAULT 1,
+      colors_used TEXT,
+      price_cents INTEGER DEFAULT 0,
+      created_by TEXT DEFAULT 'internal',
+      customer_id INTEGER,
+      is_template INTEGER DEFAULT 0,
+      tags TEXT,
+      order_id TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+    );
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_decal_projects_category ON decal_projects(category)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_decal_projects_created_by ON decal_projects(created_by)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_decal_projects_created_at ON decal_projects(created_at)`);
+
   console.log('[Finance] ✅ Tables initialized successfully');
 
   // Auto-classify existing Multiboard items that lack metadata
@@ -8583,6 +8610,95 @@ function listCategoryPricing() {
   return db.prepare('SELECT * FROM category_pricing ORDER BY category, subcategory').all();
 }
 
+// ============================================================================
+// DECAL MAKER — Canvas-based decal/sticker projects
+// ============================================================================
+
+function insertDecalProject(project) {
+  const id = project.id || `decal_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  db.prepare(`
+    INSERT INTO decal_projects (id, name, canvas_json, canvas_width_inches, canvas_height_inches, preview_png, category, color_count, colors_used, price_cents, created_by, customer_id, is_template, tags, order_id)
+    VALUES (@id, @name, @canvasJson, @canvasWidthInches, @canvasHeightInches, @previewPng, @category, @colorCount, @colorsUsed, @priceCents, @createdBy, @customerId, @isTemplate, @tags, @orderId)
+  `).run({
+    id,
+    name: project.name,
+    canvasJson: project.canvas_json || project.canvasJson,
+    canvasWidthInches: project.canvas_width_inches ?? project.canvasWidthInches ?? 4,
+    canvasHeightInches: project.canvas_height_inches ?? project.canvasHeightInches ?? 4,
+    previewPng: project.preview_png || project.previewPng || null,
+    category: project.category || 'BRCC Created',
+    colorCount: project.color_count ?? project.colorCount ?? 1,
+    colorsUsed: project.colors_used || project.colorsUsed || null,
+    priceCents: project.price_cents ?? project.priceCents ?? 0,
+    createdBy: project.created_by || project.createdBy || 'internal',
+    customerId: project.customer_id ?? project.customerId ?? null,
+    isTemplate: project.is_template ?? project.isTemplate ?? 0,
+    tags: project.tags || null,
+    orderId: project.order_id || project.orderId || null
+  });
+  return getDecalProject(id);
+}
+
+function updateDecalProject(id, updates) {
+  const fields = [];
+  const params = { id };
+
+  if (updates.name !== undefined) { fields.push('name = @name'); params.name = updates.name; }
+  if (updates.canvas_json !== undefined) { fields.push('canvas_json = @canvasJson'); params.canvasJson = updates.canvas_json; }
+  if (updates.canvasJson !== undefined) { fields.push('canvas_json = @canvasJson'); params.canvasJson = updates.canvasJson; }
+  if (updates.canvas_width_inches !== undefined) { fields.push('canvas_width_inches = @canvasWidthInches'); params.canvasWidthInches = updates.canvas_width_inches; }
+  if (updates.canvasWidthInches !== undefined) { fields.push('canvas_width_inches = @canvasWidthInches'); params.canvasWidthInches = updates.canvasWidthInches; }
+  if (updates.canvas_height_inches !== undefined) { fields.push('canvas_height_inches = @canvasHeightInches'); params.canvasHeightInches = updates.canvas_height_inches; }
+  if (updates.canvasHeightInches !== undefined) { fields.push('canvas_height_inches = @canvasHeightInches'); params.canvasHeightInches = updates.canvasHeightInches; }
+  if (updates.preview_png !== undefined) { fields.push('preview_png = @previewPng'); params.previewPng = updates.preview_png; }
+  if (updates.previewPng !== undefined) { fields.push('preview_png = @previewPng'); params.previewPng = updates.previewPng; }
+  if (updates.category !== undefined) { fields.push('category = @category'); params.category = updates.category; }
+  if (updates.color_count !== undefined) { fields.push('color_count = @colorCount'); params.colorCount = updates.color_count; }
+  if (updates.colorCount !== undefined) { fields.push('color_count = @colorCount'); params.colorCount = updates.colorCount; }
+  if (updates.colors_used !== undefined) { fields.push('colors_used = @colorsUsed'); params.colorsUsed = updates.colors_used; }
+  if (updates.colorsUsed !== undefined) { fields.push('colors_used = @colorsUsed'); params.colorsUsed = updates.colorsUsed; }
+  if (updates.price_cents !== undefined) { fields.push('price_cents = @priceCents'); params.priceCents = updates.price_cents; }
+  if (updates.priceCents !== undefined) { fields.push('price_cents = @priceCents'); params.priceCents = updates.priceCents; }
+  if (updates.created_by !== undefined) { fields.push('created_by = @createdBy'); params.createdBy = updates.created_by; }
+  if (updates.createdBy !== undefined) { fields.push('created_by = @createdBy'); params.createdBy = updates.createdBy; }
+  if (updates.customer_id !== undefined) { fields.push('customer_id = @customerId'); params.customerId = updates.customer_id; }
+  if (updates.customerId !== undefined) { fields.push('customer_id = @customerId'); params.customerId = updates.customerId; }
+  if (updates.is_template !== undefined) { fields.push('is_template = @isTemplate'); params.isTemplate = updates.is_template; }
+  if (updates.isTemplate !== undefined) { fields.push('is_template = @isTemplate'); params.isTemplate = updates.isTemplate; }
+  if (updates.tags !== undefined) { fields.push('tags = @tags'); params.tags = updates.tags; }
+  if (updates.order_id !== undefined) { fields.push('order_id = @orderId'); params.orderId = updates.order_id; }
+  if (updates.orderId !== undefined) { fields.push('order_id = @orderId'); params.orderId = updates.orderId; }
+
+  if (!fields.length) return getDecalProject(id);
+
+  fields.push("updated_at = datetime('now')");
+  db.prepare(`UPDATE decal_projects SET ${fields.join(', ')} WHERE id = @id`).run(params);
+  return getDecalProject(id);
+}
+
+function getDecalProject(id) {
+  return db.prepare('SELECT * FROM decal_projects WHERE id = ?').get(id) || null;
+}
+
+function listDecalProjects({ category, created_by, createdBy, is_template, isTemplate, limit = 50, offset = 0 } = {}) {
+  let query = 'SELECT * FROM decal_projects WHERE 1=1';
+  const params = [];
+  const filterBy = created_by || createdBy;
+  const filterTemplate = is_template ?? isTemplate;
+
+  if (category) { query += ' AND category = ?'; params.push(category); }
+  if (filterBy) { query += ' AND created_by = ?'; params.push(filterBy); }
+  if (filterTemplate !== undefined) { query += ' AND is_template = ?'; params.push(filterTemplate ? 1 : 0); }
+
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+  return db.prepare(query).all(...params);
+}
+
+function deleteDecalProject(id) {
+  db.prepare('DELETE FROM decal_projects WHERE id = ?').run(id);
+}
+
 module.exports = {
   initDatabase,
   normalizeEmail,
@@ -8989,5 +9105,11 @@ module.exports = {
   getCategoryPricing,
   upsertCategoryPricing,
   listCategoryPricing,
-  STICKER_PRICE_TABLE
+  STICKER_PRICE_TABLE,
+  // Decal Maker
+  insertDecalProject,
+  updateDecalProject,
+  getDecalProject,
+  listDecalProjects,
+  deleteDecalProject
 };
