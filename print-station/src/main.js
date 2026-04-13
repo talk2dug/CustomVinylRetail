@@ -5473,10 +5473,11 @@ Return ONLY valid JSON, nothing else:
         }
       } catch (err) {
         console.error('[Import Screenshot] EXCEPTION:', filePath, err.message, err.stack);
+        return { success: false, error: `Upload failed: ${err.message}`, filePath };
       }
     }
 
-    return { success: true, imported };
+    return { success: true, imported, errors: imported.length === 0 ? 'All uploads failed — check serverBaseUrl config' : null };
   });
 
   // Vectorize an image for vinyl cutting (with color detection)

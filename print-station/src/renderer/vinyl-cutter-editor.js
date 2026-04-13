@@ -2060,7 +2060,8 @@ async function importScreenshot() {
     }
 
     if (!result.imported || result.imported.length === 0) {
-      vinylShowToast('Failed to upload screenshots. Check Electron DevTools console (Ctrl+Shift+I) for details.', 'error');
+      const errMsg = result.error || result.errors || 'Unknown error';
+      vinylShowToast(`Failed to upload: ${errMsg}`, 'error');
       console.error('[Screenshot Import] IPC result:', JSON.stringify(result));
       updateVinylStatus('Ready');
       return;
