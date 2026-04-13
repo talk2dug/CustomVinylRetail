@@ -286,7 +286,7 @@ async function runMetalPrintPipeline(options = {}) {
   for (const room of roomMembers) {
     const roomPath = resolveRoomPath(room);
     if (!roomPath) {
-      console.warn(`[MetalPrintPipeline] No image for room: ${room.name}`);
+      console.warn(`[MetalPrintPipeline] No image for room: ${room.title || room.name || room.id} (image_path: ${room.image_path || 'none'})`);
       continue;
     }
 
@@ -439,15 +439,22 @@ function resolveRoomPath(room) {
     room.image_path,
     room.imagePath,
     room.preview,
-    room.previewImage
+    room.previewImage,
+    room.thumbnail_path,
+    room.thumbnailPath
   ].filter(Boolean);
 
   for (const candidate of candidates) {
     let fsPath = candidate;
-    if (candidate.startsWith('/library/')) {
-      fsPath = path.join('/mnt/websit', candidate.replace('/library/', ''));
-    } else if (candidate.startsWith('/web/library/')) {
-      fsPath = path.join('/mnt/websit', candidate.replace('/web/library/', ''));
+    if (candidate.startsWith('http')) {
+      try { fsPath = new URL(candidate).pathname; } catch (_) {}
+    }
+    if (fsPath.startsWith('/library/')) {
+      fsPath = path.join('/mnt/websit', fsPath.replace('/library/', ''));
+    } else if (fsPath.startsWith('/web/library/')) {
+      fsPath = path.join('/mnt/websit', fsPath.replace('/web/library/', ''));
+    } else if (fsPath.startsWith('library/')) {
+      fsPath = path.join('/mnt/websit', fsPath.replace('library/', ''));
     }
     if (fs.existsSync(fsPath)) return fsPath;
   }
