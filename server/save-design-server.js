@@ -7864,7 +7864,7 @@ Keep it concise and actionable.`;
 
   if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname === '/api/catalog/decal-icons') {
     // Check if caller wants saved projects injected
-    const injectSaved = parsedUrl.searchParams?.get('includeSaved') === '1';
+    const injectSaved = parsedUrl.query?.includeSaved === '1';
     if (injectSaved) {
       serveDecalCatalogWithSaved(req, res);
       return;

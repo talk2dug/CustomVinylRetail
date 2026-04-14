@@ -54,8 +54,8 @@
     ],
     "googleTrendsGeo": "US"
   },
-  "lastScanAt": "2026-04-14T00:36:45.990Z",
-  "scanCount": 194,
+  "lastScanAt": "2026-04-14T01:18:25.021Z",
+  "scanCount": 195,
   "trends": [
     {
       "id": "reddit_1riex53",
@@ -40194,6 +40194,197 @@
       "status": "new",
       "discoveredAt": "2026-04-14T00:36:44.796Z",
       "expiresAt": "2026-04-21T00:36:44.796Z"
+    },
+    {
+      "id": "reddit_1skpoxr",
+      "source": "reddit",
+      "sourceId": "1skpoxr",
+      "title": "Iran your gas prices sky high",
+      "snippet": "      &#32; submitted by &#32;  /u/jonnismizzle  &#32; to &#32;  r/MurderedByWords   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/MurderedByWords/comments/1skpoxr/iran_your_gas_prices_sky_high/",
+      "subreddit": "MurderedByWords",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776117988,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": "all",
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Pun on Iran and gas prices is timely and relevant for current events.",
+        "suggestedPhrases": [
+          "Iran your gas prices sky high"
+        ],
+        "suggestedVisuals": [
+          "funny cartoon of a gas pump with an Iranian flag"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T01:17:10.645Z",
+      "expiresAt": "2026-04-21T01:17:10.645Z"
+    },
+    {
+      "id": "reddit_1sko8u6",
+      "source": "reddit",
+      "sourceId": "1sko8u6",
+      "title": "Wait what 🤔",
+      "snippet": "      &#32; submitted by &#32;  /u/True-Floor8799  &#32; to &#32;  r/SipsTea   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/SipsTea/comments/1sko8u6/wait_what/",
+      "subreddit": "SipsTea",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776114746,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 90,
+        "humorPotential": 95,
+        "apparelRelevance": 80,
+        "audienceMatch": "genz|millennial",
+        "timeliness": 70
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Simple yet effective meme that can be used for various humorous situations.",
+        "suggestedPhrases": [
+          "Wait what ",
+          "I have no idea"
+        ],
+        "suggestedVisuals": [
+          "funny cartoon of a confused face"
+        ],
+        "targetAudience": "genz|millennial",
+        "humorStyle": "deadpan",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T01:17:10.645Z",
+      "expiresAt": "2026-04-21T01:17:10.645Z"
+    },
+    {
+      "id": "reddit_1skc53d",
+      "source": "reddit",
+      "sourceId": "1skc53d",
+      "title": "Trump Posts Image Of Himself As Jesus Healing The Sick",
+      "snippet": "      &#32; submitted by &#32;  /u/According-Activity87  &#32; to &#32;  r/Conservative   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/Conservative/comments/1skc53d/trump_posts_image_of_himself_as_jesus_healing_the/",
+      "subreddit": "Conservative",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776089785,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 90,
+        "humorPotential": 95,
+        "apparelRelevance": 80,
+        "audienceMatch": "genx|millennial|genz",
+        "timeliness": 70
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Meme about Trump comparing himself to Jesus is timely and relevant for politics.",
+        "suggestedPhrases": [
+          "Trump as Jesus"
+        ],
+        "suggestedVisuals": [
+          "funny cartoon of Trump with a halo and a cross"
+        ],
+        "targetAudience": "genx|millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T01:17:10.645Z",
+      "expiresAt": "2026-04-21T01:17:10.645Z"
+    },
+    {
+      "id": "reddit_1skop5f",
+      "source": "reddit",
+      "sourceId": "1skop5f",
+      "title": "What have I done?",
+      "snippet": "      &#32; submitted by &#32;  /u/Common_Caramel_4078   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skop5f/what_have_i_done/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776115744,
+      "score": 63,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 80,
+        "apparelRelevance": 50,
+        "audienceMatch": 70,
+        "timeliness": 40
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The meme's relatable sentiment makes it a great fit for a humorous t-shirt design.",
+        "suggestedPhrases": [
+          "What have I done"
+        ],
+        "suggestedVisuals": [
+          "meme image with a puzzled expression"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T01:17:43.285Z",
+      "expiresAt": "2026-04-21T01:17:43.285Z"
+    },
+    {
+      "id": "reddit_1skai4m",
+      "source": "reddit",
+      "sourceId": "1skai4m",
+      "title": "We all can relate can't we?",
+      "snippet": "      &#32; submitted by &#32;  /u/detox_daisy72   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skai4m/we_all_can_relate_cant_we/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776086090,
+      "score": 53,
+      "scoreBreakdown": {
+        "virality": 50,
+        "humorPotential": 70,
+        "apparelRelevance": 40,
+        "audienceMatch": 60,
+        "timeliness": 30
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The meme's relatable sentiment makes it a great fit for a humorous t-shirt design.",
+        "suggestedPhrases": [
+          "We all can relate"
+        ],
+        "suggestedVisuals": [
+          "meme image with a sympathetic expression"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T01:17:43.285Z",
+      "expiresAt": "2026-04-21T01:17:43.285Z"
     }
   ],
   "designs": [
@@ -43950,8 +44141,8 @@
     }
   ],
   "stats": {
-    "totalScans": 194,
-    "totalTrendsFound": 1049,
+    "totalScans": 195,
+    "totalTrendsFound": 1054,
     "totalDesignsGenerated": 197,
     "totalApproved": 8,
     "totalListed": 8,
