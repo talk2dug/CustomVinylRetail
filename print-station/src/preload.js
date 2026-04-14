@@ -459,6 +459,17 @@ contextBridge.exposeInMainWorld('printStation', {
     batchParse: (filepaths) => ipcRenderer.invoke('studio3:batchParse', filepaths)
   },
 
+  // Decal Maker API
+  decalMaker: {
+    listProjects: (query) => ipcRenderer.invoke('decal-maker:projects:list', query || {}),
+    getProject: (id) => ipcRenderer.invoke('decal-maker:projects:get', id),
+    saveProject: (project) => ipcRenderer.invoke('decal-maker:projects:save', project || {}),
+    updateProject: (id, updates) => ipcRenderer.invoke('decal-maker:projects:update', { id, updates }),
+    deleteProject: (id) => ipcRenderer.invoke('decal-maker:projects:delete', id),
+    getPricing: () => ipcRenderer.invoke('decal-maker:pricing'),
+    fetchCatalogIcons: () => ipcRenderer.invoke('decal-maker:catalog'),
+  },
+
   // Google Drive Sync API
   gdrive: {
     list: (folder) => ipcRenderer.invoke('gdrive:list', folder),

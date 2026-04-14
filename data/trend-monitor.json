@@ -54,8 +54,8 @@
     ],
     "googleTrendsGeo": "US"
   },
-  "lastScanAt": "2026-04-13T20:05:41.036Z",
-  "scanCount": 190,
+  "lastScanAt": "2026-04-14T00:02:34.670Z",
+  "scanCount": 192,
   "trends": [
     {
       "id": "reddit_1riex53",
@@ -39155,6 +39155,625 @@
       "status": "new",
       "discoveredAt": "2026-04-13T19:57:27.757Z",
       "expiresAt": "2026-04-20T19:57:27.757Z"
+    },
+    {
+      "id": "reddit_1skp97a",
+      "source": "reddit",
+      "sourceId": "1skp97a",
+      "title": "Man Who Threw Molotov Cocktail At Sam Altman’s Home Claims He Was Following ChatGPT Recipe For Risotto",
+      "snippet": "      &#32; submitted by &#32;  /u/Amentet  &#32; to &#32;  r/technology   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/technology/comments/1skp97a/man_who_threw_molotov_cocktail_at_sam_altmans/",
+      "subreddit": "technology",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776117009,
+      "score": 77,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 60,
+        "audienceMatch": 70,
+        "timeliness": 85
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The absurdity of using a recipe for risotto as an excuse for arson is humorous and timely.",
+        "suggestedPhrases": [
+          "ChatGPT recipe",
+          "Molotov cocktail",
+          "risotto"
+        ],
+        "suggestedVisuals": [
+          "image of a risotto dish with a Molotov cocktail in the background"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:27:17.501Z",
+      "expiresAt": "2026-04-20T23:27:17.501Z"
+    },
+    {
+      "id": "reddit_1sknzym",
+      "source": "reddit",
+      "sourceId": "1sknzym",
+      "title": "I have intense stretch marks from pregnancy 7 years ago",
+      "snippet": "      posted in tattoo advice and got alot of comments saying thry looked interesting so figured you guys would like to see 😂❤️  &#32; submitted by &#32;  /u/-Hot-Tamale-  &#32; to &#32;  r/mildyinte",
+      "url": "https://www.reddit.com/r/mildyinteresting/comments/1sknzym/i_have_intense_stretch_marks_from_pregnancy_7/",
+      "subreddit": "mildyinteresting",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776114220,
+      "score": 62,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 40,
+        "audienceMatch": 50,
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The relatability and self-deprecation of the post make it a good fit for apparel.",
+        "suggestedPhrases": [
+          "stretch marks",
+          "pregnancy"
+        ],
+        "suggestedVisuals": [
+          "image of stretch marks on skin"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "self-deprecating",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:27:17.501Z",
+      "expiresAt": "2026-04-20T23:27:17.501Z"
+    },
+    {
+      "id": "reddit_1skkddz",
+      "source": "reddit",
+      "sourceId": "1skkddz",
+      "title": "Greg is the hero we all need at McDonald's",
+      "snippet": "      &#32; submitted by &#32;  /u/aurexali_Neva  &#32; to &#32;  r/NonPoliticalTwitter   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/NonPoliticalTwitter/comments/1skkddz/greg_is_the_hero_we_all_need_at_mcdonalds/",
+      "subreddit": "NonPoliticalTwitter",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776106748,
+      "score": 80,
+      "scoreBreakdown": {
+        "virality": 85,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": 80,
+        "timeliness": 65
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The lighthearted and relatable nature of the post makes it a good fit for apparel.",
+        "suggestedPhrases": [
+          "hero at McDonald's",
+          "Greg"
+        ],
+        "suggestedVisuals": [
+          "image of Greg at McDonald's"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:27:17.501Z",
+      "expiresAt": "2026-04-20T23:27:17.501Z"
+    },
+    {
+      "id": "reddit_1skp2el",
+      "source": "reddit",
+      "sourceId": "1skp2el",
+      "title": "[OC] A kid left this in the seat pocket on my flight",
+      "snippet": "      &#32; submitted by &#32;  /u/Impossible-Yam3680  &#32; to &#32;  r/MadeMeSmile   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/MadeMeSmile/comments/1skp2el/oc_a_kid_left_this_in_the_seat_pocket_on_my_flight/",
+      "subreddit": "MadeMeSmile",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776116577,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": "genz|millennial",
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The humorous and relatable story of a kid's lost item on a flight would make for a great t-shirt design.",
+        "suggestedPhrases": [
+          "Lost and found",
+          "Flight attendant problems"
+        ],
+        "suggestedVisuals": [
+          "Illustration of a kid's lost toy or book in a seat pocket"
+        ],
+        "targetAudience": "genz|millennial",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:27:55.873Z",
+      "expiresAt": "2026-04-20T23:27:55.873Z"
+    },
+    {
+      "id": "reddit_1skpsmg",
+      "source": "reddit",
+      "sourceId": "1skpsmg",
+      "title": "This house with 7 stories",
+      "snippet": "      &#32; submitted by &#32;  /u/lipoppi  &#32; to &#32;  r/mildlyinteresting   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/mildlyinteresting/comments/1skpsmg/this_house_with_7_stories/",
+      "subreddit": "mildlyinteresting",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776118230,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": "genx|millennial",
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The absurdity of a house with multiple stories would translate well to a humorous t-shirt design.",
+        "suggestedPhrases": [
+          "7 stories, 1 mortgage"
+        ],
+        "suggestedVisuals": [
+          "Illustration of a house with 7 levels"
+        ],
+        "targetAudience": "genx|millennial",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:27:55.873Z",
+      "expiresAt": "2026-04-20T23:27:55.873Z"
+    },
+    {
+      "id": "reddit_1skaxe2",
+      "source": "reddit",
+      "sourceId": "1skaxe2",
+      "title": "Journalist does his job and asks Clavicular why he spends time with Andrew Tate. Clavicular walks out but not before insulting the interviewer by implying his wife is cheating on him (even though he is not married).",
+      "snippet": "      &#32; submitted by &#32;  /u/Relevant-Peach3997  &#32; to &#32;  r/Fauxmoi   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/Fauxmoi/comments/1skaxe2/journalist_does_his_job_and_asks_clavicular_why/",
+      "subreddit": "Fauxmoi",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776087099,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 95,
+        "humorPotential": 98,
+        "apparelRelevance": 90,
+        "audienceMatch": "genz|millennial",
+        "timeliness": 80
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The absurdity of Clavicular's insult would make for a hilarious and timely t-shirt design.",
+        "suggestedPhrases": [
+          "Clavicular's clap back"
+        ],
+        "suggestedVisuals": [
+          "Illustration of Clavicular walking out with an insult on his face"
+        ],
+        "targetAudience": "genz|millennial",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:27:55.874Z",
+      "expiresAt": "2026-04-20T23:27:55.874Z"
+    },
+    {
+      "id": "reddit_1skbl20",
+      "source": "reddit",
+      "sourceId": "1skbl20",
+      "title": "Reason #72 Why im happy being child free",
+      "snippet": "      &#32; submitted by &#32;  /u/Quietlyrightt   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skbl20/reason_72_why_im_happy_being_child_free/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776088577,
+      "score": 89,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 95,
+        "audienceMatch": 100,
+        "timeliness": 70
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This title is a relatable example of dry humor, making it a great fit for a t-shirt.",
+        "suggestedPhrases": [
+          "Reason #72",
+          "Why I'm happy being child free"
+        ],
+        "suggestedVisuals": [
+          "a screenshot of a Reddit post with a smiling face"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:28:34.888Z",
+      "expiresAt": "2026-04-20T23:28:34.888Z"
+    },
+    {
+      "id": "reddit_1sklc36",
+      "source": "reddit",
+      "sourceId": "1sklc36",
+      "title": "Gotta ready for future suffering",
+      "snippet": "      &#32; submitted by &#32;  /u/CertifiedSamosa   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1sklc36/gotta_ready_for_future_suffering/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776108726,
+      "score": 56,
+      "scoreBreakdown": {
+        "virality": 50,
+        "humorPotential": 60,
+        "apparelRelevance": 70,
+        "audienceMatch": 55,
+        "timeliness": 20
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This title is a relatable example of dark humor, making it a great fit for a t-shirt.",
+        "suggestedPhrases": [
+          "Gotta ready for future suffering",
+          "I'm not ready..."
+        ],
+        "suggestedVisuals": [
+          "a screenshot of a Reddit post with a worried face"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:28:34.888Z",
+      "expiresAt": "2026-04-20T23:28:34.888Z"
+    },
+    {
+      "id": "reddit_1skj8t0",
+      "source": "reddit",
+      "sourceId": "1skj8t0",
+      "title": "Your words?",
+      "snippet": "      &#32; submitted by &#32;  /u/SuperStrikerX   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skj8t0/your_words/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776104387,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 40,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": "all",
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A simple yet effective way to poke fun at someone's words.",
+        "suggestedPhrases": [
+          "words have power"
+        ],
+        "suggestedVisuals": [
+          "a speech bubble with a question mark"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:28:59.140Z",
+      "expiresAt": "2026-04-20T23:28:59.140Z"
+    },
+    {
+      "id": "reddit_1sk7apj",
+      "source": "reddit",
+      "sourceId": "1sk7apj",
+      "title": "Nice participation from the audience.",
+      "snippet": "      &#32; submitted by &#32;  /u/omnidohdohdoh   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1sk7apj/nice_participation_from_the_audience/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776077562,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 50,
+        "humorPotential": 80,
+        "apparelRelevance": 70,
+        "audienceMatch": "all",
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A clever way to mock audience participation.",
+        "suggestedPhrases": [
+          "participation award"
+        ],
+        "suggestedVisuals": [
+          "a cartoon person holding a participation trophy"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-13T23:28:59.141Z",
+      "expiresAt": "2026-04-20T23:28:59.141Z"
+    },
+    {
+      "id": "reddit_1skqb5m",
+      "source": "reddit",
+      "sourceId": "1skqb5m",
+      "title": "Me_irl",
+      "snippet": "      &#32; submitted by &#32;  /u/Green-Elephant-895  &#32; to &#32;  r/me_irl   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/me_irl/comments/1skqb5m/me_irl/",
+      "subreddit": "me_irl",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776119480,
+      "score": 79,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": 85,
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Relatable meme potential for a humorous t-shirt design.",
+        "suggestedPhrases": [
+          "me irl",
+          "relatable meme"
+        ],
+        "suggestedVisuals": [
+          "meme-style illustration of a person looking unimpressed"
+        ],
+        "targetAudience": "genz|millennial|all",
+        "humorStyle": "sarcastic|witty|absurdist",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:00:28.177Z",
+      "expiresAt": "2026-04-21T00:00:28.177Z"
+    },
+    {
+      "id": "reddit_1skp1sy",
+      "source": "reddit",
+      "sourceId": "1skp1sy",
+      "title": "Mermaids come in ALL sizes, I will die on this hill. (OC)",
+      "snippet": "      Thanks for reading! ❤️  &#32; submitted by &#32;  /u/ArtbyMoga  &#32; to &#32;  r/comics   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/comics/comments/1skp1sy/mermaids_come_in_all_sizes_i_will_die_on_this/",
+      "subreddit": "comics",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776116537,
+      "score": 79,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": 85,
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Playful and humorous statement potential for a fun t-shirt design.",
+        "suggestedPhrases": [
+          "mermaids come in all sizes",
+          "I will die on this hill"
+        ],
+        "suggestedVisuals": [
+          "illustration of a mermaid or a hill with a speech bubble"
+        ],
+        "targetAudience": "genz|millennial|all",
+        "humorStyle": "sarcastic|witty|absurdist",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:00:28.177Z",
+      "expiresAt": "2026-04-21T00:00:28.177Z"
+    },
+    {
+      "id": "reddit_1sklw7e",
+      "source": "reddit",
+      "sourceId": "1sklw7e",
+      "title": "The reason why large asteroids don't fall to Earth every day and cause disasters is because Jupiter's gravity attracts asteroids and protects the inner planets.",
+      "snippet": "      &#32; submitted by &#32;  /u/Turbulent_Elk_2141  &#32; to &#32;  r/Damnthatsinteresting   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/Damnthatsinteresting/comments/1sklw7e/the_reason_why_large_asteroids_dont_fall_to_earth/",
+      "subreddit": "Damnthatsinteresting",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776109887,
+      "score": 72,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 70,
+        "apparelRelevance": 80,
+        "audienceMatch": 90,
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Educational and humorous science fact potential for a geeky t-shirt design.",
+        "suggestedPhrases": [
+          "Jupiter's gravity",
+          "asteroid protection"
+        ],
+        "suggestedVisuals": [
+          "illustration of Jupiter or an asteroid with a speech bubble"
+        ],
+        "targetAudience": "genz|millennial|all",
+        "humorStyle": "sarcastic|witty|absurdist",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:00:28.177Z",
+      "expiresAt": "2026-04-21T00:00:28.177Z"
+    },
+    {
+      "id": "reddit_1skm3yg",
+      "source": "reddit",
+      "sourceId": "1skm3yg",
+      "title": "Conscription Lottery Nightmare - Should this be done everywhere in the world?",
+      "snippet": "      &#32; submitted by &#32;  /u/The_Dean_France  &#32; to &#32;  r/whoathatsinteresting   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/whoathatsinteresting/comments/1skm3yg/conscription_lottery_nightmare_should_this_be/",
+      "subreddit": "whoathatsinteresting",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776110327,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 60,
+        "apparelRelevance": 70,
+        "audienceMatch": "all",
+        "timeliness": 90
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The conscription lottery concept is a humorous and timely topic that can be applied to various audiences.",
+        "suggestedPhrases": [
+          "Conscription Lottery Nightmare",
+          "Draft Me Maybe"
+        ],
+        "suggestedVisuals": [
+          "a cartoon of a person being drafted, with a sad expression"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:01:01.445Z",
+      "expiresAt": "2026-04-21T00:01:01.445Z"
+    },
+    {
+      "id": "reddit_1skb3e3",
+      "source": "reddit",
+      "sourceId": "1skb3e3",
+      "title": "If the military/president suddenly ordered a mandatory draft for all men aged 18-42: How do you think millennials and GenZ would respond?",
+      "snippet": "&#32; submitted by &#32;  /u/Tommygunz0722  &#32; to &#32;  r/AskReddit   [link] &#32; [comments]",
+      "url": "https://www.reddit.com/r/AskReddit/comments/1skb3e3/if_the_militarypresident_suddenly_ordered_a/",
+      "subreddit": "AskReddit",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776087477,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 60,
+        "apparelRelevance": 80,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 90
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The hypothetical scenario of a mandatory draft is a humorous and timely topic that can be applied to younger audiences.",
+        "suggestedPhrases": [
+          "Draft Me Maybe"
+        ],
+        "suggestedVisuals": [
+          "a cartoon of a person being drafted, with a sad expression"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:01:01.445Z",
+      "expiresAt": "2026-04-21T00:01:01.445Z"
+    },
+    {
+      "id": "reddit_1skpkl6",
+      "source": "reddit",
+      "sourceId": "1skpkl6",
+      "title": "Didn’t think that one through",
+      "snippet": "      &#32; submitted by &#32;  /u/Rashid_5038   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skpkl6/didnt_think_that_one_through/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776117715,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 80,
+        "apparelRelevance": 70,
+        "audienceMatch": "genx|millennial",
+        "timeliness": 90
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Common phrase used to describe silly decisions.",
+        "suggestedPhrases": [
+          "one of these things is not like the other"
+        ],
+        "suggestedVisuals": [
+          "a series of seemingly unrelated images"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:02:33.594Z",
+      "expiresAt": "2026-04-21T00:02:33.594Z"
     }
   ],
   "designs": [
@@ -42911,8 +43530,8 @@
     }
   ],
   "stats": {
-    "totalScans": 190,
-    "totalTrendsFound": 1022,
+    "totalScans": 192,
+    "totalTrendsFound": 1038,
     "totalDesignsGenerated": 197,
     "totalApproved": 8,
     "totalListed": 8,

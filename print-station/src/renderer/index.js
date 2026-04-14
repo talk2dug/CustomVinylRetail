@@ -1717,6 +1717,11 @@ function switchView(viewId) {
       window.initApparelMockupView();
     }
   }
+  if (viewId === 'decalMakerView') {
+    if (typeof window.initDecalMakerView === 'function') {
+      window.initDecalMakerView();
+    }
+  }
   if (viewId === 'campaignsView') {
     if (typeof window.initCampaignView === 'function') window.initCampaignView();
     renderCampaignItems();

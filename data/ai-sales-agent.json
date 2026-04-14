@@ -2,8 +2,8 @@
   "version": 2,
   "agentState": {
     "enabled": true,
-    "lastCycleAt": "2026-04-13T23:01:19.217Z",
-    "cycleCount": 7,
+    "lastCycleAt": "2026-04-13T23:59:36.123Z",
+    "cycleCount": 1,
     "currentStrategy": null
   },
   "platforms": {

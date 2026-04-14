@@ -5818,6 +5818,39 @@ Return ONLY valid JSON, nothing else:
     };
   });
 
+  // ============================================================================
+  // Decal Maker handlers
+  // ============================================================================
+
+  ipcMain.handle('decal-maker:projects:list', (_event, query) =>
+    httpRequest('/api/decal-maker/projects', { method: 'GET', query, timeout: 15000 })
+  );
+
+  ipcMain.handle('decal-maker:projects:get', (_event, id) =>
+    httpRequest(`/api/decal-maker/projects/${encodeURIComponent(id)}`, { method: 'GET' })
+  );
+
+  ipcMain.handle('decal-maker:projects:save', (_event, body) =>
+    httpRequest('/api/decal-maker/projects', { method: 'POST', body, timeout: 30000 })
+  );
+
+  ipcMain.handle('decal-maker:projects:update', (_event, { id, updates }) =>
+    httpRequest(`/api/decal-maker/projects/${encodeURIComponent(id)}`, { method: 'PUT', body: updates, timeout: 30000 })
+  );
+
+  ipcMain.handle('decal-maker:projects:delete', (_event, id) =>
+    httpRequest(`/api/decal-maker/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  );
+
+  ipcMain.handle('decal-maker:pricing', () =>
+    httpRequest('/api/decal-maker/pricing', { method: 'GET' })
+  );
+
+  ipcMain.handle('decal-maker:catalog', async () => {
+    // Fetch the decal icons catalog - can be large, cache it
+    return httpRequest('/api/catalog/decal-icons', { method: 'GET', timeout: 30000 });
+  });
+
   // Google Drive Sync handlers
   ipcMain.handle('gdrive:list', (_event, folder) =>
     httpRequest(`/api/gdrive/list${folder ? '?folder=' + encodeURIComponent(folder) : ''}`, { method: 'GET' })

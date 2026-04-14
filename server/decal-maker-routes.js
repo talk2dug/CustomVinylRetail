@@ -38,9 +38,11 @@ function handleDecalMakerRoute(pathname, method, req, res, db) {
     return true;
   }
 
-  // GET /api/decal-maker/projects/:id — get single project
-  const getMatch = pathname.match(/^\/api\/decal-maker\/projects\/([^/]+)$/);
-  if (getMatch && method === 'GET') {
+  // Single project routes: GET/PUT/DELETE /api/decal-maker/projects/:id
+  const singleMatch = pathname.match(/^\/api\/decal-maker\/projects\/([^/]+)$/);
+
+  if (singleMatch && method === 'GET') {
+    const getMatch = singleMatch;
     const project = db.getDecalProject(getMatch[1]);
     if (!project) {
       sendError(res, 404, 'Project not found');
@@ -79,9 +81,8 @@ function handleDecalMakerRoute(pathname, method, req, res, db) {
     return true;
   }
 
-  // PUT /api/decal-maker/projects/:id — update existing project
-  const putMatch = pathname.match(/^\/api\/decal-maker\/projects\/([^/]+)$/);
-  if (putMatch && method === 'PUT') {
+  if (singleMatch && method === 'PUT') {
+    const putMatch = singleMatch;
     parseBody(req).then(body => {
       const existing = db.getDecalProject(putMatch[1]);
       if (!existing) return sendError(res, 404, 'Project not found');
@@ -92,9 +93,8 @@ function handleDecalMakerRoute(pathname, method, req, res, db) {
     return true;
   }
 
-  // DELETE /api/decal-maker/projects/:id — delete project
-  const delMatch = pathname.match(/^\/api\/decal-maker\/projects\/([^/]+)$/);
-  if (delMatch && method === 'DELETE') {
+  if (singleMatch && method === 'DELETE') {
+    const delMatch = singleMatch;
     const existing = db.getDecalProject(delMatch[1]);
     if (!existing) {
       sendError(res, 404, 'Project not found');
