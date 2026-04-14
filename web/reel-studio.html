@@ -2312,14 +2312,19 @@ Made to live in the light.</textarea>
     const camp = state.pendingCampaigns.find(c => c.id === runId);
     if (!camp) return;
     const items = camp.themes?.[theme] || [];
-    state.assets.campaign = items.map(item => ({
-      id: `campaign-${item.designId}`,
-      label: item.name || item.designSlug || 'Untitled',
-      url: item.mockupUrl || (item.preview ? `/library/uploads/custom-art/thumbs/${item.preview.split('/').pop()}` : ''),
-      thumbnail: item.mockupUrl || (item.preview ? `/library/uploads/custom-art/thumbs/${item.preview.split('/').pop()}` : ''),
-      type: 'image',
-      category: item.category || camp.collection || ''
-    })).filter(a => a.url);
+    const keySuffix = apiKey ? (u => u.includes('?') ? `&key=${encodeURIComponent(apiKey)}` : `?key=${encodeURIComponent(apiKey)}`) : () => '';
+    state.assets.campaign = items.map(item => {
+      const rawUrl = item.mockupUrl || (item.preview ? `/library/uploads/custom-art/thumbs/${item.preview.split('/').pop()}` : '');
+      const authedUrl = rawUrl && rawUrl.startsWith('/api/') ? rawUrl + keySuffix(rawUrl) : rawUrl;
+      return {
+        id: `campaign-${item.designId}`,
+        label: item.name || item.designSlug || 'Untitled',
+        url: authedUrl,
+        thumbnail: authedUrl,
+        type: 'image',
+        category: item.category || camp.collection || ''
+      };
+    }).filter(a => a.url);
     // Show tab and switch to it
     tabBtn.style.display = '';
     tabBtn.textContent = `Campaign (${state.assets.campaign.length})`;

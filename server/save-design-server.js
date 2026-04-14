@@ -10128,6 +10128,10 @@ Keep it concise and actionable.`;
 
   // Reel Studio API (asset browser, render trigger, audio uploads)
   if (parsedUrl.pathname && parsedUrl.pathname.startsWith('/api/reel-studio')) {
+    // Allow key via query param for pipeline-mockup (used by <img> tags)
+    const isMockupFile = parsedUrl.pathname.startsWith('/api/reel-studio/pipeline-mockup/');
+    const qk = parsedUrl.query && parsedUrl.query.key;
+    if (isMockupFile && qk) req.headers['x-api-key'] = req.headers['x-api-key'] || qk;
     if (!requireInternalKey(req, res)) return;
     if (handleReelStudioRoute(parsedUrl.pathname, req, res)) return;
   }
