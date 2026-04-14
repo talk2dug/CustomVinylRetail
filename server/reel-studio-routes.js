@@ -650,6 +650,257 @@ function handleReelStudioRoute(pathname, req, res) {
     return true;
   }
 
+  // ── POST /api/reel-studio/full-publish ─────────────────────────────────────
+  // One-click chain: Shopify products → Landing page → Facebook/TikTok
+  // This is the missing link that gives reels commercial value.
+  if (pathname === '/api/reel-studio/full-publish' && req.method === 'POST') {
+    parseBody(req).then(async (body) => {
+      const {
+        designIds = [],           // designs to publish to Shopify
+        filename,                 // rendered reel filename
+        caption = '',             // base caption (will be enriched with links)
+        theme = '',               // for landing page theming
+        category = '',            // for FB credential routing
+        facebook = true,
+        instagram = true,
+        includeTikTokShop = false,
+        campaignRunId = null,     // optional pipeline run to finalize
+        shopifyProductIds = [],   // if products already published, pass IDs
+      } = body;
+
+      const steps = { shopify: null, landingPage: null, social: null };
+      const STORE_BASE = process.env.SHOPIFY_STORE_URL || 'https://blueridgecustomco.com';
+
+      try {
+        let products = [];
+        let allShopifyIds = [...shopifyProductIds];
+
+        // ── Step 1: Publish to Shopify (if designIds provided and products not already there)
+        if (designIds.length > 0) {
+          console.log(`[full-publish] Step 1: Publishing ${designIds.length} designs to Shopify...`);
+          const { publishBatch } = require('./scripts/shopify-apparel-publisher');
+          const shopResult = await publishBatch({
+            designIds,
+            limit: designIds.length,
+            dryRun: false,
+            delayMs: 1500,
+          });
+
+          products = (shopResult.results || [])
+            .filter(r => r.handle && !r.error)
+            .map(r => ({
+              designId: r.designId,
+              title: r.title,
+              shopifyId: r.shopifyId,
+              handle: r.handle,
+              url: `${STORE_BASE}/products/${r.handle}`,
+            }));
+
+          allShopifyIds = [...new Set([
+            ...allShopifyIds,
+            ...products.map(p => p.shopifyId).filter(Boolean)
+          ])];
+
+          // TikTok Shop
+          let tiktokShopAdded = 0;
+          if (includeTikTokShop && products.length > 0) {
+            try {
+              const shopify = require('./integrations/shopify');
+              const publications = await shopify.getPublications();
+              const tiktokPub = publications?.find(p =>
+                (p.name || '').toLowerCase().includes('tiktok')
+              );
+              if (tiktokPub) {
+                for (const product of products) {
+                  try {
+                    await shopify.publishToPublications(product.shopifyId, [tiktokPub.id]);
+                    tiktokShopAdded++;
+                  } catch (err) {
+                    console.warn('[full-publish] TikTok Shop failed for', product.title, err.message);
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('[full-publish] TikTok Shop integration failed:', err.message);
+            }
+          }
+
+          steps.shopify = {
+            success: true,
+            published: products.length,
+            failed: shopResult.failed || 0,
+            products,
+            tiktokShopAdded,
+          };
+          console.log(`[full-publish] Step 1 done: ${products.length} products on Shopify`);
+        } else if (allShopifyIds.length > 0) {
+          // Products already exist — fetch their details
+          console.log(`[full-publish] Step 1: Skipping publish, fetching ${allShopifyIds.length} existing products...`);
+          try {
+            const shopify = require('./integrations/shopify');
+            for (const pid of allShopifyIds) {
+              try {
+                const p = await shopify.getProduct(pid);
+                if (p) {
+                  products.push({
+                    designId: null,
+                    title: p.title,
+                    shopifyId: String(p.id),
+                    handle: p.handle,
+                    url: `${STORE_BASE}/products/${p.handle}`,
+                  });
+                }
+              } catch (err) {
+                console.warn('[full-publish] Could not fetch product', pid, err.message);
+              }
+            }
+          } catch (err) {
+            console.warn('[full-publish] Shopify fetch failed:', err.message);
+          }
+          steps.shopify = { success: true, published: 0, existing: products.length, products };
+        }
+
+        // ── Step 2: Create Landing Page (if we have products + a reel)
+        let landingPageUrl = null;
+        if (allShopifyIds.length > 0) {
+          console.log(`[full-publish] Step 2: Creating landing page for ${allShopifyIds.length} products...`);
+          try {
+            const reelFollowup = require('./modules/reel-followup');
+            const reelUrl = filename
+              ? `${STORE_BASE}/library/tiktok-videos/${encodeURIComponent(filename)}`
+              : null;
+
+            // Build a reel record for the landing page generator
+            const reelRecords = [{
+              videoId: `fp_${Date.now()}`,
+              theme: theme || 'default',
+              chunkIdx: 0,
+              isTikTokShopReel: includeTikTokShop,
+              reel: { outputUrl: reelUrl, outputPath: filename },
+              designIds,
+              shopifyProductIds: allShopifyIds,
+            }];
+
+            const results = { errors: [], landingPages: [] };
+            const ctx = { notify: false, results };
+            const pagesResult = await reelFollowup.createReelLandingPages(reelRecords, ctx);
+
+            if (results.landingPages.length > 0) {
+              const page = results.landingPages[0];
+              landingPageUrl = page.pageUrl
+                ? `${STORE_BASE}${page.pageUrl.startsWith('/') ? '' : '/'}${page.pageUrl}`
+                : null;
+            }
+
+            steps.landingPage = {
+              success: true,
+              url: landingPageUrl,
+              pages: results.landingPages,
+              errors: results.errors,
+            };
+            console.log(`[full-publish] Step 2 done: Landing page at ${landingPageUrl || 'none'}`);
+          } catch (err) {
+            console.error('[full-publish] Landing page creation failed:', err.message);
+            steps.landingPage = { success: false, error: err.message };
+          }
+        }
+
+        // ── Step 3: Build enriched caption with product links
+        const productLinks = products.slice(0, 5).map(p => `${p.url}`);
+        const shopLink = landingPageUrl || (products.length === 1 ? products[0]?.url : `${STORE_BASE}/collections/apparel`);
+
+        let enrichedCaption = caption || '';
+        if (enrichedCaption && !enrichedCaption.includes(STORE_BASE)) {
+          // Inject product links if not already in caption
+          enrichedCaption += `\n\n🛒 Shop now: ${shopLink}`;
+          if (products.length > 1 && landingPageUrl) {
+            enrichedCaption += `\n\nBrowse the full drop: ${landingPageUrl}`;
+          }
+        } else if (!enrichedCaption) {
+          // Build a basic caption
+          const firstProduct = products[0];
+          enrichedCaption = firstProduct
+            ? `🔥 New drop! ${firstProduct.title}\n\n🛒 Shop now: ${shopLink}\n\nHandmade in Asheville, NC\n#limiteddrop #handmade #asheville #shopsmall`
+            : `🔥 New drop!\n\n🛒 ${shopLink}\n\n#limiteddrop #handmade #asheville #shopsmall`;
+        }
+
+        // ── Step 4: Publish to social media
+        if (filename && (facebook || instagram)) {
+          console.log(`[full-publish] Step 3: Publishing to social (FB: ${facebook}, IG: ${instagram})...`);
+          try {
+            const { TIKTOK_VIDEOS_DIR } = require('./paths');
+            const srcPath = path.join(__dirname, '..', 'remotion', 'out', filename);
+
+            if (fs.existsSync(srcPath)) {
+              const pubFilename = `reel-${Date.now()}-${filename}`;
+              const pubPath = path.join(TIKTOK_VIDEOS_DIR, pubFilename);
+              fs.copyFileSync(srcPath, pubPath);
+              const publicUrl = `${STORE_BASE}/library/tiktok-videos/${encodeURIComponent(pubFilename)}`;
+
+              const { publishVideoToFacebook, publishReelToInstagram } = require('./lib/facebook-post-scheduler');
+              const socialResults = { facebook: null, instagram: null };
+
+              if (facebook) {
+                try {
+                  socialResults.facebook = await publishVideoToFacebook(publicUrl, enrichedCaption, category);
+                } catch (e) {
+                  socialResults.facebook = { success: false, error: e.message };
+                }
+              }
+
+              if (instagram) {
+                try {
+                  socialResults.instagram = await publishReelToInstagram(publicUrl, enrichedCaption);
+                } catch (e) {
+                  socialResults.instagram = { success: false, error: e.message };
+                }
+              }
+
+              steps.social = {
+                success: true,
+                publicUrl,
+                caption: enrichedCaption,
+                ...socialResults,
+              };
+              console.log(`[full-publish] Step 3 done: Social published`);
+            } else {
+              steps.social = { success: false, error: `Video file not found: ${filename}` };
+            }
+          } catch (err) {
+            steps.social = { success: false, error: err.message };
+          }
+        }
+
+        // ── Step 5: If there's a campaign run, finalize it
+        if (campaignRunId) {
+          try {
+            const db = require('./db');
+            db.updatePipelineRun(campaignRunId, {
+              status: 'complete',
+              finalized_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+              current_step: 'complete',
+            });
+          } catch (_) {}
+        }
+
+        sendJson(res, 200, {
+          success: true,
+          steps,
+          shopLink,
+          landingPageUrl,
+          caption: enrichedCaption,
+          productCount: products.length,
+        });
+
+      } catch (e) {
+        console.error('[full-publish] failed:', e);
+        sendError(res, 500, e.message);
+      }
+    }).catch(() => sendError(res, 400, 'Invalid request body'));
+    return true;
+  }
+
   return false;
 }
 

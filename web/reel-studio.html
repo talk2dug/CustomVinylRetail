@@ -904,6 +904,10 @@ Made to live in the light.</textarea>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle; margin-right:6px;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
           Post to Facebook & Instagram
         </button>
+        <button class="btn" id="full-publish-btn" style="display:none; background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff; border:none; margin-top:10px; font-weight:700; padding:12px 16px; font-size:13px; width:100%;">
+          🚀 Full Publish: Shopify → Landing Page → Facebook & Instagram
+        </button>
+        <div id="full-publish-status" style="display:none; margin-top: 10px; padding: 10px; border-radius: 6px; font-size: 11px; text-align: left; max-height: 300px; overflow-y: auto;"></div>
         <div id="tiktok-status" style="display:none; margin-top: 10px; padding: 10px; border-radius: 6px; font-size: 11px; text-align: center;"></div>
         <div id="fb-ig-status" style="display:none; margin-top: 10px; padding: 10px; border-radius: 6px; font-size: 11px; text-align: center;"></div>
       </div>
@@ -1748,6 +1752,7 @@ Made to live in the light.</textarea>
       document.getElementById('download-btn').style.display = 'block';
       document.getElementById('tiktok-btn').style.display = 'block';
       document.getElementById('fb-ig-btn').style.display = 'block';
+      document.getElementById('full-publish-btn').style.display = 'block';
       // Remember the server-side path for TikTok upload
       state.lastRenderFilename = data.filename;
       loadHistory();
@@ -2198,6 +2203,147 @@ Made to live in the light.</textarea>
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle; margin-right:6px;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>Post to Facebook & Instagram';
+    }
+  });
+
+  // ── Full Publish (Shopify → Landing Page → Facebook/Instagram) ──
+  document.getElementById('full-publish-btn').addEventListener('click', async () => {
+    if (!state.lastRenderFilename) return alert('No rendered video to publish');
+
+    const btn = document.getElementById('full-publish-btn');
+    const status = document.getElementById('full-publish-status');
+    btn.disabled = true;
+    status.style.display = 'block';
+    status.style.background = 'var(--surface-2)';
+    status.style.color = 'var(--muted)';
+
+    const log = (msg, color) => {
+      status.innerHTML += `<div style="color:${color || 'var(--muted)'};margin:2px 0;">${msg}</div>`;
+      status.scrollTop = status.scrollHeight;
+    };
+
+    log('🚀 Starting full publish pipeline...', 'var(--accent)');
+
+    // Gather design IDs from selected mockups
+    const apparelItems = state.selected.filter(s => s.asset?.type === 'apparel');
+    const filenames = apparelItems.map(s => s.asset?.url?.split('/').pop()).filter(Boolean);
+
+    // Build caption
+    const hook = (document.getElementById('field-hookText').value || '').trim();
+    const rawTags = (document.getElementById('field-hashtags').value || '').trim();
+    const tags = parseHashtags(rawTags).slice(0, 10).join(' ');
+    const brandTags = '#BlueRidgeCustomCo #AshevilleNC #MadeInAsheville #LocallyMade #ShopLocal';
+    const baseCaption = [hook, `\n\n${tags ? tags + ' ' : ''}${brandTags}`].filter(Boolean).join('');
+
+    const includeTikTokShop = document.getElementById('field-tiktokShop')?.checked || false;
+    const campaignRunId = document.getElementById('field-campaignRun')?.value || null;
+    const theme = document.getElementById('field-campaignTheme')?.value || '';
+
+    try {
+      // Step 1: Resolve design IDs from mockup filenames
+      btn.innerHTML = '<span class="spinner"></span>Step 1/4: Resolving designs...';
+      log('📋 Resolving mockup files to design IDs...');
+      let designIds = [];
+      let existingShopifyIds = [];
+
+      if (filenames.length > 0) {
+        const resolveRes = await fetch('/api/reel-studio/resolve-designs', {
+          method: 'POST',
+          headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filenames }),
+        });
+        const resolveData = await resolveRes.json();
+        designIds = (resolveData.resolved || []).filter(r => r.designId).map(r => r.designId);
+        log(`✓ Resolved ${designIds.length} design(s) from ${filenames.length} mockup(s)`, '#6ee7b7');
+      }
+
+      // Check if campaign already has Shopify product IDs
+      if (campaignRunId) {
+        const camp = state.pendingCampaigns.find(c => c.id === campaignRunId);
+        if (camp) {
+          const themeItems = camp.themes?.[theme] || Object.values(camp.themes || {})[0] || [];
+          existingShopifyIds = themeItems.filter(i => i.shopifyId).map(i => i.shopifyId);
+          if (existingShopifyIds.length) {
+            log(`ℹ Found ${existingShopifyIds.length} existing Shopify product(s) from campaign`, '#93c5fd');
+          }
+        }
+      }
+
+      if (designIds.length === 0 && existingShopifyIds.length === 0) {
+        throw new Error('No designs found to publish. Add mockup slides to the reel first.');
+      }
+
+      // Step 2: Call full-publish endpoint
+      btn.innerHTML = '<span class="spinner"></span>Step 2/4: Publishing to Shopify...';
+      log('🛍 Publishing products to Shopify...');
+
+      const fullRes = await fetch('/api/reel-studio/full-publish', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          designIds,
+          filename: state.lastRenderFilename,
+          caption: baseCaption,
+          theme,
+          category: 'apparel',
+          facebook: true,
+          instagram: true,
+          includeTikTokShop,
+          campaignRunId,
+          shopifyProductIds: existingShopifyIds,
+        }),
+      });
+      const data = await fullRes.json();
+
+      if (!fullRes.ok || !data.success) {
+        throw new Error(data.error || 'Full publish failed');
+      }
+
+      // Report results
+      const shop = data.steps?.shopify;
+      if (shop) {
+        if (shop.published > 0) {
+          log(`✓ Shopify: Published ${shop.published} product(s)`, '#6ee7b7');
+          shop.products?.forEach(p => log(`  → ${p.title}: ${p.url}`, '#d1d5db'));
+        } else if (shop.existing > 0) {
+          log(`✓ Shopify: ${shop.existing} product(s) already published`, '#93c5fd');
+        }
+      }
+
+      const lp = data.steps?.landingPage;
+      if (lp?.success && lp.url) {
+        log(`✓ Landing Page: ${lp.url}`, '#6ee7b7');
+      } else if (lp?.error) {
+        log(`⚠ Landing Page: ${lp.error}`, '#fbbf24');
+      }
+
+      const social = data.steps?.social;
+      if (social) {
+        if (social.facebook?.success) log(`✓ Facebook: Published`, '#6ee7b7');
+        else if (social.facebook?.error) log(`⚠ Facebook: ${social.facebook.error}`, '#fbbf24');
+        if (social.instagram?.success) log(`✓ Instagram: Reel published`, '#6ee7b7');
+        else if (social.instagram?.error) log(`⚠ Instagram: ${social.instagram.error}`, '#fbbf24');
+      }
+
+      // Update CTA URL field
+      if (data.shopLink) {
+        document.getElementById('field-ctaUrl').value = data.shopLink;
+      }
+
+      log('', '');
+      log(`🎉 Full publish complete! ${data.productCount} product(s) live.`, '#6ee7b7');
+      if (data.shopLink) log(`🛒 Shop link: ${data.shopLink}`, '#fbbf24');
+      if (data.landingPageUrl) log(`📄 Landing page: ${data.landingPageUrl}`, '#fbbf24');
+
+      status.style.background = 'rgba(16, 185, 129, 0.15)';
+      status.style.color = '#d1fae5';
+
+    } catch (e) {
+      log(`✗ Error: ${e.message}`, '#fca5a5');
+      status.style.background = 'rgba(239, 68, 68, 0.15)';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '🚀 Full Publish: Shopify → Landing Page → Facebook & Instagram';
     }
   });
 
