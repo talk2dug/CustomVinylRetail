@@ -71,8 +71,10 @@ const dmState = {
 // INIT
 // ---------------------------------------------------------------------------
 function initDecalMakerView() {
+  console.log('[DecalMaker] initDecalMakerView called, initialized:', dmState.initialized);
   if (dmState.initialized) return;
   const container = document.getElementById('decalMakerView');
+  console.log('[DecalMaker] Container found:', !!container);
   if (!container) return;
 
   container.innerHTML = buildDecalMakerHTML();
@@ -264,7 +266,7 @@ function injectDecalMakerStyles() {
   style.id = 'dmStyles';
   style.textContent = `
 /* === DECAL MAKER CORE LAYOUT === */
-#decalMakerView { display:flex; flex-direction:column; height:100%; overflow:hidden; background:#0d0d1a; }
+#decalMakerView.active { flex-direction:column; height:100%; overflow:hidden; background:#0d0d1a; }
 
 .dm-toolbar {
   display:flex; justify-content:space-between; align-items:center;
