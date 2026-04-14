@@ -908,5 +908,18 @@ contextBridge.exposeInMainWorld('printStation', {
     packPlates:   (quoteId, printerModel)         => ipcRenderer.invoke('pq:plates:pack', { quoteId, printerModel }),
     listPlates:   (quoteId)                       => ipcRenderer.invoke('pq:plates:list', quoteId),
     updatePlate:  (quoteId, plateId, updates)     => ipcRenderer.invoke('pq:plates:update', { quoteId, plateId, updates })
+  },
+
+  // ============================================================================
+  // CURATED DROP CAMPAIGN API
+  // ============================================================================
+  curatedDrop: {
+    searchSSAW: (query) => ipcRenderer.invoke('curated-drop:ssaw:search', query || ''),
+    getProducts: (styleId) => ipcRenderer.invoke('curated-drop:ssaw:products', styleId),
+    previewMockup: (opts) => ipcRenderer.invoke('curated-drop:preview-mockup', opts),
+    generateCopy: (opts) => ipcRenderer.invoke('curated-drop:generate-copy', opts),
+    launch: (config) => ipcRenderer.invoke('curated-drop:launch', config),
+    listCampaigns: () => ipcRenderer.invoke('curated-drop:campaigns:list'),
+    getCampaign: (id) => ipcRenderer.invoke('curated-drop:campaigns:get', id),
   }
 });

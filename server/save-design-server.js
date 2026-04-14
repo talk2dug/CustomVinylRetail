@@ -11047,6 +11047,109 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // ── Curated Drop Campaign Routes ──────────────────────────────────────────
+  if (segments[0] === 'api' && segments[1] === 'curated-drop') {
+    const curatedCampaign = require('./modules/curated-campaign');
+    const { parseBody: parseB } = require('./utils/http');
+    const cdAction = segments.slice(2).join('/');
+
+    if (cdAction === 'ssaw/search' && req.method === 'GET') {
+      try {
+        const q = String(parsedUrl.query.q || '').trim();
+        const result = await curatedCampaign.searchCatalog(q);
+        sendJson(res, 200, result);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (cdAction.startsWith('ssaw/products/') && req.method === 'GET') {
+      const styleId = segments[4];
+      try {
+        const result = await curatedCampaign.getStyleVariants(styleId);
+        sendJson(res, 200, result);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (cdAction === 'preview-mockup' && req.method === 'POST') {
+      try {
+        const body = await parseB(req);
+        const result = await curatedCampaign.generateMockup(
+          body.garmentImageUrl,
+          body.designImageUrl,
+          { zone: body.zone || 'front-chest', size: body.size || 'large', garmentType: body.garmentType || 'apparel' }
+        );
+        sendJson(res, 200, { mockups: result });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (cdAction === 'generate-copy' && req.method === 'POST') {
+      try {
+        const body = await parseB(req);
+        const copy = curatedCampaign.generateDropCopy(body);
+        sendJson(res, 200, copy);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (cdAction === 'launch' && req.method === 'POST') {
+      curatedCampaign.ensureTables(db);
+      try {
+        const body = await parseB(req);
+        const campaign = await curatedCampaign.launchDrop(db, body);
+        sendJson(res, 200, campaign);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (cdAction === 'campaigns' && req.method === 'GET') {
+      curatedCampaign.ensureTables(db);
+      try {
+        const campaigns = curatedCampaign.listCampaigns(db);
+        sendJson(res, 200, { campaigns });
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (cdAction.startsWith('campaigns/') && req.method === 'GET') {
+      curatedCampaign.ensureTables(db);
+      const id = segments[3];
+      try {
+        const campaign = curatedCampaign.getCampaign(db, id);
+        if (!campaign) { sendJson(res, 404, { error: 'Campaign not found' }); return; }
+        sendJson(res, 200, campaign);
+      } catch (err) {
+        sendJson(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // Serve curated drop mockup images
+    if (cdAction.startsWith('image/') && req.method === 'GET') {
+      const filename = decodeURIComponent(segments.slice(3).join('/') || '');
+      const imgPath = path.join(__dirname, '..', 'data', 'curated-drops', 'apparel-mockups', filename);
+      if (!filename || !fs.existsSync(imgPath)) { sendJson(res, 404, { error: 'Image not found' }); return; }
+      const ext = path.extname(imgPath).toLowerCase();
+      const mime = ext === '.png' ? 'image/png' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=3600', 'Access-Control-Allow-Origin': '*' });
+      fs.createReadStream(imgPath).pipe(res);
+      return;
+    }
+  }
+
   // S&S Activewear vendor proxy endpoints
   if (
     segments[0] === 'api' &&

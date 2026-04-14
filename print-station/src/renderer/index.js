@@ -1907,6 +1907,9 @@ function switchView(viewId) {
   if (viewId === 'dogTagsView') {
     if (typeof window.initDogTagsView === 'function') window.initDogTagsView();
   }
+  if (viewId === 'curatedDropsView') {
+    if (typeof window.initCuratedDropsView === 'function') window.initCuratedDropsView();
+  }
 }
 
 // =============== Dashboard ===============

@@ -8865,6 +8865,57 @@ Return ONLY valid JSON, nothing else:
     console.log(`[DogTag Library] Upload success:`, result.id || result);
     return result;
   });
+
+  // ── Curated Drop Campaign IPC ──────────────────────────────────────────
+  ipcMain.handle('curated-drop:ssaw:search', async (_event, query) => {
+    const resp = await slicerFetch(`/api/curated-drop/ssaw/search?q=${encodeURIComponent(query || '')}`, { timeout: 15000 });
+    return resp.json();
+  });
+
+  ipcMain.handle('curated-drop:ssaw:products', async (_event, styleId) => {
+    const resp = await slicerFetch(`/api/curated-drop/ssaw/products/${encodeURIComponent(styleId)}`, { timeout: 15000 });
+    return resp.json();
+  });
+
+  ipcMain.handle('curated-drop:preview-mockup', async (_event, opts) => {
+    const resp = await slicerFetch('/api/curated-drop/preview-mockup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts),
+      timeout: 120000
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('curated-drop:generate-copy', async (_event, opts) => {
+    const resp = await slicerFetch('/api/curated-drop/generate-copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts),
+      timeout: 15000
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('curated-drop:launch', async (_event, config) => {
+    const resp = await slicerFetch('/api/curated-drop/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+      timeout: 300000
+    });
+    return resp.json();
+  });
+
+  ipcMain.handle('curated-drop:campaigns:list', async () => {
+    const resp = await slicerFetch('/api/curated-drop/campaigns', { timeout: 10000 });
+    return resp.json();
+  });
+
+  ipcMain.handle('curated-drop:campaigns:get', async (_event, id) => {
+    const resp = await slicerFetch(`/api/curated-drop/campaigns/${encodeURIComponent(id)}`, { timeout: 10000 });
+    return resp.json();
+  });
 }
 
 app.on('ready', async () => {

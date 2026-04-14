@@ -63,7 +63,7 @@
           <!-- <button class="dropdown-item" data-view="mockupsView">Mockups</button> -->
           <button class="dropdown-item" data-view="apparelMockupView">Apparel Mockups</button>
           <button class="dropdown-item" data-view="customArtView">Custom Art</button>
-          
+          <button class="dropdown-item" data-view="curatedDropsView">Curated Drops</button>
         </div>
       </div>
 
@@ -8833,6 +8833,280 @@
       <!-- Decal Maker content is rendered dynamically by decal-maker-view.js -->
     </section>
 
+    <!-- ================================================================== -->
+    <!-- CURATED DROPS VIEW                                                 -->
+    <!-- ================================================================== -->
+    <section id="curatedDropsView" class="view">
+      <style>
+        /* ── Curated Drops Styles ─────────────────────────────────── */
+        #curatedDropsView { padding: 16px; }
+        #curatedDropsView h2 { margin: 0 0 4px 0; }
+        .cd-subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 16px; }
+        .cd-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .cd-panel { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+        .cd-panel h3 { margin: 0 0 10px 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+        .cd-panel h3 .cd-badge { background: var(--accent); color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; }
+        .cd-search-row { display: flex; gap: 6px; margin-bottom: 10px; }
+        .cd-search-row input, .cd-search-row select { flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem; }
+        .cd-search-row button { padding: 6px 14px; border: none; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
+        .cd-search-row button:hover { opacity: 0.9; }
+        .cd-search-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* S&S Results Grid */
+        .cd-ssaw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; max-height: 320px; overflow-y: auto; }
+        .cd-ssaw-card { background: var(--bg-primary); border: 2px solid transparent; border-radius: 8px; padding: 6px; cursor: pointer; transition: border-color 0.15s, transform 0.1s; }
+        .cd-ssaw-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+        .cd-ssaw-card.selected { border-color: var(--accent); background: rgba(99,102,241,0.08); }
+        .cd-ssaw-card img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; background: #f5f5f5; }
+        .cd-ssaw-card-info { padding: 4px 0 0; }
+        .cd-ssaw-card-title { font-size: 0.75rem; font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cd-ssaw-card-brand { font-size: 0.7rem; color: var(--muted); }
+        .cd-ssaw-card-type { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; }
+
+        /* Color Picker */
+        .cd-color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; max-height: 200px; overflow-y: auto; }
+        .cd-color-chip { background: var(--bg-primary); border: 2px solid transparent; border-radius: 6px; padding: 4px; cursor: pointer; text-align: center; transition: border-color 0.15s; }
+        .cd-color-chip:hover { border-color: var(--accent); }
+        .cd-color-chip.selected { border-color: var(--accent); background: rgba(99,102,241,0.08); }
+        .cd-color-chip img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 4px; background: #f5f5f5; }
+        .cd-color-chip span { display: block; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cd-price { color: var(--accent); font-weight: 600; }
+
+        /* Garment Preview */
+        .cd-garment-preview-inner { text-align: center; }
+        .cd-garment-images { position: relative; }
+        .cd-garment-img { max-width: 100%; max-height: 300px; border-radius: 8px; display: none; }
+        .cd-garment-img.active { display: inline-block; }
+        .cd-garment-toggle { display: flex; justify-content: center; gap: 6px; margin: 8px 0; }
+        .cd-toggle-btn { padding: 4px 14px; border: 1px solid var(--border); border-radius: 20px; background: none; color: var(--text-secondary); cursor: pointer; font-size: 0.8rem; }
+        .cd-toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .cd-garment-info { font-size: 0.85rem; }
+        .cd-garment-info strong { display: block; }
+        .cd-garment-info span { display: block; color: var(--muted); }
+        .cd-brand { font-size: 0.75rem; }
+
+        /* Design Grid */
+        .cd-design-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; max-height: 300px; overflow-y: auto; }
+        .cd-design-card { background: var(--bg-primary); border: 2px solid transparent; border-radius: 6px; padding: 3px; cursor: pointer; transition: border-color 0.15s; }
+        .cd-design-card:hover { border-color: var(--accent); }
+        .cd-design-card.selected { border-color: var(--accent); background: rgba(99,102,241,0.08); }
+        .cd-design-card img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 4px; background: #111; }
+        .cd-design-card-name { font-size: 0.65rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 0 0; }
+
+        /* Design Preview */
+        .cd-design-preview-box { text-align: center; padding: 10px; }
+        .cd-design-preview-box img { max-width: 100%; max-height: 200px; border-radius: 8px; background: #111; }
+        .cd-design-preview-name { font-weight: 600; margin-top: 6px; }
+        .cd-design-preview-cat { font-size: 0.8rem; color: var(--muted); }
+
+        /* Placement Controls */
+        .cd-controls-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+        .cd-controls-row label { font-size: 0.8rem; color: var(--muted); }
+        .cd-controls-row select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.8rem; }
+        .cd-action-btn { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+        .cd-action-btn.primary { background: var(--accent); color: #fff; }
+        .cd-action-btn.primary:hover { opacity: 0.9; }
+        .cd-action-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .cd-action-btn.success { background: var(--success); color: #fff; }
+        .cd-action-btn.success:hover { opacity: 0.9; }
+        .cd-action-btn.secondary { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); }
+
+        /* Mockup Preview */
+        .cd-mockup-area { min-height: 120px; }
+        .cd-mockup-result { text-align: center; margin: 8px 0; }
+        .cd-mockup-result img { max-width: 100%; max-height: 400px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); }
+        .cd-mockup-label { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+
+        /* Pairings */
+        .cd-pairings-panel { margin-top: 16px; }
+        .cd-pairing-card { display: flex; align-items: center; gap: 10px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin-bottom: 6px; }
+        .cd-pairing-mockup { width: 70px; height: 70px; flex-shrink: 0; }
+        .cd-pairing-mockup img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+        .cd-pairing-info { flex: 1; min-width: 0; }
+        .cd-pairing-info strong { display: block; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cd-pairing-info span { display: block; font-size: 0.75rem; color: var(--muted); }
+        .cd-pairing-meta { font-size: 0.7rem !important; text-transform: uppercase; }
+        .cd-remove-btn { background: none; border: none; color: var(--danger, #ef4444); font-size: 1.2rem; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+        .cd-remove-btn:hover { background: rgba(239,68,68,0.1); }
+
+        /* Campaign Config */
+        .cd-config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .cd-config-field { display: flex; flex-direction: column; gap: 2px; }
+        .cd-config-field label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; }
+        .cd-config-field input, .cd-config-field select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font-size: 0.85rem; }
+
+        /* Copy Preview */
+        .cd-copy-section { margin-bottom: 10px; }
+        .cd-copy-section h4 { margin: 0 0 2px 0; font-size: 0.8rem; color: var(--accent); text-transform: uppercase; }
+        .cd-copy-text { margin: 0; padding: 6px 10px; background: var(--bg-primary); border-radius: 6px; font-size: 0.85rem; line-height: 1.4; }
+        .cd-mono { font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; }
+        .cd-copy-shopify { padding: 8px 10px; background: var(--bg-primary); border-radius: 6px; font-size: 0.82rem; line-height: 1.5; }
+        .cd-copy-shopify ul { margin: 4px 0; padding-left: 20px; }
+
+        /* Launch Status */
+        .cd-success { padding: 12px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); border-radius: 8px; }
+        .cd-success h3 { margin: 0 0 8px 0; color: var(--success); }
+        .cd-launch-mockups { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+        .cd-launch-mockup-thumb { text-align: center; }
+        .cd-launch-mockup-thumb img { width: 120px; height: 150px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid var(--border); }
+        .cd-launch-mockup-thumb span { display: block; font-size: 0.7rem; color: var(--muted); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cd-launch-copy { margin-top: 12px; padding: 10px; background: var(--bg-primary); border-radius: 6px; }
+        .cd-launch-copy h4 { margin: 0 0 6px 0; }
+        .cd-launch-copy p { margin: 2px 0; font-size: 0.85rem; }
+
+        /* Utilities */
+        .cd-loading { text-align: center; padding: 20px; color: var(--muted); font-size: 0.85rem; }
+        .cd-empty { text-align: center; padding: 20px; color: var(--muted); font-size: 0.85rem; }
+        .cd-error { text-align: center; padding: 12px; color: var(--danger, #ef4444); font-size: 0.85rem; }
+        .cd-preview-placeholder { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 0.85rem; }
+        .cd-divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+      </style>
+
+      <div class="view-toolbar">
+        <h2 style="margin:0;">Curated Drops</h2>
+        <div class="cd-subtitle">Create limited-run premium apparel campaigns with S&S Activewear products</div>
+      </div>
+
+      <div class="cd-layout">
+        <!-- LEFT COLUMN: Garment Selection -->
+        <div>
+          <div class="cd-panel">
+            <h3>1. Select Garment <span class="cd-badge">S&S Activewear</span></h3>
+            <div class="cd-search-row">
+              <input type="text" id="cd-ssaw-search" placeholder="Search S&S catalog (e.g. heavyweight hoodie, bomber jacket, flannel)">
+              <button id="cd-ssaw-search-btn">Search</button>
+            </div>
+            <div id="cd-ssaw-results" class="cd-ssaw-grid">
+              <div class="cd-empty">Search the S&S Activewear catalog to find premium garments.</div>
+            </div>
+          </div>
+
+          <div class="cd-panel" style="margin-top:12px;">
+            <h3>2. Pick Color</h3>
+            <div id="cd-color-picker" class="cd-color-grid">
+              <div class="cd-empty">Select a garment above to see available colors.</div>
+            </div>
+          </div>
+
+          <div class="cd-panel" style="margin-top:12px;">
+            <h3>Garment Preview</h3>
+            <div id="cd-garment-preview">
+              <div class="cd-preview-placeholder">Select a garment and color to preview</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Design Selection + Controls -->
+        <div>
+          <div class="cd-panel">
+            <h3>3. Choose Design</h3>
+            <div class="cd-search-row">
+              <input type="text" id="cd-design-search" placeholder="Search designs...">
+              <select id="cd-design-category">
+                <option value="">All Categories</option>
+              </select>
+            </div>
+            <div id="cd-design-results" class="cd-design-grid">
+              <div class="cd-empty">Search or select a category to browse designs.</div>
+            </div>
+            <div id="cd-design-preview" class="cd-design-preview-box"></div>
+          </div>
+
+          <div class="cd-panel" style="margin-top:12px;">
+            <h3>4. Placement &amp; Preview</h3>
+            <div class="cd-controls-row">
+              <label>Zone:</label>
+              <select id="cd-zone">
+                <option value="front-chest">Front Chest</option>
+                <option value="back">Back</option>
+                <option value="left-sleeve">Left Sleeve</option>
+                <option value="right-sleeve">Right Sleeve</option>
+              </select>
+              <label>Size:</label>
+              <select id="cd-size">
+                <option value="large">Large</option>
+                <option value="full">Full</option>
+                <option value="medium">Medium</option>
+                <option value="small">Small</option>
+                <option value="auto">Auto</option>
+              </select>
+              <button id="cd-preview-btn" class="cd-action-btn primary">Preview Mockup</button>
+              <button id="cd-add-pairing-btn" class="cd-action-btn success">+ Add Pairing</button>
+            </div>
+            <div id="cd-mockup-preview" class="cd-mockup-area">
+              <div class="cd-preview-placeholder">Generate a preview to see how your design looks on the garment.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAIRINGS + CAMPAIGN CONFIG -->
+      <div class="cd-layout" style="margin-top:16px;">
+        <div>
+          <div class="cd-panel cd-pairings-panel">
+            <h3>Drop Pairings <span class="cd-badge" id="cd-pairings-count">0</span></h3>
+            <div id="cd-pairings-list">
+              <div class="cd-empty">No pairings yet. Select a garment + design and click "Add Pairing".</div>
+            </div>
+          </div>
+
+          <div class="cd-panel" style="margin-top:12px;">
+            <h3>Campaign Settings</h3>
+            <div class="cd-config-grid">
+              <div class="cd-config-field">
+                <label>Drop Name</label>
+                <input type="text" id="cd-drop-name" placeholder="e.g. Pinup Collection Vol. 1" value="">
+              </div>
+              <div class="cd-config-field">
+                <label>Theme</label>
+                <select id="cd-theme">
+                  <option value="default">General</option>
+                  <option value="moto-garage">Moto / Garage</option>
+                  <option value="retro-vintage">Retro / Vintage</option>
+                  <option value="edgy-urban">Edgy / Urban</option>
+                  <option value="outdoor-adventure">Outdoor / Adventure</option>
+                  <option value="faith-inspirational">Faith / Inspirational</option>
+                </select>
+              </div>
+              <div class="cd-config-field">
+                <label>Quantity (per item)</label>
+                <input type="number" id="cd-quantity" value="25" min="1" max="500">
+              </div>
+              <div class="cd-config-field">
+                <label>Drop Duration</label>
+                <select id="cd-duration">
+                  <option value="24 hours">24 Hours</option>
+                  <option value="48 hours" selected>48 Hours</option>
+                  <option value="72 hours">72 Hours</option>
+                  <option value="1 week">1 Week</option>
+                  <option value="2 weeks">2 Weeks</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px;">
+              <button id="cd-preview-copy-btn" class="cd-action-btn secondary">Preview Marketing Copy</button>
+              <button id="cd-launch-btn" class="cd-action-btn primary" style="background:linear-gradient(135deg,#f59e0b,#ef4444);flex:1;">Launch Drop</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="cd-panel">
+            <h3>Marketing Copy Preview</h3>
+            <div id="cd-copy-preview">
+              <div class="cd-empty">Click "Preview Marketing Copy" to generate ad copy for this drop.</div>
+            </div>
+          </div>
+          <div class="cd-panel" style="margin-top:12px;">
+            <h3>Launch Status</h3>
+            <div id="cd-launch-status">
+              <div class="cd-empty">Configure your drop and click "Launch Drop" to generate all assets.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Fabric.js for Visual Layout Editor -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <!-- QR Code library -->
@@ -8881,6 +9155,8 @@
     <script src="./room-groups-view.js"></script>
     <!-- Decal Maker -->
     <script src="./decal-maker-view.js"></script>
+    <!-- Curated Drops -->
+    <script src="./curated-drops-view.js"></script>
     <script type="module" src="./index.js"></script>
   </body>
 </html>
