@@ -358,9 +358,10 @@ function injectDecalMakerStyles() {
 .dm-search-input::placeholder { color:#555; }
 
 .dm-icon-grid {
-  flex:1; overflow-y:auto; display:grid;
+  overflow-y:auto; display:grid;
   grid-template-columns:repeat(auto-fill,minmax(72px,1fr));
-  gap:6px; padding:4px 0; min-height:100px;
+  gap:6px; padding:4px 0;
+  max-height:252px; min-height:80px;
 }
 .dm-icon-thumb {
   aspect-ratio:1; border:1px solid #2a2a4a; border-radius:6px;
