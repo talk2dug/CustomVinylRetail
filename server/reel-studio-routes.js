@@ -213,12 +213,22 @@ function handleReelStudioRoute(pathname, req, res) {
     if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
       return sendError(res, 400, 'Invalid filename');
     }
-    // Try apparel pipeline dir first, then metal-print pipeline dir
+    // Try apparel pipeline dir first, then metal-print pipeline dir (including subdirs)
     let filePath = path.join(PIPELINE_OUTPUT_DIR, filename);
     if (!filePath.startsWith(PIPELINE_OUTPUT_DIR) || !fs.existsSync(filePath)) {
       filePath = path.join(METAL_PRINT_PIPELINE_DIR, filename);
       if (!filePath.startsWith(METAL_PRINT_PIPELINE_DIR) || !fs.existsSync(filePath)) {
-        return sendError(res, 404, 'Mockup not found');
+        // Search subdirectories of metal-print pipeline dir
+        filePath = null;
+        try {
+          const subdirs = fs.readdirSync(METAL_PRINT_PIPELINE_DIR, { withFileTypes: true })
+            .filter(d => d.isDirectory()).map(d => d.name);
+          for (const sub of subdirs) {
+            const candidate = path.join(METAL_PRINT_PIPELINE_DIR, sub, filename);
+            if (fs.existsSync(candidate)) { filePath = candidate; break; }
+          }
+        } catch (_) {}
+        if (!filePath) return sendError(res, 404, 'Mockup not found');
       }
     }
     const ext = path.extname(filename).toLowerCase();
@@ -254,7 +264,15 @@ function handleReelStudioRoute(pathname, req, res) {
         for (const [theme, items] of Object.entries(themeGroups)) {
           const themeItems = items.map(item => {
             let mockupFile = null;
-            if (mockupDir && fs.existsSync(mockupDir) && item.designId) {
+            // First try mockupFiles array from theme_groups (metal-print pipeline stores these)
+            if (item.mockupFiles && item.mockupFiles.length && mockupDir) {
+              const candidate = item.mockupFiles.find(f =>
+                fs.existsSync(path.join(mockupDir, f))
+              );
+              if (candidate) mockupFile = candidate;
+            }
+            // Fallback: scan directory for files matching designId
+            if (!mockupFile && mockupDir && fs.existsSync(mockupDir) && item.designId) {
               const files = fs.readdirSync(mockupDir).filter(f =>
                 f.includes(item.designId) && /\.(png|jpg|jpeg|webp)$/i.test(f)
               );
