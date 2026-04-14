@@ -1265,12 +1265,49 @@ function addDecalIcon(design) {
 // ---------------------------------------------------------------------------
 // SAVE / LOAD / EXPORT
 // ---------------------------------------------------------------------------
+function showDecalNameModal(defaultName) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'dm-modal-overlay';
+    overlay.innerHTML = `
+      <div class="dm-modal" style="max-width:400px;">
+        <h3 style="margin:0 0 12px;">Project Name</h3>
+        <input type="text" id="dmNameInput" value="${defaultName || ''}"
+          style="width:100%;padding:10px;border:1px solid #2a2a4a;border-radius:6px;background:#1a1a2e;color:#eee;font-size:14px;box-sizing:border-box;margin-bottom:16px;"
+          autofocus />
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button id="dmNameCancel" class="dm-tb-action dm-tb-load">Cancel</button>
+          <button id="dmNameOk" class="dm-tb-action dm-tb-save">Save</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const input = overlay.querySelector('#dmNameInput');
+    input.focus();
+    input.select();
+
+    const finish = (val) => { overlay.remove(); resolve(val); };
+
+    overlay.querySelector('#dmNameOk').onclick = () => finish(input.value.trim() || null);
+    overlay.querySelector('#dmNameCancel').onclick = () => finish(null);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(null); });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') finish(input.value.trim() || null);
+      if (e.key === 'Escape') finish(null);
+    });
+  });
+}
+
 async function saveDecalProject() {
   const canvas = dmState.canvas;
   if (!canvas) return;
 
-  const name = dmState.currentProjectName || prompt('Project name:', 'Decal ' + new Date().toLocaleDateString());
-  if (!name) return;
+  let name = dmState.currentProjectName;
+  if (!name) {
+    name = await showDecalNameModal('Decal ' + new Date().toLocaleDateString());
+    if (!name) return;
+  }
 
   const category = document.getElementById('dmSaveCategory')?.value || 'BRCC Created';
   const colorCount = parseInt(document.getElementById('dmColorCount')?.textContent) || 1;
