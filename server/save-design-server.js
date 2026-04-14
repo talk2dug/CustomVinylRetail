@@ -3031,6 +3031,57 @@ function resolveCustomerProfile(token) {
  * @param {Object} res - HTTP response
  * @param {string} catalogType - 'apparel' or 'decal-icons'
  */
+function serveDecalCatalogWithSaved(req, res) {
+  const catalogPath = path.join(WEB_DIR, 'catalog-decal-icons.json');
+  try {
+    const catalogJSON = fs.readFileSync(catalogPath, 'utf8');
+    const catalog = JSON.parse(catalogJSON);
+
+    // Load saved decal projects from DB
+    const savedProjects = db.listDecalProjects({ limit: 500 });
+    if (savedProjects && savedProjects.length > 0) {
+      // Group by category
+      const groups = {};
+      for (const p of savedProjects) {
+        const cat = p.category || 'BRCC Created';
+        if (!groups[cat]) groups[cat] = [];
+
+        const serverBase = (req.headers['x-forwarded-proto'] || 'https') + '://' + (req.headers.host || 'blueridgecustomco.com');
+        let imageUrl = p.preview_png || '';
+        if (imageUrl.startsWith('/api/')) imageUrl = serverBase + imageUrl;
+
+        groups[cat].push({
+          id: p.id,
+          name: p.name,
+          image: imageUrl,
+          sources: {},
+          autoDescription: `${p.canvas_width_inches || '?'}" x ${p.canvas_height_inches || '?'}" | ${p.color_count || 1} color(s)`,
+          _isProject: true,
+          _projectId: p.id,
+        });
+      }
+
+      // Prepend saved categories to the catalog
+      for (const [catName, designs] of Object.entries(groups)) {
+        const slug = catName.toLowerCase().replace(/\s+/g, '-');
+        // Check if category already exists
+        const existing = catalog.categories.find(c => c.name === catName || c.slug === slug);
+        if (existing) {
+          existing.designs = [...designs, ...existing.designs];
+        } else {
+          catalog.categories.unshift({ name: catName, slug, designs });
+        }
+      }
+    }
+
+    sendJson(res, 200, catalog);
+  } catch (err) {
+    console.error('[DecalCatalog] Error serving catalog with saved:', err);
+    // Fallback to normal catalog
+    serveCatalogResponse(req, res, 'decal-icons');
+  }
+}
+
 function serveCatalogResponse(req, res, catalogType = 'apparel') {
   const catalogFile = catalogType === 'decal-icons' ? 'catalog-decal-icons.json' : 'catalog.json';
   const catalogPath = path.join(WEB_DIR, catalogFile);
@@ -7812,6 +7863,12 @@ Keep it concise and actionable.`;
   }
 
   if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname === '/api/catalog/decal-icons') {
+    // Check if caller wants saved projects injected
+    const injectSaved = parsedUrl.searchParams?.get('includeSaved') === '1';
+    if (injectSaved) {
+      serveDecalCatalogWithSaved(req, res);
+      return;
+    }
     serveCatalogResponse(req, res, 'decal-icons');
     return;
   }

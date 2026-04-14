@@ -4,7 +4,12 @@
  */
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { parseBody, sendJson, sendError } = require('./utils/http');
+
+const DECAL_PREVIEWS_DIR = path.join('/mnt/websit', 'decal-previews');
+if (!fs.existsSync(DECAL_PREVIEWS_DIR)) fs.mkdirSync(DECAL_PREVIEWS_DIR, { recursive: true });
 
 const PRICING = {
   basePrice: { 3: 350, 4: 375, 6: 425, 8: 550, 10: 700, 12: 850 }, // cents
@@ -59,13 +64,30 @@ function handleDecalMakerRoute(pathname, method, req, res, db) {
       if (!body.canvas_json && !body.canvasJson) return sendError(res, 400, 'canvas_json is required');
 
       const id = `decal_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+      // Save preview PNG to disk so it can be served via /api/library/
+      let previewUrl = null;
+      const previewData = body.preview_png || body.previewPng;
+      if (previewData && previewData.startsWith('data:image/')) {
+        try {
+          const base64 = previewData.replace(/^data:image\/\w+;base64,/, '');
+          const previewFilename = `${id}.png`;
+          const previewPath = path.join(DECAL_PREVIEWS_DIR, previewFilename);
+          fs.writeFileSync(previewPath, Buffer.from(base64, 'base64'));
+          previewUrl = `/api/library/decal-previews/${previewFilename}`;
+          console.log(`[DecalMaker] Preview saved: ${previewPath}`);
+        } catch (e) {
+          console.warn('[DecalMaker] Failed to save preview:', e.message);
+        }
+      }
+
       const project = db.insertDecalProject({
         id,
         name: body.name,
         canvas_json: body.canvas_json || body.canvasJson,
         canvas_width_inches: body.canvas_width_inches ?? body.canvasWidthInches,
         canvas_height_inches: body.canvas_height_inches ?? body.canvasHeightInches,
-        preview_png: body.preview_png || body.previewPng,
+        preview_png: previewUrl || previewData,
         category: body.category,
         color_count: body.color_count ?? body.colorCount,
         colors_used: body.colors_used || body.colorsUsed,

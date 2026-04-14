@@ -5847,8 +5847,8 @@ Return ONLY valid JSON, nothing else:
   );
 
   ipcMain.handle('decal-maker:catalog', async () => {
-    // Fetch the decal icons catalog - can be large, cache it
-    return httpRequest('/api/catalog/decal-icons', { method: 'GET', timeout: 30000 });
+    // Fetch the decal icons catalog with saved projects injected
+    return httpRequest('/api/catalog/decal-icons', { method: 'GET', query: { includeSaved: '1' }, timeout: 30000 });
   });
 
   // Google Drive Sync handlers

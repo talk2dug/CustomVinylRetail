@@ -54,8 +54,8 @@
     ],
     "googleTrendsGeo": "US"
   },
-  "lastScanAt": "2026-04-14T00:02:34.670Z",
-  "scanCount": 192,
+  "lastScanAt": "2026-04-14T00:36:45.990Z",
+  "scanCount": 194,
   "trends": [
     {
       "id": "reddit_1riex53",
@@ -39774,6 +39774,426 @@
       "status": "new",
       "discoveredAt": "2026-04-14T00:02:33.594Z",
       "expiresAt": "2026-04-21T00:02:33.594Z"
+    },
+    {
+      "id": "reddit_1sknt54",
+      "source": "reddit",
+      "sourceId": "1sknt54",
+      "title": "you shouldn't have been bitin' my horsey, boy.",
+      "snippet": "      &#32; submitted by &#32;  /u/Few-Performer-5509  &#32; to &#32;  r/interestingasfuck   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/interestingasfuck/comments/1sknt54/you_shouldnt_have_been_bitin_my_horsey_boy/",
+      "subreddit": "interestingasfuck",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776113831,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": "genx|millennial",
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Funny phrase can be used as a humorous t-shirt design with a playful illustration.",
+        "suggestedPhrases": [
+          "Don't mess with my horse"
+        ],
+        "suggestedVisuals": [
+          "illustration of a horse and rider"
+        ],
+        "targetAudience": "genx|millennial",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:10:13.777Z",
+      "expiresAt": "2026-04-21T00:10:13.777Z"
+    },
+    {
+      "id": "reddit_1skq5jr",
+      "source": "reddit",
+      "sourceId": "1skq5jr",
+      "title": "These Robots Are Drunk!",
+      "snippet": "      &#32; submitted by &#32;  /u/13Derek71  &#32; to &#32;  r/mildlyinfuriating   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/mildlyinfuriating/comments/1skq5jr/these_robots_are_drunk/",
+      "subreddit": "mildlyinfuriating",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776119098,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": "genx|millennial|genz",
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Funny image can be used as a humorous t-shirt design with a witty caption.",
+        "suggestedPhrases": [
+          "Robot party animal"
+        ],
+        "suggestedVisuals": [
+          "image of the post"
+        ],
+        "targetAudience": "genx|millennial|genz",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:10:13.777Z",
+      "expiresAt": "2026-04-21T00:10:13.777Z"
+    },
+    {
+      "id": "reddit_1skih43",
+      "source": "reddit",
+      "sourceId": "1skih43",
+      "title": "My cat gave birth to one baby boy",
+      "snippet": "      &#32; submitted by &#32;  /u/purplepurposed  &#32; to &#32;  r/aww   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/aww/comments/1skih43/my_cat_gave_birth_to_one_baby_boy/",
+      "subreddit": "aww",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776102833,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Funny post can be used as a humorous t-shirt design with a playful illustration.",
+        "suggestedPhrases": [
+          "Feline fatherhood"
+        ],
+        "suggestedVisuals": [
+          "illustration of cat and baby"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:10:13.777Z",
+      "expiresAt": "2026-04-21T00:10:13.777Z"
+    },
+    {
+      "id": "reddit_1skjqj8",
+      "source": "reddit",
+      "sourceId": "1skjqj8",
+      "title": "Took me long enough, I see clearly now",
+      "snippet": "      &#32; submitted by &#32;  /u/Nerd367C  &#32; to &#32;  r/whenthe   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/whenthe/comments/1skjqj8/took_me_long_enough_i_see_clearly_now/",
+      "subreddit": "whenthe",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776105418,
+      "score": 80,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": 90,
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The phrase is relatable and humorous, making it a great fit for a t-shirt.",
+        "suggestedPhrases": [
+          "I see clearly now",
+          "Took me long enough"
+        ],
+        "suggestedVisuals": [
+          "a humorous illustration of someone finally understanding something"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:11:25.312Z",
+      "expiresAt": "2026-04-21T00:11:25.312Z"
+    },
+    {
+      "id": "reddit_1skbtwj",
+      "source": "reddit",
+      "sourceId": "1skbtwj",
+      "title": "Average day in expedition 33 😔",
+      "snippet": "      &#32; submitted by &#32;  /u/Flashy-Island-3725   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skbtwj/average_day_in_expedition_33/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776089112,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": "genz|millennial",
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This trend has a high potential for humor and can be applied to various audiences.",
+        "suggestedPhrases": [
+          "Average day in expedition 33"
+        ],
+        "suggestedVisuals": [
+          "a person in an office or doing mundane tasks with a sad face"
+        ],
+        "targetAudience": "genz|millennial",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:12:16.391Z",
+      "expiresAt": "2026-04-21T00:12:16.391Z"
+    },
+    {
+      "id": "reddit_1skm2wx",
+      "source": "reddit",
+      "sourceId": "1skm2wx",
+      "title": "18-year-old sprinter Gout Gout just broke Usain Bolt’s U20 record in the 200m. He was 260 milliseconds faster, clocking 19.67 seconds, while Bolt ran 19.93 in 2004",
+      "snippet": "      &#32; submitted by &#32;  /u/RoyalChris  &#32; to &#32;  r/nextfuckinglevel   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/nextfuckinglevel/comments/1skm2wx/18yearold_sprinter_gout_gout_just_broke_usain/",
+      "subreddit": "nextfuckinglevel",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776110263,
+      "score": 72,
+      "scoreBreakdown": {
+        "virality": 75,
+        "humorPotential": 88,
+        "apparelRelevance": 60,
+        "audienceMatch": 70,
+        "timeliness": 55
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Humorous, ironic potential for t-shirt designs with phrases like 'I'm not slow, I'm just conserving energy'.",
+        "suggestedPhrases": [
+          "I'm not slow, I'm just conserving energy"
+        ],
+        "suggestedVisuals": [
+          "funny, cartoonish depictions of running or sprinting"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:35:08.206Z",
+      "expiresAt": "2026-04-21T00:35:08.206Z"
+    },
+    {
+      "id": "reddit_1skp3fq",
+      "source": "reddit",
+      "sourceId": "1skp3fq",
+      "title": "New poll pegs Mark Kelly as a leading 2028 presidential contender",
+      "snippet": "      &#32; submitted by &#32;  /u/Ulysses_555  &#32; to &#32;  r/politics   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/politics/comments/1skp3fq/new_poll_pegs_mark_kelly_as_a_leading_2028/",
+      "subreddit": "politics",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776116642,
+      "score": 72,
+      "scoreBreakdown": {
+        "virality": 75,
+        "humorPotential": 88,
+        "apparelRelevance": 60,
+        "audienceMatch": 70,
+        "timeliness": 55
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Humorous, ironic potential for t-shirt designs with phrases like 'I'm not running for president, I'm just trying to survive'.",
+        "suggestedPhrases": [
+          "I'm not running for president, I'm just trying to survive"
+        ],
+        "suggestedVisuals": [
+          "funny, cartoonish depictions of politics or elections"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:35:08.206Z",
+      "expiresAt": "2026-04-21T00:35:08.206Z"
+    },
+    {
+      "id": "reddit_1sk70i6",
+      "source": "reddit",
+      "sourceId": "1sk70i6",
+      "title": "I mean really ???",
+      "snippet": "      &#32; submitted by &#32;  /u/Ancelly   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1sk70i6/i_mean_really/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776076673,
+      "score": 75,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": 90,
+        "timeliness": 85
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A comical and relatable expression, perfect for a humorous t-shirt design.",
+        "suggestedPhrases": [
+          "I mean really",
+          "Really ???"
+        ],
+        "suggestedVisuals": [
+          "a cartoon character with a shocked expression"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "deadpan",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:36:02.634Z",
+      "expiresAt": "2026-04-21T00:36:02.634Z"
+    },
+    {
+      "id": "reddit_1skp2zc",
+      "source": "reddit",
+      "sourceId": "1skp2zc",
+      "title": "This separated the strong from the weak as a kid",
+      "snippet": "      &#32; submitted by &#32;  /u/Huge_Drink_6254   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skp2zc/this_separated_the_strong_from_the_weak_as_a_kid/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776116613,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The nostalgic and humorous take on childhood challenges could appeal to those who grew up in the 90s or early 2000s.",
+        "suggestedPhrases": [
+          "separated the strong from the weak"
+        ],
+        "suggestedVisuals": [
+          "a comic book-style illustration of a kid playing a game"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "nostalgic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:36:44.796Z",
+      "expiresAt": "2026-04-21T00:36:44.796Z"
+    },
+    {
+      "id": "reddit_1sksmm7",
+      "source": "reddit",
+      "sourceId": "1sksmm7",
+      "title": "Dad… what was mom like ?",
+      "snippet": "      &#32; submitted by &#32;  /u/SIMSIM1M   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1sksmm7/dad_what_was_mom_like/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776125247,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The relatable question and potential for humorous responses could appeal to those who grew up in the 90s or early 2000s.",
+        "suggestedPhrases": [
+          "Dad what was mom like"
+        ],
+        "suggestedVisuals": [
+          "a comic book-style illustration of a kid asking their dad about their mom, with speech bubbles and expressions"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "nostalgic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:36:44.796Z",
+      "expiresAt": "2026-04-21T00:36:44.796Z"
+    },
+    {
+      "id": "reddit_1skm4jg",
+      "source": "reddit",
+      "sourceId": "1skm4jg",
+      "title": "Gift wrapped amazon gift card my son received from his classmate",
+      "snippet": "      &#32; submitted by &#32;  /u/cubic_zirconia_hands   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1skm4jg/gift_wrapped_amazon_gift_card_my_son_received/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776110359,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": "genx|millennial|all",
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The absurdity and relatability of the situation could appeal to those who have experienced similar situations.",
+        "suggestedPhrases": [
+          "gift wrapped amazon gift card"
+        ],
+        "suggestedVisuals": [
+          "a cartoon character holding a gift-wrapped Amazon gift card, looking confused or amused"
+        ],
+        "targetAudience": "genx|millennial|all",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T00:36:44.796Z",
+      "expiresAt": "2026-04-21T00:36:44.796Z"
     }
   ],
   "designs": [
@@ -43530,8 +43950,8 @@
     }
   ],
   "stats": {
-    "totalScans": 192,
-    "totalTrendsFound": 1038,
+    "totalScans": 194,
+    "totalTrendsFound": 1049,
     "totalDesignsGenerated": 197,
     "totalApproved": 8,
     "totalListed": 8,

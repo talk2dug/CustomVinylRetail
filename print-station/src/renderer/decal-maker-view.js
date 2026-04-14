@@ -1344,6 +1344,8 @@ async function saveDecalProject() {
       if (typeof showToast === 'function') showToast('Project saved!', 'success');
     }
     dmState.currentProjectName = name;
+    // Reload catalog so new decal appears in icon browser
+    loadDecalCatalog();
   } catch (err) {
     console.error('[DecalMaker] Save failed:', err);
     if (typeof showToast === 'function') showToast('Save failed: ' + err.message, 'error');
