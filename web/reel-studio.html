@@ -753,18 +753,21 @@
         <h3>Template</h3>
         <div class="template-cards" id="template-cards"></div>
 
-        <h3>Text / Copy</h3>
+        <h3 style="cursor:pointer; user-select:none;" onclick="document.getElementById('copy-fields').style.display = document.getElementById('copy-fields').style.display === 'none' ? '' : 'none'; this.querySelector('span').textContent = document.getElementById('copy-fields').style.display === 'none' ? '▸' : '▾'">
+          <span>▸</span> Text / Copy <span style="font-size:11px;font-weight:400;color:var(--muted)">(optional)</span>
+        </h3>
+        <div id="copy-fields" style="display:none;">
         <button class="btn btn-secondary" id="generate-copy-btn" style="margin: 0 0 12px; padding: 10px;">
           ✨ Auto-write copy with Ollama
         </button>
         <div id="copy-status" style="display:none; margin-bottom: 10px; padding: 8px; border-radius: 6px; font-size: 11px;"></div>
         <div class="field">
           <label>Hook / Title</label>
-          <input type="text" id="field-hookText" value="Check out our latest drops">
+          <input type="text" id="field-hookText" placeholder="e.g. Check out our latest drops">
         </div>
         <div class="field">
           <label>Subtitle / Tagline</label>
-          <input type="text" id="field-subtitle" value="Made in Asheville, NC">
+          <input type="text" id="field-subtitle" placeholder="e.g. Made in Asheville, NC">
         </div>
         <div class="field" id="why-metal-wrap" style="display:none;">
           <label>Why Metal (one line)</label>
@@ -779,6 +782,7 @@ Made to live in the light.</textarea>
           <label>Hashtags (5 max — TikTok rule) <span class="val" id="hashtag-count">0/5</span></label>
           <textarea id="field-hashtags" rows="2" placeholder="#BlueRidgeCustomCo #AshevilleNC ..."></textarea>
         </div>
+        </div><!-- /copy-fields -->
 
         <h3>Colors</h3>
         <div class="color-row">
@@ -1599,7 +1603,7 @@ Made to live in the light.</textarea>
       const remainingMockups = mockupImgs.slice(1);
 
       return {
-        hook,
+        hook: hookText,
         processIntro: 'Watch it come to life',
         artExplainer: document.getElementById('field-artExplainer')?.value || 'Every detail pressed into metal.\nMade to live in the light.',
         whyMetal: document.getElementById('field-whyMetal')?.value || 'Museum-grade metal catches light and color that paper cannot.',
