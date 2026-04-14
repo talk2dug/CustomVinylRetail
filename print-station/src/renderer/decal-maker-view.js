@@ -185,6 +185,10 @@ function buildDecalMakerHTML() {
             <input type="range" id="dmFontSizeSlider" min="12" max="200" value="48" class="dm-slider">
             <input type="number" id="dmFontSizeInput" value="48" min="12" max="200" class="dm-num-input dm-num-sm">
           </div>
+          <div class="dm-text-height-display" id="dmTextHeightDisplay">
+            <span class="dm-height-label">Letter Height:</span>
+            <span class="dm-height-value" id="dmTextHeightValue">0.50"</span>
+          </div>
           <div class="dm-text-toggles">
             <button id="dmBoldBtn" class="dm-toggle-btn" title="Bold"><b>B</b></button>
             <button id="dmItalicBtn" class="dm-toggle-btn" title="Italic"><i>I</i></button>
@@ -397,6 +401,14 @@ function injectDecalMakerStyles() {
 .dm-num-input { padding:3px 6px; border:1px solid #2a2a4a; border-radius:4px; background:#1a1a2e; color:#eee; font-size:11px; }
 .dm-num-sm { width:48px; text-align:center; }
 .dm-slider-val { font-size:11px; color:#888; min-width:28px; text-align:right; }
+
+.dm-text-height-display {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:6px 10px; background:linear-gradient(135deg,#1a2332,#162030);
+  border:1px solid #234; border-radius:6px;
+}
+.dm-height-label { font-size:10px; color:#6ee7b7; text-transform:uppercase; letter-spacing:0.5px; }
+.dm-height-value { font-size:16px; color:#34d399; font-weight:700; font-family:'Bebas Neue',sans-serif; letter-spacing:1px; }
 
 .dm-text-toggles { display:flex; gap:3px; align-items:center; }
 .dm-toggle-btn {
@@ -651,10 +663,12 @@ function initDecalEventHandlers() {
   document.getElementById('dmFontSizeSlider')?.addEventListener('input', (e) => {
     document.getElementById('dmFontSizeInput').value = e.target.value;
     applyDecalTextProp();
+    updateDecalTextHeight();
   });
   document.getElementById('dmFontSizeInput')?.addEventListener('change', (e) => {
     document.getElementById('dmFontSizeSlider').value = e.target.value;
     applyDecalTextProp();
+    updateDecalTextHeight();
   });
   document.getElementById('dmBoldBtn')?.addEventListener('click', () => toggleDecalTextToggle('dmBoldBtn'));
   document.getElementById('dmItalicBtn')?.addEventListener('click', () => toggleDecalTextToggle('dmItalicBtn'));
@@ -913,11 +927,35 @@ function applyDecalTextProp() {
     charSpacing: parseInt(document.getElementById('dmLetterSpacing')?.value) || 0,
   });
   dmState.canvas.renderAll();
+  updateDecalTextHeight();
 }
 
 function toggleDecalTextToggle(id) {
   document.getElementById(id)?.classList.toggle('active');
   applyDecalTextProp();
+}
+
+function updateDecalTextHeight() {
+  const el = document.getElementById('dmTextHeightValue');
+  if (!el) return;
+
+  const obj = dmState.canvas?.getActiveObject();
+  if (obj && obj.type === 'i-text') {
+    // Actual rendered height of the text (accounts for font, scale, etc.)
+    const heightPx = obj.fontSize * obj.scaleY;
+    const heightInches = heightPx / DM_DPI;
+    el.textContent = heightInches.toFixed(2) + '"';
+
+    // Also show total bounding box in the footer
+    const totalH = (obj.height * obj.scaleY) / DM_DPI;
+    const totalW = (obj.width * obj.scaleX) / DM_DPI;
+    const footer = document.getElementById('dmObjectInfo');
+    if (footer) footer.textContent = `Text: ${totalW.toFixed(2)}" wide \u00d7 ${totalH.toFixed(2)}" tall | Letter height: ${heightInches.toFixed(2)}"`;
+  } else {
+    el.textContent = '--';
+    const footer = document.getElementById('dmObjectInfo');
+    if (footer) footer.textContent = obj ? `${((obj.width * obj.scaleX) / DM_DPI).toFixed(2)}" \u00d7 ${((obj.height * obj.scaleY) / DM_DPI).toFixed(2)}"` : '';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1058,6 +1096,7 @@ function updateDecalPropertiesPanel() {
 
   content.innerHTML = html;
   updateDecalLayersList();
+  updateDecalTextHeight();
 }
 
 // Global prop setters (called from inline onchange)
