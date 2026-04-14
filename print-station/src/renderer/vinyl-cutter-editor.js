@@ -655,11 +655,15 @@ async function addItemToVinylCanvas(design) {
       centeredRotation: true
     });
 
+    // Resolve the best image path for vectorization
+    // Priority: explicit imagePath > image URL > thumbnail URL
+    const vectorizePath = design.imagePath || design.image || design.thumbnailUrl || imageUrl;
+
     // Store vinyl data
     fabricImg.vinylData = {
       id: design.id || Date.now(),
       title: design.title || design.name,
-      imagePath: design.imagePath,
+      imagePath: vectorizePath,
       thumbnailUrl: design.thumbnailUrl,
       imageUrl: imageUrl,
       originalWidth: img.width,
@@ -669,11 +673,11 @@ async function addItemToVinylCanvas(design) {
       colors: []
     };
 
-    // Vectorize and get per-color contours (if imagePath available)
-    if (design.imagePath) {
+    // Vectorize and get per-color contours
+    if (vectorizePath) {
       try {
-        console.log('[VinylCutter] Vectorizing with imagePath:', design.imagePath);
-        const vectorResult = await vectorizeVinylItem(design.imagePath);
+        console.log('[VinylCutter] Vectorizing with path:', vectorizePath);
+        const vectorResult = await vectorizeVinylItem(vectorizePath);
         console.log('[VinylCutter] Vectorization result:', vectorResult);
 
         if (vectorResult && vectorResult.success !== false && vectorResult.colors && vectorResult.colors.length > 0) {
