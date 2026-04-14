@@ -1229,9 +1229,34 @@ async function generateVinylCutFiles() {
   if (generateBtn) generateBtn.disabled = true;
 
   try {
+    // First, vectorize any items that don't have color data yet
+    for (const item of vinylCutterState.items) {
+      if ((!item.vinylData.colors || item.vinylData.colors.length === 0) && item.vinylData.imagePath) {
+        try {
+          updateVinylStatus(`Vectorizing ${item.vinylData.title || 'item'}...`);
+          const vectorResult = await vectorizeVinylItem(item.vinylData.imagePath);
+          if (vectorResult && vectorResult.colors && vectorResult.colors.length > 0) {
+            const sortedColors = [...vectorResult.colors].sort((a, b) => {
+              if (a.name === 'BLACK') return -1;
+              if (b.name === 'BLACK') return 1;
+              return (b.count || 0) - (a.count || 0);
+            });
+            item.vinylData.colors = sortedColors;
+            item.vinylData.width = vectorResult.width;
+            item.vinylData.height = vectorResult.height;
+            item.vinylData.enabledColors = sortedColors.map(c => c.hex);
+            console.log('[VinylCutter] Late vectorization got', sortedColors.length, 'colors');
+          }
+        } catch (err) {
+          console.warn('[VinylCutter] Late vectorization failed:', err.message);
+        }
+      }
+    }
+    updateVinylStatus('Generating cut files...');
+
     // Collect item data - merge disabled colors into BLACK
     const items = vinylCutterState.items.map(item => {
-      const enabledColors = item.vinylData.enabledColors || [item.vinylData.colors?.[0]?.hex];
+      const enabledColors = item.vinylData.enabledColors || (item.vinylData.colors?.length > 0 ? item.vinylData.colors.map(c => c.hex) : ['#000000']);
       const allColors = item.vinylData.colors || [];
 
       console.log('[VinylCutter] Enabled colors:', enabledColors);
@@ -1292,6 +1317,19 @@ async function generateVinylCutFiles() {
         // Convert contourPaths array back to contourPath string for backward compatibility
         blackColorEntry.contourPath = blackColorEntry.contourPaths.join(' ');
         mergedColors.unshift(blackColorEntry);
+      }
+
+      // If still no colors with paths, create a fallback rectangular contour
+      if (mergedColors.length === 0) {
+        const w = item.vinylData.originalWidth || item.width || 100;
+        const h = item.vinylData.originalHeight || item.height || 100;
+        const rectPath = `M 0 0 L ${w} 0 L ${w} ${h} L 0 ${h} Z`;
+        mergedColors.push({
+          hex: '#000000', name: 'BLACK',
+          contourPath: rectPath, contourPaths: [rectPath],
+          count: w * h, percentage: 100
+        });
+        console.log('[VinylCutter] No contour data — using rectangular fallback');
       }
 
       console.log('[VinylCutter] Final merged colors:', mergedColors.map(c => `${c.name || c.hex}: ${c.contourPaths?.length || 1} paths`));
