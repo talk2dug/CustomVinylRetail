@@ -54,8 +54,8 @@
     ],
     "googleTrendsGeo": "US"
   },
-  "lastScanAt": "2026-04-14T01:18:25.021Z",
-  "scanCount": 195,
+  "lastScanAt": "2026-04-14T09:30:34.816Z",
+  "scanCount": 198,
   "trends": [
     {
       "id": "reddit_1riex53",
@@ -40385,6 +40385,780 @@
       "status": "new",
       "discoveredAt": "2026-04-14T01:17:43.285Z",
       "expiresAt": "2026-04-21T01:17:43.285Z"
+    },
+    {
+      "id": "reddit_1skj4gn",
+      "source": "reddit",
+      "sourceId": "1skj4gn",
+      "title": "Im a big fan of Girls^2",
+      "snippet": "      &#32; submitted by &#32;  /u/NittanyScout   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skj4gn/im_a_big_fan_of_girls2/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776104141,
+      "score": 79,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": 85,
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Relatable humor about pop culture will resonate with GenZ and Millennials.",
+        "suggestedPhrases": [
+          "Girls^2 fan",
+          "Girls^2 enthusiast"
+        ],
+        "suggestedVisuals": [
+          "image of Girls^2 logo or characters"
+        ],
+        "targetAudience": "genz|millennial",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T01:30:31.785Z",
+      "expiresAt": "2026-04-21T01:30:31.785Z"
+    },
+    {
+      "id": "reddit_1sk6zg2",
+      "source": "reddit",
+      "sourceId": "1sk6zg2",
+      "title": "Man on business",
+      "snippet": "      &#32; submitted by &#32;  /u/pankhahu   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1sk6zg2/man_on_business/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776076581,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Playful jab at corporate culture, relatable to GenX and Millennials.",
+        "suggestedPhrases": [
+          "Man on business",
+          "Corporate struggles"
+        ],
+        "suggestedVisuals": [
+          "Image of a man in a suit with a briefcase"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T01:30:57.938Z",
+      "expiresAt": "2026-04-21T01:30:57.938Z"
+    },
+    {
+      "id": "reddit_1sktmek",
+      "source": "reddit",
+      "sourceId": "1sktmek",
+      "title": "AI could never come up with this",
+      "snippet": "      &#32; submitted by &#32;  /u/Optimal_Lifeguard575   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1sktmek/ai_could_never_come_up_with_this/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776127898,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 90,
+        "humorPotential": 95,
+        "apparelRelevance": 80,
+        "audienceMatch": "genz|millennial",
+        "timeliness": 70
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Absurd and humorous, will appeal to GenZ and Millennials.",
+        "suggestedPhrases": [
+          "AI could never come up with this"
+        ],
+        "suggestedVisuals": [
+          "Image of a ridiculous AI-generated content"
+        ],
+        "targetAudience": "genz|millennial",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T01:30:57.938Z",
+      "expiresAt": "2026-04-21T01:30:57.938Z"
+    },
+    {
+      "id": "reddit_1skupz0",
+      "source": "reddit",
+      "sourceId": "1skupz0",
+      "title": "Timelapse of kitten growing into a fully-grown cat",
+      "snippet": "      &#32; submitted by &#32;  /u/Abjectionova  &#32; to &#32;  r/interestingasfuck   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/interestingasfuck/comments/1skupz0/timelapse_of_kitten_growing_into_a_fullygrown_cat/",
+      "subreddit": "interestingasfuck",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776130772,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 90,
+        "humorPotential": 80,
+        "apparelRelevance": 100,
+        "audienceMatch": "genx|millennial|genz",
+        "timeliness": 100
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A funny and adorable timelapse can be humorously referenced on a t-shirt with a kitten or cat design.",
+        "suggestedPhrases": [
+          "Kitten to Cat in 10 Years"
+        ],
+        "suggestedVisuals": [
+          "illustration of kitten growing into cat"
+        ],
+        "targetAudience": "genx|millennial|genz",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T05:28:23.505Z",
+      "expiresAt": "2026-04-21T05:28:23.505Z"
+    },
+    {
+      "id": "reddit_1skuw7t",
+      "source": "reddit",
+      "sourceId": "1skuw7t",
+      "title": "Carney clinches majority government in Canadian special elections",
+      "snippet": "      &#32; submitted by &#32;  /u/ThunderChaser  &#32; to &#32;  r/worldnews   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/worldnews/comments/1skuw7t/carney_clinches_majority_government_in_canadian/",
+      "subreddit": "worldnews",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776131229,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 20,
+        "apparelRelevance": 80,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 90
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This news can be humorously referenced on a t-shirt with a Canadian flag or a funny spin.",
+        "suggestedPhrases": [
+          "Carney for Prime Minister"
+        ],
+        "suggestedVisuals": [
+          "illustration of Canadian flag or Carney's face"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T05:28:23.505Z",
+      "expiresAt": "2026-04-21T05:28:23.505Z"
+    },
+    {
+      "id": "reddit_1skwgoe",
+      "source": "reddit",
+      "sourceId": "1skwgoe",
+      "title": "TIL all 12 astronauts that have stepped on the Moon have experienced \"lunar hay fever\" due to the highly abrasive moon dust, which is said to smell like burnt gunpowder",
+      "snippet": "      &#32; submitted by &#32;  /u/Objects_Food_Rooms  &#32; to &#32;  r/todayilearned   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/todayilearned/comments/1skwgoe/til_all_12_astronauts_that_have_stepped_on_the/",
+      "subreddit": "todayilearned",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776135385,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 20,
+        "apparelRelevance": 90,
+        "audienceMatch": "genx|millennial",
+        "timeliness": 100
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Lunar hay fever is a funny and unexpected fact that can be humorously referenced on a t-shirt.",
+        "suggestedPhrases": [
+          "Lunar Hay Fever"
+        ],
+        "suggestedVisuals": [
+          "illustration of astronaut with dust mask or sneezing"
+        ],
+        "targetAudience": "genx|millennial",
+        "humorStyle": "deadpan",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T05:28:23.505Z",
+      "expiresAt": "2026-04-21T05:28:23.505Z"
+    },
+    {
+      "id": "reddit_1skwc4h",
+      "source": "reddit",
+      "sourceId": "1skwc4h",
+      "title": "The way it's going",
+      "snippet": "      &#32; submitted by &#32;  /u/tapthisbong  &#32; to &#32;  r/KitchenConfidential   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/KitchenConfidential/comments/1skwc4h/the_way_its_going/",
+      "subreddit": "KitchenConfidential",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776135041,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 90,
+        "audienceMatch": "genx|millennial|genz",
+        "timeliness": 100
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This phrase can be humorously used to express frustration or sarcasm on a t-shirt.",
+        "suggestedPhrases": [
+          "The way it's going"
+        ],
+        "suggestedVisuals": [
+          "illustration of person throwing hands up in the air"
+        ],
+        "targetAudience": "genx|millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T05:28:23.505Z",
+      "expiresAt": "2026-04-21T05:28:23.505Z"
+    },
+    {
+      "id": "reddit_1skvfpy",
+      "source": "reddit",
+      "sourceId": "1skvfpy",
+      "title": "Less chance of wardrobe malfunction",
+      "snippet": "      &#32; submitted by &#32;  /u/TheRealSteamedHams  &#32; to &#32;  r/memes   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skvfpy/less_chance_of_wardrobe_malfunction/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776132625,
+      "score": 72,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": 90,
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A lighthearted and relatable trend for a generation that's experienced wardrobe malfunctions.",
+        "suggestedPhrases": [
+          "Wardrobe Malfunction",
+          "Less Chance of"
+        ],
+        "suggestedVisuals": [
+          "Funny meme images of wardrobe malfunctions"
+        ],
+        "targetAudience": "millennial|genz|all",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T05:29:05.047Z",
+      "expiresAt": "2026-04-21T05:29:05.047Z"
+    },
+    {
+      "id": "reddit_1skz7k5",
+      "source": "reddit",
+      "sourceId": "1skz7k5",
+      "title": "You got this bro",
+      "snippet": "      &#32; submitted by &#32;  /u/AbleGuidance3625  &#32; to &#32;  r/memes   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skz7k5/you_got_this_bro/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776143495,
+      "score": 82,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": 100,
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A motivational phrase with a playful tone that can appeal to various age groups.",
+        "suggestedPhrases": [
+          "You got this!",
+          "Believe in yourself"
+        ],
+        "suggestedVisuals": [
+          "a cartoon character giving a thumbs up, a motivational quote background"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:28:28.923Z",
+      "expiresAt": "2026-04-21T09:28:28.923Z"
+    },
+    {
+      "id": "reddit_1sku9gc",
+      "source": "reddit",
+      "sourceId": "1sku9gc",
+      "title": "Congress is cooked",
+      "snippet": "      &#32; submitted by &#32;  /u/iYessyyy  &#32; to &#32;  r/SipsTea   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/SipsTea/comments/1sku9gc/congress_is_cooked/",
+      "subreddit": "SipsTea",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776129561,
+      "score": 73,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 80,
+        "apparelRelevance": 90,
+        "audienceMatch": 70,
+        "timeliness": 40
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A witty title that critiques politics and government, making it appealing to those interested in current events.",
+        "suggestedPhrases": [
+          "The system is broken",
+          "Politics as usual"
+        ],
+        "suggestedVisuals": [
+          "a cartoon of a politician being served food, a background with protest signs"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:28:28.923Z",
+      "expiresAt": "2026-04-21T09:28:28.923Z"
+    },
+    {
+      "id": "reddit_1skrqji",
+      "source": "reddit",
+      "sourceId": "1skrqji",
+      "title": "What do they get paid?",
+      "snippet": "      &#32; submitted by &#32;  /u/smokeysubwoofer  &#32; to &#32;  r/nasa   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/nasa/comments/1skrqji/what_do_they_get_paid/",
+      "subreddit": "nasa",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776122973,
+      "score": 62,
+      "scoreBreakdown": {
+        "virality": 50,
+        "humorPotential": 60,
+        "apparelRelevance": 70,
+        "audienceMatch": 90,
+        "timeliness": 30
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A humorous title that pokes fun at the idea of salaries and compensation, making it relatable to those interested in finance.",
+        "suggestedPhrases": [
+          "Money can't buy happiness",
+          "The cost of living"
+        ],
+        "suggestedVisuals": [
+          "a cartoon character counting money, a background with financial charts"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:28:28.923Z",
+      "expiresAt": "2026-04-21T09:28:28.923Z"
+    },
+    {
+      "id": "reddit_1skzo0o",
+      "source": "reddit",
+      "sourceId": "1skzo0o",
+      "title": "imagineThis",
+      "snippet": "      &#32; submitted by &#32;  /u/bryden_cruz  &#32; to &#32;  r/ProgrammerHumor   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/ProgrammerHumor/comments/1skzo0o/imaginethis/",
+      "subreddit": "ProgrammerHumor",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776144972,
+      "score": 77,
+      "scoreBreakdown": {
+        "virality": 40,
+        "humorPotential": 100,
+        "apparelRelevance": 80,
+        "audienceMatch": 90,
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A humorous title that pokes fun at the idea of imagining scenarios, making it relatable to programmers and tech enthusiasts.",
+        "suggestedPhrases": [
+          "Imagine a world without bugs",
+          "Code like you mean it"
+        ],
+        "suggestedVisuals": [
+          "a programmer surrounded by screens, a coding background with funny errors"
+        ],
+        "targetAudience": "genz|all",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:28:28.923Z",
+      "expiresAt": "2026-04-21T09:28:28.923Z"
+    },
+    {
+      "id": "reddit_1sl01w6",
+      "source": "reddit",
+      "sourceId": "1sl01w6",
+      "title": "This gentleman also want some treats",
+      "snippet": "&#32; submitted by &#32;  /u/djinn_05  &#32; to &#32;  r/Unexpected   [link] &#32; [comments]",
+      "url": "https://www.reddit.com/r/Unexpected/comments/1sl01w6/this_gentleman_also_want_some_treats/",
+      "subreddit": "Unexpected",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776146233,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 90,
+        "humorPotential": 100,
+        "apparelRelevance": 80,
+        "audienceMatch": "genx|millennial",
+        "timeliness": 95
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A heartwarming and humorous image of a person asking for treats could be timely for t-shirts.",
+        "suggestedPhrases": [
+          "Treat me right"
+        ],
+        "suggestedVisuals": [
+          "image of the gentleman with a cute expression and a treat jar in the background"
+        ],
+        "targetAudience": "genx|millennial",
+        "humorStyle": "nostalgic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:28:58.396Z",
+      "expiresAt": "2026-04-21T09:28:58.396Z"
+    },
+    {
+      "id": "reddit_1sknm8k",
+      "source": "reddit",
+      "sourceId": "1sknm8k",
+      "title": "Cost of living or",
+      "snippet": "      &#32; submitted by &#32;  /u/No-Marsupial-4050  &#32; to &#32;  r/SipsTea   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/SipsTea/comments/1sknm8k/cost_of_living_or/",
+      "subreddit": "SipsTea",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776113415,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 90
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A humorous take on the cost of living could resonate with younger audiences.",
+        "suggestedPhrases": [
+          "Cost of living or dying?",
+          "Adulting is hard"
+        ],
+        "suggestedVisuals": [
+          "image of a person struggling to pay bills"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:28:58.396Z",
+      "expiresAt": "2026-04-21T09:28:58.396Z"
+    },
+    {
+      "id": "reddit_1skz7aa",
+      "source": "reddit",
+      "sourceId": "1skz7aa",
+      "title": "evolved while I was busy",
+      "snippet": "      &#32; submitted by &#32;  /u/Federal767   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skz7aa/evolved_while_i_was_busy/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776143472,
+      "score": 63,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 80,
+        "apparelRelevance": 50,
+        "audienceMatch": 70,
+        "timeliness": 40
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A relatable meme for people who feel like they've been left behind.",
+        "suggestedPhrases": [
+          "Evolved while I was busy",
+          "Left behind in the evolution"
+        ],
+        "suggestedVisuals": [
+          "a cartoon character with a confused expression"
+        ],
+        "targetAudience": "genx|millennial",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:29:34.868Z",
+      "expiresAt": "2026-04-21T09:29:34.868Z"
+    },
+    {
+      "id": "reddit_1skot7x",
+      "source": "reddit",
+      "sourceId": "1skot7x",
+      "title": "Time skip arc",
+      "snippet": "      &#32; submitted by &#32;  /u/1881pac   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skot7x/time_skip_arc/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776115994,
+      "score": 56,
+      "scoreBreakdown": {
+        "virality": 50,
+        "humorPotential": 70,
+        "apparelRelevance": 40,
+        "audienceMatch": 80,
+        "timeliness": 30
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A humorous take on a common trope in anime.",
+        "suggestedPhrases": [
+          "Time skip arc",
+          "Level up!"
+        ],
+        "suggestedVisuals": [
+          "a cartoon character with a power-up symbol above their head"
+        ],
+        "targetAudience": "genz|millennial",
+        "humorStyle": "witty",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:29:34.868Z",
+      "expiresAt": "2026-04-21T09:29:34.868Z"
+    },
+    {
+      "id": "reddit_1skw9xm",
+      "source": "reddit",
+      "sourceId": "1skw9xm",
+      "title": "If you live by a Waffle House you know",
+      "snippet": "      &#32; submitted by &#32;  /u/MobileDistrict9784   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skw9xm/if_you_live_by_a_waffle_house_you_know/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776134877,
+      "score": 75,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": 60,
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "A humorous take on regional stereotypes.",
+        "suggestedPhrases": [
+          "If you live by a Waffle House you know",
+          "Southern charm"
+        ],
+        "suggestedVisuals": [
+          "a cartoon character holding a cup of coffee and standing in front of a Waffle House sign"
+        ],
+        "targetAudience": "all",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:29:34.868Z",
+      "expiresAt": "2026-04-21T09:29:34.868Z"
+    },
+    {
+      "id": "reddit_1skxi8w",
+      "source": "reddit",
+      "sourceId": "1skxi8w",
+      "title": "I'm sober",
+      "snippet": "      &#32; submitted by &#32;  /u/Kryrie   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1skxi8w/im_sober/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776138303,
+      "score": 72,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": 90,
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This meme's dry humor and relatability make it suitable for a deadpan t-shirt design.",
+        "suggestedPhrases": [
+          "I'm sober",
+          "I'm not hungover"
+        ],
+        "suggestedVisuals": [
+          "A cartoon of a person drinking water or tea"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "deadpan",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:30:33.640Z",
+      "expiresAt": "2026-04-21T09:30:33.640Z"
+    },
+    {
+      "id": "reddit_1skvpyb",
+      "source": "reddit",
+      "sourceId": "1skvpyb",
+      "title": "6 year old family portrait. 😬",
+      "snippet": "      &#32; submitted by &#32;  /u/Detective-Fine   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1skvpyb/6_year_old_family_portrait/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776133377,
+      "score": 82,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": 100,
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This meme's absurdity and relatability make it perfect for a comical t-shirt design.",
+        "suggestedPhrases": [
+          "6 year old family portrait",
+          "I'm not judging you"
+        ],
+        "suggestedVisuals": [
+          "A cartoon of a chaotic or messy family photo shoot"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:30:33.640Z",
+      "expiresAt": "2026-04-21T09:30:33.640Z"
+    },
+    {
+      "id": "reddit_1skzsxa",
+      "source": "reddit",
+      "sourceId": "1skzsxa",
+      "title": "Better luck next year",
+      "snippet": "      &#32; submitted by &#32;  /u/guviv   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1skzsxa/better_luck_next_year/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776145411,
+      "score": 72,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": 90,
+        "timeliness": 50
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "This meme's relatable humor and edgy tone make it suitable for a comical t-shirt design.",
+        "suggestedPhrases": [
+          "Better luck next year",
+          "You'll get 'em next time"
+        ],
+        "suggestedVisuals": [
+          "A cartoon of a person holding a trophy or medal"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "absurdist",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T09:30:33.640Z",
+      "expiresAt": "2026-04-21T09:30:33.640Z"
     }
   ],
   "designs": [
@@ -44141,8 +44915,8 @@
     }
   ],
   "stats": {
-    "totalScans": 195,
-    "totalTrendsFound": 1054,
+    "totalScans": 198,
+    "totalTrendsFound": 1074,
     "totalDesignsGenerated": 197,
     "totalApproved": 8,
     "totalListed": 8,

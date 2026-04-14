@@ -1166,6 +1166,7 @@ window.dmSelectLayer = function(idx) {
 async function loadDecalCatalog() {
   try {
     const data = await window.printStation?.decalMaker?.fetchCatalogIcons();
+    console.log('[DecalMaker] Raw catalog response type:', typeof data, data ? 'has data' : 'null/undefined');
     if (!data) {
       console.warn('[DecalMaker] No catalog data');
       return;
@@ -1173,9 +1174,21 @@ async function loadDecalCatalog() {
 
     // The catalog is an object with category arrays
     dmState.catalog = data;
-    dmState.catalogCategories = Array.isArray(data.categories)
-      ? data.categories.map(c => ({ name: c.name || c.category, designs: c.designs || [] }))
-      : Object.keys(data).filter(k => k !== 'metadata').map(k => ({ name: k, designs: data[k] }));
+
+    if (Array.isArray(data.categories)) {
+      dmState.catalogCategories = data.categories.map(c => ({ name: c.name || c.category, designs: c.designs || [] }));
+    } else if (Array.isArray(data)) {
+      // Maybe the response is the categories array directly
+      dmState.catalogCategories = data.map(c => ({ name: c.name || c.category, designs: c.designs || [] }));
+    } else {
+      // Maybe it's an object with category names as keys
+      dmState.catalogCategories = Object.keys(data).filter(k => k !== 'metadata' && k !== 'generatedAt' && k !== 'assetRoot').map(k => ({ name: k, designs: Array.isArray(data[k]) ? data[k] : [] }));
+    }
+
+    console.log('[DecalMaker] Parsed categories:', dmState.catalogCategories.length);
+    if (dmState.catalogCategories.length > 0) {
+      console.log('[DecalMaker] First 3 categories:', dmState.catalogCategories.slice(0, 3).map(c => `${c.name} (${c.designs.length})`));
+    }
 
     const select = document.getElementById('dmCategorySelect');
     if (select) {
@@ -1344,7 +1357,8 @@ async function saveDecalProject() {
       if (typeof showToast === 'function') showToast('Project saved!', 'success');
     }
     dmState.currentProjectName = name;
-    // Reload catalog so new decal appears in icon browser
+    // Invalidate catalog cache and reload so new decal appears everywhere
+    try { await window.printStation.decalMaker.invalidateCache(); } catch (_) {}
     loadDecalCatalog();
   } catch (err) {
     console.error('[DecalMaker] Save failed:', err);

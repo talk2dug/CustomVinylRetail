@@ -1061,7 +1061,7 @@ async function fetchCatalog(options = {}) {
   }
 
   // Determine API endpoint and cache file based on catalog type
-  const apiEndpoint = catalogType === 'decal-icons' ? '/api/catalog/decal-icons' : '/api/catalog';
+  const apiEndpoint = catalogType === 'decal-icons' ? '/api/catalog/decal-icons?includeSaved=1' : '/api/catalog';
   const cacheFileSuffix = catalogType === 'decal-icons' ? '-decal-icons' : '';
 
   const cached = await readCatalogCache(cacheFileSuffix);
@@ -5849,6 +5849,13 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('decal-maker:catalog', async () => {
     // Fetch the decal icons catalog with saved projects injected
     return httpRequest('/api/catalog/decal-icons', { method: 'GET', query: { includeSaved: '1' }, timeout: 30000 });
+  });
+
+  ipcMain.handle('decal-maker:invalidate-cache', async () => {
+    // Delete the decal-icons catalog cache so next fetch gets fresh data
+    const cachePath = getCatalogCachePath('-decal-icons');
+    try { require('fs').unlinkSync(cachePath); } catch (_) {}
+    return { success: true };
   });
 
   // Google Drive Sync handlers

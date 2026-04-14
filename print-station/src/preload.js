@@ -468,6 +468,7 @@ contextBridge.exposeInMainWorld('printStation', {
     deleteProject: (id) => ipcRenderer.invoke('decal-maker:projects:delete', id),
     getPricing: () => ipcRenderer.invoke('decal-maker:pricing'),
     fetchCatalogIcons: () => ipcRenderer.invoke('decal-maker:catalog'),
+    invalidateCache: () => ipcRenderer.invoke('decal-maker:invalidate-cache'),
   },
 
   // Google Drive Sync API
