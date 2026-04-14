@@ -7863,13 +7863,8 @@ Keep it concise and actionable.`;
   }
 
   if ((req.method === 'GET' || req.method === 'HEAD') && parsedUrl.pathname === '/api/catalog/decal-icons') {
-    // Check if caller wants saved projects injected
-    const injectSaved = parsedUrl.query?.includeSaved === '1';
-    if (injectSaved) {
-      serveDecalCatalogWithSaved(req, res);
-      return;
-    }
-    serveCatalogResponse(req, res, 'decal-icons');
+    // Always inject saved decal projects into the catalog
+    serveDecalCatalogWithSaved(req, res);
     return;
   }
 

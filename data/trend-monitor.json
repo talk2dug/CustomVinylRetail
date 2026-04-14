@@ -54,8 +54,8 @@
     ],
     "googleTrendsGeo": "US"
   },
-  "lastScanAt": "2026-04-14T09:30:34.816Z",
-  "scanCount": 198,
+  "lastScanAt": "2026-04-14T11:57:05.975Z",
+  "scanCount": 199,
   "trends": [
     {
       "id": "reddit_1riex53",
@@ -41159,6 +41159,423 @@
       "status": "new",
       "discoveredAt": "2026-04-14T09:30:33.640Z",
       "expiresAt": "2026-04-21T09:30:33.640Z"
+    },
+    {
+      "id": "reddit_1sl1og3",
+      "source": "reddit",
+      "sourceId": "1sl1og3",
+      "title": "This feels so cathartic",
+      "snippet": "      &#32; submitted by &#32;  /u/Valuable_View_561  &#32; to &#32;  r/SipsTea   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/SipsTea/comments/1sl1og3/this_feels_so_cathartic/",
+      "subreddit": "SipsTea",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776151885,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 80,
+        "apparelRelevance": 90,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 85
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Relatable humor is a great fit for t-shirts.",
+        "suggestedPhrases": [
+          "Cathartic feelings"
+        ],
+        "suggestedVisuals": [
+          "relatable cartoon characters"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:54:43.113Z",
+      "expiresAt": "2026-04-21T11:54:43.113Z"
+    },
+    {
+      "id": "reddit_1skwd03",
+      "source": "reddit",
+      "sourceId": "1skwd03",
+      "title": "Opening the hatch on Artemis II's Orion capsule",
+      "snippet": "      &#32; submitted by &#32;  /u/Pcat0  &#32; to &#32;  r/Damnthatsinteresting   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/Damnthatsinteresting/comments/1skwd03/opening_the_hatch_on_artemis_iis_orion_capsule/",
+      "subreddit": "Damnthatsinteresting",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776135108,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 70,
+        "apparelRelevance": 90,
+        "audienceMatch": "genx|millennial|genz",
+        "timeliness": 95
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Space exploration is always a hit on t-shirts.",
+        "suggestedPhrases": [
+          "Artemis II"
+        ],
+        "suggestedVisuals": [
+          "space-themed graphics"
+        ],
+        "targetAudience": "genx|millennial|genz",
+        "humorStyle": "witty|absurdist",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:54:43.113Z",
+      "expiresAt": "2026-04-21T11:54:43.113Z"
+    },
+    {
+      "id": "reddit_1skytfj",
+      "source": "reddit",
+      "sourceId": "1skytfj",
+      "title": "The die is cast",
+      "snippet": "      &#32; submitted by &#32;  /u/Zee_Ventures  &#32; to &#32;  r/WhitePeopleTwitter   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/WhitePeopleTwitter/comments/1skytfj/the_die_is_cast/",
+      "subreddit": "WhitePeopleTwitter",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776142249,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 80,
+        "apparelRelevance": 90,
+        "audienceMatch": "genx|millennial|genz",
+        "timeliness": 70
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Classic memes never go out of style on t-shirts.",
+        "suggestedPhrases": [
+          "The die is cast"
+        ],
+        "suggestedVisuals": [
+          "cartoonish graphics"
+        ],
+        "targetAudience": "genx|millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:54:43.114Z",
+      "expiresAt": "2026-04-21T11:54:43.114Z"
+    },
+    {
+      "id": "reddit_1sktx6v",
+      "source": "reddit",
+      "sourceId": "1sktx6v",
+      "title": "Still see jokes about it to this day",
+      "snippet": "      &#32; submitted by &#32;  /u/MrGamerOfficial   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1sktx6v/still_see_jokes_about_it_to_this_day/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776128685,
+      "score": 57,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 80,
+        "apparelRelevance": 50,
+        "audienceMatch": 40,
+        "timeliness": 20
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Funny joke about outdated humor.",
+        "suggestedPhrases": [
+          "Outdated jokes still funny",
+          "Still cracking up"
+        ],
+        "suggestedVisuals": [
+          "image of a person laughing at an old joke, with a thought bubble above their head"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:56:20.314Z",
+      "expiresAt": "2026-04-21T11:56:20.314Z"
+    },
+    {
+      "id": "reddit_1sktp1h",
+      "source": "reddit",
+      "sourceId": "1sktp1h",
+      "title": "Thousand yard stare",
+      "snippet": "      &#32; submitted by &#32;  /u/Certain_Tea_   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1sktp1h/thousand_yard_stare/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776128093,
+      "score": 74,
+      "scoreBreakdown": {
+        "virality": 80,
+        "humorPotential": 90,
+        "apparelRelevance": 70,
+        "audienceMatch": 60,
+        "timeliness": 40
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Funny and relatable joke about feeling overwhelmed.",
+        "suggestedPhrases": [
+          "Thousand yard stare",
+          "Overwhelmed"
+        ],
+        "suggestedVisuals": [
+          "image of a person looking spaced out, with a thousand-yard stare expression"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:56:20.314Z",
+      "expiresAt": "2026-04-21T11:56:20.314Z"
+    },
+    {
+      "id": "reddit_1skx6gp",
+      "source": "reddit",
+      "sourceId": "1skx6gp",
+      "title": "\"the living will envy the dead\"",
+      "snippet": "      &#32; submitted by &#32;  /u/TJ_4321   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skx6gp/the_living_will_envy_the_dead/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776137367,
+      "score": 60,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 90,
+        "apparelRelevance": 50,
+        "audienceMatch": 40,
+        "timeliness": 20
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Dark humor joke about mortality.",
+        "suggestedPhrases": [
+          "The living will envy the dead",
+          "Dead and gone"
+        ],
+        "suggestedVisuals": [
+          "image of a person looking at a gravestone, with a thought bubble above their head"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "absurdist|dark",
+        "printMethodRecommendation": "sublimation"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:56:20.314Z",
+      "expiresAt": "2026-04-21T11:56:20.314Z"
+    },
+    {
+      "id": "reddit_1sl01s4",
+      "source": "reddit",
+      "sourceId": "1sl01s4",
+      "title": "so true banks be",
+      "snippet": "      &#32; submitted by &#32;  /u/HelpfulFlounder7560   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1sl01s4/so_true_banks_be/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776146224,
+      "score": 60,
+      "scoreBreakdown": {
+        "virality": 60,
+        "humorPotential": 90,
+        "apparelRelevance": 50,
+        "audienceMatch": 40,
+        "timeliness": 20
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Funny and relatable joke about banking struggles.",
+        "suggestedPhrases": [
+          "Banks be crazy",
+          "Banking struggles"
+        ],
+        "suggestedVisuals": [
+          "image of a person frustrated with their bank account"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:56:20.314Z",
+      "expiresAt": "2026-04-21T11:56:20.314Z"
+    },
+    {
+      "id": "reddit_1sl409o",
+      "source": "reddit",
+      "sourceId": "1sl409o",
+      "title": "I just need ONE 😭",
+      "snippet": "      &#32; submitted by &#32;  /u/Federal767   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1sl409o/i_just_need_one/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776160139,
+      "score": 57,
+      "scoreBreakdown": {
+        "virality": 50,
+        "humorPotential": 80,
+        "apparelRelevance": 60,
+        "audienceMatch": 40,
+        "timeliness": 20
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "Heartfelt and relatable joke about needing help.",
+        "suggestedPhrases": [
+          "I just need one more thing",
+          "Help me! 🤣"
+        ],
+        "suggestedVisuals": [
+          "image of a person holding up one finger, looking desperate"
+        ],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic|witty",
+        "printMethodRecommendation": "dtf"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:56:20.314Z",
+      "expiresAt": "2026-04-21T11:56:20.314Z"
+    },
+    {
+      "id": "reddit_1skymzm",
+      "source": "reddit",
+      "sourceId": "1skymzm",
+      "title": "Inspired by a true story",
+      "snippet": "      &#32; submitted by &#32;  /u/LeavesInsults1291   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/memes/comments/1skymzm/inspired_by_a_true_story/",
+      "subreddit": "memes",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776141672,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 70,
+        "humorPotential": 80,
+        "apparelRelevance": 50,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 90
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The phrase is relatable and humorous, appealing to young adults.",
+        "suggestedPhrases": [
+          "story of my life"
+        ],
+        "suggestedVisuals": [],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:57:05.924Z",
+      "expiresAt": "2026-04-21T11:57:05.924Z"
+    },
+    {
+      "id": "reddit_1sl5zsu",
+      "source": "reddit",
+      "sourceId": "1sl5zsu",
+      "title": "It is what it is.",
+      "snippet": "      &#32; submitted by &#32;  /u/Riemann86   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1sl5zsu/it_is_what_it_is/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776166317,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 40,
+        "humorPotential": 50,
+        "apparelRelevance": 20,
+        "audienceMatch": "all",
+        "timeliness": 60
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The phrase is a humorous expression of resignation, appealing to all age groups.",
+        "suggestedPhrases": [
+          "shrug life"
+        ],
+        "suggestedVisuals": [],
+        "targetAudience": "all",
+        "humorStyle": "deadpan",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:57:05.924Z",
+      "expiresAt": "2026-04-21T11:57:05.924Z"
+    },
+    {
+      "id": "reddit_1skzvo7",
+      "source": "reddit",
+      "sourceId": "1skzvo7",
+      "title": "meanwhile asian moms : 🩴🩴🩴",
+      "snippet": "      &#32; submitted by &#32;  /u/Immediate-Rip4861   [link] &#32; [comments] ",
+      "url": "https://www.reddit.com/r/funny/comments/1skzvo7/meanwhile_asian_moms/",
+      "subreddit": "funny",
+      "upvotes": null,
+      "comments": null,
+      "searchVolume": null,
+      "relatedQueries": [],
+      "createdUtc": 1776145649,
+      "score": null,
+      "scoreBreakdown": {
+        "virality": 0,
+        "humorPotential": 10,
+        "apparelRelevance": 0,
+        "audienceMatch": "millennial|genz",
+        "timeliness": 20
+      },
+      "aiAnalysis": {
+        "isGoodForApparel": true,
+        "reasoning": "The phrase is a relatable joke about cultural stereotypes, appealing to young adults.",
+        "suggestedPhrases": [
+          "asian mom life"
+        ],
+        "suggestedVisuals": [],
+        "targetAudience": "millennial|genz",
+        "humorStyle": "sarcastic",
+        "printMethodRecommendation": "vinyl"
+      },
+      "status": "new",
+      "discoveredAt": "2026-04-14T11:57:05.925Z",
+      "expiresAt": "2026-04-21T11:57:05.925Z"
     }
   ],
   "designs": [
@@ -44915,8 +45332,8 @@
     }
   ],
   "stats": {
-    "totalScans": 198,
-    "totalTrendsFound": 1074,
+    "totalScans": 199,
+    "totalTrendsFound": 1085,
     "totalDesignsGenerated": 197,
     "totalApproved": 8,
     "totalListed": 8,

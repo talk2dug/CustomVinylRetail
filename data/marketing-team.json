@@ -9,7 +9,7 @@
       "thisMonth": 0
     }
   },
-  "lastStandup": "2026-04-10T12:00:30.199Z",
+  "lastStandup": "2026-04-14T12:01:00.199Z",
   "lastWeeklyMeeting": "2026-04-13T12:01:03.919Z",
   "journal": [
     {
@@ -342,6 +342,20 @@
         "error"
       ],
       "related_id": null
+    },
+    {
+      "timestamp": "2026-04-14T12:03:36.523Z",
+      "type": "observation",
+      "category": "content",
+      "action": "TikTok generation failed: TIKTOK_MUSIC_DIR is not defined",
+      "context": "Daily auto-generation",
+      "outcome": null,
+      "score": null,
+      "tags": [
+        "tiktok",
+        "error"
+      ],
+      "related_id": null
     }
   ],
   "meetingLog": [
@@ -411,15 +425,15 @@
   "teamMembers": {
     "salesAgent": {
       "status": "active",
-      "lastCycle": "2026-04-14T11:27:52.917Z"
+      "lastCycle": "2026-04-14T12:23:01.585Z"
     },
     "trendMonitor": {
       "status": "active",
-      "lastScan": "2026-04-14T09:30:34.816Z"
+      "lastScan": "2026-04-14T11:57:05.975Z"
     },
     "shopifyAnalytics": {
       "status": "active",
-      "lastPull": "2026-04-14T11:28:36.702Z"
+      "lastPull": "2026-04-14T12:34:56.076Z"
     },
     "contentCreator": {
       "status": "active",
