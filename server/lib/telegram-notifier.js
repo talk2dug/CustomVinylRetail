@@ -266,11 +266,70 @@ async function getUpdates(offset = 0, timeout = 5) {
   });
 }
 
+/**
+ * Send a video file via Telegram Bot API (multipart/form-data)
+ * @param {string} filePath - Absolute path to the video file
+ * @param {string} caption - Video caption (optional, max 1024 chars)
+ */
+async function sendVideo(filePath, caption = '', parseMode = 'Markdown') {
+  if (!isConfigured()) {
+    console.warn('[Telegram] Not configured');
+    return null;
+  }
+  const fs = require('fs');
+  if (!fs.existsSync(filePath)) {
+    console.warn(`[Telegram] sendVideo: file not found: ${filePath}`);
+    return null;
+  }
+
+  const videoData = fs.readFileSync(filePath);
+  const filename = require('path').basename(filePath);
+  const boundary = '----TelegramBotBoundary' + Date.now();
+  const parts = [];
+
+  parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${TELEGRAM_CHAT_ID}`);
+  parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\n${parseMode}`);
+  if (caption) {
+    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption.slice(0, 1024)}`);
+  }
+
+  const textPart = Buffer.from(parts.join('\r\n') + '\r\n');
+  const fileHeader = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="video"; filename="${filename}"\r\nContent-Type: video/mp4\r\n\r\n`);
+  const fileTail = Buffer.from(`\r\n--${boundary}--\r\n`);
+  const body = Buffer.concat([textPart, fileHeader, videoData, fileTail]);
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(`${TELEGRAM_API}/sendVideo`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': body.length
+      },
+      timeout: 60000
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (!parsed.ok) console.error('[Telegram] sendVideo API error:', parsed.description);
+          resolve(parsed);
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', (err) => { console.error('[Telegram] sendVideo error:', err.message); reject(err); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Telegram sendVideo timeout')); });
+    req.write(body);
+    req.end();
+  });
+}
+
 module.exports = {
   isConfigured,
   sendMessage,
   sendAlert,
   sendPhoto,
+  sendVideo,
   getUpdates,
   sendDailyReport,
   sendWeeklyReport,

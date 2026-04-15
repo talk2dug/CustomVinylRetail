@@ -215,6 +215,20 @@ function handleReelStudioRoute(pathname, req, res) {
           }
         }
 
+        // Send the rendered reel to Telegram so user can post to TikTok from phone
+        try {
+          const telegram = require('./lib/telegram-notifier');
+          if (telegram.isConfigured()) {
+            const captionText = caption
+              ? `🎬 *New Reel Ready*\n${template}${label ? ' — ' + label : ''}\n\n${String(caption).slice(0, 800)}`
+              : `🎬 *New Reel Ready*\n${template}${label ? ' — ' + label : ''}`;
+            await telegram.sendVideo(result.filePath, captionText);
+            console.log(`[reel-studio] Sent reel to Telegram: ${path.basename(result.filePath)}`);
+          }
+        } catch (tgErr) {
+          console.warn(`[reel-studio] Telegram send failed (non-fatal): ${tgErr.message}`);
+        }
+
         sendJson(res, 200, {
           success: true,
           videoUrl,
