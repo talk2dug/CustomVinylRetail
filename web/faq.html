@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FAQ | BlueRidgeCustomCo</title>
+  <meta name="description" content="Frequently asked questions about vinyl stickers, metal prints, Multiboard organizers, custom apparel, and shipping from BlueRidgeCustomCo in Asheville, NC.">
+  <link rel="canonical" href="https://blueridgecustomco.com/faq.html">
+  <link rel="icon" type="image/png" href="./images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="BlueRidgeCustomCo">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="FAQ | BlueRidgeCustomCo">
+  <meta property="og:description" content="Get answers to common questions about our products, materials, shipping, and custom orders.">
+  <meta property="og:url" content="https://blueridgecustomco.com/faq.html">
+  <meta property="og:image" content="https://blueridgecustomco.com/images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <link rel="stylesheet" href="./theme-v2.css">
+
+  <style>
+    /* ═══════════════════════════════════════
+       FAQ PAGE HERO
+       ═══════════════════════════════════════ */
+    .faq-hero {
+      padding: clamp(4rem, 8vw, 6rem) 0 clamp(3rem, 6vw, 4rem);
+      text-align: center;
+      background: linear-gradient(180deg, var(--cream-warm) 0%, var(--cream) 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    .faq-hero .section-tag {
+      justify-content: center;
+    }
+    .faq-hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.25rem, 5vw, 3.25rem);
+      font-weight: 800;
+      color: var(--text-primary);
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 0.75rem;
+    }
+    .faq-hero p {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      max-width: 520px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* ═══════════════════════════════════════
+       FAQ SECTION
+       ═══════════════════════════════════════ */
+    .faq-section {
+      padding: clamp(3rem, 6vw, 5rem) 0;
+    }
+    .faq-categories {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .faq-category {
+      margin-bottom: 2.5rem;
+    }
+    .faq-category-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--forest);
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+      padding-bottom: 0.6rem;
+      border-bottom: 2px solid var(--amber);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .faq-category-title i {
+      font-size: 1rem;
+      color: var(--amber);
+    }
+
+    /* ═══════════════════════════════════════
+       ACCORDION
+       ═══════════════════════════════════════ */
+    .faq-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: 0.6rem;
+      background: var(--white);
+      overflow: hidden;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .faq-item:hover {
+      border-color: var(--border-hover);
+    }
+    .faq-item.active {
+      border-color: var(--border-hover);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .faq-question {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 1.1rem 1.25rem;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      text-align: left;
+      line-height: 1.4;
+      gap: 1rem;
+    }
+    .faq-question:hover {
+      color: var(--forest);
+    }
+
+    .faq-icon {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--forest-dim);
+      color: var(--forest);
+      font-size: 0.75rem;
+      transition: transform 0.35s var(--ease), background 0.3s;
+    }
+    .faq-item.active .faq-icon {
+      transform: rotate(45deg);
+      background: var(--forest);
+      color: var(--text-inverse);
+    }
+
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s var(--ease), padding 0.3s var(--ease);
+    }
+    .faq-answer-inner {
+      padding: 0 1.25rem 1.25rem;
+      font-size: 0.92rem;
+      color: var(--text-secondary);
+      line-height: 1.75;
+    }
+
+    /* ═══════════════════════════════════════
+       CTA BLOCK
+       ═══════════════════════════════════════ */
+    .faq-cta {
+      text-align: center;
+      padding: clamp(3rem, 6vw, 4.5rem) 0 clamp(4rem, 8vw, 6rem);
+    }
+    .faq-cta-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: clamp(2.5rem, 5vw, 3.5rem);
+      max-width: 600px;
+      margin: 0 auto;
+      box-shadow: var(--shadow-sm);
+    }
+    .faq-cta-card h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 750;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+    .faq-cta-card p {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      margin-bottom: 1.5rem;
+      line-height: 1.7;
+    }
+
+    /* ═══════════════════════════════════════
+       RESPONSIVE
+       ═══════════════════════════════════════ */
+    @media (max-width: 600px) {
+      .faq-question {
+        padding: 0.95rem 1rem;
+        font-size: 0.9rem;
+      }
+      .faq-answer-inner {
+        padding: 0 1rem 1rem;
+        font-size: 0.88rem;
+      }
+      .faq-icon {
+        width: 24px;
+        height: 24px;
+        font-size: 0.65rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════ ANNOUNCEMENT BAR ═══════ -->
+  <div class="announce-bar">
+    <i class="fas fa-map-marker-alt"></i>
+    <strong>Handmade in Asheville, NC</strong> &mdash; Fast shipping nationwide.
+    <a href="./catalog.html">Start shopping &rarr;</a>
+  </div>
+
+  <!-- ═══════ HEADER ═══════ -->
+  <header class="site-header" id="siteHeader">
+    <div class="container header-inner">
+      <a href="./" class="logo">
+        <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+        <div>
+          <span class="logo-text">BlueRidgeCustomCo</span>
+          <span class="logo-sub">Asheville's Custom Shop</span>
+        </div>
+      </a>
+
+      <nav class="nav-desktop">
+        <a href="./catalog.html">Stickers</a>
+        <a href="./multiboard/">Multiboard</a>
+        <a href="./apparel.html">Apparel</a>
+        <a href="./metal-prints.html">Metal Prints</a>
+        <a href="./slide-laser-engraving.html">Engraving</a>
+        <a href="./racing.html">Racing</a>
+        <a href="./designer.html" class="nav-cta"><i class="fas fa-pen-nib"></i> Free Designer</a>
+      </nav>
+
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile nav -->
+  <div class="nav-mobile-overlay" id="mobileNav">
+    <a href="./catalog.html">Stickers & Decals</a>
+    <a href="./multiboard/">Multiboard</a>
+    <a href="./apparel.html">Apparel</a>
+    <a href="./metal-prints.html">Metal Prints</a>
+    <a href="./slide-laser-engraving.html">Laser Engraving</a>
+    <a href="./racing.html">Racing</a>
+    <a href="./designer.html">Free Designer</a>
+    <a href="./custom-stickers.html">Custom Orders</a>
+    <a href="./customer.html">My Account</a>
+  </div>
+
+  <!-- ═══════ PAGE HERO ═══════ -->
+  <section class="faq-hero">
+    <div class="container">
+      <div class="section-tag">Answers at a Glance</div>
+      <h1>Frequently Asked Questions</h1>
+      <p>Everything you need to know about our products, materials, shipping, and custom work.</p>
+    </div>
+  </section>
+
+  <!-- ═══════ FAQ CONTENT ═══════ -->
+  <section class="faq-section">
+    <div class="container">
+      <div class="faq-categories">
+
+        <!-- Category: Ordering & Products -->
+        <div class="faq-category reveal">
+          <h2 class="faq-category-title"><i class="fas fa-shopping-bag"></i> Ordering & Products</h2>
+
+          <div class="faq-item" data-faq-group="ordering">
+            <button class="faq-question" aria-expanded="false">
+              <span>What products do you offer?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                We make vinyl stickers and decals (with over 50,000 designs in our catalog), Multiboard 3D-printed wall organizers, HD metal prints, laser engraving, custom apparel, and racing decal packages. If you can dream it, we can probably make it.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="ordering">
+            <button class="faq-question" aria-expanded="false">
+              <span>Can I upload my own design?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Absolutely! You can use our free online designer tool to create something from scratch, or upload your own artwork directly. We will handle the rest.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="ordering">
+            <button class="faq-question" aria-expanded="false">
+              <span>What file formats do you accept?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                We accept PNG, JPG, SVG, and PDF files. For the best results with vinyl cutting, vector files (SVG) are recommended since they scale cleanly to any size without losing quality.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="ordering">
+            <button class="faq-question" aria-expanded="false">
+              <span>What's the minimum order?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                There is no minimum order. We happily make single items. Whether you need one sticker or one hundred, we have got you covered.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="ordering">
+            <button class="faq-question" aria-expanded="false">
+              <span>Do you offer bulk discounts?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Yes! We offer bulk pricing on orders of 25 or more items. <a href="./contact.html" style="color: var(--forest); text-decoration: underline; text-underline-offset: 2px;">Contact us</a> with your quantity and we will put together a custom quote.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Category: Materials & Quality -->
+        <div class="faq-category reveal">
+          <h2 class="faq-category-title"><i class="fas fa-gem"></i> Materials & Quality</h2>
+
+          <div class="faq-item" data-faq-group="materials">
+            <button class="faq-question" aria-expanded="false">
+              <span>What vinyl do you use?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                We use premium outdoor-rated vinyl rated for 5+ years of outdoor durability. It is weatherproof, UV resistant, and dishwasher safe for smaller stickers. Your decals will hold up season after season.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="materials">
+            <button class="faq-question" aria-expanded="false">
+              <span>What are metal prints?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Metal prints are your photos printed directly onto brushed aluminum panels. The result is stunning, vivid color with a modern look. Available in glossy white or silver finish, ranging from 5x7" all the way up to 40x60".
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="materials">
+            <button class="faq-question" aria-expanded="false">
+              <span>What is Multiboard?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Multiboard is a modular, 3D-printed wall organization system. Snap-together panels pair with a growing library of hooks, bins, shelves, and drawers to organize any space. We are a licensed Multiboard reseller and print everything in-house. <a href="./multiboard/" style="color: var(--forest); text-decoration: underline; text-underline-offset: 2px;">Check out our Multiboard catalog</a>.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="materials">
+            <button class="faq-question" aria-expanded="false">
+              <span>Are the stickers waterproof?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Yes, all of our vinyl stickers are weatherproof and UV-resistant. They are built for outdoor use on cars, water bottles, laptops, toolboxes, and anywhere else life takes them.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Category: Shipping & Turnaround -->
+        <div class="faq-category reveal">
+          <h2 class="faq-category-title"><i class="fas fa-truck-fast"></i> Shipping & Turnaround</h2>
+
+          <div class="faq-item" data-faq-group="shipping">
+            <button class="faq-question" aria-expanded="false">
+              <span>How long does shipping take?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Standard orders ship within 3&ndash;5 business days. Need it faster? We offer 48-hour rush production on most products. Just select the rush option at checkout.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="shipping">
+            <button class="faq-question" aria-expanded="false">
+              <span>Do you ship internationally?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                We currently ship within the United States. If you are international and interested in ordering, <a href="./contact.html" style="color: var(--forest); text-decoration: underline; text-underline-offset: 2px;">get in touch</a> and we will see what we can do.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="shipping">
+            <button class="faq-question" aria-expanded="false">
+              <span>How much is shipping?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Shipping is calculated at checkout based on your order size and destination. We work to keep rates as fair as possible and always ship with tracking included.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Category: Custom & Racing -->
+        <div class="faq-category reveal">
+          <h2 class="faq-category-title"><i class="fas fa-flag-checkered"></i> Custom & Racing</h2>
+
+          <div class="faq-item" data-faq-group="racing">
+            <button class="faq-question" aria-expanded="false">
+              <span>Do you make racing-compliant decals?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Yes! We make tech-compliant number panels and sponsor layouts for ARA, SCCA, and NASA sanctioned events. We know the specs inside and out so your car passes inspection the first time. <a href="./racing.html" style="color: var(--forest); text-decoration: underline; text-underline-offset: 2px;">See our racing packages</a>.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="racing">
+            <button class="faq-question" aria-expanded="false">
+              <span>Can you match my team's colors?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Absolutely. Send us your Pantone codes or a reference image and we will match your colors precisely. Consistent branding across your whole fleet is what we do.
+              </div>
+            </div>
+          </div>
+
+          <div class="faq-item" data-faq-group="racing">
+            <button class="faq-question" aria-expanded="false">
+              <span>What's your turnaround for custom work?</span>
+              <span class="faq-icon"><i class="fas fa-plus"></i></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Most custom orders are completed within 3&ndash;5 business days. Rush turnaround is available if you are on a tight timeline. Just let us know your deadline and we will make it happen.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ CTA BLOCK ═══════ -->
+  <section class="faq-cta">
+    <div class="container">
+      <div class="faq-cta-card reveal">
+        <h2>Still have questions?</h2>
+        <p>We would love to hear from you. Reach out and our team will get back to you within 24 hours.</p>
+        <a href="./contact.html" class="btn btn-primary btn-lg"><i class="fas fa-envelope"></i> Get in Touch</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ FOOTER ═══════ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <div class="logo" style="margin-bottom: 0;">
+            <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+            <div>
+              <span class="logo-text">BlueRidgeCustomCo</span>
+              <span class="logo-sub">Asheville's Custom Shop</span>
+            </div>
+          </div>
+          <p>Vinyl decals, metal prints, 3D organizers, laser engraving & apparel. Handmade in Asheville, NC.</p>
+          <div class="footer-social">
+            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+            <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+            <a href="#" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4>Shop</h4>
+          <a href="./catalog.html">Stickers & Decals</a>
+          <a href="./multiboard/">Multiboard</a>
+          <a href="./apparel.html">Apparel</a>
+          <a href="./metal-prints.html">Metal Prints</a>
+          <a href="./slide-laser-engraving.html">Laser Engraving</a>
+          <a href="./racing.html">Racing Packages</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Tools</h4>
+          <a href="./designer.html">Free Designer</a>
+          <a href="./custom-stickers.html">Custom Orders</a>
+          <a href="./price-list.html">Price List</a>
+          <a href="./customer.html">My Account</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Info</h4>
+          <a href="./faq.html">FAQ</a>
+          <a href="./contact.html">Contact</a>
+          <a href="./privacy-policy.html">Privacy Policy</a>
+          <a href="./terms.html">Terms & Conditions</a>
+          <a href="./race_decal_requirements_cheatsheet.html">Racing Compliance Guide</a>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>&copy; <span data-year></span> BlueRidgeCustomCo. All rights reserved.</span>
+        <div class="footer-trust">
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Secure checkout</span>
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Made in USA</span>
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Fast turnaround</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Floating CTA -->
+  <a href="./custom-stickers.html" class="floating-cta" id="floatingCta">
+    <i class="fas fa-comment-dots"></i> Get a Custom Quote
+  </a>
+
+  <script src="./theme-v2.js"></script>
+  <script>
+  (function() {
+    'use strict';
+
+    // FAQ Accordion
+    var faqItems = document.querySelectorAll('.faq-item');
+
+    faqItems.forEach(function(item) {
+      var question = item.querySelector('.faq-question');
+      var answer = item.querySelector('.faq-answer');
+      var answerInner = item.querySelector('.faq-answer-inner');
+      var group = item.dataset.faqGroup;
+
+      question.addEventListener('click', function() {
+        var isActive = item.classList.contains('active');
+
+        // Close all items in the same group
+        document.querySelectorAll('.faq-item[data-faq-group="' + group + '"]').forEach(function(sibling) {
+          sibling.classList.remove('active');
+          sibling.querySelector('.faq-question').setAttribute('aria-expanded', 'false');
+          sibling.querySelector('.faq-answer').style.maxHeight = '0';
+        });
+
+        // Open clicked item if it was not already open
+        if (!isActive) {
+          item.classList.add('active');
+          question.setAttribute('aria-expanded', 'true');
+          answer.style.maxHeight = answerInner.scrollHeight + 32 + 'px';
+        }
+      });
+    });
+  })();
+  </script>
+
+</body>
+</html>

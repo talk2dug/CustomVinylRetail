@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contact Us | BlueRidgeCustomCo</title>
+  <meta name="description" content="Get in touch with BlueRidgeCustomCo for custom orders, bulk pricing, racing packages, or general questions. We respond within 24 hours.">
+  <link rel="canonical" href="https://blueridgecustomco.com/contact.html">
+  <link rel="icon" type="image/png" href="./images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="BlueRidgeCustomCo">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Contact Us | BlueRidgeCustomCo">
+  <meta property="og:description" content="Have a question or need a custom quote? Reach out and we'll get back to you within 24 hours.">
+  <meta property="og:url" content="https://blueridgecustomco.com/contact.html">
+  <meta property="og:image" content="https://blueridgecustomco.com/images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <link rel="stylesheet" href="./theme-v2.css">
+
+  <style>
+    /* ═══════════════════════════════════════
+       CONTACT PAGE HERO
+       ═══════════════════════════════════════ */
+    .contact-hero {
+      padding: clamp(4rem, 8vw, 6rem) 0 clamp(3rem, 6vw, 4rem);
+      text-align: center;
+      background: linear-gradient(180deg, var(--cream-warm) 0%, var(--cream) 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    .contact-hero .section-tag {
+      justify-content: center;
+    }
+    .contact-hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.25rem, 5vw, 3.25rem);
+      font-weight: 800;
+      color: var(--text-primary);
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 0.75rem;
+    }
+    .contact-hero p {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      max-width: 520px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* ═══════════════════════════════════════
+       CONTACT SECTION
+       ═══════════════════════════════════════ */
+    .contact-section {
+      padding: clamp(3rem, 6vw, 5rem) 0 clamp(4rem, 8vw, 6rem);
+    }
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: clamp(2rem, 4vw, 3.5rem);
+      align-items: start;
+    }
+
+    /* ═══════════════════════════════════════
+       CONTACT FORM
+       ═══════════════════════════════════════ */
+    .contact-form-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: clamp(1.75rem, 3vw, 2.5rem);
+      box-shadow: var(--shadow-sm);
+    }
+    .contact-form-card h2 {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 0.35rem;
+      letter-spacing: -0.02em;
+    }
+    .contact-form-card > p {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      margin-bottom: 1.75rem;
+      line-height: 1.6;
+    }
+
+    .form-group {
+      margin-bottom: 1.15rem;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 0.4rem;
+    }
+    .form-group label .required {
+      color: var(--terracotta);
+      margin-left: 2px;
+    }
+
+    .form-input,
+    .form-select,
+    .form-textarea {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      font-family: var(--font-body);
+      font-size: 0.92rem;
+      color: var(--text-primary);
+      background: var(--cream);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-md);
+      transition: border-color 0.25s, box-shadow 0.25s;
+      outline: none;
+    }
+    .form-input:focus,
+    .form-select:focus,
+    .form-textarea:focus {
+      border-color: var(--forest);
+      box-shadow: 0 0 0 3px var(--forest-dim);
+    }
+    .form-input::placeholder,
+    .form-textarea::placeholder {
+      color: var(--text-tertiary);
+    }
+
+    .form-select {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%235C5C5C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      padding-right: 2.5rem;
+      cursor: pointer;
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 140px;
+      line-height: 1.6;
+    }
+
+    .form-submit {
+      margin-top: 0.5rem;
+    }
+    .form-submit .btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    /* Form states */
+    .form-status {
+      margin-top: 1rem;
+      padding: 1rem 1.25rem;
+      border-radius: var(--radius-md);
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: none;
+      line-height: 1.5;
+    }
+    .form-status.success {
+      display: block;
+      background: rgba(27, 67, 50, 0.08);
+      color: var(--forest);
+      border: 1px solid rgba(27, 67, 50, 0.15);
+    }
+    .form-status.error {
+      display: block;
+      background: rgba(193, 105, 79, 0.08);
+      color: var(--terracotta);
+      border: 1px solid rgba(193, 105, 79, 0.15);
+    }
+
+    /* ═══════════════════════════════════════
+       INFO CARDS
+       ═══════════════════════════════════════ */
+    .contact-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .info-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.35rem 1.5rem;
+      transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s var(--ease);
+    }
+    .info-card:hover {
+      border-color: var(--border-hover);
+      box-shadow: var(--shadow-sm);
+      transform: translateY(-2px);
+    }
+    .info-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .info-card-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: var(--radius-md);
+      background: var(--forest-dim);
+      color: var(--forest);
+      font-size: 0.95rem;
+      flex-shrink: 0;
+    }
+    .info-card-header h3 {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      font-weight: 650;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+    }
+    .info-card p {
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+    .info-card a.email-link {
+      color: var(--forest);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      font-weight: 500;
+    }
+    .info-card a.email-link:hover {
+      color: var(--forest-light);
+    }
+
+    /* Social links card */
+    .social-links {
+      display: flex;
+      gap: 0.65rem;
+      margin-top: 0.5rem;
+    }
+    .social-links a {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: var(--radius-md);
+      background: var(--forest-dim);
+      color: var(--forest);
+      font-size: 1rem;
+      transition: all 0.25s var(--ease);
+      border: 1px solid transparent;
+    }
+    .social-links a:hover {
+      background: var(--forest);
+      color: var(--text-inverse);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ═══════════════════════════════════════
+       RESPONSIVE
+       ═══════════════════════════════════════ */
+    @media (max-width: 800px) {
+      .contact-grid {
+        grid-template-columns: 1fr;
+      }
+      .contact-info {
+        order: -1;
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+      .info-card {
+        flex: 1 1 calc(50% - 0.5rem);
+        min-width: 200px;
+      }
+    }
+    @media (max-width: 500px) {
+      .contact-info {
+        flex-direction: column;
+      }
+      .info-card {
+        flex: 1 1 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════ ANNOUNCEMENT BAR ═══════ -->
+  <div class="announce-bar">
+    <i class="fas fa-map-marker-alt"></i>
+    <strong>Handmade in Asheville, NC</strong> &mdash; Fast shipping nationwide.
+    <a href="./catalog.html">Start shopping &rarr;</a>
+  </div>
+
+  <!-- ═══════ HEADER ═══════ -->
+  <header class="site-header" id="siteHeader">
+    <div class="container header-inner">
+      <a href="./" class="logo">
+        <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+        <div>
+          <span class="logo-text">BlueRidgeCustomCo</span>
+          <span class="logo-sub">Asheville's Custom Shop</span>
+        </div>
+      </a>
+
+      <nav class="nav-desktop">
+        <a href="./catalog.html">Stickers</a>
+        <a href="./multiboard/">Multiboard</a>
+        <a href="./apparel.html">Apparel</a>
+        <a href="./metal-prints.html">Metal Prints</a>
+        <a href="./slide-laser-engraving.html">Engraving</a>
+        <a href="./racing.html">Racing</a>
+        <a href="./designer.html" class="nav-cta"><i class="fas fa-pen-nib"></i> Free Designer</a>
+      </nav>
+
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile nav -->
+  <div class="nav-mobile-overlay" id="mobileNav">
+    <a href="./catalog.html">Stickers & Decals</a>
+    <a href="./multiboard/">Multiboard</a>
+    <a href="./apparel.html">Apparel</a>
+    <a href="./metal-prints.html">Metal Prints</a>
+    <a href="./slide-laser-engraving.html">Laser Engraving</a>
+    <a href="./racing.html">Racing</a>
+    <a href="./designer.html">Free Designer</a>
+    <a href="./custom-stickers.html">Custom Orders</a>
+    <a href="./customer.html">My Account</a>
+  </div>
+
+  <!-- ═══════ PAGE HERO ═══════ -->
+  <section class="contact-hero">
+    <div class="container">
+      <div class="section-tag">We Would Love to Hear From You</div>
+      <h1>Get in Touch</h1>
+      <p>Have a question, need a custom quote, or just want to say hello? Drop us a line and we will get back to you fast.</p>
+    </div>
+  </section>
+
+  <!-- ═══════ CONTACT CONTENT ═══════ -->
+  <section class="contact-section">
+    <div class="container">
+      <div class="contact-grid">
+
+        <!-- LEFT: Contact Form -->
+        <div class="contact-form-card reveal">
+          <h2>Send Us a Message</h2>
+          <p>Fill out the form below and we will be in touch shortly.</p>
+
+          <form id="contactForm" novalidate>
+            <div class="form-group">
+              <label for="contactName">Name <span class="required">*</span></label>
+              <input type="text" id="contactName" name="name" class="form-input" placeholder="Your name" required>
+            </div>
+
+            <div class="form-group">
+              <label for="contactEmail">Email <span class="required">*</span></label>
+              <input type="email" id="contactEmail" name="email" class="form-input" placeholder="you@example.com" required>
+            </div>
+
+            <div class="form-group">
+              <label for="contactSubject">Subject</label>
+              <select id="contactSubject" name="subject" class="form-select">
+                <option value="General Inquiry">General Inquiry</option>
+                <option value="Custom Order Quote">Custom Order Quote</option>
+                <option value="Bulk Pricing">Bulk Pricing</option>
+                <option value="Racing Packages">Racing Packages</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="contactMessage">Message <span class="required">*</span></label>
+              <textarea id="contactMessage" name="message" class="form-textarea" placeholder="Tell us what you need..." required></textarea>
+            </div>
+
+            <div class="form-submit">
+              <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                <i class="fas fa-paper-plane"></i> Send Message
+              </button>
+            </div>
+
+            <div class="form-status" id="formStatus"></div>
+          </form>
+        </div>
+
+        <!-- RIGHT: Info Cards -->
+        <div class="contact-info">
+
+          <div class="info-card reveal reveal-d1">
+            <div class="info-card-header">
+              <div class="info-card-icon"><i class="fas fa-envelope"></i></div>
+              <h3>Email Us</h3>
+            </div>
+            <p><a href="mailto:orders@swayzecustomvinyl.com" class="email-link">orders@swayzecustomvinyl.com</a></p>
+          </div>
+
+          <div class="info-card reveal reveal-d2">
+            <div class="info-card-header">
+              <div class="info-card-icon"><i class="fas fa-clock"></i></div>
+              <h3>Response Time</h3>
+            </div>
+            <p>We typically respond within 24 hours. For rush orders, let us know in your message and we will prioritize your request.</p>
+          </div>
+
+          <div class="info-card reveal reveal-d3">
+            <div class="info-card-header">
+              <div class="info-card-icon"><i class="fas fa-mountain-sun"></i></div>
+              <h3>Based in Asheville, NC</h3>
+            </div>
+            <p>All products are designed and made right here in the Blue Ridge Mountains. We ship nationwide across the US.</p>
+          </div>
+
+          <div class="info-card reveal reveal-d4">
+            <div class="info-card-header">
+              <div class="info-card-icon"><i class="fas fa-hashtag"></i></div>
+              <h3>Follow Along</h3>
+            </div>
+            <p>See what we are working on and get inspired.</p>
+            <div class="social-links">
+              <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+              <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+              <a href="#" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ FOOTER ═══════ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <div class="logo" style="margin-bottom: 0;">
+            <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+            <div>
+              <span class="logo-text">BlueRidgeCustomCo</span>
+              <span class="logo-sub">Asheville's Custom Shop</span>
+            </div>
+          </div>
+          <p>Vinyl decals, metal prints, 3D organizers, laser engraving & apparel. Handmade in Asheville, NC.</p>
+          <div class="footer-social">
+            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+            <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+            <a href="#" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4>Shop</h4>
+          <a href="./catalog.html">Stickers & Decals</a>
+          <a href="./multiboard/">Multiboard</a>
+          <a href="./apparel.html">Apparel</a>
+          <a href="./metal-prints.html">Metal Prints</a>
+          <a href="./slide-laser-engraving.html">Laser Engraving</a>
+          <a href="./racing.html">Racing Packages</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Tools</h4>
+          <a href="./designer.html">Free Designer</a>
+          <a href="./custom-stickers.html">Custom Orders</a>
+          <a href="./price-list.html">Price List</a>
+          <a href="./customer.html">My Account</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Info</h4>
+          <a href="./faq.html">FAQ</a>
+          <a href="./contact.html">Contact</a>
+          <a href="./privacy-policy.html">Privacy Policy</a>
+          <a href="./terms.html">Terms & Conditions</a>
+          <a href="./race_decal_requirements_cheatsheet.html">Racing Compliance Guide</a>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>&copy; <span data-year></span> BlueRidgeCustomCo. All rights reserved.</span>
+        <div class="footer-trust">
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Secure checkout</span>
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Made in USA</span>
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Fast turnaround</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Floating CTA -->
+  <a href="./custom-stickers.html" class="floating-cta" id="floatingCta">
+    <i class="fas fa-comment-dots"></i> Get a Custom Quote
+  </a>
+
+  <script src="./theme-v2.js"></script>
+  <script>
+  (function() {
+    'use strict';
+
+    var form = document.getElementById('contactForm');
+    var submitBtn = document.getElementById('submitBtn');
+    var statusEl = document.getElementById('formStatus');
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      // Clear previous status
+      statusEl.className = 'form-status';
+      statusEl.style.display = 'none';
+
+      var name = document.getElementById('contactName').value.trim();
+      var email = document.getElementById('contactEmail').value.trim();
+      var subject = document.getElementById('contactSubject').value;
+      var message = document.getElementById('contactMessage').value.trim();
+
+      // Basic validation
+      if (!name || !email || !message) {
+        statusEl.textContent = 'Please fill out all required fields.';
+        statusEl.className = 'form-status error';
+        statusEl.style.display = 'block';
+        return;
+      }
+
+      // Email format check
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        statusEl.textContent = 'Please enter a valid email address.';
+        statusEl.className = 'form-status error';
+        statusEl.style.display = 'block';
+        return;
+      }
+
+      // Disable button
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+
+      fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name,
+          email: email,
+          subject: subject,
+          message: message
+        })
+      })
+      .then(function(res) {
+        if (!res.ok) throw new Error('Server error');
+        return res.json();
+      })
+      .then(function() {
+        statusEl.innerHTML = '<i class="fas fa-circle-check"></i> Message sent! We will get back to you within 24 hours.';
+        statusEl.className = 'form-status success';
+        statusEl.style.display = 'block';
+        form.reset();
+      })
+      .catch(function() {
+        statusEl.innerHTML = '<i class="fas fa-circle-exclamation"></i> Something went wrong. Please email us directly at <a href="mailto:orders@swayzecustomvinyl.com" style="color: var(--terracotta); text-decoration: underline;">orders@swayzecustomvinyl.com</a>';
+        statusEl.className = 'form-status error';
+        statusEl.style.display = 'block';
+      })
+      .finally(function() {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Message';
+      });
+    });
+  })();
+  </script>
+
+</body>
+</html>
