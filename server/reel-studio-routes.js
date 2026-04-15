@@ -892,21 +892,29 @@ function handleReelStudioRoute(pathname, req, res) {
 
         // ── Step 3: Build enriched caption with product links
         const productLinks = products.slice(0, 5).map(p => `${p.url}`);
-        const shopLink = landingPageUrl || (products.length === 1 ? products[0]?.url : `${STORE_BASE}/collections/apparel`);
+        const collectionSlug = detectedType === 'metal-print' ? 'metal-prints' : 'apparel';
+        const shopLink = landingPageUrl || (products.length === 1 ? products[0]?.url : `${STORE_BASE}/collections/${collectionSlug}`);
+
+        // Product-type-aware hashtags and copy
+        const isMetalPrint = detectedType === 'metal-print';
+        const productHashtags = isMetalPrint
+          ? '#metalprint #metalprints #wallart #homedecor #metalwallart #artprint #handmade #asheville #shopsmall'
+          : '#limiteddrop #handmade #asheville #shopsmall';
+        const productLabel = isMetalPrint ? 'metal print' : 'drop';
 
         let enrichedCaption = caption || '';
         if (enrichedCaption && !enrichedCaption.includes(STORE_BASE)) {
           // Inject product links if not already in caption
           enrichedCaption += `\n\n🛒 Shop now: ${shopLink}`;
           if (products.length > 1 && landingPageUrl) {
-            enrichedCaption += `\n\nBrowse the full drop: ${landingPageUrl}`;
+            enrichedCaption += `\n\nBrowse the full collection: ${landingPageUrl}`;
           }
         } else if (!enrichedCaption) {
           // Build a basic caption
           const firstProduct = products[0];
           enrichedCaption = firstProduct
-            ? `🔥 New drop! ${firstProduct.title}\n\n🛒 Shop now: ${shopLink}\n\nHandmade in Asheville, NC\n#limiteddrop #handmade #asheville #shopsmall`
-            : `🔥 New drop!\n\n🛒 ${shopLink}\n\n#limiteddrop #handmade #asheville #shopsmall`;
+            ? `🔥 New ${productLabel}! ${firstProduct.title}\n\n🛒 Shop now: ${shopLink}\n\nHandmade in Asheville, NC\n${productHashtags}`
+            : `🔥 New ${productLabel}!\n\n🛒 ${shopLink}\n\n${productHashtags}`;
         }
 
         // ── Step 4: Publish to social media
