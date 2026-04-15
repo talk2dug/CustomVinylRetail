@@ -2224,9 +2224,16 @@ Made to live in the light.</textarea>
 
     log('🚀 Starting full publish pipeline...', 'var(--accent)');
 
-    // Gather design IDs from selected mockups
-    const apparelItems = state.selected.filter(s => s.asset?.type === 'apparel');
-    const filenames = apparelItems.map(s => s.asset?.url?.split('/').pop()).filter(Boolean);
+    // Gather design IDs from selected mockups (match the Shopify publish button's filter)
+    let apparelItems = state.selected.filter(s => s.asset?.source === 'apparel');
+    // Fallback: if no apparel-sourced items, try all image items
+    if (apparelItems.length === 0) {
+      apparelItems = state.selected.filter(s => s.asset?.type === 'image');
+    }
+    const filenames = apparelItems.map(s => {
+      const u = s.asset?.url?.split('/').pop() || '';
+      return u.split('?')[0];
+    }).filter(Boolean);
 
     // Build caption
     const hook = (document.getElementById('field-hookText').value || '').trim();
