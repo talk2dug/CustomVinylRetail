@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product | BlueRidgeCustomCo</title>
+  <meta name="description" content="Handmade custom product from BlueRidgeCustomCo in Asheville, NC.">
+  <link rel="icon" type="image/png" href="./images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Open Graph (updated dynamically) -->
+  <meta property="og:site_name" content="BlueRidgeCustomCo">
+  <meta property="og:type" content="product">
+  <meta property="og:title" content="Product | BlueRidgeCustomCo" id="ogTitle">
+  <meta property="og:description" content="Handmade custom product from Asheville, NC." id="ogDesc">
+  <meta property="og:url" content="" id="ogUrl">
+  <meta property="og:image" content="" id="ogImage">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Shared theme -->
+  <link rel="stylesheet" href="./theme-v2.css">
+
+  <style>
+    /* ═══════════════════════════════════════
+       PRODUCT PAGE — Page-Specific Styles
+       ═══════════════════════════════════════ */
+
+    /* Breadcrumb */
+    .breadcrumb {
+      padding: 1rem 0 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text-tertiary);
+    }
+    .breadcrumb a {
+      color: var(--text-tertiary);
+      transition: color 0.2s;
+    }
+    .breadcrumb a:hover {
+      color: var(--forest);
+    }
+    .breadcrumb span {
+      margin: 0 0.4rem;
+      opacity: 0.5;
+    }
+    .breadcrumb .breadcrumb-current {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    /* Product layout */
+    .product-section {
+      padding: 1.5rem 0 4rem;
+    }
+    .product-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: start;
+    }
+
+    /* Image gallery */
+    .product-image-main {
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: var(--cream-dark);
+      aspect-ratio: 1;
+      cursor: crosshair;
+      border: 1px solid var(--border);
+    }
+    .product-image-main img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.4s var(--ease);
+    }
+    .product-image-main:hover img {
+      transform: scale(1.12);
+    }
+    .product-thumbnails {
+      display: flex;
+      gap: 0.6rem;
+      margin-top: 0.75rem;
+    }
+    .product-thumb {
+      width: 72px;
+      height: 72px;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      border: 2px solid var(--border);
+      cursor: pointer;
+      transition: border-color 0.2s;
+      background: var(--cream-dark);
+    }
+    .product-thumb.active,
+    .product-thumb:hover {
+      border-color: var(--forest);
+    }
+    .product-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Product info */
+    .product-info {
+      padding-top: 0.25rem;
+    }
+    .product-category-pill {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--forest);
+      background: var(--forest-dim);
+      padding: 0.3rem 0.75rem;
+      border-radius: var(--radius-full);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.75rem;
+    }
+    .product-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.6rem, 3.5vw, 2.25rem);
+      font-weight: 750;
+      color: var(--text-primary);
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 0.75rem;
+    }
+    .product-price {
+      font-family: var(--font-mono);
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: var(--forest);
+      margin-bottom: 1rem;
+    }
+    .product-short-desc {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Spec badges */
+    .product-specs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-bottom: 1.75rem;
+    }
+    .spec-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      background: var(--cream-warm);
+      padding: 0.35rem 0.75rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border);
+    }
+    .spec-badge i {
+      color: var(--amber);
+      font-size: 0.7rem;
+    }
+
+    /* Quantity stepper */
+    .qty-row {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .qty-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .qty-stepper {
+      display: inline-flex;
+      align-items: center;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+    .qty-stepper button {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      color: var(--text-primary);
+      transition: background 0.15s;
+    }
+    .qty-stepper button:hover {
+      background: var(--cream-dark);
+    }
+    .qty-stepper .qty-value {
+      width: 42px;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      font-weight: 600;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      padding: 0.35rem 0;
+      color: var(--text-primary);
+    }
+
+    /* Action buttons */
+    .product-actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.75rem;
+    }
+    .product-actions .btn {
+      flex: 1;
+      justify-content: center;
+      font-size: 1rem;
+      padding: 0.95rem 1.5rem;
+    }
+
+    /* Trust badges */
+    .trust-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .trust-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+    .trust-badge i {
+      color: var(--forest);
+      font-size: 0.9rem;
+    }
+
+    /* ═══════════════════════════════════════
+       ACCORDION
+       ═══════════════════════════════════════ */
+    .accordion-section {
+      padding: 0 0 4rem;
+    }
+    .accordion-wrap {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .accordion-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-bottom: 0.6rem;
+      background: var(--white);
+      overflow: hidden;
+    }
+    .accordion-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      font-family: var(--font-display);
+      font-weight: 650;
+      font-size: 0.95rem;
+      color: var(--text-primary);
+      transition: background 0.2s;
+      user-select: none;
+    }
+    .accordion-header:hover {
+      background: var(--cream-warm);
+    }
+    .accordion-header i {
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+      transition: transform 0.3s var(--ease);
+    }
+    .accordion-item.open .accordion-header i {
+      transform: rotate(180deg);
+    }
+    .accordion-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s var(--ease);
+    }
+    .accordion-body-inner {
+      padding: 0 1.25rem 1.25rem;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.75;
+    }
+    .accordion-body-inner p {
+      margin-bottom: 0.5rem;
+    }
+
+    /* ═══════════════════════════════════════
+       RELATED PRODUCTS
+       ═══════════════════════════════════════ */
+    .related-section {
+      padding: 3rem 0 5rem;
+      background: var(--cream-warm);
+      border-top: 1px solid var(--border);
+    }
+    .related-section .section-tag {
+      text-align: center;
+    }
+    .related-section .section-title {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    /* ═══════════════════════════════════════
+       LOADING & ERROR STATES
+       ═══════════════════════════════════════ */
+    .loading-state {
+      text-align: center;
+      padding: 6rem 2rem;
+    }
+    .loading-spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--forest);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 1rem;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-text {
+      font-size: 0.9rem;
+      color: var(--text-tertiary);
+    }
+
+    .error-state {
+      text-align: center;
+      padding: 6rem 2rem;
+    }
+    .error-state i {
+      font-size: 3rem;
+      color: var(--amber);
+      margin-bottom: 1rem;
+    }
+    .error-state h2 {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    .error-state p {
+      color: var(--text-secondary);
+      margin-bottom: 1.5rem;
+    }
+
+    /* ═══════════════════════════════════════
+       RESPONSIVE
+       ═══════════════════════════════════════ */
+    @media (max-width: 768px) {
+      .product-grid {
+        grid-template-columns: 1fr;
+        gap: 1.75rem;
+      }
+      .product-actions {
+        flex-direction: column;
+      }
+      .trust-row {
+        gap: 0.65rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════ ANNOUNCEMENT BAR ═══════ -->
+  <div class="announce-bar">
+    <i class="fas fa-map-marker-alt"></i>
+    <strong>Handmade in Asheville, NC</strong> &mdash; Fast shipping nationwide.
+    <a href="./catalog.html">Start shopping &rarr;</a>
+  </div>
+
+  <!-- ═══════ HEADER ═══════ -->
+  <header class="site-header" id="siteHeader">
+    <div class="container header-inner">
+      <a href="./" class="logo">
+        <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+        <div>
+          <span class="logo-text">BlueRidgeCustomCo</span>
+          <span class="logo-sub">Asheville's Custom Shop</span>
+        </div>
+      </a>
+
+      <nav class="nav-desktop">
+        <a href="./catalog.html">Stickers</a>
+        <a href="./multiboard/">Multiboard</a>
+        <a href="./apparel.html">Apparel</a>
+        <a href="./metal-prints.html">Metal Prints</a>
+        <a href="./slide-laser-engraving.html">Engraving</a>
+        <a href="./racing.html">Racing</a>
+        <a href="./designer.html" class="nav-cta"><i class="fas fa-pen-nib"></i> Free Designer</a>
+      </nav>
+
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile nav -->
+  <div class="nav-mobile-overlay" id="mobileNav">
+    <a href="./catalog.html">Stickers & Decals</a>
+    <a href="./multiboard/">Multiboard</a>
+    <a href="./apparel.html">Apparel</a>
+    <a href="./metal-prints.html">Metal Prints</a>
+    <a href="./slide-laser-engraving.html">Laser Engraving</a>
+    <a href="./racing.html">Racing</a>
+    <a href="./designer.html">Free Designer</a>
+    <a href="./custom-stickers.html">Custom Orders</a>
+    <a href="./customer.html">My Account</a>
+  </div>
+
+  <!-- ═══════ MAIN CONTENT ═══════ -->
+  <main>
+
+    <!-- Loading state -->
+    <div id="loadingState" class="loading-state">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading product...</div>
+    </div>
+
+    <!-- Error state (hidden by default) -->
+    <div id="errorState" class="error-state" style="display:none;">
+      <i class="fas fa-exclamation-triangle"></i>
+      <h2>Product Not Found</h2>
+      <p>Sorry, we couldn't find that product. It may have been removed or the link might be incorrect.</p>
+      <a href="./catalog.html" class="btn btn-primary"><i class="fas fa-arrow-left"></i> Back to Catalog</a>
+    </div>
+
+    <!-- Product content (hidden until loaded) -->
+    <div id="productContent" style="display:none;">
+
+      <!-- Breadcrumb -->
+      <div class="container">
+        <nav class="breadcrumb" id="breadcrumb">
+          <a href="./">Home</a>
+          <span>/</span>
+          <a href="./catalog.html">Shop</a>
+          <span>/</span>
+          <span class="breadcrumb-category"><a href="./catalog.html">All</a></span>
+          <span>/</span>
+          <span class="breadcrumb-current" id="breadcrumbName">Product</span>
+        </nav>
+      </div>
+
+      <!-- Product grid -->
+      <section class="product-section">
+        <div class="container">
+          <div class="product-grid">
+
+            <!-- LEFT: Images -->
+            <div class="product-gallery reveal">
+              <div class="product-image-main" id="mainImage">
+                <img src="" alt="" id="mainImageEl">
+              </div>
+              <div class="product-thumbnails" id="thumbnails"></div>
+            </div>
+
+            <!-- RIGHT: Info -->
+            <div class="product-info reveal reveal-d1">
+              <div class="product-category-pill" id="categoryPill">Category</div>
+              <h1 class="product-title" id="productTitle">Product Name</h1>
+              <div class="product-price" id="productPrice">$0.00</div>
+              <p class="product-short-desc" id="shortDesc">Loading description...</p>
+
+              <div class="product-specs" id="productSpecs"></div>
+
+              <div class="qty-row">
+                <span class="qty-label">Quantity</span>
+                <div class="qty-stepper">
+                  <button type="button" id="qtyMinus" aria-label="Decrease quantity"><i class="fas fa-minus"></i></button>
+                  <div class="qty-value" id="qtyValue">1</div>
+                  <button type="button" id="qtyPlus" aria-label="Increase quantity"><i class="fas fa-plus"></i></button>
+                </div>
+              </div>
+
+              <div class="product-actions">
+                <a href="./catalog.html" class="btn btn-primary btn-lg" id="addToCartBtn"><i class="fas fa-shopping-bag"></i> Add to Cart</a>
+                <a href="./catalog.html" class="btn btn-warm btn-lg" id="buyNowBtn"><i class="fas fa-bolt"></i> Buy Now</a>
+              </div>
+
+              <div class="trust-row">
+                <div class="trust-badge"><i class="fas fa-map-pin"></i> Made in Asheville</div>
+                <div class="trust-badge"><i class="fas fa-shield-halved"></i> Weatherproof</div>
+                <div class="trust-badge"><i class="fas fa-truck-fast"></i> Ships in 48hrs</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- Accordion -->
+      <section class="accordion-section">
+        <div class="container">
+          <div class="accordion-wrap reveal">
+
+            <div class="accordion-item open" id="accordionDesc">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span><i class="fas fa-align-left" style="margin-right:0.5rem;color:var(--amber);"></i> Description</span>
+                <i class="fas fa-chevron-down"></i>
+              </div>
+              <div class="accordion-body" id="accordionDescBody">
+                <div class="accordion-body-inner" id="fullDescription">
+                  <p>Full product description will appear here.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="accordion-item" id="accordionMaterials">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span><i class="fas fa-layer-group" style="margin-right:0.5rem;color:var(--amber);"></i> Materials & Care</span>
+                <i class="fas fa-chevron-down"></i>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-body-inner" id="materialsContent">
+                  <p>Premium vinyl or high-quality materials selected for durability.</p>
+                  <p>Clean surface before application. For vinyl decals, apply to smooth, dry surfaces for best adhesion. Avoid pressure washers directly on edges.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="accordion-item">
+              <div class="accordion-header" onclick="toggleAccordion(this)">
+                <span><i class="fas fa-box" style="margin-right:0.5rem;color:var(--amber);"></i> Shipping Info</span>
+                <i class="fas fa-chevron-down"></i>
+              </div>
+              <div class="accordion-body">
+                <div class="accordion-body-inner">
+                  <p>Most orders ship within 1-2 business days from our Asheville, NC workshop.</p>
+                  <p>Standard shipping: 3-5 business days. Expedited options available at checkout.</p>
+                  <p>All items are carefully packaged to ensure they arrive in perfect condition.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- Related products -->
+      <section class="related-section" id="relatedSection">
+        <div class="container">
+          <div class="section-tag reveal" style="justify-content:center;">You Might Also Like</div>
+          <h2 class="section-title reveal reveal-d1">More From the Workshop</h2>
+          <div class="product-scroll reveal reveal-d2" id="relatedGrid">
+            <!-- Populated by JS or shows placeholders -->
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /productContent -->
+  </main>
+
+  <!-- ═══════ FOOTER ═══════ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <div class="logo" style="margin-bottom: 0;">
+            <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+            <div>
+              <span class="logo-text">BlueRidgeCustomCo</span>
+              <span class="logo-sub">Asheville's Custom Shop</span>
+            </div>
+          </div>
+          <p>Vinyl decals, metal prints, 3D organizers, laser engraving & apparel. Handmade in Asheville, NC.</p>
+          <div class="footer-social">
+            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+            <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+            <a href="#" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4>Shop</h4>
+          <a href="./catalog.html">Stickers & Decals</a>
+          <a href="./multiboard/">Multiboard</a>
+          <a href="./apparel.html">Apparel</a>
+          <a href="./metal-prints.html">Metal Prints</a>
+          <a href="./slide-laser-engraving.html">Laser Engraving</a>
+          <a href="./racing.html">Racing Packages</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Tools</h4>
+          <a href="./designer.html">Free Designer</a>
+          <a href="./custom-stickers.html">Custom Orders</a>
+          <a href="./price-list.html">Price List</a>
+          <a href="./customer.html">My Account</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Info</h4>
+          <a href="./our-story.html">Our Story</a>
+          <a href="./faq.html">FAQ</a>
+          <a href="./contact.html">Contact</a>
+          <a href="./privacy-policy.html">Privacy Policy</a>
+          <a href="./terms.html">Terms & Conditions</a>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>&copy; <span data-year></span> BlueRidgeCustomCo. All rights reserved.</span>
+        <div class="footer-trust">
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Secure checkout</span>
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Made in USA</span>
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Fast turnaround</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Floating CTA -->
+  <a href="./custom-stickers.html" class="floating-cta" id="floatingCta">
+    <i class="fas fa-comment-dots"></i> Get a Custom Quote
+  </a>
+
+  <!-- Shared theme JS (header scroll, hamburger, reveal, footer year) -->
+  <script src="./theme-v2.js"></script>
+
+  <!-- ═══════ PRODUCT PAGE JS ═══════ -->
+  <script>
+  (function() {
+    'use strict';
+
+    // ─── Helpers ──────────────────────────────────────────────────────
+    function formatPrice(cents) {
+      return '$' + (cents / 100).toFixed(2);
+    }
+
+    function getProductId() {
+      var params = new URLSearchParams(window.location.search);
+      return params.get('id');
+    }
+
+    function truncate(str, len) {
+      if (!str) return '';
+      return str.length > len ? str.substring(0, len) + '...' : str;
+    }
+
+    // ─── Quantity stepper ─────────────────────────────────────────────
+    var qty = 1;
+    var qtyValue = document.getElementById('qtyValue');
+    var qtyMinus = document.getElementById('qtyMinus');
+    var qtyPlus = document.getElementById('qtyPlus');
+
+    qtyMinus.addEventListener('click', function() {
+      if (qty > 1) {
+        qty--;
+        qtyValue.textContent = qty;
+      }
+    });
+
+    qtyPlus.addEventListener('click', function() {
+      qty++;
+      qtyValue.textContent = qty;
+    });
+
+    // ─── Accordion ────────────────────────────────────────────────────
+    // Open the first accordion on load
+    var firstAccordion = document.querySelector('.accordion-item.open');
+    if (firstAccordion) {
+      var body = firstAccordion.querySelector('.accordion-body');
+      body.style.maxHeight = body.scrollHeight + 'px';
+    }
+
+    window.toggleAccordion = function(header) {
+      var item = header.parentElement;
+      var body = item.querySelector('.accordion-body');
+      var isOpen = item.classList.contains('open');
+
+      // Close all
+      document.querySelectorAll('.accordion-item').forEach(function(ai) {
+        ai.classList.remove('open');
+        ai.querySelector('.accordion-body').style.maxHeight = '0';
+      });
+
+      // Toggle clicked
+      if (!isOpen) {
+        item.classList.add('open');
+        body.style.maxHeight = body.scrollHeight + 'px';
+      }
+    };
+
+    // ─── Fetch product data ───────────────────────────────────────────
+    var productId = getProductId();
+
+    if (!productId) {
+      showError();
+    } else {
+      loadProduct(productId);
+    }
+
+    function showError() {
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('errorState').style.display = 'block';
+      document.getElementById('productContent').style.display = 'none';
+    }
+
+    function showProduct() {
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('errorState').style.display = 'none';
+      document.getElementById('productContent').style.display = 'block';
+
+      // Re-trigger scroll reveal for newly visible elements
+      var reveals = document.querySelectorAll('.reveal:not(.visible)');
+      if (reveals.length > 0 && 'IntersectionObserver' in window) {
+        var obs = new IntersectionObserver(function(entries) {
+          entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('visible');
+              obs.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.1, rootMargin: '0px 0px -30px 0px' });
+        reveals.forEach(function(el) { obs.observe(el); });
+      }
+    }
+
+    function loadProduct(id) {
+      fetch('/api/products/public/' + encodeURIComponent(id))
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (!data.success || !data.product) {
+            showError();
+            return;
+          }
+          renderProduct(data.product);
+          showProduct();
+        })
+        .catch(function() {
+          showError();
+        });
+    }
+
+    function renderProduct(p) {
+      // Title
+      var title = p.title || 'Custom Product';
+      document.getElementById('productTitle').textContent = title;
+      document.title = title + ' | BlueRidgeCustomCo';
+
+      // OG meta
+      var ogTitle = document.getElementById('ogTitle');
+      var ogDesc = document.getElementById('ogDesc');
+      var ogUrl = document.getElementById('ogUrl');
+      var ogImage = document.getElementById('ogImage');
+      if (ogTitle) ogTitle.setAttribute('content', title + ' | BlueRidgeCustomCo');
+      if (ogDesc) ogDesc.setAttribute('content', truncate(p.description, 150));
+      if (ogUrl) ogUrl.setAttribute('content', window.location.href);
+      if (ogImage && p.photoUrl) ogImage.setAttribute('content', p.photoUrl);
+
+      // Breadcrumb
+      var category = p.category || 'All';
+      document.querySelector('.breadcrumb-category a').textContent = category;
+      document.getElementById('breadcrumbName').textContent = truncate(title, 40);
+
+      // Category pill
+      document.getElementById('categoryPill').textContent = category;
+
+      // Price
+      var price = p.priceCents ? formatPrice(p.priceCents) : '$0.00';
+      document.getElementById('productPrice').textContent = price;
+
+      // Short description
+      var desc = p.description || '';
+      var shortDesc = truncate(desc, 200);
+      document.getElementById('shortDesc').textContent = shortDesc;
+
+      // Full description in accordion
+      var fullDescEl = document.getElementById('fullDescription');
+      if (desc) {
+        var paragraphs = desc.split('\n').filter(function(s) { return s.trim(); });
+        fullDescEl.innerHTML = paragraphs.map(function(para) {
+          return '<p>' + para + '</p>';
+        }).join('');
+      }
+      // Re-measure accordion height if open
+      var openItem = document.querySelector('.accordion-item.open');
+      if (openItem) {
+        var body = openItem.querySelector('.accordion-body');
+        body.style.maxHeight = body.scrollHeight + 'px';
+      }
+
+      // Main image
+      var mainImgEl = document.getElementById('mainImageEl');
+      if (p.photoUrl) {
+        mainImgEl.src = p.photoUrl;
+        mainImgEl.alt = title;
+      } else {
+        mainImgEl.alt = 'No image available';
+        mainImgEl.style.display = 'none';
+      }
+
+      // Thumbnails (single image for now)
+      var thumbContainer = document.getElementById('thumbnails');
+      if (p.photoUrl) {
+        var thumb = document.createElement('div');
+        thumb.className = 'product-thumb active';
+        var thumbImg = document.createElement('img');
+        thumbImg.src = p.photoUrl;
+        thumbImg.alt = title + ' thumbnail';
+        thumb.appendChild(thumbImg);
+        thumbContainer.appendChild(thumb);
+      }
+
+      // Spec badges
+      var specsEl = document.getElementById('productSpecs');
+      var specs = [];
+      if (p.size) specs.push({ icon: 'fa-ruler', text: p.size });
+      if (p.color) specs.push({ icon: 'fa-palette', text: p.color });
+      if (p.isHeatTransfer) specs.push({ icon: 'fa-fire', text: 'Heat Transfer' });
+      if (p.decalText) specs.push({ icon: 'fa-font', text: 'Custom Text' });
+      if (p.quantity && p.quantity > 1) specs.push({ icon: 'fa-layer-group', text: 'Pack of ' + p.quantity });
+
+      // Always add a material badge
+      if (p.isHeatTransfer) {
+        specs.push({ icon: 'fa-shirt', text: 'HTV Vinyl' });
+      } else if (category.toLowerCase().indexOf('apparel') !== -1) {
+        specs.push({ icon: 'fa-shirt', text: 'Premium Cotton' });
+      } else if (category.toLowerCase().indexOf('metal') !== -1) {
+        specs.push({ icon: 'fa-certificate', text: 'HD Aluminum' });
+      } else {
+        specs.push({ icon: 'fa-certificate', text: 'Premium Vinyl' });
+      }
+
+      specs.forEach(function(spec) {
+        var badge = document.createElement('span');
+        badge.className = 'spec-badge';
+        badge.innerHTML = '<i class="fas ' + spec.icon + '"></i> ' + spec.text;
+        specsEl.appendChild(badge);
+      });
+
+      // Update materials section based on category
+      var materialsEl = document.getElementById('materialsContent');
+      if (category.toLowerCase().indexOf('apparel') !== -1) {
+        materialsEl.innerHTML = '<p>Premium cotton blend, pre-shrunk for a true-to-size fit.</p><p>Machine wash cold, tumble dry low. Turn inside out before washing to protect the design.</p>';
+      } else if (category.toLowerCase().indexOf('metal') !== -1) {
+        materialsEl.innerHTML = '<p>High-definition dye-sublimation on .045" brushed aluminum.</p><p>Wipe clean with a soft damp cloth. UV-resistant and waterproof. Includes mounting hardware.</p>';
+      } else {
+        materialsEl.innerHTML = '<p>Premium outdoor vinyl rated for 5+ years. Waterproof, UV-resistant, and dishwasher safe.</p><p>Clean the surface with rubbing alcohol before application. Press firmly from center outward to remove air bubbles.</p>';
+      }
+
+      // Related products placeholder
+      loadRelatedProducts(p.category, p.id || productId);
+    }
+
+    // ─── Related products ─────────────────────────────────────────────
+    function loadRelatedProducts(category, currentId) {
+      // Try to fetch from catalog API; show placeholders if unavailable
+      fetch('/api/products/public?limit=8')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (!data.success || !data.products || data.products.length === 0) {
+            document.getElementById('relatedSection').style.display = 'none';
+            return;
+          }
+
+          // Filter out current product, prefer same category, limit to 4
+          var related = data.products.filter(function(p) {
+            return String(p.id) !== String(currentId);
+          });
+
+          // Sort: same category first
+          related.sort(function(a, b) {
+            var aMatch = a.category === category ? 0 : 1;
+            var bMatch = b.category === category ? 0 : 1;
+            return aMatch - bMatch;
+          });
+
+          related = related.slice(0, 4);
+
+          if (related.length === 0) {
+            document.getElementById('relatedSection').style.display = 'none';
+            return;
+          }
+
+          var grid = document.getElementById('relatedGrid');
+          grid.innerHTML = '';
+
+          related.forEach(function(item) {
+            var card = document.createElement('a');
+            card.href = './product-v2.html?id=' + item.id;
+            card.className = 'prod-card';
+            card.innerHTML =
+              '<div class="prod-card-img">' +
+                (item.photoUrl ? '<img src="' + item.photoUrl + '" alt="' + (item.title || '') + '">' : '') +
+              '</div>' +
+              '<div class="prod-card-body">' +
+                '<h3>' + (item.title || 'Product') + '</h3>' +
+                '<p class="prod-desc">' + truncate(item.description || '', 60) + '</p>' +
+                '<div class="prod-card-footer">' +
+                  '<div class="prod-price">' + (item.priceCents ? formatPrice(item.priceCents) : '') + '</div>' +
+                  '<span class="btn btn-sm btn-outline">View</span>' +
+                '</div>' +
+              '</div>';
+            grid.appendChild(card);
+          });
+        })
+        .catch(function() {
+          // Hide related section if API call fails
+          document.getElementById('relatedSection').style.display = 'none';
+        });
+    }
+
+  })();
+  </script>
+
+</body>
+</html>

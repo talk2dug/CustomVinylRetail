@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Our Story | BlueRidgeCustomCo — Handmade in Asheville, NC</title>
+  <meta name="description" content="The story behind BlueRidgeCustomCo — a one-person custom shop in Asheville, NC making vinyl stickers, 3D-printed wall systems, metal prints, laser engraving, apparel & racing packages.">
+  <link rel="canonical" href="https://blueridgecustomco.com/our-story.html">
+  <link rel="icon" type="image/png" href="./images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="BlueRidgeCustomCo">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Our Story | BlueRidgeCustomCo">
+  <meta property="og:description" content="A one-person custom shop in Asheville, NC. Vinyl stickers, metal prints, 3D organizers, laser engraving & apparel — all made by hand.">
+  <meta property="og:url" content="https://blueridgecustomco.com/our-story.html">
+  <meta property="og:image" content="https://blueridgecustomco.com/images/BlueRidgeCustomCoLogo.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Shared theme -->
+  <link rel="stylesheet" href="./theme-v2.css">
+
+  <style>
+    /* ═══════════════════════════════════════
+       OUR STORY — Page-Specific Styles
+       ═══════════════════════════════════════ */
+
+    /* --- Page Hero --- */
+    .page-hero {
+      position: relative;
+      padding: clamp(5rem, 10vw, 8rem) 0 clamp(4rem, 8vw, 6rem);
+      text-align: center;
+      overflow: hidden;
+      background: var(--cream-warm);
+    }
+    .page-hero::before {
+      content: '';
+      position: absolute;
+      top: -120px;
+      right: -80px;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      background: var(--forest-dim);
+      filter: blur(80px);
+      pointer-events: none;
+    }
+    .page-hero::after {
+      content: '';
+      position: absolute;
+      bottom: -60px;
+      left: -100px;
+      width: 300px;
+      height: 300px;
+      border-radius: 50%;
+      background: var(--amber-dim);
+      filter: blur(60px);
+      pointer-events: none;
+    }
+    .page-hero .container {
+      position: relative;
+      z-index: 1;
+    }
+    .page-hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.75rem, 6vw, 4rem);
+      font-weight: 800;
+      color: var(--text-primary);
+      letter-spacing: -0.03em;
+      line-height: 1.08;
+      margin-bottom: 1rem;
+    }
+    .page-hero .hero-subtitle {
+      font-size: clamp(1.05rem, 2vw, 1.25rem);
+      color: var(--text-secondary);
+      max-width: 560px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* --- Story Intro --- */
+    .story-intro {
+      padding: clamp(4rem, 8vw, 6rem) 0;
+    }
+    .story-intro-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .story-intro-inner p {
+      font-size: clamp(1.1rem, 2vw, 1.25rem);
+      color: var(--text-secondary);
+      line-height: 1.85;
+      margin-bottom: 1.75rem;
+    }
+    .story-intro-inner p:first-of-type::first-letter {
+      font-family: var(--font-display);
+      font-size: 3.5em;
+      font-weight: 800;
+      float: left;
+      color: var(--forest);
+      line-height: 0.8;
+      margin-right: 0.12em;
+      margin-top: 0.06em;
+    }
+    .story-intro-inner p strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* --- What We Make --- */
+    .what-we-make {
+      padding: clamp(4rem, 8vw, 6rem) 0;
+      background: var(--white);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .what-we-make .section-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    .what-we-make .section-header .section-tag {
+      justify-content: center;
+    }
+    .make-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+    .make-card {
+      background: var(--cream);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 2rem 1.75rem;
+      text-align: center;
+      transition: transform 0.3s var(--ease), box-shadow 0.3s, border-color 0.3s;
+    }
+    .make-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--border-hover);
+    }
+    .make-icon {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 1.25rem;
+      background: var(--forest-dim);
+      border-radius: var(--radius-md);
+      display: grid;
+      place-items: center;
+      font-size: 1.35rem;
+      color: var(--forest);
+      transition: background 0.3s, color 0.3s;
+    }
+    .make-card:hover .make-icon {
+      background: var(--forest);
+      color: var(--text-inverse);
+    }
+    .make-card h3 {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 650;
+      color: var(--text-primary);
+      margin-bottom: 0.5rem;
+      line-height: 1.3;
+    }
+    .make-card p {
+      font-size: 0.88rem;
+      color: var(--text-tertiary);
+      line-height: 1.6;
+    }
+    .make-card .make-badge {
+      display: inline-block;
+      margin-top: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--forest);
+      background: var(--forest-dim);
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--radius-full);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    @media (max-width: 800px) {
+      .make-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 500px) {
+      .make-grid { grid-template-columns: 1fr; max-width: 360px; margin: 0 auto; }
+    }
+
+    /* --- The Workshop --- */
+    .workshop-section {
+      padding: clamp(4rem, 8vw, 6rem) 0;
+    }
+    .workshop-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+    .workshop-text .section-desc {
+      margin-bottom: 1.5rem;
+    }
+    .workshop-text p {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      line-height: 1.75;
+      margin-bottom: 1rem;
+    }
+    .workshop-photos {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 1rem;
+    }
+    .workshop-photos .photo-placeholder:first-child {
+      grid-column: 1 / -1;
+    }
+    .photo-placeholder {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: var(--cream-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 0.75rem;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-xl);
+      transition: border-color 0.3s;
+    }
+    .photo-placeholder:hover {
+      border-color: var(--border-hover);
+    }
+    .photo-placeholder i {
+      font-size: 2.5rem;
+      color: var(--text-tertiary);
+      opacity: 0.35;
+    }
+    .photo-placeholder span {
+      font-size: 0.82rem;
+      color: var(--text-tertiary);
+      opacity: 0.6;
+    }
+
+    @media (max-width: 800px) {
+      .workshop-layout { grid-template-columns: 1fr; }
+      .workshop-photos { order: -1; }
+    }
+
+    /* --- Values --- */
+    .values-section {
+      padding: clamp(4rem, 8vw, 6rem) 0;
+      background: var(--forest);
+      color: var(--text-inverse);
+    }
+    .values-section .section-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    .values-section .section-tag {
+      color: var(--amber);
+      justify-content: center;
+    }
+    .values-section .section-tag::before {
+      background: var(--amber);
+    }
+    .values-section .section-title {
+      color: var(--text-inverse);
+    }
+    .values-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+    .value-card {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-lg);
+      padding: 2rem 1.75rem;
+      transition: transform 0.3s var(--ease), background 0.3s;
+    }
+    .value-card:hover {
+      transform: translateY(-4px);
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .value-icon {
+      width: 48px;
+      height: 48px;
+      background: rgba(212, 163, 115, 0.15);
+      border-radius: var(--radius-md);
+      display: grid;
+      place-items: center;
+      font-size: 1.15rem;
+      color: var(--amber);
+      margin-bottom: 1.25rem;
+    }
+    .value-card h3 {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.5rem;
+      line-height: 1.3;
+    }
+    .value-card p {
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.55);
+      line-height: 1.7;
+    }
+
+    @media (max-width: 800px) {
+      .values-grid { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
+    }
+
+    /* --- CTA Section --- */
+    .cta-section {
+      padding: clamp(4rem, 8vw, 6rem) 0;
+      text-align: center;
+    }
+    .cta-section h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      font-weight: 750;
+      color: var(--text-primary);
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 0.75rem;
+    }
+    .cta-section p {
+      font-size: 1.05rem;
+      color: var(--text-secondary);
+      max-width: 480px;
+      margin: 0 auto 2rem;
+      line-height: 1.7;
+    }
+    .cta-buttons {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════ ANNOUNCEMENT BAR ═══════ -->
+  <div class="announce-bar">
+    <i class="fas fa-map-marker-alt"></i>
+    <strong>Handmade in Asheville, NC</strong> &mdash; Fast shipping nationwide.
+    <a href="./catalog.html">Start shopping &rarr;</a>
+  </div>
+
+  <!-- ═══════ HEADER ═══════ -->
+  <header class="site-header" id="siteHeader">
+    <div class="container header-inner">
+      <a href="./" class="logo">
+        <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+        <div>
+          <span class="logo-text">BlueRidgeCustomCo</span>
+          <span class="logo-sub">Asheville's Custom Shop</span>
+        </div>
+      </a>
+
+      <nav class="nav-desktop">
+        <a href="./catalog.html">Stickers</a>
+        <a href="./multiboard/">Multiboard</a>
+        <a href="./apparel.html">Apparel</a>
+        <a href="./metal-prints.html">Metal Prints</a>
+        <a href="./slide-laser-engraving.html">Engraving</a>
+        <a href="./racing.html">Racing</a>
+        <a href="./designer.html" class="nav-cta"><i class="fas fa-pen-nib"></i> Free Designer</a>
+      </nav>
+
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile nav -->
+  <div class="nav-mobile-overlay" id="mobileNav">
+    <a href="./catalog.html">Stickers & Decals</a>
+    <a href="./multiboard/">Multiboard</a>
+    <a href="./apparel.html">Apparel</a>
+    <a href="./metal-prints.html">Metal Prints</a>
+    <a href="./slide-laser-engraving.html">Laser Engraving</a>
+    <a href="./racing.html">Racing</a>
+    <a href="./designer.html">Free Designer</a>
+    <a href="./custom-stickers.html">Custom Orders</a>
+    <a href="./customer.html">My Account</a>
+  </div>
+
+  <!-- ═══════ PAGE HERO ═══════ -->
+  <section class="page-hero">
+    <div class="container">
+      <div class="reveal">
+        <span class="section-tag">About BlueRidgeCustomCo</span>
+        <h1>Our Story</h1>
+        <p class="hero-subtitle">A one-person custom shop tucked in the mountains of Asheville, NC &mdash; making things by hand because that's the only way worth doing it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ STORY INTRO ═══════ -->
+  <section class="story-intro">
+    <div class="container">
+      <div class="story-intro-inner reveal">
+        <p>It started the way most good things do &mdash; with a problem I wanted to solve and a stubborn refusal to settle for something off the shelf. I needed a custom decal for a project, couldn't find anything that worked, so I made one myself. Then I made another. Then a friend asked me to make one for them. And then their friend. And pretty soon I realized I'd accidentally started a business.</p>
+
+        <p>That was the beginning of BlueRidgeCustomCo. What started as a vinyl cutter on a folding table has grown into a full workshop with <strong>3D printers, a laser engraver, a heat press, and a dye-sublimation setup</strong>. But the spirit hasn't changed one bit. Every single order is still made by me, right here in Asheville, North Carolina.</p>
+
+        <p>I'm not a faceless corporation. There's no warehouse, no offshore fulfillment center, no team of people you'll never meet. When you place an order, I'm the one who designs it, makes it, inspects it, packs it, and ships it. That's not a limitation &mdash; that's the whole point. <strong>I care about every piece that goes out the door because my name is on it.</strong></p>
+
+        <p>There's something deeply satisfying about taking a raw material &mdash; a sheet of vinyl, a spool of filament, a blank piece of metal &mdash; and turning it into something someone loves enough to put on their car, their wall, or their favorite gear. That's what gets me out of bed every morning, and I don't see that changing anytime soon.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ WHAT WE MAKE ═══════ -->
+  <section class="what-we-make">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-tag">What We Make</span>
+        <h2 class="section-title">Six Product Lines, One Workshop</h2>
+        <p class="section-desc" style="margin: 0 auto;">Every product starts and finishes in the same Asheville workshop &mdash; no middlemen, no outsourcing.</p>
+      </div>
+
+      <div class="make-grid">
+        <div class="make-card reveal reveal-d1">
+          <div class="make-icon"><i class="fas fa-note-sticky"></i></div>
+          <h3>Vinyl Stickers & Decals</h3>
+          <p>Over 50,000 designs and counting. Premium outdoor vinyl rated for 5+ years. Custom sizes, shapes, and full-color prints.</p>
+        </div>
+
+        <div class="make-card reveal reveal-d2">
+          <div class="make-icon"><i class="fas fa-border-all"></i></div>
+          <h3>Multiboard Wall Systems</h3>
+          <p>3D-printed modular wall organization. Bases, mounts, hooks, shelves &mdash; endlessly configurable for any space.</p>
+          <span class="make-badge">Licensed Reseller</span>
+        </div>
+
+        <div class="make-card reveal reveal-d3">
+          <div class="make-icon"><i class="fas fa-image"></i></div>
+          <h3>HD Metal Prints</h3>
+          <p>Your photos infused directly into aluminum for vivid, frameless wall art that pops. Scratch-resistant and built to last.</p>
+        </div>
+
+        <div class="make-card reveal reveal-d4">
+          <div class="make-icon"><i class="fas fa-fire"></i></div>
+          <h3>Laser Engraving</h3>
+          <p>Precision engraving on wood, acrylic, leather, and more. Signs, gifts, keepsakes &mdash; anything you can dream up.</p>
+        </div>
+
+        <div class="make-card reveal reveal-d5">
+          <div class="make-icon"><i class="fas fa-shirt"></i></div>
+          <h3>Custom Apparel</h3>
+          <p>T-shirts, hoodies, hats, and more with your designs. Dye-sublimation and heat-press for vibrant, durable prints.</p>
+        </div>
+
+        <div class="make-card reveal">
+          <div class="make-icon"><i class="fas fa-flag-checkered"></i></div>
+          <h3>Racing Packages</h3>
+          <p>Complete decal kits for race cars, karts, and off-road vehicles. Number panels, sponsor logos, full wraps &mdash; compliance-ready.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ THE WORKSHOP ═══════ -->
+  <section class="workshop-section">
+    <div class="container">
+      <div class="workshop-layout">
+        <div class="workshop-text reveal">
+          <span class="section-tag">The Workshop</span>
+          <h2 class="section-title">Where It All Happens</h2>
+          <p>Everything is made under one roof. My workshop runs a fleet of 3D printers for Multiboard production, a professional vinyl cutter for stickers and decals, a laser engraver for precision detail work, and a heat press for apparel.</p>
+          <p>I don't believe in black boxes. I know every machine inside and out, and I've tuned each one to hit the quality bar I'd want as a customer. When something leaves this shop, it's been checked by hand &mdash; not scanned by a sensor on a conveyor belt.</p>
+          <p>The tools change and the process keeps improving, but the standard stays the same: <strong>if I wouldn't be proud to put it on my own wall or gear, it doesn't ship.</strong></p>
+        </div>
+
+        <div class="workshop-photos reveal reveal-d2">
+          <div class="photo-placeholder">
+            <i class="fas fa-camera"></i>
+            <span>Workshop photo</span>
+          </div>
+          <div class="photo-placeholder">
+            <i class="fas fa-camera"></i>
+            <span>Workshop photo</span>
+          </div>
+          <div class="photo-placeholder">
+            <i class="fas fa-camera"></i>
+            <span>Workshop photo</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ VALUES ═══════ -->
+  <section class="values-section">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-tag">What We Stand For</span>
+        <h2 class="section-title">How We Work</h2>
+      </div>
+
+      <div class="values-grid">
+        <div class="value-card reveal reveal-d1">
+          <div class="value-icon"><i class="fas fa-location-dot"></i></div>
+          <h3>Made Here, Not Outsourced</h3>
+          <p>Every single order is produced in my Asheville workshop. No dropshipping, no overseas factories, no mystery fulfillment centers. When it says "made in Asheville," that's exactly what it means.</p>
+        </div>
+
+        <div class="value-card reveal reveal-d2">
+          <div class="value-icon"><i class="fas fa-gem"></i></div>
+          <h3>Quality Over Quantity</h3>
+          <p>Small batch production means every piece gets attention. I hand-check each order before it ships &mdash; weeding, alignment, color accuracy, structural integrity. If it's not right, I make it again.</p>
+        </div>
+
+        <div class="value-card reveal reveal-d3">
+          <div class="value-icon"><i class="fas fa-hand-wave"></i></div>
+          <h3>Real Human Service</h3>
+          <p>When you reach out, you're talking to the person who actually makes your stuff. Not a support ticket system, not a chatbot. A real human who knows your order and genuinely wants to get it right.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ CTA ═══════ -->
+  <section class="cta-section">
+    <div class="container reveal">
+      <h2>Ready to See What We Can Make for You?</h2>
+      <p>Browse over 50,000 designs in our catalog or jump into the free designer and create something completely your own.</p>
+      <div class="cta-buttons">
+        <a href="./designer.html" class="btn btn-primary btn-lg"><i class="fas fa-pen-nib"></i> Open the Designer</a>
+        <a href="./catalog.html" class="btn btn-outline btn-lg"><i class="fas fa-store"></i> Browse the Catalog</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ FOOTER ═══════ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <div class="logo" style="margin-bottom: 0;">
+            <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+            <div>
+              <span class="logo-text">BlueRidgeCustomCo</span>
+              <span class="logo-sub">Asheville's Custom Shop</span>
+            </div>
+          </div>
+          <p>Vinyl decals, metal prints, 3D organizers, laser engraving & apparel. Handmade in Asheville, NC.</p>
+          <div class="footer-social">
+            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+            <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+            <a href="#" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4>Shop</h4>
+          <a href="./catalog.html">Stickers & Decals</a>
+          <a href="./multiboard/">Multiboard</a>
+          <a href="./apparel.html">Apparel</a>
+          <a href="./metal-prints.html">Metal Prints</a>
+          <a href="./slide-laser-engraving.html">Laser Engraving</a>
+          <a href="./racing.html">Racing Packages</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Tools</h4>
+          <a href="./designer.html">Free Designer</a>
+          <a href="./custom-stickers.html">Custom Orders</a>
+          <a href="./price-list.html">Price List</a>
+          <a href="./customer.html">My Account</a>
+        </div>
+
+        <div class="footer-col">
+          <h4>Info</h4>
+          <a href="./our-story.html">Our Story</a>
+          <a href="./faq.html">FAQ</a>
+          <a href="./contact.html">Contact</a>
+          <a href="./privacy-policy.html">Privacy Policy</a>
+          <a href="./terms.html">Terms & Conditions</a>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span>&copy; <span data-year></span> BlueRidgeCustomCo. All rights reserved.</span>
+        <div class="footer-trust">
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Secure checkout</span>
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Made in USA</span>
+          <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Fast turnaround</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Floating CTA -->
+  <a href="./custom-stickers.html" class="floating-cta" id="floatingCta">
+    <i class="fas fa-comment-dots"></i> Get a Custom Quote
+  </a>
+
+  <!-- Shared theme JS -->
+  <script src="./theme-v2.js"></script>
+
+</body>
+</html>

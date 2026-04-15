@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BlueRidgeCustomCo | As Seen on TikTok</title>
+  <meta name="description" content="Get the product you saw on TikTok. Handmade in Asheville, NC. Fast shipping nationwide.">
+  <link rel="icon" type="image/png" href="./images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Open Graph — dynamic values set by JS -->
+  <meta property="og:site_name" content="BlueRidgeCustomCo">
+  <meta property="og:type" content="product">
+  <meta property="og:title" content="BlueRidgeCustomCo | As Seen on TikTok" id="ogTitle">
+  <meta property="og:description" content="Handmade custom goods from Asheville, NC." id="ogDesc">
+  <meta property="og:image" content="https://blueridgecustomco.com/images/BlueRidgeCustomCoLogo.png" id="ogImage">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Shared theme -->
+  <link rel="stylesheet" href="./theme-v2.css">
+
+  <style>
+    /* ═══════════════════════════════════════
+       REEL LANDING — Page-specific styles
+       Mobile-first, conversion-optimized
+       ═══════════════════════════════════════ */
+
+    /* Override container for tighter mobile feel */
+    .rl-container {
+      width: 100%;
+      max-width: 540px;
+      margin: 0 auto;
+      padding: 0 1.25rem;
+    }
+
+    /* ── Minimal Header ── */
+    .rl-header {
+      position: sticky;
+      top: 0;
+      z-index: 150;
+      background: rgba(250, 248, 245, 0.95);
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      border-bottom: 1px solid var(--border);
+      padding: 0.7rem 0;
+    }
+    .rl-header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .rl-header .logo {
+      gap: 0.6rem;
+    }
+    .rl-header .logo-mark {
+      width: 34px; height: 34px;
+    }
+    .rl-header .logo-text {
+      font-size: 1.05rem;
+    }
+    .rl-header .logo-sub {
+      display: none;
+    }
+    .rl-shop-link {
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--forest);
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.45rem 1rem;
+      border-radius: var(--radius-full);
+      border: 1.5px solid var(--forest);
+      transition: all 0.2s var(--ease);
+    }
+    .rl-shop-link:hover {
+      background: var(--forest);
+      color: var(--text-inverse);
+    }
+
+    /* ── Hero Block ── */
+    .rl-hero {
+      padding: 1.5rem 0 0;
+    }
+    .rl-media-wrap {
+      position: relative;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: var(--cream-dark);
+      aspect-ratio: 1;
+      margin-bottom: 1.25rem;
+    }
+    .rl-media-wrap img,
+    .rl-media-wrap video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .rl-media-wrap .rl-placeholder {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      color: var(--text-tertiary);
+      font-size: 3rem;
+    }
+    .rl-tiktok-badge {
+      position: absolute;
+      top: 0.75rem;
+      left: 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(0, 0, 0, 0.75);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.35rem 0.75rem;
+      border-radius: var(--radius-full);
+      letter-spacing: 0.02em;
+      backdrop-filter: blur(8px);
+    }
+    .rl-tiktok-badge i {
+      font-size: 0.8rem;
+    }
+    .rl-product-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 5vw, 2rem);
+      font-weight: 750;
+      color: var(--text-primary);
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 0.35rem;
+    }
+    .rl-product-desc {
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 0.25rem;
+    }
+
+    /* ── Price + CTA Block ── */
+    .rl-cta-block {
+      padding: 1.25rem 0 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .rl-price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      margin-bottom: 0.6rem;
+    }
+    .rl-price {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--forest);
+      letter-spacing: -0.02em;
+    }
+    .rl-price-original {
+      font-size: 1rem;
+      color: var(--text-tertiary);
+      text-decoration: line-through;
+    }
+    .rl-urgency {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--terracotta);
+      margin-bottom: 1rem;
+    }
+    .rl-urgency i {
+      font-size: 0.7rem;
+    }
+    .rl-urgency-dot {
+      width: 6px; height: 6px;
+      background: var(--terracotta);
+      border-radius: 50%;
+      display: inline-block;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .rl-cta-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      width: 100%;
+      padding: 1.1rem 2rem;
+      font-family: var(--font-body);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-inverse);
+      background: var(--forest);
+      border: none;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      transition: all 0.25s var(--ease);
+      text-decoration: none;
+    }
+    .rl-cta-btn:hover {
+      background: var(--forest-light);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-xl);
+    }
+    .rl-cta-btn:active {
+      transform: translateY(0);
+    }
+    .rl-cta-secondary {
+      display: block;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-tertiary);
+      margin-top: 0.6rem;
+    }
+    .rl-cta-secondary i {
+      margin-right: 0.3rem;
+    }
+
+    /* ── Quick Specs ── */
+    .rl-specs {
+      padding: 1.5rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .rl-specs-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    .rl-spec-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+    }
+    .rl-spec-icon {
+      width: 38px; height: 38px;
+      flex-shrink: 0;
+      background: var(--forest-dim);
+      border-radius: var(--radius-md);
+      display: grid;
+      place-items: center;
+      color: var(--forest);
+      font-size: 0.9rem;
+    }
+    .rl-spec-label {
+      font-weight: 600;
+      font-size: 0.82rem;
+      color: var(--text-primary);
+      line-height: 1.3;
+    }
+    .rl-spec-value {
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+      line-height: 1.4;
+    }
+
+    /* ── Social Proof Strip ── */
+    .rl-proof {
+      padding: 1.5rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .rl-proof-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .rl-stars {
+      color: var(--amber);
+      font-size: 0.9rem;
+      letter-spacing: 2px;
+    }
+    .rl-rating-text {
+      font-weight: 600;
+      font-size: 0.88rem;
+      color: var(--text-primary);
+    }
+    .rl-rating-count {
+      font-size: 0.78rem;
+      color: var(--text-tertiary);
+    }
+    .rl-proof-stats {
+      display: flex;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .rl-stat {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    .rl-stat i {
+      color: var(--forest);
+      font-size: 0.75rem;
+    }
+    .rl-review-snippet {
+      background: var(--cream-warm);
+      border-radius: var(--radius-md);
+      padding: 1rem 1.15rem;
+      border: 1px solid var(--border);
+    }
+    .rl-review-snippet p {
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      font-style: italic;
+      margin-bottom: 0.5rem;
+    }
+    .rl-review-snippet .rl-reviewer {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-tertiary);
+    }
+
+    /* ── Related Products ── */
+    .rl-related {
+      padding: 2rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .rl-related-title {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 1rem;
+    }
+    .rl-related-scroll {
+      display: flex;
+      gap: 0.85rem;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 0.5rem;
+    }
+    .rl-related-scroll::-webkit-scrollbar {
+      display: none;
+    }
+    .rl-related-card {
+      flex: 0 0 160px;
+      scroll-snap-align: start;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      transition: border-color 0.3s, transform 0.3s var(--ease), box-shadow 0.3s;
+      text-decoration: none;
+      color: inherit;
+    }
+    .rl-related-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-md);
+    }
+    .rl-related-card-img {
+      aspect-ratio: 1;
+      background: var(--cream-dark);
+      overflow: hidden;
+    }
+    .rl-related-card-img img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .rl-related-card-body {
+      padding: 0.65rem 0.75rem;
+    }
+    .rl-related-card-body h4 {
+      font-family: var(--font-display);
+      font-size: 0.78rem;
+      font-weight: 650;
+      color: var(--text-primary);
+      line-height: 1.3;
+      margin-bottom: 0.2rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .rl-related-card-body .rl-related-price {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--forest);
+    }
+
+    /* ── Trust Footer ── */
+    .rl-trust {
+      padding: 2rem 0;
+      text-align: center;
+    }
+    .rl-trust-badges {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 2rem;
+    }
+    .rl-trust-badge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .rl-trust-badge-icon {
+      width: 44px; height: 44px;
+      background: var(--forest-dim);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: var(--forest);
+      font-size: 1rem;
+    }
+    .rl-trust-badge-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.01em;
+    }
+    .rl-mini-footer {
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+    }
+    .rl-mini-footer a {
+      color: var(--text-secondary);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .rl-mini-footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 1.25rem;
+      margin-top: 0.5rem;
+    }
+
+    /* ── Floating Mobile CTA ── */
+    .rl-floating-cta {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 200;
+      background: rgba(250, 248, 245, 0.96);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      transform: translateY(100%);
+      transition: transform 0.35s var(--ease);
+    }
+    .rl-floating-cta.visible {
+      transform: translateY(0);
+    }
+    .rl-floating-cta-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .rl-floating-cta-name {
+      font-weight: 600;
+      font-size: 0.82rem;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rl-floating-cta-price {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--forest);
+    }
+    .rl-floating-cta .rl-float-btn {
+      flex-shrink: 0;
+      padding: 0.7rem 1.4rem;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-inverse);
+      background: var(--forest);
+      border: none;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      font-family: var(--font-body);
+      transition: background 0.2s;
+      text-decoration: none;
+    }
+    .rl-floating-cta .rl-float-btn:hover {
+      background: var(--forest-light);
+    }
+
+    /* ── Not Found State ── */
+    .rl-not-found {
+      text-align: center;
+      padding: 4rem 1rem;
+    }
+    .rl-not-found-icon {
+      font-size: 3rem;
+      color: var(--text-tertiary);
+      margin-bottom: 1rem;
+    }
+    .rl-not-found h2 {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 0.5rem;
+    }
+    .rl-not-found p {
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      margin-bottom: 1.5rem;
+    }
+
+    /* ── Loading Skeleton ── */
+    .rl-skeleton {
+      animation: skeletonPulse 1.5s ease-in-out infinite;
+      background: linear-gradient(90deg, var(--cream-dark) 25%, var(--cream-warm) 50%, var(--cream-dark) 75%);
+      background-size: 200% 100%;
+      border-radius: var(--radius-md);
+    }
+    @keyframes skeletonPulse {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .rl-skeleton-img {
+      aspect-ratio: 1;
+      border-radius: var(--radius-lg);
+      margin-bottom: 1.25rem;
+    }
+    .rl-skeleton-title {
+      height: 2rem;
+      width: 75%;
+      margin-bottom: 0.5rem;
+    }
+    .rl-skeleton-text {
+      height: 1rem;
+      width: 90%;
+      margin-bottom: 0.35rem;
+    }
+    .rl-skeleton-text.short { width: 50%; }
+    .rl-skeleton-btn {
+      height: 3.2rem;
+      width: 100%;
+      border-radius: var(--radius-full);
+      margin-top: 1rem;
+    }
+
+    /* ── Responsive: larger screens ── */
+    @media (min-width: 600px) {
+      .rl-container {
+        max-width: 600px;
+        padding: 0 2rem;
+      }
+      .rl-media-wrap {
+        aspect-ratio: 4/3;
+        border-radius: var(--radius-xl);
+      }
+      .rl-related-card {
+        flex: 0 0 180px;
+      }
+    }
+
+    /* Extra bottom padding so floating CTA doesn't overlap content */
+    .rl-page-content {
+      padding-bottom: 5rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════ MINIMAL HEADER ═══════ -->
+  <header class="rl-header" id="siteHeader">
+    <div class="rl-container rl-header-inner">
+      <a href="./" class="logo">
+        <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+        <div>
+          <span class="logo-text">BlueRidgeCustomCo</span>
+          <span class="logo-sub">Asheville's Custom Shop</span>
+        </div>
+      </a>
+      <a href="./catalog.html" class="rl-shop-link">
+        <i class="fas fa-th"></i> Shop All
+      </a>
+    </div>
+  </header>
+
+  <!-- ═══════ PAGE CONTENT ═══════ -->
+  <main class="rl-page-content" id="pageContent">
+
+    <!-- Loading state -->
+    <div class="rl-container" id="loadingState">
+      <div style="padding-top:1.5rem;">
+        <div class="rl-skeleton rl-skeleton-img"></div>
+        <div class="rl-skeleton rl-skeleton-title"></div>
+        <div class="rl-skeleton rl-skeleton-text"></div>
+        <div class="rl-skeleton rl-skeleton-text short"></div>
+        <div class="rl-skeleton rl-skeleton-btn"></div>
+      </div>
+    </div>
+
+    <!-- Product content (hidden until loaded) -->
+    <div id="productContent" style="display:none;">
+
+      <!-- ── 1. Hero Block ── -->
+      <section class="rl-hero">
+        <div class="rl-container">
+          <div class="rl-media-wrap" id="heroMedia">
+            <div class="rl-placeholder"><i class="fas fa-image"></i></div>
+            <span class="rl-tiktok-badge"><i class="fab fa-tiktok"></i> As Seen on TikTok</span>
+          </div>
+          <h1 class="rl-product-title" id="productTitle">Loading...</h1>
+          <p class="rl-product-desc" id="productDesc"></p>
+        </div>
+      </section>
+
+      <!-- ── 2. Price + CTA ── -->
+      <section class="rl-cta-block">
+        <div class="rl-container">
+          <div class="rl-price-row">
+            <span class="rl-price" id="productPrice">--</span>
+            <span class="rl-price-original" id="productOriginalPrice" style="display:none;"></span>
+          </div>
+          <div class="rl-urgency" id="urgencyText">
+            <span class="rl-urgency-dot"></span>
+            Ships in 48hrs
+          </div>
+          <a href="#" class="rl-cta-btn" id="ctaBtn" data-tracking="cta-main">
+            <i class="fas fa-shopping-bag"></i>
+            <span>Get This Now</span>
+          </a>
+          <span class="rl-cta-secondary">
+            <i class="fas fa-lock"></i> Secure checkout &middot; Free shipping on orders $35+
+          </span>
+        </div>
+      </section>
+
+      <!-- ── 3. Quick Specs ── -->
+      <section class="rl-specs">
+        <div class="rl-container">
+          <div class="rl-specs-grid" id="specsGrid">
+            <div class="rl-spec-item">
+              <div class="rl-spec-icon"><i class="fas fa-layer-group"></i></div>
+              <div>
+                <div class="rl-spec-label">Premium Material</div>
+                <div class="rl-spec-value">Built to last</div>
+              </div>
+            </div>
+            <div class="rl-spec-item">
+              <div class="rl-spec-icon"><i class="fas fa-ruler-combined"></i></div>
+              <div>
+                <div class="rl-spec-label">Perfect Size</div>
+                <div class="rl-spec-value">Just right</div>
+              </div>
+            </div>
+            <div class="rl-spec-item">
+              <div class="rl-spec-icon"><i class="fas fa-shield-halved"></i></div>
+              <div>
+                <div class="rl-spec-label">Weatherproof</div>
+                <div class="rl-spec-value">Rain or shine</div>
+              </div>
+            </div>
+            <div class="rl-spec-item">
+              <div class="rl-spec-icon"><i class="fas fa-hand-sparkles"></i></div>
+              <div>
+                <div class="rl-spec-label">Handmade</div>
+                <div class="rl-spec-value">Asheville, NC</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── 4. Social Proof ── -->
+      <section class="rl-proof">
+        <div class="rl-container">
+          <div class="rl-proof-header">
+            <div class="rl-stars" id="starsDisplay">
+              <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i>
+            </div>
+            <span class="rl-rating-text" id="ratingText">5.0</span>
+            <span class="rl-rating-count" id="ratingCount">(--)</span>
+          </div>
+          <div class="rl-proof-stats">
+            <div class="rl-stat"><i class="fas fa-fire"></i> <span id="orderedThisWeek">--</span> ordered this week</div>
+            <div class="rl-stat"><i class="fas fa-eye"></i> <span id="viewingNow">--</span> viewing now</div>
+          </div>
+          <div class="rl-review-snippet" id="reviewSnippet">
+            <p id="reviewText">"Absolutely love the quality. Arrived faster than expected!"</p>
+            <span class="rl-reviewer" id="reviewerName">-- Verified Buyer</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── 5. Related Products ── -->
+      <section class="rl-related" id="relatedSection" style="display:none;">
+        <div class="rl-container">
+          <h2 class="rl-related-title">You Might Also Like</h2>
+          <div class="rl-related-scroll" id="relatedScroll">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ── 6. Trust Footer ── -->
+      <section class="rl-trust">
+        <div class="rl-container">
+          <div class="rl-trust-badges">
+            <div class="rl-trust-badge">
+              <div class="rl-trust-badge-icon"><i class="fas fa-map-marker-alt"></i></div>
+              <span class="rl-trust-badge-label">Made in Asheville</span>
+            </div>
+            <div class="rl-trust-badge">
+              <div class="rl-trust-badge-icon"><i class="fas fa-cloud-sun-rain"></i></div>
+              <span class="rl-trust-badge-label">Weatherproof</span>
+            </div>
+            <div class="rl-trust-badge">
+              <div class="rl-trust-badge-icon"><i class="fas fa-truck-fast"></i></div>
+              <span class="rl-trust-badge-label">Fast Shipping</span>
+            </div>
+            <div class="rl-trust-badge">
+              <div class="rl-trust-badge-icon"><i class="fas fa-heart"></i></div>
+              <span class="rl-trust-badge-label">Satisfaction Guaranteed</span>
+            </div>
+          </div>
+
+          <div class="rl-mini-footer">
+            <p>&copy; <span data-year></span> BlueRidgeCustomCo. Asheville, NC.</p>
+            <div class="rl-mini-footer-links">
+              <a href="./catalog.html">Full Catalog</a>
+              <a href="./privacy-policy.html">Privacy</a>
+              <a href="./terms.html">Terms</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /productContent -->
+
+    <!-- Not found state -->
+    <div id="notFoundState" style="display:none;">
+      <div class="rl-container rl-not-found">
+        <div class="rl-not-found-icon"><i class="fas fa-search"></i></div>
+        <h2>Product Not Found</h2>
+        <p>This item may have sold out or the link may be outdated. Check out our full catalog instead.</p>
+        <a href="./catalog.html" class="btn btn-primary btn-lg">
+          <i class="fas fa-th"></i> Browse Catalog
+        </a>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ═══════ FLOATING MOBILE CTA ═══════ -->
+  <div class="rl-floating-cta" id="floatingCta">
+    <div class="rl-floating-cta-info">
+      <div class="rl-floating-cta-name" id="floatingName">--</div>
+      <div class="rl-floating-cta-price" id="floatingPrice">--</div>
+    </div>
+    <a href="#" class="rl-float-btn" id="floatingBtn">Get This</a>
+  </div>
+
+  <!-- Shared theme JS (scroll reveal, year, etc.) -->
+  <script src="./theme-v2.js"></script>
+
+  <!-- ═══════ REEL LANDING JAVASCRIPT ═══════ -->
+  <script>
+  (function() {
+    'use strict';
+
+    // ─── DOM refs ───────────────────────────────────────────────────
+    var els = {
+      loading:        document.getElementById('loadingState'),
+      content:        document.getElementById('productContent'),
+      notFound:       document.getElementById('notFoundState'),
+      heroMedia:      document.getElementById('heroMedia'),
+      title:          document.getElementById('productTitle'),
+      desc:           document.getElementById('productDesc'),
+      price:          document.getElementById('productPrice'),
+      originalPrice:  document.getElementById('productOriginalPrice'),
+      urgency:        document.getElementById('urgencyText'),
+      ctaBtn:         document.getElementById('ctaBtn'),
+      specsGrid:      document.getElementById('specsGrid'),
+      starsDisplay:   document.getElementById('starsDisplay'),
+      ratingText:     document.getElementById('ratingText'),
+      ratingCount:    document.getElementById('ratingCount'),
+      orderedWeek:    document.getElementById('orderedThisWeek'),
+      viewingNow:     document.getElementById('viewingNow'),
+      reviewText:     document.getElementById('reviewText'),
+      reviewerName:   document.getElementById('reviewerName'),
+      relatedSection: document.getElementById('relatedSection'),
+      relatedScroll:  document.getElementById('relatedScroll'),
+      floatingCta:    document.getElementById('floatingCta'),
+      floatingName:   document.getElementById('floatingName'),
+      floatingPrice:  document.getElementById('floatingPrice'),
+      floatingBtn:    document.getElementById('floatingBtn')
+    };
+
+    // ─── Parse URL params ───────────────────────────────────────────
+    var params = new URLSearchParams(window.location.search);
+    var campaignSlug = params.get('c');
+    var productSlug  = params.get('p');
+    var slug = campaignSlug || productSlug;
+
+    if (!slug) {
+      showNotFound();
+      return;
+    }
+
+    // Determine API path
+    var apiBase = campaignSlug
+      ? '/api/public/campaigns/' + encodeURIComponent(campaignSlug)
+      : '/api/public/campaigns/' + encodeURIComponent(productSlug);
+
+    // ─── Fetch product / campaign data ──────────────────────────────
+    fetch(apiBase)
+      .then(function(res) {
+        if (!res.ok) throw new Error('Not found');
+        return res.json();
+      })
+      .then(function(data) {
+        renderProduct(data);
+        trackEvent('impression');
+      })
+      .catch(function() {
+        showNotFound();
+      });
+
+    // ─── Render ─────────────────────────────────────────────────────
+    function renderProduct(data) {
+      // Hide loading, show content
+      els.loading.style.display = 'none';
+      els.content.style.display = 'block';
+
+      // Update page title
+      document.title = (data.title || 'Product') + ' | BlueRidgeCustomCo';
+
+      // Update OG tags
+      var ogTitle = document.getElementById('ogTitle');
+      var ogDesc  = document.getElementById('ogDesc');
+      var ogImage = document.getElementById('ogImage');
+      if (ogTitle) ogTitle.setAttribute('content', data.title + ' | BlueRidgeCustomCo');
+      if (ogDesc && data.description)  ogDesc.setAttribute('content', data.description);
+      if (ogImage && data.image) ogImage.setAttribute('content', data.image);
+
+      // Hero media
+      var mediaWrap = els.heroMedia;
+      var placeholder = mediaWrap.querySelector('.rl-placeholder');
+      if (data.video_url) {
+        var video = document.createElement('video');
+        video.src = data.video_url;
+        video.autoplay = true;
+        video.loop = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        if (placeholder) placeholder.remove();
+        mediaWrap.insertBefore(video, mediaWrap.firstChild);
+      } else if (data.image) {
+        var img = document.createElement('img');
+        img.src = data.image;
+        img.alt = data.title || 'Product image';
+        img.loading = 'eager';
+        if (placeholder) placeholder.remove();
+        mediaWrap.insertBefore(img, mediaWrap.firstChild);
+      }
+
+      // Title + description
+      els.title.textContent = data.title || 'Custom Product';
+      els.desc.textContent = data.description || '';
+
+      // Price
+      var price = data.price || data.variants && data.variants[0] && data.variants[0].price;
+      if (price) {
+        els.price.textContent = '$' + parseFloat(price).toFixed(2);
+        els.floatingPrice.textContent = '$' + parseFloat(price).toFixed(2);
+      }
+      if (data.compare_at_price && parseFloat(data.compare_at_price) > parseFloat(price)) {
+        els.originalPrice.textContent = '$' + parseFloat(data.compare_at_price).toFixed(2);
+        els.originalPrice.style.display = 'inline';
+      }
+
+      // Urgency text
+      if (data.urgency_text) {
+        els.urgency.innerHTML = '<span class="rl-urgency-dot"></span> ' + escapeHtml(data.urgency_text);
+      } else if (data.inventory_quantity && data.inventory_quantity < 20) {
+        els.urgency.innerHTML = '<span class="rl-urgency-dot"></span> Only ' + data.inventory_quantity + ' left in stock';
+      }
+
+      // CTA link
+      var ctaUrl = data.shopify_url || data.buy_url || './catalog.html';
+      els.ctaBtn.href = ctaUrl;
+      els.floatingBtn.href = ctaUrl;
+
+      // CTA text
+      if (data.cta_text) {
+        els.ctaBtn.querySelector('span').textContent = data.cta_text;
+        els.floatingBtn.textContent = data.cta_text;
+      }
+
+      // Floating CTA name
+      els.floatingName.textContent = data.title || 'Product';
+
+      // Specs
+      if (data.specs && data.specs.length > 0) {
+        var specIcons = ['fa-layer-group', 'fa-ruler-combined', 'fa-shield-halved', 'fa-hand-sparkles'];
+        els.specsGrid.innerHTML = '';
+        data.specs.slice(0, 4).forEach(function(spec, i) {
+          var icon = spec.icon || specIcons[i] || 'fa-check';
+          var div = document.createElement('div');
+          div.className = 'rl-spec-item';
+          div.innerHTML =
+            '<div class="rl-spec-icon"><i class="fas ' + escapeHtml(icon) + '"></i></div>' +
+            '<div>' +
+              '<div class="rl-spec-label">' + escapeHtml(spec.label || '') + '</div>' +
+              '<div class="rl-spec-value">' + escapeHtml(spec.value || '') + '</div>' +
+            '</div>';
+          els.specsGrid.appendChild(div);
+        });
+      }
+
+      // Social proof
+      var rating = data.rating || 4.9;
+      var reviewCount = data.review_count || Math.floor(Math.random() * 40) + 12;
+      els.ratingText.textContent = rating.toFixed(1);
+      els.ratingCount.textContent = '(' + reviewCount + ' reviews)';
+      renderStars(rating);
+
+      els.orderedWeek.textContent = data.ordered_this_week || Math.floor(Math.random() * 30) + 8;
+      els.viewingNow.textContent = Math.floor(Math.random() * 12) + 3;
+
+      if (data.featured_review) {
+        els.reviewText.textContent = '"' + data.featured_review.text + '"';
+        els.reviewerName.textContent = '-- ' + data.featured_review.author + ', Verified Buyer';
+      }
+
+      // Related products
+      if (data.related && data.related.length > 0) {
+        els.relatedSection.style.display = 'block';
+        els.relatedScroll.innerHTML = '';
+        data.related.forEach(function(item) {
+          var card = document.createElement('a');
+          card.className = 'rl-related-card';
+          card.href = item.url || ('./reel-landing.html?p=' + encodeURIComponent(item.slug || item.id));
+          card.innerHTML =
+            '<div class="rl-related-card-img">' +
+              (item.image ? '<img src="' + escapeHtml(item.image) + '" alt="' + escapeHtml(item.title || '') + '" loading="lazy">' : '') +
+            '</div>' +
+            '<div class="rl-related-card-body">' +
+              '<h4>' + escapeHtml(item.title || '') + '</h4>' +
+              '<span class="rl-related-price">' + (item.price ? '$' + parseFloat(item.price).toFixed(2) : '') + '</span>' +
+            '</div>';
+          els.relatedScroll.appendChild(card);
+        });
+      }
+
+      // Trigger reveal animations
+      document.querySelectorAll('.reveal').forEach(function(el) {
+        el.classList.add('visible');
+      });
+    }
+
+    // ─── Stars renderer ─────────────────────────────────────────────
+    function renderStars(rating) {
+      var html = '';
+      for (var i = 1; i <= 5; i++) {
+        if (rating >= i) {
+          html += '<i class="fas fa-star"></i>';
+        } else if (rating >= i - 0.5) {
+          html += '<i class="fas fa-star-half-stroke"></i>';
+        } else {
+          html += '<i class="far fa-star"></i>';
+        }
+      }
+      els.starsDisplay.innerHTML = html;
+    }
+
+    // ─── Not found state ────────────────────────────────────────────
+    function showNotFound() {
+      els.loading.style.display = 'none';
+      els.notFound.style.display = 'block';
+
+      // Redirect to catalog after 5 seconds
+      setTimeout(function() {
+        window.location.href = './catalog.html';
+      }, 5000);
+    }
+
+    // ─── Event tracking ─────────────────────────────────────────────
+    function trackEvent(eventName) {
+      if (!slug) return;
+      var trackUrl = '/api/public/campaigns/' + encodeURIComponent(slug) + '/track';
+      fetch(trackUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: eventName })
+      }).catch(function() {
+        // Tracking failure is non-critical
+      });
+    }
+
+    // Track CTA clicks
+    function handleCtaClick(e) {
+      trackEvent('click');
+      // Allow default link behavior to proceed
+    }
+    els.ctaBtn.addEventListener('click', handleCtaClick);
+    els.floatingBtn.addEventListener('click', handleCtaClick);
+
+    // ─── Floating CTA visibility ────────────────────────────────────
+    var ctaBlock = document.querySelector('.rl-cta-block');
+    if (ctaBlock && 'IntersectionObserver' in window) {
+      var floatObserver = new IntersectionObserver(function(entries) {
+        els.floatingCta.classList.toggle('visible', !entries[0].isIntersecting);
+      }, { threshold: 0 });
+      floatObserver.observe(ctaBlock);
+    }
+
+    // ─── Header scroll effect ───────────────────────────────────────
+    var header = document.getElementById('siteHeader');
+    if (header) {
+      window.addEventListener('scroll', function() {
+        header.classList.toggle('scrolled', window.scrollY > 40);
+      }, { passive: true });
+    }
+
+    // ─── Utility ────────────────────────────────────────────────────
+    function escapeHtml(str) {
+      if (!str) return '';
+      var div = document.createElement('div');
+      div.appendChild(document.createTextNode(str));
+      return div.innerHTML;
+    }
+
+  })();
+  </script>
+
+</body>
+</html>
