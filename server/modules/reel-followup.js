@@ -194,8 +194,8 @@ async function createReelLandingPages(reelRecords, ctx = {}) {
         const copy = THEME_COPY[rec.theme] || THEME_COPY.default;
         const reelNum = (rec.chunkIdx || 0) + 1;
         const sameThemeCount = reelRecords.filter(r => r.theme === rec.theme).length;
-        const pageTitle = `${formatThemeName(rec.theme)} Collection${sameThemeCount > 1 ? ` - Part ${reelNum}` : ''}`;
-        const pageHandle = `reel-${rec.theme}${(rec.chunkIdx || 0) > 0 ? '-pt' + reelNum : ''}-${Date.now()}`;
+        const pageTitle = `${formatThemeName(rec.theme)} Collection — Reel ${reelNum} (${new Date().toISOString().slice(0, 10)})`;
+        const pageHandle = `reel-${rec.theme}-${reelNum}-${Date.now()}`;
 
         const bodyHtml = buildReelLandingPageHtml({
           title: pageTitle,

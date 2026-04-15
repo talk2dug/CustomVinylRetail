@@ -177,6 +177,7 @@ function handleReelStudioRoute(pathname, req, res) {
         // If attached to a campaign run, insert into tiktok_videos so the
         // finalize-campaign step can run 7b/7c against it.
         let videoId = null;
+        let resolvedShopifyIds = shopifyProductIds || [];
         if (campaignRunId) {
           try {
             const db = require('./db');
@@ -184,6 +185,45 @@ function handleReelStudioRoute(pathname, req, res) {
             if (!run) {
               console.warn(`[reel-studio] campaign run ${campaignRunId} not found, skipping DB insert`);
             } else {
+              // Resolve Shopify product IDs from design slugs if not provided
+              if (resolvedShopifyIds.length === 0 && chunkDesignIds && chunkDesignIds.length > 0) {
+                try {
+                  const themeGroups = run.theme_groups ? JSON.parse(run.theme_groups) : {};
+                  // Build slug list from theme_groups for this reel's designs
+                  const designSlugs = [];
+                  const designIdSet = new Set(chunkDesignIds);
+                  for (const items of Object.values(themeGroups)) {
+                    for (const item of items) {
+                      if (designIdSet.has(item.designId) && item.designSlug) {
+                        designSlugs.push(item.designSlug);
+                      }
+                    }
+                  }
+
+                  // Look up Shopify products by handle (slug-based matching)
+                  if (designSlugs.length > 0) {
+                    const shopify = require('./integrations/shopify');
+                    for (const slug of designSlugs.slice(0, 10)) {
+                      try {
+                        // Try common handle patterns
+                        for (const handlePattern of [slug, `metal-print-${slug}`, `${slug}-metal-print`]) {
+                          const product = await shopify.getProductByHandle(handlePattern).catch(() => null);
+                          if (product && product.id) {
+                            resolvedShopifyIds.push(String(product.id));
+                            break;
+                          }
+                        }
+                      } catch (_) {}
+                    }
+                    if (resolvedShopifyIds.length > 0) {
+                      console.log(`[reel-studio] Resolved ${resolvedShopifyIds.length} Shopify product IDs from design slugs`);
+                    }
+                  }
+                } catch (slugErr) {
+                  console.warn(`[reel-studio] Slug-based Shopify lookup failed: ${slugErr.message}`);
+                }
+              }
+
               videoId = `tv_${crypto.randomBytes(8).toString('hex')}`;
               // Determine next chunk_idx for this theme within this run
               const existing = db.getPipelineRunReels(campaignRunId) || [];
@@ -196,7 +236,7 @@ function handleReelStudioRoute(pathname, req, res) {
                 template: theme || template,
                 collection: run.collection || run.campaign_slug,
                 designs: JSON.stringify(chunkDesignIds || []),
-                shopifyProductIds: JSON.stringify(shopifyProductIds || []),
+                shopifyProductIds: JSON.stringify(resolvedShopifyIds),
                 duration: result.durationMs ? result.durationMs / 1000 : null,
                 status: 'draft',
                 platform: isTikTokShopReel ? 'tiktok-shop' : 'shopify',
@@ -207,7 +247,7 @@ function handleReelStudioRoute(pathname, req, res) {
                 chunkIdx: nextChunkIdx,
                 isTiktokShopReel: isTikTokShopReel ? 1 : 0
               });
-              console.log(`[reel-studio] Saved reel → tiktok_videos ${videoId} for campaign ${campaignRunId}`);
+              console.log(`[reel-studio] Saved reel → tiktok_videos ${videoId} for campaign ${campaignRunId} (${resolvedShopifyIds.length} products)`);
             }
           } catch (dbErr) {
             console.error('[reel-studio] DB insert failed:', dbErr.message);

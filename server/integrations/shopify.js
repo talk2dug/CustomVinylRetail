@@ -646,6 +646,14 @@ async function getProduct(productId) {
   return res?.product || res;
 }
 
+async function getProductByHandle(handle) {
+  if (!isConfigured()) throw new Error('Shopify not configured');
+  const url = adminUrl(`/products.json?handle=${encodeURIComponent(handle)}&limit=1`);
+  const res = await httpJson('GET', url);
+  const products = res?.products || [];
+  return products[0] || null;
+}
+
 async function updateProduct(productId, product) {
   if (!isConfigured()) throw new Error('Shopify not configured');
   const payload = { product: { id: Number(productId), ...product } };
@@ -1141,6 +1149,7 @@ async function listProducts({ limit = 50, since_id, product_type, status } = {})
 }
 
 module.exports.findProductByTag = findProductByTag;
+module.exports.getProductByHandle = getProductByHandle;
 module.exports.updateVariantPrice = updateVariantPrice;
 module.exports.updateVariantInventoryManagement = updateVariantInventoryManagement;
 module.exports.listProducts = listProducts;
