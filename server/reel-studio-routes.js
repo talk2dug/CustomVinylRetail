@@ -41,16 +41,42 @@ function loadCatalog() {
  */
 function resolveMockupToDesignId(filename) {
   if (!filename) return null;
-  const m = filename.match(/^mockup_(.+?)_hm_/);
-  if (!m) return null;
-  const extracted = m[1];
+
+  // Try multiple naming patterns:
+  // 1. mockup-mockup_DESIGNID_hm_MODELID_TS.jpg  (lifestyle mockups with prefix)
+  // 2. mockup_DESIGNID_hm_MODELID_TS.jpg          (lifestyle mockups without prefix)
+  // 3. mockup-product_DESIGNID_TYPE_COLOR_TS.jpg   (product blank mockups)
+  // 4. product_DESIGNID_TYPE_COLOR_TS.jpg           (product blanks without prefix)
+  // 5. trend-design_DESIGNID-mockup-TS.jpg          (trend designs)
+  // 6. apparel_ZONE_TS_N.png                        (curated drop mockups — no design ID)
+
+  const patterns = [
+    /^mockup-mockup_(.+?)_hm_/,          // lifestyle with prefix
+    /^mockup_(.+?)_hm_/,                 // lifestyle without prefix
+    /^mockup-product_(.+?)_(?:T-shirt|Hoodie|Hat|Beanie|Tank)/i,  // product blank with prefix
+    /^product_(.+?)_(?:T-shirt|Hoodie|Hat|Beanie|Tank)/i,         // product blank without prefix
+    /^mockup-mockup_(.+?)_(?:hm|product)/,   // catch-all lifestyle
+    /^trend-design_(.+?)-mockup/,        // trend designs
+    /^mockup-(.+?)_hm_/,                 // another variant
+  ];
+
+  let extracted = null;
+  for (const pat of patterns) {
+    const m = filename.match(pat);
+    if (m) { extracted = m[1]; break; }
+  }
+
+  if (!extracted) return null;
+
   // Try exact match against catalog
   const catalog = loadCatalog();
   for (const cat of (catalog.categories || [])) {
     for (const design of (cat.designs || [])) {
       if (design.id === extracted) return { designId: design.id, category: cat.name };
-      // Fallback: prefix match (mockup might include only first 30 chars)
-      if (design.id.startsWith(extracted.slice(0, 30))) return { designId: design.id, category: cat.name };
+      // Prefix match (mockup might truncate the design ID)
+      if (extracted.length >= 10 && design.id.startsWith(extracted.slice(0, 30))) return { designId: design.id, category: cat.name };
+      // Reverse: design ID starts with extracted
+      if (extracted.length >= 10 && extracted.startsWith(design.id.slice(0, 30))) return { designId: design.id, category: cat.name };
     }
   }
   return null;
