@@ -1088,10 +1088,40 @@ async function executeContentPlan() {
         continue;
       }
 
+      // Product-category mismatch guard: if the product's actual type doesn't match
+      // the planned category, correct the category so the caption describes the right product
+      let effectiveCategory = entry.product_category;
+      let effectiveCatConfig = catConfig;
+      const productType = (product.product_type || '').toLowerCase();
+      const CATEGORY_TYPE_MAP = {
+        'metal-print': ['metal print', 'metal art', 'metal art piece', 'metal print wall art'],
+        'tshirt': ['tshirt', 't-shirt', 'apparel', 'hoodie', 'sweatshirt'],
+        'sticker': ['sticker', 'sticker-pack', 'decal', 'decals', 'bumper stickers', 'sticker pack'],
+        'laser-engraving': ['laser-engraving', 'laser engraving', 'engraved'],
+        'multiboard': ['multiboard', 'wall organizer'],
+        'racing': ['racing', 'race decal', 'number kit', 'livery'],
+        'custom-vinyl': ['custom-vinyl', 'custom vinyl', 'car decal', 'heat transfer']
+      };
+      if (productType) {
+        const matchesPlannedCategory = (CATEGORY_TYPE_MAP[effectiveCategory] || [])
+          .some(t => productType.includes(t));
+        if (!matchesPlannedCategory) {
+          // Find the correct category for this product type
+          for (const [cat, types] of Object.entries(CATEGORY_TYPE_MAP)) {
+            if (types.some(t => productType.includes(t)) && config.categories[cat]) {
+              console.log(`[AI Agent] Category mismatch fix: product "${product.title}" (type: ${product.product_type}) reclassified from ${effectiveCategory} to ${cat}`);
+              effectiveCategory = cat;
+              effectiveCatConfig = config.categories[cat];
+              break;
+            }
+          }
+        }
+      }
+
       // Phase 2b: Generate caption with psychology-enriched prompt
       const styleDef = config.captionStyleDefinitions[entry.caption_style];
       const hookFormula = entry.hook_formula || 'curiosity_gap';
-      const caption = await generateCaption(product, entry.product_category, entry.caption_style, styleDef, catConfig, hookFormula);
+      const caption = await generateCaption(product, effectiveCategory, entry.caption_style, styleDef, effectiveCatConfig, hookFormula);
 
       // Get product image URL
       const imageUrl = product.images?.[0]?.src || product.image?.src || null;
@@ -1104,12 +1134,12 @@ async function executeContentPlan() {
       // Schedule the post
       const scheduledFor = `${entry.planned_date}T${entry.planned_time || '12:00'}:00Z`;
       const postId = crypto.randomUUID().slice(0, 20);
-      const hashtags = catConfig.defaultHashtags || '';
-      const rawCollectionUrl = COLLECTION_URL_MAP[entry.product_category] || 'https://blueridgecustomco.us/collections/all';
+      const hashtags = effectiveCatConfig.defaultHashtags || '';
+      const rawCollectionUrl = COLLECTION_URL_MAP[effectiveCategory] || 'https://blueridgecustomco.us/collections/all';
       const collectionUrl = tagUrl(rawCollectionUrl, {
         source: 'facebook',
         medium: 'social',
-        campaign: `agent-${entry.product_category}`,
+        campaign: `agent-${effectiveCategory}`,
         content: product.handle || String(product.id)
       });
 
@@ -1118,14 +1148,14 @@ async function executeContentPlan() {
 
       // Phase 5d: Check active A/B tests for this category
       let abVariant = null;
-      const activeTest = getActiveTestForCategory(entry.product_category);
+      const activeTest = getActiveTestForCategory(effectiveCategory);
       if (activeTest) {
         abVariant = assignToTest(activeTest, postId);
         console.log(`[AI Agent] A/B test "${activeTest.test_name}": assigned variant ${abVariant} to post ${postId}`);
       }
 
       // A3: Use proper campaign_type mapping for correct FB page routing
-      const campaignType = getCampaignType(entry.product_category);
+      const campaignType = getCampaignType(effectiveCategory);
 
       _db.prepare(`
         INSERT INTO scheduled_facebook_posts
@@ -1135,7 +1165,7 @@ async function executeContentPlan() {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)
       `).run(
         postId,
-        `agent-${entry.product_category}`,
+        `agent-${effectiveCategory}`,
         String(product.id),
         product.title,
         campaignType,
@@ -1155,7 +1185,7 @@ async function executeContentPlan() {
       `).run(postId, String(product.id), product.title, new Date().toISOString(), entry.id);
 
       generated++;
-      console.log(`[AI Agent] Scheduled: "${product.title}" (${entry.product_category}/${entry.caption_style}/${hookFormula}) for ${scheduledFor}`);
+      console.log(`[AI Agent] Scheduled: "${product.title}" (${effectiveCategory}/${entry.caption_style}/${hookFormula}) for ${scheduledFor}`);
 
     } catch (e) {
       console.error(`[AI Agent] Content execution error:`, e.message);
@@ -1317,12 +1347,21 @@ async function selectLaserProduct(shopify) {
     }
   } catch (e) { /* fall through */ }
 
-  // Try keyword search
+  // Try keyword search — only match products that are actually laser-engraved
+  // Avoid broad keywords like 'wood' or 'acrylic' which pull in metal prints, apparel, etc.
+  const NON_LASER_TYPES = ['metal print', 'metal art', 'tshirt', 't-shirt', 'sticker', 'decal', 'custom vinyl', 'car decal', 'heat transfer', 'racing', 'multiboard', 'apparel', 'hoodie'];
   try {
-    for (const keyword of ['laser', 'engrav', 'wood', 'acrylic']) {
+    for (const keyword of ['laser', 'engrav']) {
       const batch = await shopify.listProducts({ title: keyword, limit: 20, status: 'active' });
       if (batch?.products?.length > 0) {
-        return batch.products[Math.floor(Math.random() * batch.products.length)];
+        // Filter out products that clearly belong to other categories
+        const laserOnly = batch.products.filter(p => {
+          const pType = (p.product_type || '').toLowerCase();
+          return !NON_LASER_TYPES.some(t => pType.includes(t));
+        });
+        if (laserOnly.length > 0) {
+          return laserOnly[Math.floor(Math.random() * laserOnly.length)];
+        }
       }
     }
   } catch (e) { /* fall through */ }
@@ -1428,6 +1467,7 @@ Requirements:
 - Use 1-2 emojis naturally
 - End with a conversational call to action (NOT "Shop now" or "Buy now")
 - Do NOT include any links or URLs in the post
+- IMPORTANT: Describe the product accurately based on its title and what it actually is. Do NOT call it laser engraved if it is a metal print, t-shirt, or apparel item. Do NOT mislabel the production method.
 
 Then provide 6-8 relevant hashtags.
 

@@ -148,7 +148,7 @@ async function generateListingContent(product) {
 
 Brand: Blue Ridge Custom Co
 Location: Asheville, NC (local pickup available)
-Selling point: Handmade/laser engraved/locally crafted in Asheville
+Selling point: Locally made/crafted in Asheville
 
 Rules:
 - Write like a real person selling on Marketplace, NOT like a corporate brand
