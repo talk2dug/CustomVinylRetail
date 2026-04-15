@@ -687,6 +687,7 @@ function handleReelStudioRoute(pathname, req, res) {
         caption = '',             // base caption (will be enriched with links)
         theme = '',               // for landing page theming
         category = '',            // for FB credential routing
+        productType = 'apparel',  // 'apparel' or 'metal-print'
         facebook = true,
         instagram = true,
         includeTikTokShop = false,
@@ -701,16 +702,74 @@ function handleReelStudioRoute(pathname, req, res) {
         let products = [];
         let allShopifyIds = [...shopifyProductIds];
 
+        // ── Detect product type from campaign if not specified
+        let detectedType = productType;
+        if (campaignRunId && detectedType === 'apparel') {
+          try {
+            const db = require('./db');
+            const run = db.getPipelineRun(campaignRunId);
+            if (run && run.product_type) {
+              detectedType = run.product_type;
+              console.log(`[full-publish] Detected product type from campaign: ${detectedType}`);
+            }
+          } catch (_) {}
+        }
+
         // ── Step 1: Publish to Shopify (if designIds provided and products not already there)
         if (designIds.length > 0) {
-          console.log(`[full-publish] Step 1: Publishing ${designIds.length} designs to Shopify...`);
-          const { publishBatch } = require('./scripts/shopify-apparel-publisher');
-          const shopResult = await publishBatch({
-            designIds,
-            limit: designIds.length,
-            dryRun: false,
-            delayMs: 1500,
-          });
+          console.log(`[full-publish] Step 1: Publishing ${designIds.length} ${detectedType} designs to Shopify...`);
+          console.log(`[full-publish] Design IDs: ${designIds.join(', ')}`);
+
+          let shopResult;
+          if (detectedType === 'metal-print') {
+            // Metal print publisher — needs design metadata from pipeline run
+            const metalPublisher = require('./scripts/shopify-metal-print-publisher');
+            // Build design objects + mockup map from pipeline run data
+            let designs = [];
+            const mockupMap = {};
+            const filteredArtMap = {};
+            if (campaignRunId) {
+              try {
+                const db = require('./db');
+                const run = db.getPipelineRun(campaignRunId);
+                const themeGroups = run.theme_groups ? JSON.parse(run.theme_groups) : {};
+                const idSet = new Set(designIds);
+                for (const [, items] of Object.entries(themeGroups)) {
+                  for (const item of items) {
+                    if (idSet.has(item.designId)) {
+                      designs.push({ id: item.designId, name: item.name, category: item.category || theme });
+                      if (item.mockupFiles?.length) {
+                        mockupMap[item.designId] = item.mockupFiles.map(f =>
+                          path.join(run.mockup_dir || METAL_PRINT_PIPELINE_DIR, f)
+                        );
+                      }
+                      if (item.filteredArtPath) {
+                        filteredArtMap[item.designId] = item.filteredArtPath;
+                      }
+                    }
+                  }
+                }
+              } catch (err) {
+                console.error('[full-publish] Failed to load metal print campaign data:', err.message);
+              }
+            }
+            shopResult = await metalPublisher.publishBatch({
+              designs,
+              mockupMap,
+              filteredArtMap,
+              dryRun: false,
+              delayMs: 1500,
+            });
+          } else {
+            // Apparel publisher
+            const { publishBatch } = require('./scripts/shopify-apparel-publisher');
+            shopResult = await publishBatch({
+              designIds,
+              limit: designIds.length,
+              dryRun: false,
+              delayMs: 1500,
+            });
+          }
 
           products = (shopResult.results || [])
             .filter(r => r.handle && !r.error)
