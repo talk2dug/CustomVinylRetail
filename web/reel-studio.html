@@ -2249,34 +2249,66 @@ Made to live in the light.</textarea>
     try {
       // Step 1: Resolve design IDs from mockup filenames
       btn.innerHTML = '<span class="spinner"></span>Step 1/4: Resolving designs...';
-      log('📋 Resolving mockup files to design IDs...');
+      log(`📋 Resolving mockup files to design IDs (${filenames.length} files, ${apparelItems.length} apparel items, ${state.selected.length} total selected)...`);
+      if (filenames.length > 0) {
+        filenames.forEach(f => log(`  → ${f}`, '#94a3b8'));
+      } else {
+        log('⚠ No filenames extracted. Selected items:', '#fbbf24');
+        state.selected.forEach((s, i) => log(`  [${i}] source=${s.asset?.source} type=${s.asset?.type} url=${(s.asset?.url||'').slice(-60)}`, '#94a3b8'));
+      }
       let designIds = [];
       let existingShopifyIds = [];
 
-      if (filenames.length > 0) {
-        const resolveRes = await fetch('/api/reel-studio/resolve-designs', {
-          method: 'POST',
-          headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filenames }),
-        });
-        const resolveData = await resolveRes.json();
-        designIds = (resolveData.resolved || []).filter(r => r.designId).map(r => r.designId);
-        log(`✓ Resolved ${designIds.length} design(s) from ${filenames.length} mockup(s)`, '#6ee7b7');
-      }
-
-      // Check if campaign already has Shopify product IDs
+      // Try to get design info from campaign first (most reliable source)
       if (campaignRunId) {
         const camp = state.pendingCampaigns.find(c => c.id === campaignRunId);
         if (camp) {
           const themeItems = camp.themes?.[theme] || Object.values(camp.themes || {})[0] || [];
           existingShopifyIds = themeItems.filter(i => i.shopifyId).map(i => i.shopifyId);
+          const campDesignIds = themeItems.filter(i => i.designId).map(i => i.designId);
+          if (campDesignIds.length) {
+            designIds = [...new Set([...designIds, ...campDesignIds])];
+            log(`ℹ Found ${campDesignIds.length} design(s) from campaign data`, '#93c5fd');
+          }
           if (existingShopifyIds.length) {
             log(`ℹ Found ${existingShopifyIds.length} existing Shopify product(s) from campaign`, '#93c5fd');
           }
         }
       }
 
+      // If no designs from campaign, try resolving from filenames
+      if (designIds.length === 0 && filenames.length > 0) {
+        const resolveRes = await fetch('/api/reel-studio/resolve-designs', {
+          method: 'POST',
+          headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filenames }),
+        });
+        const resolveData = await resolveRes.json();
+        const resolved = (resolveData.resolved || []).filter(r => r.designId).map(r => r.designId);
+        designIds = [...new Set([...designIds, ...resolved])];
+        log(`✓ Resolved ${resolved.length} design(s) from ${filenames.length} mockup(s)`, '#6ee7b7');
+      }
+
+      // If still nothing, check if this is a metal print reel (filenames start with metal-mockup-)
+      // and the product type should use the metal print publisher
+      let productType = 'apparel';
       if (designIds.length === 0 && existingShopifyIds.length === 0) {
+        const isMetalPrint = filenames.some(f => f.startsWith('metal-mockup-'));
+        if (isMetalPrint) {
+          log('ℹ Detected metal print mockups — using metal print publisher', '#93c5fd');
+          productType = 'metal-print';
+          // For metal prints, the campaign MUST be attached so we have design metadata.
+          // If no campaign, try to extract design names from filenames.
+          const metalDesignNames = filenames.map(f => {
+            // metal-mockup-{designSlug}-{roomSlug}-{timestamp}.png
+            const parts = f.replace(/^metal-mockup-/, '').replace(/-\d{13}\.png$/, '').split('-');
+            // Room slug is typically the last few parts; design slug is everything before
+            // This is fuzzy but better than nothing
+            return f;
+          });
+          log(`⚠ Metal print designs must be published via campaign. Attach a pipeline campaign and try again.`, '#fbbf24');
+          throw new Error('Metal print products need a campaign attached. Select a pipeline campaign from the dropdown above, then try again.');
+        }
         throw new Error('No designs found to publish. Add mockup slides to the reel first.');
       }
 
@@ -2292,7 +2324,8 @@ Made to live in the light.</textarea>
           filename: state.lastRenderFilename,
           caption: baseCaption,
           theme,
-          category: 'apparel',
+          category: productType === 'metal-print' ? 'metal-print' : 'apparel',
+          productType,
           facebook: true,
           instagram: true,
           includeTikTokShop,
