@@ -1111,6 +1111,28 @@ async function processScheduledPost(post, db, options = {}) {
     // Mark as published
     db.markScheduledPostPublished(post.id, fbResult.postId);
 
+    // Queue group posts (non-blocking) — sends group-optimized content to Telegram
+    try {
+      const groupPoster = require('../modules/fb-group-poster');
+      const groups = groupPoster.getGroupsForCategory(
+        post.category || post.productCategory || post.campaignType || ''
+      );
+      if (groups.length > 0) {
+        const shopUrl = post.collectionUrl || '';
+        groupPoster.sendToGroups({
+          text: postText,
+          imagePath: imagePath,
+          category: post.category || post.productCategory || post.campaignType || '',
+          shopUrl
+        }, { rewrite: true }).then(r => {
+          if (r.sent > 0) console.log(`[FB Scheduler] Queued ${r.sent} group posts to Telegram`);
+        }).catch(e => console.warn(`[FB Scheduler] Group posting failed (non-fatal): ${e.message}`));
+      }
+    } catch (groupErr) {
+      // Non-fatal — don't break the main posting flow
+      console.warn(`[FB Scheduler] Group poster error: ${groupErr.message}`);
+    }
+
     if (onProgress) onProgress('completed', post, fbResult);
 
     return {

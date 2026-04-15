@@ -3912,6 +3912,62 @@ const requestHandler = async (req, res) => {
     if (fbMarketplaceLister.handleRoute(parsedUrl.pathname, req, res, db.getDb())) return;
   }
 
+  // FB Group Poster API
+  if (parsedUrl.pathname.startsWith('/api/fb-groups/')) {
+    if (!requireInternalKey(req, res)) return;
+    const groupPoster = require('./modules/fb-group-poster');
+    const subPath = parsedUrl.pathname.replace('/api/fb-groups/', '');
+
+    if (subPath === 'list' && req.method === 'GET') {
+      const category = parsedUrl.searchParams?.get('category') || new URL('http://x' + req.url).searchParams.get('category');
+      sendJson(res, 200, { groups: groupPoster.listGroups(category || null) });
+      return;
+    }
+
+    if (subPath === 'add' && req.method === 'POST') {
+      collectRequestBody(req, (err, body) => {
+        if (err) { sendJson(res, 400, { error: err.message }); return; }
+        try {
+          const data = JSON.parse(body);
+          const result = groupPoster.addGroup(data);
+          sendJson(res, 200, { success: true, group: result });
+        } catch (e) { sendJson(res, 400, { error: e.message }); }
+      });
+      return;
+    }
+
+    if (subPath === 'remove' && req.method === 'POST') {
+      collectRequestBody(req, (err, body) => {
+        if (err) { sendJson(res, 400, { error: err.message }); return; }
+        try {
+          const { id } = JSON.parse(body);
+          groupPoster.removeGroup(id);
+          sendJson(res, 200, { success: true });
+        } catch (e) { sendJson(res, 400, { error: e.message }); }
+      });
+      return;
+    }
+
+    if (subPath === 'send' && req.method === 'POST') {
+      collectRequestBody(req, (err, body) => {
+        if (err) { sendJson(res, 400, { error: err.message }); return; }
+        try {
+          const data = JSON.parse(body);
+          groupPoster.sendToGroups({
+            text: data.text,
+            imageUrl: data.imageUrl,
+            imagePath: data.imagePath,
+            category: data.category,
+            shopUrl: data.shopUrl
+          }, { groupIds: data.groupIds, rewrite: data.rewrite !== false }).then(result => {
+            sendJson(res, 200, result);
+          }).catch(e => sendJson(res, 500, { error: e.message }));
+        } catch (e) { sendJson(res, 400, { error: e.message }); }
+      });
+      return;
+    }
+  }
+
   // UTM Attribution API
   if (parsedUrl.pathname.startsWith('/api/attribution/')) {
     if (utmAttribution.handleRoute(parsedUrl.pathname, req, res, db.getDb())) return;
