@@ -2259,16 +2259,43 @@ Made to live in the light.</textarea>
       let designIds = [];
       let existingShopifyIds = [];
 
-      // Try to get design info from campaign first (most reliable source)
+      // Try to get design info from campaign — but ONLY for items actually in this reel
       if (campaignRunId) {
         const camp = state.pendingCampaigns.find(c => c.id === campaignRunId);
         if (camp) {
-          const themeItems = camp.themes?.[theme] || Object.values(camp.themes || {})[0] || [];
-          existingShopifyIds = themeItems.filter(i => i.shopifyId).map(i => i.shopifyId);
-          const campDesignIds = themeItems.filter(i => i.designId).map(i => i.designId);
+          const allThemeItems = camp.themes?.[theme] || Object.values(camp.themes || {})[0] || [];
+
+          // Filter to only items whose mockup file is in the reel slides
+          const reelFilenameSet = new Set(filenames);
+          const reelItems = allThemeItems.filter(item => {
+            if (!item.mockupFile) return false;
+            // Check if any reel slide filename matches this item's mockup
+            const itemFn = item.mockupFile.split('/').pop();
+            return reelFilenameSet.has(itemFn);
+          });
+
+          // If filename matching didn't work (e.g. different naming), try matching by designId in filename
+          let matchedItems = reelItems;
+          if (matchedItems.length === 0 && allThemeItems.length > 0) {
+            matchedItems = allThemeItems.filter(item => {
+              if (!item.designId) return false;
+              const shortId = item.designId.substring(0, 15);
+              return filenames.some(fn => fn.includes(shortId));
+            });
+          }
+
+          // If still no matches but we have items, use slide count as limit
+          if (matchedItems.length === 0 && allThemeItems.length > 0) {
+            // Last resort: take only as many items as slides in the reel
+            matchedItems = allThemeItems.slice(0, state.selected.length);
+            log(`⚠ Could not match slides to campaign items — using first ${matchedItems.length} of ${allThemeItems.length}`, '#fbbf24');
+          }
+
+          existingShopifyIds = matchedItems.filter(i => i.shopifyId).map(i => i.shopifyId);
+          const campDesignIds = matchedItems.filter(i => i.designId).map(i => i.designId);
           if (campDesignIds.length) {
             designIds = [...new Set([...designIds, ...campDesignIds])];
-            log(`ℹ Found ${campDesignIds.length} design(s) from campaign data`, '#93c5fd');
+            log(`ℹ Found ${campDesignIds.length} design(s) from campaign (${allThemeItems.length} total in campaign, ${matchedItems.length} in this reel)`, '#93c5fd');
           }
           if (existingShopifyIds.length) {
             log(`ℹ Found ${existingShopifyIds.length} existing Shopify product(s) from campaign`, '#93c5fd');
