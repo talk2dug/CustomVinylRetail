@@ -83,7 +83,7 @@ async function findOrCreateCollection(title) {
   const collections = await shop.listCollections();
   const existing = collections.find(c => c.title.toLowerCase() === title.toLowerCase());
   if (existing) return existing;
-  return shop.createCollection({ title, body_html: '<p>Premium HD sublimation metal prints on aluminum. Vivid colors, metallic sheen, ready to hang. Made in Asheville, NC.</p>' });
+  return shop.createCustomCollection(title, { body_html: '<p>Premium HD sublimation metal prints on aluminum. Vivid colors, metallic sheen, ready to hang. Made in Asheville, NC.</p>' });
 }
 
 /**
@@ -208,7 +208,7 @@ async function publishBatch(options = {}) {
       // Add to collection
       if (collection) {
         try {
-          await getShopify().addProductToCollection(collection.id, product.id);
+          await getShopify().addProductToCollection(product.id, collection.id);
         } catch (e) {
           console.error(`[ShopifyMetalPrint] Failed to add to collection:`, e.message);
         }

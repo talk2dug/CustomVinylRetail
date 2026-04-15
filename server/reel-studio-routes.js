@@ -664,7 +664,7 @@ function handleReelStudioRoute(pathname, req, res) {
         if (includeTikTokShop && products.length > 0 && !dryRun) {
           try {
             const shopify = require('./integrations/shopify');
-            const publications = await shopify.getPublications();
+            const publications = await shopify.listPublications();
             const tiktokPub = publications?.find(p =>
               (p.name || '').toLowerCase().includes('tiktok')
             );
@@ -883,7 +883,7 @@ function handleReelStudioRoute(pathname, req, res) {
           if (includeTikTokShop && products.length > 0) {
             try {
               const shopify = require('./integrations/shopify');
-              const publications = await shopify.getPublications();
+              const publications = await shopify.listPublications();
               const tiktokPub = publications?.find(p =>
                 (p.name || '').toLowerCase().includes('tiktok')
               );
@@ -1020,7 +1020,8 @@ function handleReelStudioRoute(pathname, req, res) {
               const pubFilename = `reel-${Date.now()}-${filename}`;
               const pubPath = path.join(TIKTOK_VIDEOS_DIR, pubFilename);
               fs.copyFileSync(srcPath, pubPath);
-              const publicUrl = `${STORE_BASE}/library/tiktok-videos/${encodeURIComponent(pubFilename)}`;
+              const ASSET_BASE = process.env.ASSET_BASE_URL || STORE_BASE;
+              const publicUrl = `${ASSET_BASE}/library/tiktok-videos/${encodeURIComponent(pubFilename)}`;
 
               const { publishVideoToFacebook, publishReelToInstagram } = require('./lib/facebook-post-scheduler');
               const socialResults = { facebook: null, instagram: null };
