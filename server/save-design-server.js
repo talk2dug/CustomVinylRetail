@@ -15686,7 +15686,7 @@ Keep it concise and actionable.`;
                 }
               } catch (_) {}
               const title = `${campaign.title || slug} · ${it.name || `Item ${i + 1}`}`.trim();
-              const shareUrl = `${(process.env.STORE_BASE_URL || '').replace(/\/$/, '')}/web/campaign.html?c=${encodeURIComponent(slug)}`;
+              const shareUrl = `${(process.env.STORE_BASE_URL || '').replace(/\/$/, '')}/c/${encodeURIComponent(slug)}`;
               const descParts = [];
               console.log(`[Shopify Export] Item ${i + 1}: ${it.name}`);
               console.log(`[Shopify Export]   it.autoDescription: ${it.autoDescription ? it.autoDescription.substring(0, 50) + '...' : 'NONE'}`);
@@ -17489,7 +17489,7 @@ Keep it concise and actionable.`;
           if (found) collection = { id: found.id, handle: found.handle, url: (found.handle && shopFront) ? `${shopFront}/collections/${found.handle}` : null };
         } catch (_) {}
       }
-      const shareUrl = `${(process.env.STORE_BASE_URL || '').replace(/\/$/, '')}/web/campaign.html?c=${encodeURIComponent(slug)}`;
+      const shareUrl = `${(process.env.STORE_BASE_URL || '').replace(/\/$/, '')}/c/${encodeURIComponent(slug)}`;
       const campaignUrl = (campaign.shopifyPage && campaign.shopifyPage.url)
         ? String(campaign.shopifyPage.url).trim()
         : (collection && collection.url) ? collection.url : shareUrl;
@@ -18851,6 +18851,21 @@ Keep it concise and actionable.`;
   ) {
     serveWebAsset(req, res, 'kiosk.html');
     return;
+  }
+
+  // Vanity campaign URLs: /c/:slug → serve reel-landing.html (reads slug from ?c= param)
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    parsedUrl.pathname.startsWith('/c/') &&
+    parsedUrl.pathname.split('/').length === 3
+  ) {
+    const campaignSlug = decodeURIComponent(parsedUrl.pathname.split('/')[2]);
+    if (campaignSlug && !campaignSlug.includes('..')) {
+      // Redirect to reel-landing.html with ?c= param so the page JS can fetch the data
+      res.writeHead(302, { Location: `/web/reel-landing.html?c=${encodeURIComponent(campaignSlug)}` });
+      res.end();
+      return;
+    }
   }
 
   if (
