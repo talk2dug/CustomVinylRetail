@@ -91,9 +91,16 @@ async function findOrCreateCollection(title) {
  */
 function getMockupPublicUrl(mockupPath) {
   // The server serves these via /metal-print-mockups/ route
+  // Must use a publicly accessible URL so Shopify can fetch the image
+  // Preserve subdirectory structure (e.g. mountain-biking/metal-mockup-...)
+  const PIPELINE_DIR = '/mnt/dbFiles/metal-print-pipeline';
+  const publicBase = process.env.ASSET_BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
+  // Use just the filename — the pipeline-mockup route auto-searches subdirs
   const filename = path.basename(mockupPath);
-  const port = process.env.PORT || 4000;
-  return `http://localhost:${port}/metal-print-mockups/${encodeURIComponent(filename)}`;
+  // Use /api/ prefix so nginx proxies to Node
+  // Include API key so Shopify can fetch without auth issues
+  const apiKey = process.env.INTERNAL_API_KEY || '';
+  return `${publicBase}/api/reel-studio/pipeline-mockup/${encodeURIComponent(filename)}?key=${encodeURIComponent(apiKey)}`;
 }
 
 /**
