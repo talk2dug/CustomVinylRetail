@@ -3924,6 +3924,20 @@ function initCustomArtTables() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_decal_projects_created_by ON decal_projects(created_by)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_decal_projects_created_at ON decal_projects(created_at)`);
 
+  // Contact form submissions
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS contact_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      subject TEXT,
+      message TEXT NOT NULL,
+      ip_address TEXT,
+      email_sent INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   console.log('[Finance] ✅ Tables initialized successfully');
 
   // Auto-classify existing Multiboard items that lack metadata
@@ -8699,6 +8713,19 @@ function deleteDecalProject(id) {
   db.prepare('DELETE FROM decal_projects WHERE id = ?').run(id);
 }
 
+// ============================================================================
+// CONTACT FORM SUBMISSIONS
+// ============================================================================
+
+function insertContactSubmission({ name, email, subject, message, ip_address, email_sent }) {
+  const stmt = db.prepare(`
+    INSERT INTO contact_submissions (name, email, subject, message, ip_address, email_sent)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const result = stmt.run(name, email, subject || null, message, ip_address || null, email_sent ? 1 : 0);
+  return { id: result.lastInsertRowid };
+}
+
 module.exports = {
   initDatabase,
   normalizeEmail,
@@ -9111,5 +9138,7 @@ module.exports = {
   updateDecalProject,
   getDecalProject,
   listDecalProjects,
-  deleteDecalProject
+  deleteDecalProject,
+  // Contact form
+  insertContactSubmission
 };

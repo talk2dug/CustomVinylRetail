@@ -22418,6 +22418,128 @@ Return ONLY valid JSON, no markdown or explanation.`;
     return;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONTACT FORM SUBMISSION
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/contact') {
+    collectRequestBody(req, async (error, body) => {
+      if (error) {
+        sendJson(res, 400, { error: 'Invalid request body' });
+        return;
+      }
+      try {
+        const data = JSON.parse(body || '{}');
+        const { name, email, subject, message } = data;
+
+        // Validate required fields
+        if (!name || !name.trim()) {
+          sendJson(res, 400, { error: 'Name is required' });
+          return;
+        }
+        if (!email || !email.trim()) {
+          sendJson(res, 400, { error: 'Email is required' });
+          return;
+        }
+        if (!message || !message.trim()) {
+          sendJson(res, 400, { error: 'Message is required' });
+          return;
+        }
+
+        // Basic email format check
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+          sendJson(res, 400, { error: 'Invalid email address' });
+          return;
+        }
+
+        const trimmedName = name.trim();
+        const trimmedEmail = email.trim();
+        const trimmedSubject = (subject || 'General Inquiry').trim();
+        const trimmedMessage = message.trim();
+
+        // Get client IP
+        const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+
+        // Send email notification
+        let emailSent = false;
+        try {
+          const { sendOrdersEmail } = require('./mailer');
+          const htmlBody = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #1b4332; border-bottom: 2px solid #1b4332; padding-bottom: 10px;">New Contact Form Submission</h2>
+              <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #333; width: 100px; vertical-align: top;">Name:</td>
+                  <td style="padding: 10px; color: #555;">${trimmedName}</td>
+                </tr>
+                <tr style="background: #f8f8f8;">
+                  <td style="padding: 10px; font-weight: bold; color: #333; vertical-align: top;">Email:</td>
+                  <td style="padding: 10px; color: #555;"><a href="mailto:${trimmedEmail}">${trimmedEmail}</a></td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #333; vertical-align: top;">Subject:</td>
+                  <td style="padding: 10px; color: #555;">${trimmedSubject}</td>
+                </tr>
+                <tr style="background: #f8f8f8;">
+                  <td style="padding: 10px; font-weight: bold; color: #333; vertical-align: top;">Message:</td>
+                  <td style="padding: 10px; color: #555; white-space: pre-wrap;">${trimmedMessage}</td>
+                </tr>
+              </table>
+              <p style="color: #999; font-size: 12px; margin-top: 20px;">Sent from the BlueRidgeCustomCo contact form</p>
+            </div>
+          `;
+
+          const textBody = [
+            'New Contact Form Submission',
+            '===========================',
+            '',
+            `Name:    ${trimmedName}`,
+            `Email:   ${trimmedEmail}`,
+            `Subject: ${trimmedSubject}`,
+            '',
+            'Message:',
+            trimmedMessage,
+            '',
+            '---',
+            'Sent from the BlueRidgeCustomCo contact form'
+          ].join('\n');
+
+          await sendOrdersEmail({
+            to: 'orders@swayzecustomvinyl.com',
+            subject: `Contact Form: ${trimmedSubject} from ${trimmedName}`,
+            text: textBody,
+            html: htmlBody,
+            replyTo: trimmedEmail
+          });
+          emailSent = true;
+        } catch (emailErr) {
+          console.error('[Contact] Email send failed:', emailErr.message);
+        }
+
+        // Store in database
+        try {
+          const db = require('./db');
+          db.insertContactSubmission({
+            name: trimmedName,
+            email: trimmedEmail,
+            subject: trimmedSubject,
+            message: trimmedMessage,
+            ip_address: clientIp,
+            email_sent: emailSent
+          });
+        } catch (dbErr) {
+          console.error('[Contact] DB insert failed:', dbErr.message);
+        }
+
+        console.log(`[Contact] Submission from ${trimmedName} <${trimmedEmail}> - subject: ${trimmedSubject} - email_sent: ${emailSent}`);
+        sendJson(res, 200, { success: true, message: 'Message sent' });
+      } catch (err) {
+        console.error('[Contact] Error:', err);
+        sendJson(res, 500, { error: 'Failed to process contact form' });
+      }
+    });
+    return;
+  }
+
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('Not found');
 };

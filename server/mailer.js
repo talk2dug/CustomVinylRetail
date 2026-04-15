@@ -49,14 +49,16 @@ async function sendAccountEmail({ to, subject, text, html }) {
   return info;
 }
 
-async function sendOrdersEmail({ to, subject, text, html }) {
-  const info = await ordersTransport.sendMail({
+async function sendOrdersEmail({ to, subject, text, html, replyTo }) {
+  const mailOptions = {
     from: `"Swayze's Custom Vinyl Orders" <${ORDER_EMAIL_USER}>`,
     to,
     subject,
     text,
     html
-  });
+  };
+  if (replyTo) mailOptions.replyTo = replyTo;
+  const info = await ordersTransport.sendMail(mailOptions);
   return info;
 }
 
