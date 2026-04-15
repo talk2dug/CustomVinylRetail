@@ -219,10 +219,48 @@ function handleReelStudioRoute(pathname, req, res) {
         try {
           const telegram = require('./lib/telegram-notifier');
           if (telegram.isConfigured()) {
-            const captionText = caption
-              ? `🎬 *New Reel Ready*\n${template}${label ? ' — ' + label : ''}\n\n${String(caption).slice(0, 800)}`
-              : `🎬 *New Reel Ready*\n${template}${label ? ' — ' + label : ''}`;
-            await telegram.sendVideo(result.filePath, captionText);
+            // Build collection/landing page URL
+            const STORE_BASE = process.env.SHOPIFY_STORE_URL || 'https://blueridgecustomco.us';
+            let shopUrl = '';
+            let landingPageUrl = '';
+
+            // Try to find a landing page for this campaign
+            if (campaignRunId) {
+              try {
+                const db = require('./db');
+                const run = db.getPipelineRun(campaignRunId);
+                if (run && run.collection) {
+                  shopUrl = `${STORE_BASE}/collections/${run.collection}`;
+                }
+              } catch (_) {}
+            }
+
+            // Fallback: use theme/collection as slug
+            if (!shopUrl && theme) {
+              shopUrl = `${STORE_BASE}/collections/${theme}`;
+            }
+
+            // Determine hashtags based on template/theme
+            const isMetalPrint = (template || '').toLowerCase().includes('metal') ||
+              (theme || '').toLowerCase().includes('metal');
+            const hashtagSets = {
+              metal: '#metalprint #wallart #homedecor #handmade #shopsmall',
+              apparel: '#newdrop #graphictee #handmade #shopsmall #asheville',
+              default: '#handmade #shopsmall #asheville #madeinasheville #blueridgecustomco'
+            };
+            const hashtags = isMetalPrint ? hashtagSets.metal : hashtagSets.apparel;
+
+            // Build the Telegram caption
+            let tgCaption = `🎬 *New Reel Ready*\n${template}${label ? ' — ' + label : ''}`;
+            if (caption) {
+              tgCaption += `\n\n${String(caption).slice(0, 600)}`;
+            }
+            tgCaption += `\n\n${hashtags}`;
+            if (shopUrl) {
+              tgCaption += `\n\n🛒 ${shopUrl}`;
+            }
+
+            await telegram.sendVideo(result.filePath, tgCaption);
             console.log(`[reel-studio] Sent reel to Telegram: ${path.basename(result.filePath)}`);
           }
         } catch (tgErr) {
@@ -990,6 +1028,19 @@ function handleReelStudioRoute(pathname, req, res) {
             });
           } catch (_) {}
         }
+
+        // Send enriched caption + landing page to Telegram for easy TikTok posting
+        try {
+          const telegram = require('./lib/telegram-notifier');
+          if (telegram.isConfigured()) {
+            let tgMsg = `✅ *Reel Published*\n${products.length} product${products.length !== 1 ? 's' : ''} live on Shopify`;
+            if (landingPageUrl) {
+              tgMsg += `\n\n📄 Landing page:\n${landingPageUrl}`;
+            }
+            tgMsg += `\n\n📋 *TikTok caption (copy-paste):*\n${enrichedCaption}`;
+            await telegram.sendMessage(tgMsg);
+          }
+        } catch (_) {}
 
         sendJson(res, 200, {
           success: true,
