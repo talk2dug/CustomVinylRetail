@@ -1,0 +1,298 @@
+{
+  "campaign": "grassroots-racing-tiktok-2026",
+  "created": "2026-04-16",
+  "reels": [
+    {
+      "id": 1,
+      "title": "The Weed Peel",
+      "hook": "Close-up of fingers pulling the first edge of weeded vinyl — slow, then accelerating into a fast satisfying peel reveal of a huge #77 race number",
+      "script": "SHOT 1: Extreme close-up, fingers finding the edge of excess vinyl around a large race number on the cutting mat. Slow pull. SHOT 2: Speed ramps as the weeding gets faster — chunks of negative space lifting away. SHOT 3: Final peel reveals the clean number underneath. Camera pulls back to show the full door-sized number set. SHOT 4: Quick cut to the same number applied on a car door at a race event.",
+      "duration": "15s",
+      "target_audience": "general",
+      "audio_suggestion": "Trending satisfying/ASMR sound or lo-fi beat with crisp peel audio layered in",
+      "text_overlays": [
+        "weeding a full door number set",
+        "the peel is the best part",
+        "blueridgecustomco.com"
+      ],
+      "cta": "End card: your number, your colors — link in bio",
+      "hashtags": ["#racecar", "#vinylwrap", "#satisfying", "#autocross"],
+      "landing_url": "https://blueridgecustomco.com/racing-packages.html",
+      "production_notes": "Film on a clean dark cutting mat for contrast. Use a large number (10\"+ tall) in a bright color like fluorescent orange on white or black. Overhead camera angle. Get the real audio of the peel — it sells itself. Speed ramp in editing. Final car shot can be b-roll from any event."
+    },
+    {
+      "id": 2,
+      "title": "Plain Car to Race-Ready",
+      "hook": "A boring stock Miata sitting in a driveway — text: 'She's not ready yet' — then a jump cut with hands slapping on the first number",
+      "script": "SHOT 1: Wide shot of a clean but plain daily-driver Miata. Text overlay: 'she's not ready yet.' SHOT 2: Jump cut montage — applying class letter, passenger number, driver number, tech stickers. Each cut is a new element going on. Use speed ramps. SHOT 3: Step back, full reveal of the car now looking race-ready with all numbers and class markings. SHOT 4: Cut to the car on grid or pulling into paddock.",
+      "duration": "30s",
+      "target_audience": "autocross",
+      "audio_suggestion": "Build-up EDM drop or trending transformation sound",
+      "text_overlays": [
+        "she's not ready yet",
+        "class letters on",
+        "door numbers on",
+        "tech inspection stickers on",
+        "NOW she's ready"
+      ],
+      "cta": "Text overlay: 'Get race-ready in 48hrs — custom numbers shipped from Asheville, NC'",
+      "hashtags": ["#miata", "#autocross", "#transformation", "#specmiata"],
+      "landing_url": "https://blueridgecustomco.com/racing-packages.html",
+      "production_notes": "Best filmed in a garage or driveway with good light. Use a friend's car or your own. Film the actual application process — don't fake it. The jump cuts between each element going on are the content. Final reveal works best with a slight dolly-out or wide angle switch. If possible, get actual event footage of the same car for the closer."
+    },
+    {
+      "id": 3,
+      "title": "Plotter Go Brrr",
+      "hook": "Top-down shot of the vinyl cutter blade touching down on fresh vinyl — the first cut line appearing",
+      "script": "SHOT 1: Close-up of the cutter carriage moving into position. The blade drops. SHOT 2: Overhead view as the plotter cuts out race numbers — the blade moving fast, vinyl peeling slightly at the cuts. SHOT 3: Pull the cut sheet off the machine. SHOT 4: Quick flash of the finished numbers weeded and on transfer tape. Text: 'from file to finished in 20 min.'",
+      "duration": "15s",
+      "target_audience": "general",
+      "audio_suggestion": "Original audio — the actual sound of the plotter cutting is oddly satisfying. Layer under a trending lo-fi or mechanical beat.",
+      "text_overlays": [
+        "how your race numbers are made",
+        "from file to finished in 20 min",
+        "custom cut in Asheville, NC"
+      ],
+      "cta": "Comment your car number and color — I'll mock it up",
+      "hashtags": ["#vinylcutter", "#smallbusiness", "#satisfying", "#racenumbers"],
+      "landing_url": "https://blueridgecustomco.com/racing.html",
+      "production_notes": "Overhead camera on tripod or phone mount looking straight down at the plotter. Good lighting is critical. Use a bright vinyl color on the plotter for contrast. Record the actual cutting audio — it's genuinely satisfying content. The machine doing its thing IS the content, keep it simple."
+    },
+    {
+      "id": 4,
+      "title": "Door Number Application",
+      "hook": "Hands positioning a large race number on a car door — the masking tape hinge method visible — then the squeegee starts",
+      "script": "SHOT 1: Pre-application setup — cleaning the panel with IPA, positioning the number with tape hinge. SHOT 2: Peeling the backing, squeegee application from center out. Show the technique. SHOT 3: Slow peel of the transfer tape — the number stays on the car. SHOT 4: Step back to reveal both doors done, car looking proper.",
+      "duration": "30s",
+      "target_audience": "general",
+      "audio_suggestion": "Chill instrumental or trending 'process' audio",
+      "text_overlays": [
+        "clean the surface first",
+        "tape hinge = perfect alignment every time",
+        "squeegee center out, no bubbles",
+        "the reveal"
+      ],
+      "cta": "Save this for your next number install. Link in bio for custom numbers.",
+      "hashtags": ["#racecar", "#howto", "#vinylapplication", "#grassrootsracing"],
+      "landing_url": "https://blueridgecustomco.com/racing-packages.html",
+      "production_notes": "Film at eye level to the door panel. A friend can drive while you squeegee, or set up a tripod at car-door height. This is part satisfying, part educational — show the hinge method clearly, it's a real tip people need. Clean car in good light. The transfer tape peel is the money shot, get a clean take of it."
+    },
+    {
+      "id": 5,
+      "title": "Transfer Tape Money Shot",
+      "hook": "Extreme close-up: fingernail catching the edge of transfer tape on a freshly applied number — the slow pull begins",
+      "script": "SHOT 1: Tight on the edge of transfer tape on a car door. A finger catches the corner. SHOT 2: Slow, steady peel. The camera follows the peel line as the transfer tape lifts and the crisp vinyl number is revealed underneath, perfectly adhered. SHOT 3: Full peel complete. Camera racks focus to show the entire number set on the car. SHOT 4: Quick smash cut to the car on track, same numbers visible.",
+      "duration": "15s",
+      "target_audience": "general",
+      "audio_suggestion": "ASMR peel sound boosted — or use a trending 'reveal' sound with the real peel audio underneath",
+      "text_overlays": [
+        "the best part of race prep",
+        "custom cut vinyl race numbers",
+        "asheville, nc"
+      ],
+      "cta": "Your number, your colors. blueridgecustomco.com",
+      "hashtags": ["#satisfying", "#peel", "#raceprep", "#vinylnumbers"],
+      "landing_url": "https://blueridgecustomco.com/racing.html",
+      "production_notes": "This is THE hero content piece. Film multiple takes. Best angle is slightly from above, following the peel line as it moves across the door. Bright-colored number on a contrasting car color. Get the real peel audio — crisp and clean. Slow motion at 60fps if your phone supports it. This type of content gets millions of views in the satisfying/ASMR niche."
+    },
+    {
+      "id": 6,
+      "title": "First Autocross Checklist",
+      "hook": "POV: you just signed up for your first autocross and have no idea what to bring — text over someone looking overwhelmed at a registration table",
+      "script": "SHOT 1: POV walking up to autocross registration, slightly shaky handheld. Text: 'you signed up for your first autocross. now what?' SHOT 2: Item 1 — Helmet. Show a helmet, text: 'SA2015 or newer. Borrow one if you have to.' SHOT 3: Item 2 — Numbers. Hold up a set of magnetic numbers. Text: 'Your assigned number in your class. Magnetics = no commitment.' SHOT 4: Item 3 — Your car. Quick pan across a totally stock car in the paddock. Text: 'Literally any running car with a seatbelt.' SHOT 5: Cut to the car on course, driver grinning. Text: 'That's it. Show up.'",
+      "duration": "30s",
+      "target_audience": "autocross",
+      "audio_suggestion": "Upbeat indie or punk rock snippet — energy of showing up to your first event",
+      "text_overlays": [
+        "3 things you need for your first autocross",
+        "1. helmet (SA2015+)",
+        "2. race numbers (magnetics work great)",
+        "3. literally any car",
+        "that's it. show up."
+      ],
+      "cta": "Magnetic autocross number kits ship in 48hrs — link in bio",
+      "hashtags": ["#autocross", "#firsttimer", "#scca", "#grassrootsracing"],
+      "landing_url": "https://blueridgecustomco.com/racing-packages.html",
+      "production_notes": "Film at an actual autocross event if possible. Otherwise, garage/driveway works. The tone is encouraging and low-barrier — autocross gatekeeping is a problem and this content fights it. Keep it fast, upbeat, approachable. The 'literally any car' line with a stock Corolla in frame is the vibe."
+    },
+    {
+      "id": 7,
+      "title": "Why Your Numbers Peel Off",
+      "hook": "Close-up of a race number half-peeling off a car door at speed — flapping in the wind — text: 'we need to talk about this'",
+      "script": "SHOT 1: B-roll or recreation of numbers peeling at the edges on a dirty/hot car. Text: 'why your race numbers keep peeling off.' SHOT 2: Reason 1 — dirty surface. Show a finger swipe on a dusty panel. Text: 'You didn't clean the panel. IPA wipe. Every time.' SHOT 3: Reason 2 — wrong material. Hold up cheap craft vinyl vs outdoor cast vinyl. Text: 'Dollar store vinyl isn't it. You need cast or calendered outdoor.' SHOT 4: Reason 3 — no burnish. Show squeegee technique. Text: 'Squeegee it down. Edges especially.' SHOT 5: Show a properly applied number surviving a run. Text: 'do it right, they stay put.'",
+      "duration": "30s",
+      "target_audience": "general",
+      "audio_suggestion": "Conversational voiceover with light background music — 'let me save you the embarrassment' energy",
+      "text_overlays": [
+        "why your race numbers keep peeling off",
+        "1. dirty surface — IPA wipe every time",
+        "2. wrong material — outdoor vinyl only",
+        "3. no burnish — squeegee the edges",
+        "do it right, they stay put"
+      ],
+      "cta": "We use 7-year outdoor vinyl on everything. Link in bio.",
+      "hashtags": ["#racetips", "#vinylwrap", "#raceprep", "#protip"],
+      "landing_url": "https://blueridgecustomco.com/racing.html",
+      "production_notes": "This is authority-building content. Demonstrate each mistake visually. For the 'dirty surface' bit, wipe a finger across a panel and show the grime. For 'wrong material,' hold up a thin craft vinyl next to the real stuff and flex them. Voiceover works well here — speak from experience, keep it casual and helpful, not preachy."
+    },
+    {
+      "id": 8,
+      "title": "SCCA Numbers in 30 Seconds",
+      "hook": "Screen recording or graphic of the SCCA rulebook page on number requirements — text: 'nobody reads this, so I will'",
+      "script": "SHOT 1: Flash the rulebook page. Text: 'SCCA number requirements in 30 seconds.' SHOT 2: Size — hold a tape measure to a number on a car. Text: '8 inches tall minimum for door numbers.' SHOT 3: Color — show contrasting examples. Text: 'Must contrast with car color. White car = dark numbers.' SHOT 4: Placement — point to correct positions. Text: 'Both doors. Class letter in front of the number.' SHOT 5: Show a compliant car. Text: 'That's it. Don't overthink it.' SHOT 6: Flash product. Text: 'We make them to spec so you don't have to measure.'",
+      "duration": "30s",
+      "target_audience": "autocross",
+      "audio_suggestion": "Quick-cut educational audio or trending 'the more you know' sound",
+      "text_overlays": [
+        "SCCA number rules in 30 sec",
+        "8\" minimum height",
+        "must contrast with car color",
+        "both doors + class letter",
+        "we make them to spec"
+      ],
+      "cta": "Drop your class and number in the comments — I'll tell you what you need",
+      "hashtags": ["#scca", "#autocross", "#racenumbers", "#trackday"],
+      "landing_url": "https://blueridgecustomco.com/racing-packages.html",
+      "production_notes": "This is pure value content that gets saved and shared. Use real measurements on a real car. Quick cuts keep it moving. The CTA of 'drop your class and number' drives engagement and DMs that convert to orders. Film with a car that has correct numbers as the example."
+    },
+    {
+      "id": 9,
+      "title": "Magnetic vs Permanent",
+      "hook": "Split screen: one hand slapping a magnetic number on a door, the other hand squeegeeing a permanent one — text: 'which one are you?'",
+      "script": "SHOT 1: Split screen comparison. Text: 'Magnetic vs permanent race numbers.' SHOT 2: Magnetic pros — hand pulling number off, tossing it in a bag. Text: 'Magnetics: on in seconds. Off after the event. Daily driver friendly.' SHOT 3: Magnetic cons — number sliding on a wet car. Text: 'But they can shift in rain or at speed.' SHOT 4: Permanent pros — number surviving a downpour/mud. Text: 'Permanent: stays put no matter what. Looks cleaner.' SHOT 5: Permanent cons — trying to remove old numbers, residue. Text: 'But you're committed.' SHOT 6: Verdict. Text: 'Daily driver? Magnetics. Dedicated race car? Permanent. We make both.'",
+      "duration": "30s",
+      "target_audience": "general",
+      "audio_suggestion": "Trending comparison/debate audio or clean beat",
+      "text_overlays": [
+        "magnetic vs permanent race numbers",
+        "magnetics: on in 10 seconds",
+        "but they can shift",
+        "permanent: bulletproof",
+        "but you're committed",
+        "daily = magnetic. dedicated = permanent."
+      ],
+      "cta": "Not sure which? DM me your setup and I'll help you pick.",
+      "hashtags": ["#racecar", "#autocross", "#magneticnumbers", "#raceprep"],
+      "landing_url": "https://blueridgecustomco.com/racing-packages.html",
+      "production_notes": "Film side-by-side if possible, or alternate shots. Show the real advantages and disadvantages honestly — the authenticity builds trust. Get a shot of magnetics going on fast (it's impressive) and a shot of a permanent number in heavy rain or after a muddy rally stage. Honesty sells here."
+    },
+    {
+      "id": 10,
+      "title": "Day in the Life: Race Number Maker",
+      "hook": "Alarm going off at 6AM, hand reaching for phone showing order notifications — text: 'race weekend incoming'",
+      "script": "SHOT 1: Morning — phone showing order queue, coffee being poured. Text: 'race weekend = busy week.' SHOT 2: Design — screen recording of laying out numbers in the design software, matching colors. SHOT 3: Cut — plotter running, multiple sheets queued up. SHOT 4: Weed — time-lapse of weeding a stack of number sets at the workbench. SHOT 5: Pack — taping transfer tape, rolling numbers into shipping tubes, printing labels. SHOT 6: Ship — handing a stack of tubes to the mail carrier or dropping at USPS. SHOT 7: Payoff — customer photo/video of their numbers on their car at the event. Text: 'this is why.'",
+      "duration": "60s",
+      "target_audience": "general",
+      "audio_suggestion": "Lo-fi or indie beat that builds — 'day in the life' trending audio format",
+      "text_overlays": [
+        "day in the life: making race numbers",
+        "race weekend = rush week",
+        "design → cut → weed → pack → ship",
+        "the best part: seeing them on the car",
+        "made in asheville, nc"
+      ],
+      "cta": "Every set is custom cut by hand in our Asheville shop. Link in bio.",
+      "hashtags": ["#smallbusiness", "#dayinthelife", "#asheville", "#handmade"],
+      "landing_url": "https://blueridgecustomco.com/racing.html",
+      "production_notes": "This is small-business storytelling content. Film throughout an actual busy day — don't stage it. The authenticity of a real workshop, real orders, real shipping is the appeal. Show the volume (stacks of orders) but also the care (hand-weeding each set). End with a real customer photo if you have permission. The 'made in Asheville' angle is a differentiator — lean into it."
+    },
+    {
+      "id": 11,
+      "title": "Rally Driver Makes the Decals",
+      "hook": "GoPro footage of your rally car mid-stage, gravel flying — hard cut to the same person calmly weeding vinyl at a desk — text: 'plot twist'",
+      "script": "SHOT 1: Raw rally footage — your car on a stage, co-driver calls, gravel, speed. 2-3 seconds of pure action. SHOT 2: Hard cut to you at the workbench, calmly cutting and weeding vinyl. Same person, completely different vibe. Text: 'plot twist: the guy who makes your race numbers is also a rally driver.' SHOT 3: Quick montage alternating between rally clips and workshop clips — same energy, different context. SHOT 4: Shot of your own car with your own numbers/livery on it. Text: 'I make what I use. I use what I make.'",
+      "duration": "30s",
+      "target_audience": "rally",
+      "audio_suggestion": "Hard-hitting beat drop for the rally footage, then contrast with something chill for the workshop — or one track that works for both",
+      "text_overlays": [
+        "POV: you're a rally driver",
+        "plot twist",
+        "who also makes the decals",
+        "I make what I use"
+      ],
+      "cta": "Rally numbers, livery kits, co-driver boards — from someone who actually runs them. Link in bio.",
+      "hashtags": ["#rally", "#rallycar", "#plottwist", "#smallbusiness"],
+      "landing_url": "https://blueridgecustomco.com/racing.html",
+      "production_notes": "This is the credibility play and the single most important piece of content in the campaign. Use your actual rally footage — the rawer the better. The contrast between high-adrenaline driving and calm workshop work is the hook. This tells people you're not just a vinyl shop, you're one of them. Film the workshop stuff casually, not polished. Authenticity over production value."
+    },
+    {
+      "id": 12,
+      "title": "What $25 Gets You",
+      "hook": "A shipping tube landing on a table — hands reaching to open it — text: '$25 autocross starter kit'",
+      "script": "SHOT 1: Shipping tube hits the table. Hands open it. SHOT 2: Pull out the rolled number set. Unroll on the table — two door numbers, class letters, all on transfer tape, ready to apply. SHOT 3: Close-up of the vinyl quality — thickness, color accuracy, clean cuts. Text: 'cast outdoor vinyl. Custom colors. Cut to your specs.' SHOT 4: Quick application montage — numbers going on the car in seconds. SHOT 5: Car at an event, numbers looking sharp. Text: 'track ready for less than a tank of gas.'",
+      "duration": "30s",
+      "target_audience": "autocross",
+      "audio_suggestion": "Trending unboxing audio or upbeat lo-fi",
+      "text_overlays": [
+        "what $25 gets you",
+        "2 door numbers + class letters",
+        "cast outdoor vinyl",
+        "custom cut to your specs",
+        "track ready for less than a tank of gas"
+      ],
+      "cta": "Autocross number kits starting at $25. Link in bio.",
+      "hashtags": ["#autocross", "#budgetracing", "#unboxing", "#raceonabudget"],
+      "landing_url": "https://blueridgecustomco.com/racing-packages.html",
+      "production_notes": "Unboxing content works. Make the reveal satisfying — the numbers unrolling from the tube is a moment. Show the quality up close. The price point is the hook — grassroots racers are budget-conscious and $25 is an impulse buy. Keep the tone excited but not salesy. This should feel like a friend showing you a good deal, not an ad."
+    },
+    {
+      "id": 13,
+      "title": "Things That Just Make Sense",
+      "hook": "Text: 'things that just make sense' over a shot of magnetic numbers being slapped onto a daily driver in a parking lot",
+      "script": "SHOT 1: 'Things that just make sense' text format. SHOT 2: Magnetic numbers going on a daily-driven car in the paddock — takes 10 seconds. SHOT 3: Car does an autocross run. SHOT 4: Numbers come off in the paddock — car looks stock again. SHOT 5: Driving the same car to get groceries on the way home. SHOT 6: Text: 'magnetic race numbers for your daily. just makes sense.'",
+      "duration": "15s",
+      "target_audience": "autocross",
+      "audio_suggestion": "Trending 'things that just make sense' audio or similar format sound",
+      "text_overlays": [
+        "things that just make sense",
+        "magnetic numbers on your daily",
+        "race in the morning",
+        "groceries on the way home",
+        "just makes sense"
+      ],
+      "cta": "Magnetic number kits — on in seconds, off in seconds. Link in bio.",
+      "hashtags": ["#autocross", "#dailydriver", "#magneticnumbers", "#justmakessense"],
+      "landing_url": "https://blueridgecustomco.com/racing-packages.html",
+      "production_notes": "This is relatable content for the huge daily-driver autocross crowd. The comedy is in the contrast — same car, race mode vs. errand mode. Film at an actual event if possible. The magnetic numbers going on and coming off should be fast and effortless — that's the selling point. Keep it light and funny."
+    },
+    {
+      "id": 14,
+      "title": "Tell Me You Race",
+      "hook": "Text: 'tell me you race without telling me you race' — camera slowly panning across a workshop wall covered in old race numbers, plates, event stickers",
+      "script": "SHOT 1: Trending audio format. Camera pans across the workshop — rolls of vinyl, number templates, old rally plates, event stickers on the toolbox. SHOT 2: Cut to the garage — spare wheels stacked, helmet on the shelf, tow hooks hanging on pegboard. SHOT 3: Cut to the phone — 47 unread messages in the race team group chat, weather app open for Saturday. SHOT 4: Cut to the car — roll bar visible through the rear window, tow numbers painted on. SHOT 5: Back to the workshop, you're making numbers at midnight. Text: 'the answer is always yes, I race.'",
+      "duration": "30s",
+      "target_audience": "general",
+      "audio_suggestion": "Trending 'tell me without telling me' audio",
+      "text_overlays": [
+        "tell me you race without telling me you race",
+        "47 unread messages in the group chat",
+        "checking weather for saturday",
+        "making numbers at midnight"
+      ],
+      "cta": "If you get it, you get it. Custom numbers from a fellow racer — link in bio.",
+      "hashtags": ["#tellmewithouttellingme", "#racecar", "#garagetok", "#carpeople"],
+      "landing_url": "https://blueridgecustomco.com/racing.html",
+      "production_notes": "This is community content — it's about belonging, not selling. Every detail should be something racers recognize and non-racers don't. The 47 group chat messages, checking weather obsessively, the midnight prep — these are universal racer experiences. Film your actual workshop and garage. Don't clean up — the mess is authentic. The comments section will be full of people adding their own 'tell me you race' moments, which drives engagement."
+    },
+    {
+      "id": 15,
+      "title": "Night Before Rush Order",
+      "hook": "Text: 'Nobody: ... Racers at 11pm the night before an event:' — screenshot of a frantic DM: 'hey can you make numbers by tomorrow morning'",
+      "script": "SHOT 1: Phone screen showing a message at 11:47pm: 'Hey man, autocross is tomorrow, I just realized I don't have numbers. Any chance??' SHOT 2: Cut to you, clearly about to go to bed, reading the message. Sigh. SHOT 3: Time-lapse of you firing up the plotter, cutting numbers at midnight. SHOT 4: Morning — handing off numbers in the paddock, still warm from the heat press. The guy's car in the background. SHOT 5: His car on course with the numbers. Text: 'we always come through.'",
+      "duration": "30s",
+      "target_audience": "autocross",
+      "audio_suggestion": "Comedic trending audio — the 'here we go again' or 'I guess I'm not sleeping' vibe",
+      "text_overlays": [
+        "nobody:",
+        "racers at 11pm the night before an event:",
+        "'can you make numbers by tomorrow'",
+        "every. single. time.",
+        "we always come through"
+      ],
+      "cta": "Don't be that guy — order ahead. But if you are that guy, we got you. Link in bio.",
+      "hashtags": ["#autocross", "#lastminute", "#raceprep", "#nobody"],
+      "landing_url": "https://blueridgecustomco.com/racing-packages.html",
+      "production_notes": "This is comedy content rooted in a real scenario every small racing vendor has lived. If you have actual late-night DMs (anonymized), use them — realness wins. The humor is self-deprecating but also shows that you care and deliver. Film the midnight cutting session for real the next time it happens — or recreate it, it'll happen again soon enough. The paddock handoff is the feel-good moment."
+    }
+  ]
+}
