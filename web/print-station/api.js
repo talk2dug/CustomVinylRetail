@@ -142,6 +142,10 @@ window.printStation = {
   })),
   saveSsawConfig: (data) => apiRequest('/api/ssaw/config', { method: 'POST', body: data }),
 
+  // Category visibility settings (admin)
+  fetchCategorySettings: () => apiRequest('/api/admin/category-settings').catch(() => ({ categories: [] })),
+  saveCategorySettings: (categories) => apiRequest('/api/admin/category-settings', { method: 'POST', body: { categories } }),
+
   // ============================================================================
   // CONFIGURATION
   // ============================================================================
