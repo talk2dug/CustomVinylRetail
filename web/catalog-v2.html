@@ -1,0 +1,2135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sticker Shop | BlueRidgeCustomCo — Asheville, NC</title>
+  <meta name="description" content="Browse 50,000+ vinyl sticker designs, upload your own, or grab 25 stickers for $5. Handmade in Asheville, NC with fast shipping nationwide.">
+  <link rel="icon" type="image/png" href="./images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="BlueRidgeCustomCo">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Sticker Shop | BlueRidgeCustomCo">
+  <meta property="og:description" content="Browse 50,000+ vinyl sticker designs, upload your own, or grab 25 for $5. Handmade in Asheville, NC.">
+  <meta property="og:url" content="https://blueridgecustomco.com/catalog-v2.html">
+  <meta property="og:image" content="https://blueridgecustomco.com/images/BlueRidgeCustomCoLogo.png">
+
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Shared theme -->
+  <link rel="stylesheet" href="./theme-v2.css">
+
+  <style>
+  /* ═══════════════════════════════════════════════════════
+     STICKER SHOP — Dark Studio Theme Override
+     ═══════════════════════════════════════════════════════ */
+
+  /* Dark mode overrides for this page */
+  body.dark-shop {
+    background: #1C1B1F;
+    color: #F0ECE6;
+  }
+  body.dark-shop .announce-bar {
+    background: #252429;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  body.dark-shop .site-header {
+    background: rgba(37, 36, 41, 0.94);
+    backdrop-filter: blur(20px) saturate(1.4);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  body.dark-shop .site-header.scrolled {
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  body.dark-shop .logo-text { color: #F0ECE6; }
+  body.dark-shop .logo-sub { color: #8A8279; }
+  body.dark-shop .nav-desktop a { color: #C4BCAF; }
+  body.dark-shop .nav-desktop a:hover { color: #F0ECE6; background: rgba(255,255,255,0.06); }
+  body.dark-shop .hamburger span { background: #F0ECE6; }
+  body.dark-shop .nav-mobile-overlay {
+    background: rgba(28, 27, 31, 0.98);
+    backdrop-filter: blur(30px);
+  }
+  body.dark-shop .nav-mobile-overlay a { color: #F0ECE6; }
+  body.dark-shop .nav-mobile-overlay a:hover { color: #D4A373; background: rgba(212,163,115,0.1); }
+
+  /* Grain overlay tweak for dark */
+  body.dark-shop::after { opacity: 0.018; }
+
+  /* ── Layout ── */
+  .shop-wrapper {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .shop-main {
+    flex: 1;
+    max-width: 1320px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 clamp(1rem, 3vw, 2.5rem);
+  }
+
+  /* ── Page Header ── */
+  .shop-hero {
+    text-align: center;
+    padding: 3rem 0 1.5rem;
+  }
+  .shop-hero h1 {
+    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 800;
+    color: #F0ECE6;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 0.5rem;
+  }
+  .shop-hero h1 span { color: #D4A373; }
+  .shop-hero p {
+    font-size: 1.05rem;
+    color: #8A8279;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  /* ── Cart indicator ── */
+  .cart-indicator {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: #40916C;
+    color: #FAF8F5;
+    font-weight: 700;
+    font-size: 0.88rem;
+    padding: 0.75rem 1.3rem;
+    border-radius: 100px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    opacity: 0;
+    transform: translateY(20px);
+    pointer-events: none;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .cart-indicator.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .cart-indicator:hover {
+    background: #2D6A4F;
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 12px 40px rgba(45,106,79,0.3);
+  }
+  .cart-badge {
+    background: #D4A373;
+    color: #1C1B1F;
+    font-size: 0.72rem;
+    font-weight: 800;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+  }
+
+  /* ── Tabs ── */
+  .shop-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0.5rem 0 2rem;
+  }
+  .shop-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.4rem;
+    border-radius: 100px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #8A8279;
+    background: transparent;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .shop-tab:hover {
+    color: #C4BCAF;
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.07);
+  }
+  .shop-tab.active {
+    color: #F0ECE6;
+    background: #252429;
+    border-color: rgba(255,255,255,0.12);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  }
+  .shop-tab i { font-size: 0.85em; }
+
+  @media (max-width: 600px) {
+    .shop-tab span { display: none; }
+    .shop-tab { padding: 0.6rem 1rem; }
+    .shop-tab i { font-size: 1.1rem; }
+  }
+
+  /* ── Tab Panels ── */
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ═══════ TAB 1: Browse Designs ═══════ */
+
+  .browse-controls {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .browse-search {
+    flex: 1;
+    min-width: 200px;
+    position: relative;
+  }
+  .browse-search i {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #5E574F;
+    font-size: 0.85rem;
+    pointer-events: none;
+  }
+  .browse-search input {
+    width: 100%;
+    padding: 0.7rem 1rem 0.7rem 2.6rem;
+    background: #252429;
+    border: 1.5px solid rgba(255,255,255,0.07);
+    border-radius: 100px;
+    color: #F0ECE6;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    outline: none;
+  }
+  .browse-search input::placeholder { color: #5E574F; }
+  .browse-search input:focus {
+    border-color: #D4A373;
+    background: #2E2D33;
+    box-shadow: 0 0 0 3px rgba(212,163,115,0.12);
+  }
+
+  .browse-category-select {
+    padding: 0.7rem 2.5rem 0.7rem 1rem;
+    background: #252429;
+    border: 1.5px solid rgba(255,255,255,0.07);
+    border-radius: 100px;
+    color: #F0ECE6;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238A8279' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+  }
+  .browse-category-select:focus {
+    border-color: #D4A373;
+    box-shadow: 0 0 0 3px rgba(212,163,115,0.12);
+  }
+  .browse-category-select option { background: #252429; color: #F0ECE6; }
+
+  /* Results count */
+  .browse-results-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding: 0 0.25rem;
+  }
+  .browse-results-count {
+    font-size: 0.82rem;
+    color: #5E574F;
+  }
+  .browse-results-count strong {
+    color: #D4A373;
+    font-weight: 700;
+  }
+
+  /* Design grid */
+  .design-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1rem;
+    padding-bottom: 3rem;
+  }
+  @media (min-width: 1100px) {
+    .design-grid { grid-template-columns: repeat(5, 1fr); }
+  }
+  @media (max-width: 500px) {
+    .design-grid { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+  }
+
+  .design-card {
+    background: #252429;
+    border: 1.5px solid rgba(255,255,255,0.05);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    position: relative;
+  }
+  .design-card:hover {
+    border-color: rgba(212,163,115,0.3);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+  }
+  .design-card-img {
+    aspect-ratio: 1;
+    background: #1C1B1F;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 12px;
+  }
+  .design-card-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .design-card:hover .design-card-img img {
+    transform: scale(1.08);
+  }
+  .design-card-name {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #C4BCAF;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Load more */
+  .load-more-row {
+    text-align: center;
+    padding: 1rem 0 3rem;
+  }
+  .load-more-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 2rem;
+    background: transparent;
+    border: 1.5px solid rgba(255,255,255,0.1);
+    border-radius: 100px;
+    color: #C4BCAF;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .load-more-btn:hover {
+    border-color: #D4A373;
+    color: #D4A373;
+    background: rgba(212,163,115,0.08);
+  }
+
+  /* Empty / loading states */
+  .state-message {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: #5E574F;
+  }
+  .state-message i {
+    font-size: 2.5rem;
+    color: #D4A373;
+    margin-bottom: 1rem;
+    display: block;
+  }
+  .state-message p {
+    font-size: 0.95rem;
+    color: #8A8279;
+  }
+
+  /* ═══════ Configure Panel (side drawer) ═══════ */
+  .configure-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .configure-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .configure-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(6px);
+  }
+  .configure-drawer {
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    background: #252429;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    box-shadow: -8px 0 40px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    overflow-y: auto;
+  }
+  .configure-overlay.open .configure-drawer {
+    transform: translateX(0);
+  }
+  @media (max-width: 500px) {
+    .configure-drawer { max-width: 100%; }
+  }
+
+  .configure-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    z-index: 10;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(28,27,31,0.8);
+    color: #8A8279;
+    font-size: 1rem;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: all 0.2s;
+  }
+  .configure-close:hover { color: #F0ECE6; border-color: rgba(255,255,255,0.2); }
+
+  .configure-preview {
+    aspect-ratio: 1;
+    background: #1C1B1F;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .configure-preview::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 70% 70% at center, rgba(212,163,115,0.04), transparent);
+    pointer-events: none;
+  }
+  .configure-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    position: relative;
+    z-index: 1;
+  }
+
+  .configure-body {
+    padding: 1.5rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .configure-name {
+    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #F0ECE6;
+    line-height: 1.25;
+  }
+  .configure-category {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #D4A373;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 0.25rem;
+  }
+
+  /* Size pills */
+  .config-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #5E574F;
+    margin-bottom: 0.5rem;
+    display: block;
+  }
+  .size-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .size-pill {
+    padding: 0.5rem 1rem;
+    border: 1.5px solid rgba(255,255,255,0.08);
+    border-radius: 100px;
+    background: transparent;
+    color: #C4BCAF;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .size-pill:hover {
+    border-color: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.04);
+  }
+  .size-pill.active {
+    border-color: #D4A373;
+    background: rgba(212,163,115,0.12);
+    color: #D4A373;
+  }
+
+  /* Quantity stepper */
+  .qty-stepper {
+    display: inline-flex;
+    align-items: center;
+    border: 1.5px solid rgba(255,255,255,0.08);
+    border-radius: 100px;
+    overflow: hidden;
+  }
+  .qty-btn {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: none;
+    color: #C4BCAF;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .qty-btn:hover { background: rgba(255,255,255,0.06); color: #F0ECE6; }
+  .qty-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .qty-value {
+    width: 50px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #F0ECE6;
+    background: transparent;
+    border: none;
+    border-left: 1px solid rgba(255,255,255,0.06);
+    border-right: 1px solid rgba(255,255,255,0.06);
+  }
+
+  /* Price */
+  .price-display {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+  .price-amount {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #F0ECE6;
+  }
+  .price-each {
+    font-size: 0.82rem;
+    color: #5E574F;
+  }
+  .bulk-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: #40916C;
+    background: rgba(45,106,79,0.1);
+    padding: 0.35rem 0.75rem;
+    border-radius: 100px;
+    margin-top: 0.4rem;
+  }
+  .bulk-note i { font-size: 0.7rem; }
+  .bulk-active {
+    color: #D4A373;
+    background: rgba(212,163,115,0.1);
+  }
+
+  /* Add to cart */
+  .add-to-cart-btn {
+    width: 100%;
+    padding: 0.9rem;
+    background: #40916C;
+    color: #FAF8F5;
+    border: none;
+    border-radius: 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: auto;
+  }
+  .add-to-cart-btn:hover {
+    background: #2D6A4F;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(45,106,79,0.3);
+  }
+  .add-to-cart-btn.added {
+    background: #D4A373;
+    color: #1C1B1F;
+  }
+
+  /* ═══════ TAB 2: Custom Upload ═══════ */
+
+  .upload-section {
+    max-width: 680px;
+    margin: 0 auto;
+    padding-bottom: 3rem;
+  }
+
+  .upload-zone {
+    border: 2px dashed rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    background: rgba(255,255,255,0.02);
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: #D4A373;
+    background: rgba(212,163,115,0.05);
+  }
+  .upload-zone i {
+    font-size: 2.5rem;
+    color: #5E574F;
+    margin-bottom: 1rem;
+    display: block;
+    transition: color 0.2s;
+  }
+  .upload-zone:hover i { color: #D4A373; }
+  .upload-zone h3 {
+    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #F0ECE6;
+    margin-bottom: 0.4rem;
+  }
+  .upload-zone p {
+    font-size: 0.85rem;
+    color: #5E574F;
+  }
+  .upload-zone p strong {
+    color: #D4A373;
+    cursor: pointer;
+  }
+  .upload-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .upload-hint {
+    text-align: center;
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(212,163,115,0.06);
+    border: 1px solid rgba(212,163,115,0.1);
+    border-radius: 10px;
+    font-size: 0.82rem;
+    color: #8A8279;
+    line-height: 1.6;
+  }
+  .upload-hint i { color: #D4A373; margin-right: 0.3rem; }
+
+  .upload-preview-area {
+    margin-top: 1.5rem;
+    display: none;
+  }
+  .upload-preview-area.has-file { display: block; }
+
+  .upload-preview-card {
+    background: #252429;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .upload-preview-image {
+    aspect-ratio: 1;
+    max-height: 320px;
+    background: #1C1B1F;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+  .upload-preview-image img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .upload-preview-body {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .upload-file-name {
+    font-weight: 600;
+    color: #F0ECE6;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .upload-file-name i { color: #40916C; font-size: 0.9rem; }
+  .upload-file-name .remove-file {
+    margin-left: auto;
+    color: #5E574F;
+    cursor: pointer;
+    font-size: 0.85rem;
+    background: none;
+    border: none;
+    transition: color 0.2s;
+  }
+  .upload-file-name .remove-file:hover { color: #E55B4A; }
+
+  /* ═══════ TAB 3: Grab Bags ═══════ */
+
+  .grab-hero {
+    text-align: center;
+    padding: 2rem 0 2.5rem;
+  }
+  .grab-hero .price-burst {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: linear-gradient(135deg, rgba(212,163,115,0.12), rgba(64,145,108,0.12));
+    border: 1.5px solid rgba(212,163,115,0.2);
+    border-radius: 100px;
+    padding: 0.5rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .grab-hero .price-burst span {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #D4A373;
+  }
+  .grab-hero h2 {
+    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-size: clamp(1.8rem, 4vw, 2.5rem);
+    font-weight: 800;
+    color: #F0ECE6;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 0.5rem;
+  }
+  .grab-hero h2 em {
+    font-style: normal;
+    color: #40916C;
+  }
+  .grab-hero p {
+    font-size: 1rem;
+    color: #8A8279;
+    max-width: 420px;
+    margin: 0 auto;
+  }
+
+  .grab-options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+    max-width: 800px;
+    margin: 0 auto 2rem;
+  }
+  @media (max-width: 700px) {
+    .grab-options { grid-template-columns: 1fr; max-width: 420px; }
+  }
+
+  .grab-option-card {
+    background: #252429;
+    border: 2px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .grab-option-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #D4A373, #40916C);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .grab-option-card:hover {
+    border-color: rgba(212,163,115,0.25);
+    transform: translateY(-4px);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+  }
+  .grab-option-card:hover::before { opacity: 1; }
+  .grab-option-card.selected {
+    border-color: #D4A373;
+    box-shadow: 0 0 0 1px #D4A373, 0 16px 40px rgba(0,0,0,0.35);
+  }
+  .grab-option-card.selected::before { opacity: 1; }
+
+  .grab-option-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    display: inline-grid;
+    place-items: center;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .grab-option-card:nth-child(1) .grab-option-icon {
+    background: rgba(212,163,115,0.12);
+    color: #D4A373;
+  }
+  .grab-option-card:nth-child(2) .grab-option-icon {
+    background: rgba(64,145,108,0.12);
+    color: #40916C;
+  }
+
+  .grab-option-card h3 {
+    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #F0ECE6;
+    margin-bottom: 0.4rem;
+  }
+  .grab-option-card p {
+    font-size: 0.85rem;
+    color: #8A8279;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+  }
+  .grab-option-price {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #40916C;
+  }
+
+  /* Grab bag config */
+  .grab-config {
+    max-width: 800px;
+    margin: 0 auto;
+    padding-bottom: 3rem;
+    display: none;
+  }
+  .grab-config.active { display: block; }
+
+  .grab-config-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .grab-config-header h3 {
+    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #F0ECE6;
+  }
+  .grab-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 100px;
+    padding: 0.4rem 1rem;
+    color: #8A8279;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .grab-back-btn:hover { color: #F0ECE6; border-color: rgba(255,255,255,0.2); }
+
+  /* Size selector for grab bags */
+  .grab-size-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .grab-size-row .config-label {
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+
+  /* Progress bar */
+  .grab-progress {
+    margin-bottom: 1.5rem;
+  }
+  .grab-progress-bar {
+    height: 8px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 100px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+  }
+  .grab-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #40916C, #D4A373);
+    border-radius: 100px;
+    transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    width: 0%;
+  }
+  .grab-progress-text {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    color: #8A8279;
+  }
+  .grab-progress-text strong {
+    color: #D4A373;
+    font-weight: 700;
+  }
+
+  /* Pick grid */
+  .pick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (min-width: 700px) {
+    .pick-grid { grid-template-columns: repeat(5, 1fr); }
+  }
+
+  .pick-card {
+    aspect-ratio: 1;
+    background: #1C1B1F;
+    border: 2px solid rgba(255,255,255,0.05);
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    padding: 8px;
+  }
+  .pick-card:hover {
+    border-color: rgba(212,163,115,0.3);
+    transform: scale(1.04);
+  }
+  .pick-card.selected {
+    border-color: #40916C;
+    box-shadow: 0 0 0 1px #40916C, inset 0 0 0 1px rgba(64,145,108,0.3);
+  }
+  .pick-card.selected::after {
+    content: '\f00c';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    background: #40916C;
+    color: #FAF8F5;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 0.6rem;
+    z-index: 2;
+  }
+  .pick-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 6px;
+  }
+
+  .grab-add-btn {
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.9rem;
+    background: #40916C;
+    color: #FAF8F5;
+    border: none;
+    border-radius: 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.25s;
+  }
+  .grab-add-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .grab-add-btn:not(:disabled):hover {
+    background: #2D6A4F;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(45,106,79,0.3);
+  }
+
+  /* Random grab bag config */
+  .grab-random-config {
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .grab-random-config .config-section {
+    background: #252429;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  /* ═══════ Toast notification ═══════ */
+  .toast {
+    position: fixed;
+    top: 5rem;
+    right: 1.5rem;
+    z-index: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: #252429;
+    border: 1px solid rgba(64,145,108,0.3);
+    border-radius: 12px;
+    padding: 0.85rem 1.25rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    transform: translateX(calc(100% + 2rem));
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    font-size: 0.88rem;
+    color: #F0ECE6;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .toast.show { transform: translateX(0); }
+  .toast i { color: #40916C; font-size: 1rem; }
+
+  /* ═══════ Category filter (grab bag) ═══════ */
+  .grab-category-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 1rem;
+  }
+  .grab-category-pill {
+    padding: 0.4rem 0.85rem;
+    border-radius: 100px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: transparent;
+    color: #8A8279;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .grab-category-pill:hover {
+    border-color: rgba(255,255,255,0.15);
+    color: #C4BCAF;
+  }
+  .grab-category-pill.active {
+    border-color: #D4A373;
+    background: rgba(212,163,115,0.1);
+    color: #D4A373;
+  }
+
+  /* Dark footer on dark page */
+  body.dark-shop .site-footer {
+    background: #0F0E12;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  </style>
+</head>
+
+<body class="dark-shop">
+
+  <!-- ═══════ ANNOUNCEMENT BAR ═══════ -->
+  <div class="announce-bar">
+    <i class="fas fa-map-marker-alt"></i>
+    <strong>Handmade in Asheville, NC</strong> &mdash; Fast shipping nationwide.
+    <a href="./catalog-v2.html">Start shopping &rarr;</a>
+  </div>
+
+  <!-- ═══════ HEADER ═══════ -->
+  <header class="site-header" id="siteHeader">
+    <div class="container header-inner">
+      <a href="./" class="logo">
+        <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+        <div>
+          <span class="logo-text">BlueRidgeCustomCo</span>
+          <span class="logo-sub">Asheville's Custom Shop</span>
+        </div>
+      </a>
+
+      <nav class="nav-desktop">
+        <a href="./catalog-v2.html" style="color:#D4A373;">Stickers</a>
+        <a href="./multiboard/">Multiboard</a>
+        <a href="./apparel.html">Apparel</a>
+        <a href="./metal-prints.html">Metal Prints</a>
+        <a href="./slide-laser-engraving.html">Engraving</a>
+        <a href="./racing.html">Racing</a>
+        <a href="./designer.html" class="nav-cta"><i class="fas fa-pen-nib"></i> Free Designer</a>
+      </nav>
+
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile nav -->
+  <div class="nav-mobile-overlay" id="mobileNav">
+    <a href="./catalog-v2.html">Stickers & Decals</a>
+    <a href="./multiboard/">Multiboard</a>
+    <a href="./apparel.html">Apparel</a>
+    <a href="./metal-prints.html">Metal Prints</a>
+    <a href="./slide-laser-engraving.html">Laser Engraving</a>
+    <a href="./racing.html">Racing</a>
+    <a href="./designer.html">Free Designer</a>
+    <a href="./custom-stickers.html">Custom Orders</a>
+    <a href="./customer.html">My Account</a>
+  </div>
+
+  <!-- ═══════ SHOP ═══════ -->
+  <div class="shop-wrapper">
+    <main class="shop-main">
+
+      <!-- Page Header -->
+      <div class="shop-hero reveal">
+        <h1>The <span>Sticker</span> Shop</h1>
+        <p>50,000+ designs, custom uploads, and grab bags. All printed in-house in Asheville.</p>
+      </div>
+
+      <!-- Tabs -->
+      <div class="shop-tabs reveal reveal-d1">
+        <button class="shop-tab active" data-tab="browse">
+          <i class="fas fa-th"></i> <span>Browse Designs</span>
+        </button>
+        <button class="shop-tab" data-tab="upload">
+          <i class="fas fa-cloud-upload-alt"></i> <span>Custom Upload</span>
+        </button>
+        <button class="shop-tab" data-tab="grab">
+          <i class="fas fa-gift"></i> <span>Grab Bags</span>
+        </button>
+      </div>
+
+      <!-- ═══════ TAB 1: Browse Designs ═══════ -->
+      <div class="tab-panel active" id="panel-browse">
+
+        <div class="browse-controls">
+          <div class="browse-search">
+            <i class="fas fa-search"></i>
+            <input type="text" id="searchInput" placeholder="Search designs...">
+          </div>
+          <select class="browse-category-select" id="categorySelect">
+            <option value="">All Categories</option>
+          </select>
+        </div>
+
+        <div class="browse-results-bar">
+          <span class="browse-results-count" id="resultsCount">Loading...</span>
+        </div>
+
+        <div class="design-grid" id="designGrid"></div>
+
+        <div class="load-more-row" id="loadMoreRow" style="display:none;">
+          <button class="load-more-btn" id="loadMoreBtn">
+            <i class="fas fa-plus"></i> Load More
+          </button>
+        </div>
+
+        <div class="state-message" id="browseLoading">
+          <i class="fas fa-circle-notch fa-spin"></i>
+          <p>Loading designs...</p>
+        </div>
+
+        <div class="state-message" id="browseEmpty" style="display:none;">
+          <i class="fas fa-search"></i>
+          <p>No designs found. Try a different search or category.</p>
+        </div>
+      </div>
+
+      <!-- ═══════ TAB 2: Custom Upload ═══════ -->
+      <div class="tab-panel" id="panel-upload">
+
+        <div class="upload-section">
+          <div class="upload-zone" id="uploadZone">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <h3>Upload Your Design</h3>
+            <p>Drag & drop or <strong>click to browse</strong></p>
+            <p style="margin-top:0.3rem; font-size:0.78rem;">PNG, JPG, SVG &mdash; up to 25 MB</p>
+            <input type="file" id="uploadInput" accept="image/png,image/jpeg,image/svg+xml">
+          </div>
+
+          <div class="upload-hint">
+            <i class="fas fa-lightbulb"></i>
+            We'll print your design exactly as uploaded. For best results, use a <strong>PNG with transparent background</strong> at 300 DPI or higher.
+          </div>
+
+          <div class="upload-preview-area" id="uploadPreviewArea">
+            <div class="upload-preview-card">
+              <div class="upload-preview-image">
+                <img id="uploadPreviewImg" src="" alt="Upload preview">
+              </div>
+              <div class="upload-preview-body">
+                <div class="upload-file-name">
+                  <i class="fas fa-check-circle"></i>
+                  <span id="uploadFileName">file.png</span>
+                  <button class="remove-file" id="removeFileBtn" title="Remove file"><i class="fas fa-times"></i></button>
+                </div>
+
+                <div>
+                  <span class="config-label">Size</span>
+                  <div class="size-pills" id="uploadSizePills">
+                    <button class="size-pill" data-size="2" data-price="2">2"</button>
+                    <button class="size-pill active" data-size="3" data-price="3">3"</button>
+                    <button class="size-pill" data-size="4" data-price="5">4"</button>
+                    <button class="size-pill" data-size="6" data-price="8">6"</button>
+                    <button class="size-pill" data-size="8" data-price="12">8"</button>
+                  </div>
+                </div>
+
+                <div>
+                  <span class="config-label">Quantity</span>
+                  <div class="qty-stepper">
+                    <button class="qty-btn" id="uploadQtyMinus"><i class="fas fa-minus"></i></button>
+                    <input class="qty-value" id="uploadQtyValue" type="number" value="1" min="1" max="100" readonly>
+                    <button class="qty-btn" id="uploadQtyPlus"><i class="fas fa-plus"></i></button>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="price-display">
+                    <span class="price-amount" id="uploadPrice">$3.00</span>
+                    <span class="price-each" id="uploadPriceEach">$3.00 each</span>
+                  </div>
+                  <div class="bulk-note" id="uploadBulkNote">
+                    <i class="fas fa-tag"></i> 10+ stickers: 20% off
+                  </div>
+                </div>
+
+                <button class="add-to-cart-btn" id="uploadAddBtn">
+                  <i class="fas fa-cart-plus"></i> Add to Cart
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════ TAB 3: Grab Bags ═══════ -->
+      <div class="tab-panel" id="panel-grab">
+
+        <div class="grab-hero">
+          <div class="price-burst">
+            <i class="fas fa-fire" style="color:#D4A373;"></i>
+            <span>BEST DEAL</span>
+          </div>
+          <h2>25 Stickers for <em>$5</em></h2>
+          <p>Pick your favorite way to fill a grab bag. All stickers printed on premium vinyl.</p>
+        </div>
+
+        <!-- Option cards -->
+        <div class="grab-options" id="grabOptions">
+          <div class="grab-option-card" data-mode="random">
+            <div class="grab-option-icon"><i class="fas fa-dice"></i></div>
+            <h3>Random Grab Bag</h3>
+            <p>Pick a category and size. We surprise you with 25 awesome stickers.</p>
+            <div class="grab-option-price">$5.00</div>
+          </div>
+          <div class="grab-option-card" data-mode="pick">
+            <div class="grab-option-icon"><i class="fas fa-hand-pointer"></i></div>
+            <h3>Pick Your Own</h3>
+            <p>Browse and hand-pick exactly 25 stickers. All the same size.</p>
+            <div class="grab-option-price">$5.00</div>
+          </div>
+        </div>
+
+        <!-- Random Grab Bag Config -->
+        <div class="grab-config" id="grabRandomConfig">
+          <div class="grab-config-header">
+            <h3><i class="fas fa-dice" style="color:#D4A373; margin-right:0.5rem;"></i>Random Grab Bag</h3>
+            <button class="grab-back-btn" id="grabRandomBack"><i class="fas fa-arrow-left"></i> Back</button>
+          </div>
+
+          <div class="grab-random-config">
+            <div class="config-section">
+              <span class="config-label">Category</span>
+              <select class="browse-category-select" id="grabRandomCategory" style="width:100%; margin-bottom:1rem;">
+                <option value="">Surprise Me (all categories)</option>
+              </select>
+
+              <span class="config-label">Size</span>
+              <div class="size-pills" id="grabRandomSizePills">
+                <button class="size-pill active" data-size="2">2"</button>
+                <button class="size-pill" data-size="3">3"</button>
+              </div>
+            </div>
+
+            <button class="grab-add-btn" id="grabRandomAddBtn">
+              <i class="fas fa-cart-plus"></i> Add Random Grab Bag to Cart &mdash; $5.00
+            </button>
+          </div>
+        </div>
+
+        <!-- Pick Your Own Config -->
+        <div class="grab-config" id="grabPickConfig">
+          <div class="grab-config-header">
+            <h3><i class="fas fa-hand-pointer" style="color:#40916C; margin-right:0.5rem;"></i>Pick Your Own 25</h3>
+            <button class="grab-back-btn" id="grabPickBack"><i class="fas fa-arrow-left"></i> Back</button>
+          </div>
+
+          <div class="grab-size-row">
+            <span class="config-label">Size</span>
+            <div class="size-pills" id="grabPickSizePills">
+              <button class="size-pill active" data-size="2">2"</button>
+              <button class="size-pill" data-size="3">3"</button>
+            </div>
+          </div>
+
+          <div class="grab-category-pills" id="grabPickCategoryPills"></div>
+
+          <div class="grab-progress">
+            <div class="grab-progress-bar">
+              <div class="grab-progress-fill" id="grabProgressFill"></div>
+            </div>
+            <div class="grab-progress-text">
+              <span><strong id="grabPickCount">0</strong> / 25 selected</span>
+              <span id="grabPickRemaining">25 more to go</span>
+            </div>
+          </div>
+
+          <div class="pick-grid" id="pickGrid"></div>
+
+          <div class="load-more-row" id="pickLoadMoreRow" style="display:none;">
+            <button class="load-more-btn" id="pickLoadMoreBtn">
+              <i class="fas fa-plus"></i> Load More
+            </button>
+          </div>
+
+          <button class="grab-add-btn" id="grabPickAddBtn" disabled>
+            <i class="fas fa-cart-plus"></i> Add Grab Bag to Cart &mdash; $5.00
+          </button>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ═══════ FOOTER ═══════ -->
+    <footer class="site-footer">
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <div class="logo" style="margin-bottom: 0;">
+              <div class="logo-mark"><i class="fas fa-mountain"></i></div>
+              <div>
+                <span class="logo-text">BlueRidgeCustomCo</span>
+                <span class="logo-sub">Asheville's Custom Shop</span>
+              </div>
+            </div>
+            <p>Vinyl decals, metal prints, 3D organizers, laser engraving & apparel. Handmade in Asheville, NC.</p>
+            <div class="footer-social">
+              <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+              <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+              <a href="#" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
+            </div>
+          </div>
+
+          <div class="footer-col">
+            <h4>Shop</h4>
+            <a href="./catalog-v2.html">Stickers & Decals</a>
+            <a href="./multiboard/">Multiboard</a>
+            <a href="./apparel.html">Apparel</a>
+            <a href="./metal-prints.html">Metal Prints</a>
+            <a href="./slide-laser-engraving.html">Laser Engraving</a>
+            <a href="./racing.html">Racing Packages</a>
+          </div>
+
+          <div class="footer-col">
+            <h4>Tools</h4>
+            <a href="./designer.html">Free Designer</a>
+            <a href="./custom-stickers.html">Custom Orders</a>
+            <a href="./price-list.html">Price List</a>
+            <a href="./customer.html">My Account</a>
+          </div>
+
+          <div class="footer-col">
+            <h4>Info</h4>
+            <a href="./our-story.html">Our Story</a>
+            <a href="./faq.html">FAQ</a>
+            <a href="./contact.html">Contact</a>
+            <a href="./privacy-policy.html">Privacy Policy</a>
+            <a href="./terms.html">Terms & Conditions</a>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <span>&copy; <span data-year></span> BlueRidgeCustomCo. All rights reserved.</span>
+          <div class="footer-trust">
+            <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Secure checkout</span>
+            <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Made in USA</span>
+            <span class="footer-trust-item"><i class="fas fa-circle-check"></i> Fast turnaround</span>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Configure Drawer -->
+  <div class="configure-overlay" id="configureOverlay">
+    <div class="configure-backdrop" id="configureBackdrop"></div>
+    <div class="configure-drawer">
+      <button class="configure-close" id="configureClose"><i class="fas fa-times"></i></button>
+      <div class="configure-preview">
+        <img id="configureImg" src="" alt="Design preview">
+      </div>
+      <div class="configure-body">
+        <div>
+          <div class="configure-name" id="configureName"></div>
+          <div class="configure-category" id="configureCategory"></div>
+        </div>
+
+        <div>
+          <span class="config-label">Size</span>
+          <div class="size-pills" id="configureSizePills">
+            <button class="size-pill" data-size="2" data-price="2">2"</button>
+            <button class="size-pill active" data-size="3" data-price="3">3"</button>
+            <button class="size-pill" data-size="4" data-price="5">4"</button>
+            <button class="size-pill" data-size="6" data-price="8">6"</button>
+            <button class="size-pill" data-size="8" data-price="12">8"</button>
+          </div>
+        </div>
+
+        <div>
+          <span class="config-label">Quantity</span>
+          <div class="qty-stepper">
+            <button class="qty-btn" id="configQtyMinus"><i class="fas fa-minus"></i></button>
+            <input class="qty-value" id="configQtyValue" type="number" value="1" min="1" max="100" readonly>
+            <button class="qty-btn" id="configQtyPlus"><i class="fas fa-plus"></i></button>
+          </div>
+        </div>
+
+        <div>
+          <div class="price-display">
+            <span class="price-amount" id="configPrice">$3.00</span>
+            <span class="price-each" id="configPriceEach">$3.00 each</span>
+          </div>
+          <div class="bulk-note" id="configBulkNote">
+            <i class="fas fa-tag"></i> 10+ stickers: 20% off
+          </div>
+        </div>
+
+        <button class="add-to-cart-btn" id="configAddBtn">
+          <i class="fas fa-cart-plus"></i> Add to Cart
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart Indicator -->
+  <button class="cart-indicator" id="cartIndicator">
+    <i class="fas fa-shopping-cart"></i>
+    <span>Cart</span>
+    <span class="cart-badge" id="cartBadge">0</span>
+  </button>
+
+  <!-- Toast -->
+  <div class="toast" id="toast">
+    <i class="fas fa-check-circle"></i>
+    <span id="toastText">Added to cart!</span>
+  </div>
+
+  <!-- Shared theme JS -->
+  <script src="./theme-v2.js"></script>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // ════════════════════════════════════════════════════════
+    // PRICING
+    // ════════════════════════════════════════════════════════
+    var PRICES = { '2': 2, '3': 3, '4': 5, '6': 8, '8': 12 };
+    var BULK_THRESHOLD = 10;
+    var BULK_DISCOUNT = 0.20;
+    var GRAB_BAG_PRICE = 5;
+    var GRAB_BAG_COUNT = 25;
+    var PAGE_SIZE = 60;
+
+    // ════════════════════════════════════════════════════════
+    // STATE
+    // ════════════════════════════════════════════════════════
+    var catalog = null;
+    var allDesigns = [];
+    var filteredDesigns = [];
+    var displayedCount = 0;
+    var currentTab = 'browse';
+
+    // Configure drawer state
+    var configDesign = null;
+    var configSize = '3';
+    var configQty = 1;
+
+    // Upload state
+    var uploadFile = null;
+    var uploadDataUrl = null;
+    var uploadSize = '3';
+    var uploadQty = 1;
+
+    // Grab bag state
+    var grabMode = null; // 'random' or 'pick'
+    var grabRandomSize = '2';
+    var grabRandomCategory = '';
+    var grabPickSize = '2';
+    var grabPickCategory = '';
+    var grabPickSelections = []; // array of design objects
+    var grabPickDesigns = [];
+    var grabPickDisplayed = 0;
+
+    // ════════════════════════════════════════════════════════
+    // CART (localStorage)
+    // ════════════════════════════════════════════════════════
+    function getCart() {
+      try { return JSON.parse(localStorage.getItem('stickerCart')) || []; }
+      catch(e) { return []; }
+    }
+    function saveCart(cart) {
+      localStorage.setItem('stickerCart', JSON.stringify(cart));
+      updateCartIndicator();
+    }
+    function addToCart(item) {
+      var cart = getCart();
+      cart.push(item);
+      saveCart(cart);
+      showToast('Added to cart!');
+    }
+    function updateCartIndicator() {
+      var cart = getCart();
+      var total = cart.reduce(function(s, i) { return s + (i.quantity || 1); }, 0);
+      var badge = document.getElementById('cartBadge');
+      var indicator = document.getElementById('cartIndicator');
+      badge.textContent = total;
+      indicator.classList.toggle('visible', total > 0);
+    }
+
+    // ════════════════════════════════════════════════════════
+    // TOAST
+    // ════════════════════════════════════════════════════════
+    var toastTimer = null;
+    function showToast(msg) {
+      var toast = document.getElementById('toast');
+      document.getElementById('toastText').textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function() { toast.classList.remove('show'); }, 2500);
+    }
+
+    // ════════════════════════════════════════════════════════
+    // PRICE CALCULATION
+    // ════════════════════════════════════════════════════════
+    function calcPrice(size, qty) {
+      var each = PRICES[size] || 3;
+      if (qty >= BULK_THRESHOLD) each = +(each * (1 - BULK_DISCOUNT)).toFixed(2);
+      return { each: each, total: +(each * qty).toFixed(2) };
+    }
+
+    // ════════════════════════════════════════════════════════
+    // TABS
+    // ════════════════════════════════════════════════════════
+    document.querySelectorAll('.shop-tab').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var tab = btn.dataset.tab;
+        if (tab === currentTab) return;
+        currentTab = tab;
+        document.querySelectorAll('.shop-tab').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+        document.getElementById('panel-' + tab).classList.add('active');
+      });
+    });
+
+    // ════════════════════════════════════════════════════════
+    // CATALOG FETCH
+    // ════════════════════════════════════════════════════════
+    function loadCatalog() {
+      fetch('./catalog.json')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          catalog = data;
+          allDesigns = [];
+          var catSelect = document.getElementById('categorySelect');
+          var grabCatSelect = document.getElementById('grabRandomCategory');
+
+          (data.categories || []).forEach(function(cat) {
+            // Add to selects
+            var opt = document.createElement('option');
+            opt.value = cat.slug || cat.name;
+            opt.textContent = formatCategoryName(cat.name);
+            catSelect.appendChild(opt);
+
+            var opt2 = opt.cloneNode(true);
+            grabCatSelect.appendChild(opt2);
+
+            // Flatten designs
+            (cat.designs || []).forEach(function(d) {
+              allDesigns.push({
+                id: d.id,
+                name: d.name || d.id,
+                image: d.image,
+                category: cat.name,
+                categorySlug: cat.slug || cat.name,
+                sources: d.sources
+              });
+            });
+          });
+
+          filteredDesigns = allDesigns.slice();
+          displayedCount = 0;
+          renderBrowse();
+          document.getElementById('browseLoading').style.display = 'none';
+        })
+        .catch(function(err) {
+          console.error('Failed to load catalog:', err);
+          document.getElementById('browseLoading').innerHTML =
+            '<i class="fas fa-exclamation-triangle"></i><p>Failed to load designs. Please refresh.</p>';
+        });
+    }
+
+    function formatCategoryName(slug) {
+      return slug.replace(/[-_]/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+    }
+
+    // ════════════════════════════════════════════════════════
+    // BROWSE: Filter & Render
+    // ════════════════════════════════════════════════════════
+    var searchInput = document.getElementById('searchInput');
+    var categorySelect = document.getElementById('categorySelect');
+
+    searchInput.addEventListener('input', debounce(applyFilters, 250));
+    categorySelect.addEventListener('change', applyFilters);
+
+    function applyFilters() {
+      var q = searchInput.value.trim().toLowerCase();
+      var cat = categorySelect.value;
+
+      filteredDesigns = allDesigns.filter(function(d) {
+        if (cat && d.categorySlug !== cat) return false;
+        if (q && d.name.toLowerCase().indexOf(q) === -1) return false;
+        return true;
+      });
+
+      displayedCount = 0;
+      document.getElementById('designGrid').innerHTML = '';
+      renderBrowse();
+    }
+
+    function renderBrowse() {
+      var grid = document.getElementById('designGrid');
+      var end = Math.min(displayedCount + PAGE_SIZE, filteredDesigns.length);
+      var fragment = document.createDocumentFragment();
+
+      for (var i = displayedCount; i < end; i++) {
+        fragment.appendChild(createDesignCard(filteredDesigns[i]));
+      }
+      grid.appendChild(fragment);
+      displayedCount = end;
+
+      // Results count
+      var countEl = document.getElementById('resultsCount');
+      countEl.innerHTML = 'Showing <strong>' + displayedCount + '</strong> of <strong>' +
+        filteredDesigns.length.toLocaleString() + '</strong> designs';
+
+      // Load more
+      var loadMoreRow = document.getElementById('loadMoreRow');
+      loadMoreRow.style.display = displayedCount < filteredDesigns.length ? '' : 'none';
+
+      // Empty state
+      document.getElementById('browseEmpty').style.display =
+        filteredDesigns.length === 0 && allDesigns.length > 0 ? '' : 'none';
+    }
+
+    document.getElementById('loadMoreBtn').addEventListener('click', renderBrowse);
+
+    function createDesignCard(design) {
+      var card = document.createElement('div');
+      card.className = 'design-card';
+      card.innerHTML =
+        '<div class="design-card-img">' +
+          '<img src="' + escHtml(design.image) + '" alt="' + escHtml(design.name) + '" loading="lazy">' +
+        '</div>' +
+        '<div class="design-card-name">' + escHtml(formatDesignName(design.name)) + '</div>';
+      card.addEventListener('click', function() { openConfigure(design); });
+      return card;
+    }
+
+    function formatDesignName(name) {
+      // Strip trailing ID numbers
+      return name.replace(/[-_]\d{10,}$/,'').replace(/[-_]/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+    }
+
+    // ════════════════════════════════════════════════════════
+    // CONFIGURE DRAWER
+    // ════════════════════════════════════════════════════════
+    var overlay = document.getElementById('configureOverlay');
+
+    function openConfigure(design) {
+      configDesign = design;
+      configSize = '3';
+      configQty = 1;
+
+      document.getElementById('configureImg').src = design.image;
+      document.getElementById('configureName').textContent = formatDesignName(design.name);
+      document.getElementById('configureCategory').textContent = formatCategoryName(design.category);
+      document.getElementById('configQtyValue').value = 1;
+
+      // Reset size pills
+      document.querySelectorAll('#configureSizePills .size-pill').forEach(function(p) {
+        p.classList.toggle('active', p.dataset.size === '3');
+      });
+
+      updateConfigPrice();
+      overlay.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeConfigure() {
+      overlay.classList.remove('open');
+      document.body.style.overflow = '';
+      configDesign = null;
+    }
+
+    document.getElementById('configureClose').addEventListener('click', closeConfigure);
+    document.getElementById('configureBackdrop').addEventListener('click', closeConfigure);
+
+    // Size pills
+    document.getElementById('configureSizePills').addEventListener('click', function(e) {
+      var pill = e.target.closest('.size-pill');
+      if (!pill) return;
+      configSize = pill.dataset.size;
+      this.querySelectorAll('.size-pill').forEach(function(p) { p.classList.remove('active'); });
+      pill.classList.add('active');
+      updateConfigPrice();
+    });
+
+    // Quantity
+    document.getElementById('configQtyMinus').addEventListener('click', function() {
+      if (configQty > 1) { configQty--; document.getElementById('configQtyValue').value = configQty; updateConfigPrice(); }
+    });
+    document.getElementById('configQtyPlus').addEventListener('click', function() {
+      if (configQty < 100) { configQty++; document.getElementById('configQtyValue').value = configQty; updateConfigPrice(); }
+    });
+
+    function updateConfigPrice() {
+      var p = calcPrice(configSize, configQty);
+      document.getElementById('configPrice').textContent = '$' + p.total.toFixed(2);
+      document.getElementById('configPriceEach').textContent = '$' + p.each.toFixed(2) + ' each';
+      var bulkNote = document.getElementById('configBulkNote');
+      if (configQty >= BULK_THRESHOLD) {
+        bulkNote.innerHTML = '<i class="fas fa-check-circle"></i> Bulk discount applied: 20% off!';
+        bulkNote.classList.add('bulk-active');
+      } else {
+        bulkNote.innerHTML = '<i class="fas fa-tag"></i> 10+ stickers: 20% off';
+        bulkNote.classList.remove('bulk-active');
+      }
+    }
+
+    // Add to cart
+    document.getElementById('configAddBtn').addEventListener('click', function() {
+      if (!configDesign) return;
+      var p = calcPrice(configSize, configQty);
+      addToCart({
+        type: 'single',
+        designName: formatDesignName(configDesign.name),
+        designImage: configDesign.image,
+        size: configSize + '"',
+        quantity: configQty,
+        priceEach: p.each,
+        total: p.total,
+        category: configDesign.category,
+        designs: []
+      });
+      // Flash button
+      var btn = this;
+      btn.classList.add('added');
+      btn.innerHTML = '<i class="fas fa-check"></i> Added!';
+      setTimeout(function() {
+        btn.classList.remove('added');
+        btn.innerHTML = '<i class="fas fa-cart-plus"></i> Add to Cart';
+      }, 1200);
+    });
+
+    // ════════════════════════════════════════════════════════
+    // CUSTOM UPLOAD
+    // ════════════════════════════════════════════════════════
+    var uploadZone = document.getElementById('uploadZone');
+    var uploadInput = document.getElementById('uploadInput');
+    var previewArea = document.getElementById('uploadPreviewArea');
+
+    uploadZone.addEventListener('dragover', function(e) { e.preventDefault(); uploadZone.classList.add('dragover'); });
+    uploadZone.addEventListener('dragleave', function() { uploadZone.classList.remove('dragover'); });
+    uploadZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleUploadFile(e.dataTransfer.files[0]);
+    });
+    uploadInput.addEventListener('change', function() {
+      if (this.files.length) handleUploadFile(this.files[0]);
+    });
+
+    function handleUploadFile(file) {
+      if (!file.type.match(/^image\/(png|jpeg|svg\+xml)$/)) {
+        showToast('Please upload a PNG, JPG, or SVG file.');
+        return;
+      }
+      uploadFile = file;
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        uploadDataUrl = e.target.result;
+        document.getElementById('uploadPreviewImg').src = uploadDataUrl;
+        document.getElementById('uploadFileName').textContent = file.name;
+        previewArea.classList.add('has-file');
+        uploadZone.style.display = 'none';
+        updateUploadPrice();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    document.getElementById('removeFileBtn').addEventListener('click', function() {
+      uploadFile = null;
+      uploadDataUrl = null;
+      previewArea.classList.remove('has-file');
+      uploadZone.style.display = '';
+      uploadInput.value = '';
+    });
+
+    // Size pills
+    document.getElementById('uploadSizePills').addEventListener('click', function(e) {
+      var pill = e.target.closest('.size-pill');
+      if (!pill) return;
+      uploadSize = pill.dataset.size;
+      this.querySelectorAll('.size-pill').forEach(function(p) { p.classList.remove('active'); });
+      pill.classList.add('active');
+      updateUploadPrice();
+    });
+
+    // Quantity
+    document.getElementById('uploadQtyMinus').addEventListener('click', function() {
+      if (uploadQty > 1) { uploadQty--; document.getElementById('uploadQtyValue').value = uploadQty; updateUploadPrice(); }
+    });
+    document.getElementById('uploadQtyPlus').addEventListener('click', function() {
+      if (uploadQty < 100) { uploadQty++; document.getElementById('uploadQtyValue').value = uploadQty; updateUploadPrice(); }
+    });
+
+    function updateUploadPrice() {
+      var p = calcPrice(uploadSize, uploadQty);
+      document.getElementById('uploadPrice').textContent = '$' + p.total.toFixed(2);
+      document.getElementById('uploadPriceEach').textContent = '$' + p.each.toFixed(2) + ' each';
+      var bulkNote = document.getElementById('uploadBulkNote');
+      if (uploadQty >= BULK_THRESHOLD) {
+        bulkNote.innerHTML = '<i class="fas fa-check-circle"></i> Bulk discount applied: 20% off!';
+        bulkNote.classList.add('bulk-active');
+      } else {
+        bulkNote.innerHTML = '<i class="fas fa-tag"></i> 10+ stickers: 20% off';
+        bulkNote.classList.remove('bulk-active');
+      }
+    }
+
+    document.getElementById('uploadAddBtn').addEventListener('click', function() {
+      if (!uploadFile) return;
+      var p = calcPrice(uploadSize, uploadQty);
+      addToCart({
+        type: 'custom',
+        designName: uploadFile.name,
+        designImage: uploadDataUrl,
+        size: uploadSize + '"',
+        quantity: uploadQty,
+        priceEach: p.each,
+        total: p.total,
+        category: 'Custom Upload',
+        designs: []
+      });
+      var btn = this;
+      btn.classList.add('added');
+      btn.innerHTML = '<i class="fas fa-check"></i> Added!';
+      setTimeout(function() {
+        btn.classList.remove('added');
+        btn.innerHTML = '<i class="fas fa-cart-plus"></i> Add to Cart';
+      }, 1200);
+    });
+
+    // ════════════════════════════════════════════════════════
+    // GRAB BAGS
+    // ════════════════════════════════════════════════════════
+    var grabOptions = document.getElementById('grabOptions');
+    var grabRandomConfigEl = document.getElementById('grabRandomConfig');
+    var grabPickConfigEl = document.getElementById('grabPickConfig');
+
+    // Option card selection
+    grabOptions.addEventListener('click', function(e) {
+      var card = e.target.closest('.grab-option-card');
+      if (!card) return;
+      var mode = card.dataset.mode;
+      grabMode = mode;
+      grabOptions.style.display = 'none';
+      document.querySelector('.grab-hero').style.display = 'none';
+
+      if (mode === 'random') {
+        grabRandomConfigEl.classList.add('active');
+      } else {
+        grabPickConfigEl.classList.add('active');
+        grabPickSelections = [];
+        grabPickDisplayed = 0;
+        loadPickDesigns();
+      }
+    });
+
+    // Back buttons
+    document.getElementById('grabRandomBack').addEventListener('click', resetGrab);
+    document.getElementById('grabPickBack').addEventListener('click', resetGrab);
+
+    function resetGrab() {
+      grabMode = null;
+      grabOptions.style.display = '';
+      document.querySelector('.grab-hero').style.display = '';
+      grabRandomConfigEl.classList.remove('active');
+      grabPickConfigEl.classList.remove('active');
+      grabPickSelections = [];
+      updatePickProgress();
+    }
+
+    // Random grab bag size pills
+    document.getElementById('grabRandomSizePills').addEventListener('click', function(e) {
+      var pill = e.target.closest('.size-pill');
+      if (!pill) return;
+      grabRandomSize = pill.dataset.size;
+      this.querySelectorAll('.size-pill').forEach(function(p) { p.classList.remove('active'); });
+      pill.classList.add('active');
+    });
+
+    // Random grab bag add
+    document.getElementById('grabRandomAddBtn').addEventListener('click', function() {
+      var catVal = document.getElementById('grabRandomCategory').value;
+      addToCart({
+        type: 'grab-bag-random',
+        designName: 'Random Grab Bag (' + (catVal ? formatCategoryName(catVal) : 'All Categories') + ')',
+        designImage: '',
+        size: grabRandomSize + '"',
+        quantity: 1,
+        priceEach: GRAB_BAG_PRICE,
+        total: GRAB_BAG_PRICE,
+        category: catVal || 'All',
+        designs: []
+      });
+      resetGrab();
+    });
+
+    // Pick your own: load designs
+    function loadPickDesigns() {
+      var cat = grabPickCategory;
+      grabPickDesigns = cat
+        ? allDesigns.filter(function(d) { return d.categorySlug === cat; })
+        : allDesigns.slice();
+      grabPickDisplayed = 0;
+      document.getElementById('pickGrid').innerHTML = '';
+      renderPickGrid();
+      buildPickCategoryPills();
+    }
+
+    function renderPickGrid() {
+      var grid = document.getElementById('pickGrid');
+      var end = Math.min(grabPickDisplayed + PAGE_SIZE, grabPickDesigns.length);
+      var fragment = document.createDocumentFragment();
+
+      for (var i = grabPickDisplayed; i < end; i++) {
+        fragment.appendChild(createPickCard(grabPickDesigns[i]));
+      }
+      grid.appendChild(fragment);
+      grabPickDisplayed = end;
+
+      document.getElementById('pickLoadMoreRow').style.display =
+        grabPickDisplayed < grabPickDesigns.length ? '' : 'none';
+    }
+
+    document.getElementById('pickLoadMoreBtn').addEventListener('click', renderPickGrid);
+
+    function createPickCard(design) {
+      var card = document.createElement('div');
+      card.className = 'pick-card';
+      card.dataset.designId = design.id;
+      if (grabPickSelections.some(function(s) { return s.id === design.id; })) {
+        card.classList.add('selected');
+      }
+      card.innerHTML = '<img src="' + escHtml(design.image) + '" alt="' + escHtml(design.name) + '" loading="lazy">';
+      card.addEventListener('click', function() {
+        togglePickSelection(design, card);
+      });
+      return card;
+    }
+
+    function togglePickSelection(design, card) {
+      var idx = grabPickSelections.findIndex(function(s) { return s.id === design.id; });
+      if (idx >= 0) {
+        grabPickSelections.splice(idx, 1);
+        card.classList.remove('selected');
+      } else {
+        if (grabPickSelections.length >= GRAB_BAG_COUNT) {
+          showToast('You already have 25 stickers selected!');
+          return;
+        }
+        grabPickSelections.push(design);
+        card.classList.add('selected');
+      }
+      updatePickProgress();
+    }
+
+    function updatePickProgress() {
+      var count = grabPickSelections.length;
+      var pct = (count / GRAB_BAG_COUNT) * 100;
+      document.getElementById('grabProgressFill').style.width = pct + '%';
+      document.getElementById('grabPickCount').textContent = count;
+      var remaining = GRAB_BAG_COUNT - count;
+      document.getElementById('grabPickRemaining').textContent =
+        remaining > 0 ? remaining + ' more to go' : 'Ready to add!';
+      document.getElementById('grabPickAddBtn').disabled = count < GRAB_BAG_COUNT;
+    }
+
+    // Pick size pills
+    document.getElementById('grabPickSizePills').addEventListener('click', function(e) {
+      var pill = e.target.closest('.size-pill');
+      if (!pill) return;
+      grabPickSize = pill.dataset.size;
+      this.querySelectorAll('.size-pill').forEach(function(p) { p.classList.remove('active'); });
+      pill.classList.add('active');
+    });
+
+    // Pick category pills
+    function buildPickCategoryPills() {
+      var container = document.getElementById('grabPickCategoryPills');
+      container.innerHTML = '';
+      var allPill = document.createElement('button');
+      allPill.className = 'grab-category-pill' + (!grabPickCategory ? ' active' : '');
+      allPill.textContent = 'All';
+      allPill.addEventListener('click', function() {
+        grabPickCategory = '';
+        loadPickDesigns();
+      });
+      container.appendChild(allPill);
+
+      if (!catalog) return;
+      (catalog.categories || []).forEach(function(cat) {
+        var pill = document.createElement('button');
+        pill.className = 'grab-category-pill' + (grabPickCategory === (cat.slug || cat.name) ? ' active' : '');
+        pill.textContent = formatCategoryName(cat.name);
+        pill.addEventListener('click', function() {
+          grabPickCategory = cat.slug || cat.name;
+          loadPickDesigns();
+        });
+        container.appendChild(pill);
+      });
+    }
+
+    // Pick add to cart
+    document.getElementById('grabPickAddBtn').addEventListener('click', function() {
+      if (grabPickSelections.length < GRAB_BAG_COUNT) return;
+      addToCart({
+        type: 'grab-bag-pick',
+        designName: 'Pick Your Own Grab Bag (25 stickers)',
+        designImage: grabPickSelections[0] ? grabPickSelections[0].image : '',
+        size: grabPickSize + '"',
+        quantity: 1,
+        priceEach: GRAB_BAG_PRICE,
+        total: GRAB_BAG_PRICE,
+        category: 'Grab Bag',
+        designs: grabPickSelections.map(function(d) {
+          return { id: d.id, name: d.name, image: d.image, category: d.category };
+        })
+      });
+      resetGrab();
+    });
+
+    // ════════════════════════════════════════════════════════
+    // UTILITIES
+    // ════════════════════════════════════════════════════════
+    function debounce(fn, ms) {
+      var timer;
+      return function() {
+        var args = arguments, ctx = this;
+        clearTimeout(timer);
+        timer = setTimeout(function() { fn.apply(ctx, args); }, ms);
+      };
+    }
+
+    function escHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Keyboard: close drawer on Escape
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeConfigure();
+    });
+
+    // ════════════════════════════════════════════════════════
+    // INIT
+    // ════════════════════════════════════════════════════════
+    updateCartIndicator();
+    loadCatalog();
+
+  })();
+  </script>
+
+</body>
+</html>

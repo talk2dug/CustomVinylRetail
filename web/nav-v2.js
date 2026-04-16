@@ -302,7 +302,7 @@
     <div class="v2-announce">
       <i class="fas fa-map-marker-alt"></i>
       <strong>Handmade in Asheville, NC</strong> &mdash; Fast shipping nationwide.
-      <a href="./catalog.html">Start shopping &rarr;</a>
+      <a href="./catalog-v2.html">Start shopping &rarr;</a>
     </div>`;
 
   const headerHTML = `
@@ -316,7 +316,7 @@
           </div>
         </a>
         <nav class="v2-nav">
-          <a href="./catalog.html">Stickers</a>
+          <a href="./catalog-v2.html">Stickers</a>
           <a href="./multiboard/">Multiboard</a>
           <a href="./apparel.html">Apparel</a>
           <a href="./metal-prints.html">Metal Prints</a>
@@ -331,7 +331,7 @@
     </header>
     <div class="v2-mobile-overlay" id="v2MobileNav">
       <a href="./">Home</a>
-      <a href="./catalog.html">Stickers & Decals</a>
+      <a href="./catalog-v2.html">Stickers & Decals</a>
       <a href="./multiboard/">Multiboard</a>
       <a href="./apparel.html">Apparel</a>
       <a href="./metal-prints.html">Metal Prints</a>
@@ -363,7 +363,7 @@
           </div>
           <div class="v2-footer-col">
             <h4>Shop</h4>
-            <a href="./catalog.html">Stickers & Decals</a>
+            <a href="./catalog-v2.html">Stickers & Decals</a>
             <a href="./multiboard/">Multiboard</a>
             <a href="./apparel.html">Apparel</a>
             <a href="./metal-prints.html">Metal Prints</a>
