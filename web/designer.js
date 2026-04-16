@@ -190,29 +190,23 @@
   async function loadCatalog() {
     try {
       showLoading(true);
-      const response = await fetch('./catalog.json');
+      const response = await fetch('/api/decal-icons/categories');
       const data = await response.json();
 
-      if (data.categories && Array.isArray(data.categories)) {
+      if (data.success && data.categories) {
         state.categories = data.categories;
         state.catalog = [];
-
-        // Flatten all designs from all categories
-        data.categories.forEach(category => {
-          if (category.designs && Array.isArray(category.designs)) {
-            category.designs.forEach(design => {
-              state.catalog.push({
-                ...design,
-                category: category.name,
-                categorySlug: category.slug
-              });
-            });
-          }
-        });
-
-        state.filteredCatalog = [...state.catalog];
+        state.filteredCatalog = [];
         renderCategories();
-        renderCatalog();
+
+        // Auto-load first category
+        if (data.categories.length > 0) {
+          state.selectedCategory = data.categories[0].slug;
+          elements.categoryFilter.value = data.categories[0].slug;
+          await loadCategoryImages(data.categories[0].slug);
+        } else {
+          renderCatalog();
+        }
       }
     } catch (error) {
       console.error('Failed to load catalog:', error);
@@ -222,15 +216,52 @@
     }
   }
 
+  async function loadCategoryImages(slug) {
+    if (!slug) {
+      state.catalog = [];
+      state.filteredCatalog = [];
+      renderCatalog();
+      return;
+    }
+    try {
+      if (elements.catalogGrid) {
+        elements.catalogGrid.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Loading category...</p></div>';
+      }
+      const response = await fetch('/api/decal-icons/category/' + encodeURIComponent(slug));
+      const data = await response.json();
+      if (data.success && data.images) {
+        const catName = data.category || slug;
+        state.catalog = data.images.map(img => ({
+          name: img.name,
+          image: img.url,
+          category: catName,
+          categorySlug: slug
+        }));
+        state.filteredCatalog = [...state.catalog];
+        // Apply search filter if active
+        if (state.searchQuery) {
+          filterCatalog();
+        } else {
+          renderCatalog();
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load category images:', err);
+      if (elements.catalogGrid) {
+        elements.catalogGrid.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Failed to load images</p></div>';
+      }
+    }
+  }
+
   function renderCategories() {
     if (!elements.categoryFilter) return;
 
-    elements.categoryFilter.innerHTML = '<option value="">All Categories</option>';
+    elements.categoryFilter.innerHTML = '<option value="">-- Select a Category --</option>';
 
     state.categories.forEach(category => {
       const option = document.createElement('option');
       option.value = category.slug;
-      option.textContent = category.name;
+      option.textContent = `${category.name} (${category.count})`;
       elements.categoryFilter.appendChild(option);
     });
   }
@@ -250,8 +281,8 @@
       return;
     }
 
-    // Limit to first 100 for performance
-    const itemsToShow = state.filteredCatalog.slice(0, 100);
+    // Limit to first 200 for performance
+    const itemsToShow = state.filteredCatalog.slice(0, 200);
 
     itemsToShow.forEach(design => {
       const item = document.createElement('div');
@@ -277,14 +308,7 @@
   function filterCatalog() {
     let filtered = [...state.catalog];
 
-    // Filter by category
-    if (state.selectedCategory) {
-      filtered = filtered.filter(design =>
-        design.categorySlug === state.selectedCategory
-      );
-    }
-
-    // Filter by search query
+    // Filter by search query within the loaded category
     if (state.searchQuery) {
       const query = state.searchQuery.toLowerCase();
       filtered = filtered.filter(design =>
@@ -932,7 +956,9 @@
 
     elements.categoryFilter?.addEventListener('change', (e) => {
       state.selectedCategory = e.target.value;
-      filterCatalog();
+      state.searchQuery = '';
+      if (elements.catalogSearch) elements.catalogSearch.value = '';
+      loadCategoryImages(e.target.value);
     });
 
     // Vinyl palette

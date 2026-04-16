@@ -8552,6 +8552,100 @@ Keep it concise and actionable.`;
     return;
   }
 
+  // ===== DECAL CREATOR ICONS API =====
+  {
+    const DECAL_ICONS_ROOT = '/mnt/dbFiles/DecalCreatorIcons';
+    const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png']);
+
+    // In-memory cache
+    if (!global._decalIconsCache) {
+      global._decalIconsCache = { categories: null, categoryImages: {}, builtAt: 0 };
+    }
+    const decalCache = global._decalIconsCache;
+    const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+    function buildDecalCategories() {
+      const now = Date.now();
+      if (decalCache.categories && (now - decalCache.builtAt) < CACHE_TTL) {
+        return decalCache.categories;
+      }
+      try {
+        const dirs = fs.readdirSync(DECAL_ICONS_ROOT, { withFileTypes: true })
+          .filter(d => d.isDirectory())
+          .map(d => d.name)
+          .sort();
+        const categories = [];
+        for (const dirName of dirs) {
+          const slug = dirName.toLowerCase().replace(/[&]/g, 'and').replace(/\s+/g, '-');
+          const name = dirName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+          // Count images recursively
+          const images = findDecalImages(dirName);
+          if (images.length === 0) continue;
+          categories.push({ slug, name, folderName: dirName, count: images.length });
+        }
+        decalCache.categories = categories;
+        decalCache.builtAt = now;
+        return categories;
+      } catch (err) {
+        console.error('[Decal Icons] Failed to scan categories:', err.message);
+        return [];
+      }
+    }
+
+    function findDecalImages(categoryFolder) {
+      const cacheKey = categoryFolder;
+      if (decalCache.categoryImages[cacheKey] && (Date.now() - decalCache.builtAt) < CACHE_TTL) {
+        return decalCache.categoryImages[cacheKey];
+      }
+      const images = [];
+      const catPath = path.join(DECAL_ICONS_ROOT, categoryFolder);
+      function scanDir(dir, relPrefix) {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            scanDir(path.join(dir, entry.name), relPrefix ? relPrefix + '/' + entry.name : entry.name);
+          } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (IMAGE_EXTS.has(ext)) {
+              const relPath = relPrefix ? relPrefix + '/' + entry.name : entry.name;
+              const nameNoExt = path.basename(entry.name, ext).replace(/[_-]/g, ' ').trim();
+              images.push({
+                name: nameNoExt,
+                url: '/dbFiles/DecalCreatorIcons/' + encodeURIComponent(categoryFolder) + '/' + relPath.split('/').map(encodeURIComponent).join('/')
+              });
+            }
+          }
+        }
+      }
+      scanDir(catPath, '');
+      images.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      decalCache.categoryImages[cacheKey] = images;
+      return images;
+    }
+
+    // GET /api/decal-icons/categories
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/decal-icons/categories') {
+      const categories = buildDecalCategories().map(({ slug, name, count }) => ({ slug, name, count }));
+      sendJson(res, 200, { success: true, categories });
+      return;
+    }
+
+    // GET /api/decal-icons/category/:slug
+    if (req.method === 'GET' && parsedUrl.pathname.startsWith('/api/decal-icons/category/')) {
+      const slug = decodeURIComponent(parsedUrl.pathname.replace('/api/decal-icons/category/', ''));
+      const categories = buildDecalCategories();
+      const cat = categories.find(c => c.slug === slug);
+      if (!cat) {
+        sendJson(res, 404, { success: false, error: 'Category not found' });
+        return;
+      }
+      const images = findDecalImages(cat.folderName);
+      sendJson(res, 200, { success: true, category: cat.name, images });
+      return;
+    }
+  }
+
   // ===== VINYL CUTTER API =====
 
   // Vectorize an image for vinyl cutting (with color detection)
