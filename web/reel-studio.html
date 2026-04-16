@@ -1703,7 +1703,15 @@ Made to live in the light.</textarea>
         renderBody.campaignRunId = state.activeCampaignId;
         renderBody.theme = state.activeCampaignTheme;
         renderBody.isTikTokShopReel = document.getElementById('field-isTikTokShopReel').checked;
-        renderBody.caption = document.getElementById('field-hookText').value;
+        // Build a full caption: hook + CTA URL + hashtags
+        var hookVal = (document.getElementById('field-hookText').value || '').trim();
+        var ctaVal = (document.getElementById('field-ctaUrl').value || '').trim();
+        var tagVal = (document.getElementById('field-hashtags').value || '').trim();
+        var captionParts = [];
+        if (hookVal) captionParts.push(hookVal);
+        if (ctaVal) captionParts.push('\n🛍 ' + ctaVal);
+        if (tagVal) captionParts.push('\n' + tagVal);
+        renderBody.caption = captionParts.join('') || '';
 
         // Only include the designs actually SELECTED for this reel, not the
         // entire theme. Match selected asset filenames back to campaign items

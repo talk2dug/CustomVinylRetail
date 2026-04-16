@@ -291,15 +291,47 @@ function handleReelStudioRoute(pathname, req, res) {
             };
             const hashtags = isMetalPrint ? hashtagSets.metal : hashtagSets.apparel;
 
-            // Build the Telegram caption
-            let tgCaption = `🎬 *New Reel Ready*\n${template}${label ? ' — ' + label : ''}`;
+            // Build a proper TikTok-ready description for the Telegram caption
+            // Use the caption/hook from the request, or generate one from the template + props
+            let description = '';
             if (caption) {
-              tgCaption += `\n\n${String(caption).slice(0, 600)}`;
+              description = String(caption).slice(0, 600);
+            } else {
+              // Build description from render props if available
+              const p = props || {};
+              if (p.hookText || p.hook) {
+                description = String(p.hookText || p.hook);
+              }
+              // For apparel reels, pull copy from the props
+              if (!description && p.items && Array.isArray(p.items)) {
+                const names = p.items.filter(i => i && i.caption).map(i => i.caption).slice(0, 4);
+                if (names.length) description = names.join(' · ');
+              }
+              // For metal print reels
+              if (!description && p.artExplainer) {
+                description = String(p.artExplainer);
+              }
+              // Generic fallback using template name
+              if (!description) {
+                const templateNames = {
+                  'MockupReel': 'New custom apparel just dropped. Made in Asheville, NC.',
+                  'MetalPrintStory': 'HD metal prints — your photos on brushed aluminum. Made in Asheville.',
+                };
+                description = templateNames[template] || `Custom made in Asheville, NC. Shop at blueridgecustomco.com`;
+              }
             }
-            tgCaption += `\n\n${hashtags}`;
-            if (shopUrl) {
-              tgCaption += `\n\n🛒 ${shopUrl}`;
+
+            // Build collection/landing page link
+            let linkLine = '';
+            if (landingPageUrl) {
+              linkLine = `\n\n🛍 ${landingPageUrl}`;
+            } else if (shopUrl) {
+              linkLine = `\n\n🛍 ${shopUrl}`;
             }
+
+            // Build the Telegram caption with full TikTok-ready copy
+            let tgCaption = `🎬 *New Reel Ready*\n${template}${label ? ' — ' + label : ''}`;
+            tgCaption += `\n\n*Caption for TikTok:*\n${description}${linkLine}\n\n${hashtags}`;
 
             await telegram.sendVideo(result.filePath, tgCaption);
             console.log(`[reel-studio] Sent reel to Telegram: ${path.basename(result.filePath)}`);
