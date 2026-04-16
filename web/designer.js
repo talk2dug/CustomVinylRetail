@@ -389,6 +389,75 @@
     }, { crossOrigin: 'anonymous' });
   }
 
+  // ========================================
+  // Image Recoloring (for single-color decal icons)
+  // ========================================
+
+  function recolorImage(imgObj, hexColor) {
+    if (!imgObj || imgObj.type !== 'image') return;
+
+    // Store original image data on first recolor
+    if (!imgObj._originalSrc) {
+      imgObj._originalSrc = imgObj.getSrc();
+    }
+
+    // Parse target hex color to RGB
+    var r = parseInt(hexColor.slice(1, 3), 16);
+    var g = parseInt(hexColor.slice(3, 5), 16);
+    var b = parseInt(hexColor.slice(5, 7), 16);
+
+    // Work on the original source to avoid cumulative degradation
+    var srcImg = new Image();
+    srcImg.crossOrigin = 'anonymous';
+    srcImg.onload = function() {
+      var tempCanvas = document.createElement('canvas');
+      tempCanvas.width = srcImg.naturalWidth;
+      tempCanvas.height = srcImg.naturalHeight;
+      var ctx = tempCanvas.getContext('2d');
+      ctx.drawImage(srcImg, 0, 0);
+
+      var imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      var pixels = imageData.data;
+
+      for (var i = 0; i < pixels.length; i += 4) {
+        var alpha = pixels[i + 3];
+        if (alpha < 10) continue; // skip transparent pixels
+
+        // Calculate pixel darkness (0 = black, 255 = white)
+        var brightness = (pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114);
+
+        if (brightness < 180) {
+          // Dark pixel — replace with target color, scale by original darkness
+          var factor = 1 - (brightness / 180); // 1.0 for pure black, 0.0 for threshold
+          pixels[i]     = Math.round(r * factor + pixels[i] * (1 - factor));
+          pixels[i + 1] = Math.round(g * factor + pixels[i + 1] * (1 - factor));
+          pixels[i + 2] = Math.round(b * factor + pixels[i + 2] * (1 - factor));
+        }
+        // Light/white pixels are left as-is (they're the background)
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+
+      // Replace the fabric image source
+      imgObj.setSrc(tempCanvas.toDataURL('image/png'), function() {
+        imgObj._recolorHex = hexColor;
+        state.canvas.renderAll();
+        saveState();
+      });
+    };
+    srcImg.src = imgObj._originalSrc;
+  }
+
+  function resetImageColor(imgObj) {
+    if (!imgObj || !imgObj._originalSrc) return;
+    imgObj.setSrc(imgObj._originalSrc, function() {
+      imgObj._recolorHex = '';
+      state.canvas.renderAll();
+      saveState();
+      updateProperties();
+    }, { crossOrigin: 'anonymous' });
+  }
+
   function addTextToCanvas(text, options = {}) {
     const textObj = new fabric.Text(text, {
       left: options.left || state.canvas.width / 2,
@@ -619,6 +688,22 @@
       `;
     }
 
+    // Image recolor — for decal icons (single-color artwork)
+    if (obj.type === 'image') {
+      const currentColor = obj._recolorHex || '';
+      html += `
+        <div class="property-group">
+          <label class="property-label"><i class="fas fa-palette" style="margin-right:4px;"></i> Icon Color</label>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+            <input type="color" id="iconColorPicker" value="${currentColor || state.selectedColor}" style="width:36px;height:30px;border:1px solid var(--studio-border,#ccc);border-radius:var(--border-radius-sm,4px);background:transparent;cursor:pointer;padding:1px;">
+            <button class="property-btn" id="applyIconColor" style="flex:1;"><i class="fas fa-fill-drip"></i> Apply Color</button>
+          </div>
+          <button class="property-btn" id="useVinylColor" style="width:100%;margin-bottom:4px;"><i class="fas fa-swatchbook"></i> Use Vinyl Color</button>
+          <button class="property-btn" id="resetIconColor" style="width:100%;"><i class="fas fa-undo"></i> Reset to Original</button>
+        </div>
+      `;
+    }
+
     // Layer order
     html += `
       <div class="property-group">
@@ -667,6 +752,31 @@
         handleObjectAction(obj, action);
       });
     });
+
+    // Image recolor handlers
+    if (obj.type === 'image') {
+      var applyBtn = document.getElementById('applyIconColor');
+      var vinylBtn = document.getElementById('useVinylColor');
+      var resetBtn = document.getElementById('resetIconColor');
+      var picker = document.getElementById('iconColorPicker');
+
+      if (applyBtn && picker) {
+        applyBtn.addEventListener('click', function() {
+          recolorImage(obj, picker.value);
+        });
+      }
+      if (vinylBtn) {
+        vinylBtn.addEventListener('click', function() {
+          recolorImage(obj, state.selectedColor);
+          if (picker) picker.value = state.selectedColor;
+        });
+      }
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+          resetImageColor(obj);
+        });
+      }
+    }
   }
 
   function handleObjectAction(obj, action) {
@@ -735,12 +845,14 @@
         renderVinylColors();
         updateVinylColorInfo(color.name);
 
-        // Update selected text color
+        // Update selected object color
         const activeObj = state.canvas.getActiveObject();
         if (activeObj && activeObj.type === 'text') {
           activeObj.set('fill', color.value);
           state.canvas.renderAll();
           saveState();
+        } else if (activeObj && activeObj.type === 'image') {
+          recolorImage(activeObj, color.value);
         }
       });
 
