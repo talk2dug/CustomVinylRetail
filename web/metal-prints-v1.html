@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HD Metal Prints | Photos on Aluminum | BlueRidgeCustomCo</title>
+  <meta name="description" content="Premium metal photo prints on brushed aluminum. Upload your photo or choose from our collection. Glossy white or silver finish, sizes from 5x7 to 40x60. Made in Asheville, NC.">
+  <link rel="canonical" href="https://blueridgecustomco.com/metal-prints.html">
+  <meta property="og:site_name" content="BlueRidgeCustomCo">
+  <meta property="og:type" content="product">
+  <meta property="og:title" content="HD Metal Prints | Photos on Brushed Aluminum">
+  <meta property="og:description" content="Your photos printed on premium aluminum. Vibrant, scratch-resistant, and built to last. Upload your own or shop our collection.">
+  <meta property="og:url" content="https://blueridgecustomco.com/metal-prints.html">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Premium Metal Prints",
+      "brand": "BlueRidgeCustomCo",
+      "description": "HD photo prints on brushed aluminum with glossy white or silver finish.",
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "USD",
+        "lowPrice": "15",
+        "highPrice": "200",
+        "availability": "https://schema.org/InStock"
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="./theme-pages.css">
+  <style>
+    /* ── PAGE HERO ── */
+    .mp-hero {
+      padding: clamp(4rem, 10vw, 7rem) 0 clamp(3rem, 6vw, 5rem);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .mp-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 50% at 30% 40%, rgba(0, 229, 255, 0.06) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 70% at 70% 60%, rgba(124, 77, 255, 0.08) 0%, transparent 70%);
+      z-index: 0;
+    }
+    .mp-hero > * { position: relative; z-index: 1; }
+    .mp-hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      font-weight: 800;
+      color: var(--text-0);
+      letter-spacing: -0.03em;
+      margin-bottom: 1rem;
+      line-height: 1.1;
+    }
+    .mp-hero h1 span { color: var(--cyan); }
+    .mp-hero p {
+      color: var(--text-2);
+      font-size: 1.15rem;
+      max-width: 620px;
+      margin: 0 auto 2rem;
+      line-height: 1.7;
+    }
+    .mp-hero-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* ── VALUE PROPS ── */
+    .mp-values {
+      padding: 3rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .mp-values-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2rem;
+      text-align: center;
+    }
+    .mp-value-item i {
+      font-size: 1.5rem;
+      color: var(--cyan);
+      margin-bottom: 0.75rem;
+      display: block;
+    }
+    .mp-value-item h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-0);
+      margin-bottom: 0.35rem;
+    }
+    .mp-value-item p {
+      font-size: 0.82rem;
+      color: var(--text-3);
+      line-height: 1.5;
+    }
+    @media (max-width: 700px) {
+      .mp-values-grid { grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    }
+
+    /* ── TWO PATHS SECTION ── */
+    .mp-paths {
+      padding: 5rem 0;
+    }
+    .mp-paths-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    .mp-paths-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+    .mp-path-card {
+      background: linear-gradient(135deg, rgba(10, 22, 40, 0.9), rgba(15, 31, 58, 0.9));
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 3rem;
+      text-align: center;
+      transition: border-color 0.3s, transform 0.4s var(--ease);
+      position: relative;
+      overflow: hidden;
+    }
+    .mp-path-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .mp-path-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-4px);
+    }
+    .mp-path-card:hover::after { opacity: 1; }
+    .mp-path-icon {
+      width: 72px;
+      height: 72px;
+      background: var(--cyan-dim);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 1.5rem;
+      font-size: 1.6rem;
+      color: var(--cyan);
+    }
+    .mp-path-card h3 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-0);
+      margin-bottom: 0.75rem;
+    }
+    .mp-path-card p {
+      color: var(--text-2);
+      margin-bottom: 2rem;
+      line-height: 1.7;
+      font-size: 0.95rem;
+    }
+    @media (max-width: 800px) {
+      .mp-paths-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── PRICING SECTION ── */
+    .mp-pricing {
+      padding: 5rem 0;
+      background: var(--surface-1);
+    }
+    .mp-pricing-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    .mp-pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .mp-price-card {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 2rem;
+      text-align: center;
+      transition: border-color 0.3s, transform 0.3s var(--ease);
+    }
+    .mp-price-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-4px);
+    }
+    .mp-price-card.featured {
+      border-color: var(--cyan);
+      box-shadow: 0 0 30px var(--cyan-dim);
+      position: relative;
+    }
+    .mp-price-card.featured::before {
+      content: 'Most Popular';
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--cyan);
+      color: var(--surface-0);
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.25rem 0.75rem;
+      border-radius: 100px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .mp-price-size {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: var(--text-0);
+      margin-bottom: 0.25rem;
+    }
+    .mp-price-label {
+      font-size: 0.78rem;
+      color: var(--text-3);
+      margin-bottom: 1rem;
+    }
+    .mp-price-amount {
+      font-family: var(--mono);
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--cyan);
+      margin-bottom: 0.25rem;
+    }
+    .mp-price-note {
+      font-size: 0.75rem;
+      color: var(--text-3);
+    }
+    .mp-pricing-extras {
+      text-align: center;
+      margin-top: 2rem;
+      color: var(--text-2);
+      font-size: 0.9rem;
+    }
+    .mp-pricing-extras strong { color: var(--text-0); }
+    @media (max-width: 600px) {
+      .mp-pricing-grid { grid-template-columns: 1fr; max-width: 300px; }
+    }
+
+    /* ── SIZES GRID ── */
+    .mp-sizes {
+      padding: 4rem 0;
+    }
+    .mp-sizes-header { text-align: center; margin-bottom: 2rem; }
+    .mp-sizes-table {
+      max-width: 700px;
+      margin: 0 auto;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .mp-sizes-table table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .mp-sizes-table th,
+    .mp-sizes-table td {
+      padding: 0.85rem 1.25rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .mp-sizes-table th {
+      background: var(--surface-2);
+      color: var(--text-0);
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .mp-sizes-table td {
+      color: var(--text-1);
+      font-size: 0.9rem;
+    }
+    .mp-sizes-table tr:last-child td { border-bottom: none; }
+    .mp-sizes-table tr:hover td { background: rgba(0, 229, 255, 0.03); }
+    .mp-size-price {
+      font-family: var(--mono);
+      color: var(--cyan);
+      font-weight: 600;
+    }
+
+    /* ── FINISHES ── */
+    .mp-finishes {
+      padding: 4rem 0;
+      background: var(--surface-1);
+    }
+    .mp-finishes-header { text-align: center; margin-bottom: 3rem; }
+    .mp-finishes-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .mp-finish-card {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 2rem;
+      text-align: center;
+      transition: border-color 0.3s;
+    }
+    .mp-finish-card:hover { border-color: var(--border-hover); }
+    .mp-finish-card i {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+    .mp-finish-card h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-0);
+      margin-bottom: 0.5rem;
+    }
+    .mp-finish-card p {
+      color: var(--text-2);
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+    @media (max-width: 600px) {
+      .mp-finishes-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── SHOPIFY COLLECTION ── */
+    .mp-collection {
+      padding: 5rem 0;
+    }
+    .mp-collection-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    .mp-products-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1.5rem;
+    }
+    .mp-product-card {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      transition: border-color 0.3s, transform 0.3s var(--ease);
+    }
+    .mp-product-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-4px);
+    }
+    .mp-product-image {
+      aspect-ratio: 1;
+      background: var(--surface-2);
+      overflow: hidden;
+    }
+    .mp-product-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.4s var(--ease);
+    }
+    .mp-product-card:hover .mp-product-image img {
+      transform: scale(1.05);
+    }
+    .mp-product-body {
+      padding: 1.25rem;
+    }
+    .mp-product-body h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-0);
+      margin-bottom: 0.35rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mp-product-body .mp-product-price {
+      font-family: var(--mono);
+      font-size: 1.05rem;
+      color: var(--cyan);
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+    .mp-product-body .mp-product-price small {
+      color: var(--text-3);
+      font-weight: 400;
+      font-size: 0.75rem;
+    }
+    .mp-empty {
+      text-align: center;
+      color: var(--text-3);
+      padding: 3rem;
+      font-size: 0.95rem;
+    }
+    .mp-loading {
+      text-align: center;
+      color: var(--text-3);
+      padding: 3rem;
+    }
+    .mp-loading i { animation: spin 1s linear infinite; margin-right: 0.5rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── HANGING OPTIONS ── */
+    .mp-hanging {
+      padding: 4rem 0;
+    }
+    .mp-hanging-header { text-align: center; margin-bottom: 2.5rem; }
+    .mp-hanging-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 1rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .mp-hang-option {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 1.25rem 1rem;
+      text-align: center;
+      transition: border-color 0.3s;
+    }
+    .mp-hang-option:hover { border-color: var(--border-hover); }
+    .mp-hang-option i {
+      font-size: 1.5rem;
+      color: var(--cyan);
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+    .mp-hang-option h4 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-0);
+      margin-bottom: 0.25rem;
+    }
+    .mp-hang-option p {
+      font-size: 0.7rem;
+      color: var(--text-3);
+      line-height: 1.4;
+    }
+    @media (max-width: 700px) {
+      .mp-hanging-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 450px) {
+      .mp-hanging-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* ── CTA ── */
+    .mp-cta {
+      padding: 5rem 0;
+      background: var(--surface-1);
+      text-align: center;
+    }
+    .mp-cta h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+      font-weight: 800;
+      color: var(--text-0);
+      margin-bottom: 1rem;
+    }
+    .mp-cta p {
+      color: var(--text-2);
+      max-width: 550px;
+      margin: 0 auto 2rem;
+      font-size: 1rem;
+    }
+    .mp-cta-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="site-header" id="siteHeader">
+    <div class="container header-inner">
+      <a href="./" class="logo">
+        <div class="logo-icon"><i class="fas fa-bolt"></i></div>
+        <div>
+          <span>BlueRidgeCustomCo</span>
+          <span class="logo-sub">Asheville's Custom Shop</span>
+        </div>
+      </a>
+      <nav class="nav-desktop">
+        <a href="./catalog.html">Stickers</a>
+        <a href="./multiboard/">Multiboard</a>
+        <a href="./apparel.html">Apparel</a>
+        <a href="./metal-prints.html">Metal Prints</a>
+        <a href="./racing.html">Racing</a>
+        <a href="./customer.html" class="nav-cta">My Account</a>
+      </nav>
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+  <div class="nav-mobile-overlay" id="mobileNav">
+    <a href="./catalog.html">Stickers &amp; Decals</a>
+    <a href="./multiboard/">Multiboard</a>
+    <a href="./apparel.html">Apparel</a>
+    <a href="./metal-prints.html">Metal Prints</a>
+    <a href="./racing.html">Racing</a>
+    <a href="./customer.html">My Account</a>
+  </div>
+
+  <!-- HERO -->
+  <section class="mp-hero">
+    <div class="container">
+      <div class="section-label">Premium Metal Prints</div>
+      <h1 class="reveal">Your Photos.<br><span>On Aluminum.</span></h1>
+      <p class="reveal reveal-delay-1">Vibrant, scratch-resistant prints on brushed aluminum that make any photo look stunning. Upload your own image or choose from our curated collection. Made to last a lifetime.</p>
+      <div class="mp-hero-actions reveal reveal-delay-2">
+        <a href="#collection" class="btn btn-primary btn-lg">
+          <i class="fas fa-shopping-bag"></i>
+          Browse Collection
+        </a>
+        <a href="#pricing" class="btn btn-secondary btn-lg">
+          <i class="fas fa-tags"></i>
+          See Pricing
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- VALUE PROPS -->
+  <section class="mp-values">
+    <div class="container">
+      <div class="mp-values-grid">
+        <div class="mp-value-item reveal reveal-delay-1">
+          <i class="fas fa-sun"></i>
+          <h3>UV &amp; Scratch Resistant</h3>
+          <p>Colors stay vibrant for years without fading or scratching</p>
+        </div>
+        <div class="mp-value-item reveal reveal-delay-2">
+          <i class="fas fa-water"></i>
+          <h3>Waterproof</h3>
+          <p>Perfect for kitchens, bathrooms, and covered outdoor spaces</p>
+        </div>
+        <div class="mp-value-item reveal reveal-delay-3">
+          <i class="fas fa-expand"></i>
+          <h3>Sizes to 40x60"</h3>
+          <p>From small desk prints to full wall statement pieces</p>
+        </div>
+        <div class="mp-value-item reveal reveal-delay-4">
+          <i class="fas fa-map-marker-alt"></i>
+          <h3>Local Asheville Shop</h3>
+          <p>Free local pickup or fast shipping anywhere in the US</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TWO PATHS -->
+  <section class="mp-paths">
+    <div class="container">
+      <div class="mp-paths-header">
+        <div class="section-label">Two Ways to Order</div>
+        <h2 class="section-heading reveal">Your photo or ours — either way, it'll look incredible</h2>
+      </div>
+      <div class="mp-paths-grid">
+        <div class="mp-path-card reveal reveal-delay-1">
+          <div class="mp-path-icon"><i class="fas fa-cloud-arrow-up"></i></div>
+          <h3>Upload Your Photo</h3>
+          <p>Send us any high-resolution photo — family portraits, landscapes, pets, travel shots — and we'll print it on premium aluminum. We'll reach out with a proof before printing.</p>
+          <a href="./contact.html" class="btn btn-primary">
+            <i class="fas fa-upload"></i> Order a Custom Print
+          </a>
+        </div>
+        <div class="mp-path-card reveal reveal-delay-2">
+          <div class="mp-path-icon"><i class="fas fa-images"></i></div>
+          <h3>Shop Our Collection</h3>
+          <p>Browse our curated gallery of ready-to-print artwork — mountain landscapes, abstract designs, and local Asheville photography. Pick a piece you love and choose your size.</p>
+          <a href="#collection" class="btn btn-primary">
+            <i class="fas fa-th-large"></i> Browse Collection
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="mp-pricing" id="pricing">
+    <div class="container">
+      <div class="mp-pricing-header">
+        <div class="section-label">Simple Pricing</div>
+        <h2 class="section-heading reveal">Premium quality at fair prices</h2>
+        <p class="section-desc reveal reveal-delay-1">All prints include glossy white finish and inset frame hanging hardware.</p>
+      </div>
+      <div class="mp-pricing-grid reveal reveal-delay-2">
+        <div class="mp-price-card">
+          <div class="mp-price-size">5x7"</div>
+          <div class="mp-price-label">Desk &amp; shelf display</div>
+          <div class="mp-price-amount">$15</div>
+          <div class="mp-price-note">Printed in-house</div>
+        </div>
+        <div class="mp-price-card featured">
+          <div class="mp-price-size">8x10"</div>
+          <div class="mp-price-label">Classic photo size</div>
+          <div class="mp-price-amount">$22</div>
+          <div class="mp-price-note">Most popular size</div>
+        </div>
+        <div class="mp-price-card">
+          <div class="mp-price-size">11x14"</div>
+          <div class="mp-price-label">Statement piece</div>
+          <div class="mp-price-amount">$32</div>
+          <div class="mp-price-note">Great for gifts</div>
+        </div>
+      </div>
+      <div class="mp-pricing-extras reveal reveal-delay-3">
+        <p><strong>Need a larger size?</strong> We offer prints up to 40x60" — <a href="mailto:info@blueridgecustomco.com" style="color: var(--cyan);">contact us for a quote</a></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ALL SIZES TABLE -->
+  <section class="mp-sizes">
+    <div class="container">
+      <div class="mp-sizes-header">
+        <div class="section-label">All Available Sizes</div>
+        <h2 class="section-heading reveal">From desktop to feature wall</h2>
+      </div>
+      <div class="mp-sizes-table reveal reveal-delay-1">
+        <table>
+          <thead>
+            <tr><th>Size</th><th>Best For</th><th>Starting Price</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>5x7"</td><td>Desk display, small gift</td><td class="mp-size-price">$15</td></tr>
+            <tr><td>8x10"</td><td>Classic photo, shelf display</td><td class="mp-size-price">$22</td></tr>
+            <tr><td>11x14"</td><td>Accent wall, gallery display</td><td class="mp-size-price">$32</td></tr>
+            <tr><td>12x16" – 16x24"</td><td>Medium wall art</td><td class="mp-size-price">Contact us</td></tr>
+            <tr><td>18x24" – 24x36"</td><td>Large statement piece</td><td class="mp-size-price">Contact us</td></tr>
+            <tr><td>30x40" – 40x60"</td><td>Full feature wall</td><td class="mp-size-price">Contact us</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINISHES -->
+  <section class="mp-finishes">
+    <div class="container">
+      <div class="mp-finishes-header">
+        <div class="section-label">Finish Options</div>
+        <h2 class="section-heading reveal">Choose your look</h2>
+      </div>
+      <div class="mp-finishes-grid reveal reveal-delay-1">
+        <div class="mp-finish-card">
+          <i class="fas fa-circle" style="color: #fff;"></i>
+          <h3>Glossy White</h3>
+          <p>Bright, vibrant colors with a clean white base. The most popular option — makes every photo pop with vivid detail and true-to-life color accuracy.</p>
+        </div>
+        <div class="mp-finish-card">
+          <i class="fas fa-circle" style="color: #c0c0c0;"></i>
+          <h3>Glossy Silver</h3>
+          <p>The raw brushed aluminum shows through lighter areas, creating a metallic shimmer effect. Perfect for black &amp; white photos, cityscapes, and modern art.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HANGING OPTIONS -->
+  <section class="mp-hanging">
+    <div class="container">
+      <div class="mp-hanging-header">
+        <div class="section-label">Hanging Methods</div>
+        <h2 class="section-heading reveal">Ready to display right out of the box</h2>
+      </div>
+      <div class="mp-hanging-grid reveal reveal-delay-1">
+        <div class="mp-hang-option">
+          <i class="fas fa-square"></i>
+          <h4>Inset Frame</h4>
+          <p>Built-in hanging. Clean, flush-to-wall look.</p>
+        </div>
+        <div class="mp-hang-option">
+          <i class="fas fa-tent"></i>
+          <h4>Metal Easel</h4>
+          <p>Free-standing desk or shelf display.</p>
+        </div>
+        <div class="mp-hang-option">
+          <i class="fas fa-circle-dot"></i>
+          <h4>Small Posts</h4>
+          <p>3/4" stainless steel standoffs.</p>
+        </div>
+        <div class="mp-hang-option">
+          <i class="fas fa-circle"></i>
+          <h4>Large Posts</h4>
+          <p>1" stainless steel standoffs.</p>
+        </div>
+        <div class="mp-hang-option">
+          <i class="fas fa-ban"></i>
+          <h4>No Hardware</h4>
+          <p>Mount it your own way.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SHOPIFY COLLECTION -->
+  <section class="mp-collection" id="collection">
+    <div class="container">
+      <div class="mp-collection-header">
+        <div class="section-label">Our Collection</div>
+        <h2 class="section-heading reveal">Ready-to-print artwork</h2>
+        <p class="section-desc reveal reveal-delay-1">Browse our curated collection of metal print designs. Click any piece to order it in your preferred size.</p>
+      </div>
+      <div class="mp-products-grid" id="productsGrid">
+        <div class="mp-loading"><i class="fas fa-spinner"></i> Loading collection...</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="mp-cta">
+    <div class="container">
+      <h2 class="reveal">Ready to turn a photo into art?</h2>
+      <p class="reveal reveal-delay-1">Upload your favorite image and we'll print it on premium brushed aluminum. Shipped anywhere in the US with fast turnaround.</p>
+      <div class="mp-cta-actions reveal reveal-delay-2">
+        <a href="./contact.html" class="btn btn-primary btn-lg">
+          <i class="fas fa-shopping-bag"></i>
+          Order Now on Our Store
+        </a>
+        <a href="mailto:info@blueridgecustomco.com" class="btn btn-secondary btn-lg">
+          <i class="fas fa-envelope"></i>
+          Contact for Custom Sizes
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand-col">
+          <a href="./" class="logo">
+            <div class="logo-icon"><i class="fas fa-bolt"></i></div>
+            <div><span>BlueRidgeCustomCo</span><span class="logo-sub">Asheville's Custom Shop</span></div>
+          </a>
+          <p>Custom vinyl decals, metal prints, 3D organizers, laser engraving, and apparel. Made in Asheville, NC.</p>
+          <div class="footer-social">
+            <a href="https://www.facebook.com/swayzecustomvinyl" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <h4>Products</h4>
+          <a href="./catalog.html">Vinyl Stickers</a>
+          <a href="./multiboard/">Multiboard</a>
+          <a href="./metal-prints.html">Metal Prints</a>
+          <a href="./apparel.html">Apparel</a>
+          <a href="./racing.html">Racing Packages</a>
+        </div>
+        <div class="footer-col">
+          <h4>Company</h4>
+          <a href="./customer.html">Customer Portal</a>
+          <a href="./terms.html">Terms of Service</a>
+          <a href="./privacy-policy.html">Privacy Policy</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="./designer.html">Design Studio</a>
+          <a href="./custom-stickers.html">Custom Orders</a>
+          <a href="mailto:info@blueridgecustomco.com">Contact Us</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; <span data-year></span> BlueRidgeCustomCo. All rights reserved.</span>
+        <div class="footer-trust">
+          <span class="footer-trust-item"><i class="fas fa-lock"></i> Secure checkout</span>
+          <span class="footer-trust-item"><i class="fas fa-shipping-fast"></i> Fast shipping</span>
+          <span class="footer-trust-item"><i class="fas fa-star"></i> 5-star rated</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./theme.js"></script>
+  <script>
+  (function() {
+    function resolveApiBase(port) {
+      port = port || '4000';
+      try {
+        var current = new URL(window.location.href);
+        var isDefault = !current.port || current.port === '80' || current.port === '443';
+        if (isDefault) return current.origin;
+        current.port = port;
+        return current.origin;
+      } catch (e) {
+        var p = window.location.protocol;
+        var h = window.location.hostname;
+        var cp = window.location.port;
+        if (!cp || cp === '80' || cp === '443') return p + '//' + h;
+        return p + '//' + h + ':' + port;
+      }
+    }
+
+    var API = resolveApiBase();
+    var grid = document.getElementById('productsGrid');
+
+    function buildProductCard(product) {
+      var card = document.createElement('a');
+      card.className = 'mp-product-card reveal visible';
+      card.href = product.url;
+      card.target = '_blank';
+      card.rel = 'noopener';
+
+      var imgDiv = document.createElement('div');
+      imgDiv.className = 'mp-product-image';
+      if (product.image) {
+        var img = document.createElement('img');
+        img.src = product.image;
+        img.alt = product.title || 'Metal print';
+        img.loading = 'lazy';
+        imgDiv.appendChild(img);
+      }
+      card.appendChild(imgDiv);
+
+      var body = document.createElement('div');
+      body.className = 'mp-product-body';
+
+      var h3 = document.createElement('h3');
+      h3.textContent = product.title || 'Metal Print';
+      body.appendChild(h3);
+
+      if (product.variants && product.variants.length > 0) {
+        var priceDiv = document.createElement('div');
+        priceDiv.className = 'mp-product-price';
+        var prices = product.variants.map(function(v) { return parseFloat(v.price); }).filter(function(p) { return !isNaN(p); });
+        var minPrice = Math.min.apply(null, prices);
+        priceDiv.innerHTML = 'From $' + minPrice.toFixed(0) + ' <small>' + product.variants.length + ' size' + (product.variants.length > 1 ? 's' : '') + '</small>';
+        body.appendChild(priceDiv);
+      }
+
+      var btn = document.createElement('span');
+      btn.className = 'btn btn-primary btn-sm';
+      btn.style.display = 'inline-flex';
+      btn.style.marginTop = '0.5rem';
+      btn.textContent = 'View & Order';
+      body.appendChild(btn);
+
+      card.appendChild(body);
+      return card;
+    }
+
+    async function loadProducts() {
+      try {
+        var resp = await fetch(API + '/api/public/metal-prints', { cache: 'no-store' });
+        if (!resp.ok) throw new Error('Failed: ' + resp.status);
+        var data = await resp.json();
+        var products = data.products || [];
+        grid.innerHTML = '';
+        if (products.length === 0) {
+          grid.innerHTML = '<div class="mp-empty"><p>Our collection is being updated. In the meantime, you can <a href="./metal-prints.html" style="color: var(--cyan);">shop directly on our store</a> or upload your own photo for a custom print.</p></div>';
+          return;
+        }
+        products.forEach(function(p) {
+          grid.appendChild(buildProductCard(p));
+        });
+      } catch (err) {
+        console.error('Metal prints load error:', err);
+        grid.innerHTML = '<div class="mp-empty"><p>Visit <a href="./metal-prints.html" style="color: var(--cyan);">our Shopify store</a> to browse our full metal prints collection.</p></div>';
+      }
+    }
+
+    loadProducts();
+  })();
+  </script>
+  <script src="./nav-v2.js" defer></script>
+</body>
+</html>
