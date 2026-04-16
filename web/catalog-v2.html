@@ -1605,19 +1605,20 @@
     // CATALOG FETCH
     // ════════════════════════════════════════════════════════
     function loadCatalog() {
-      fetch('./catalog.json')
+      fetch('/api/public/sticker-categories')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          catalog = data;
+          if (!data.success || !data.categories) throw new Error('Bad response');
+          catalog = { categories: data.categories };
           allDesigns = [];
           var catSelect = document.getElementById('categorySelect');
           var grabCatSelect = document.getElementById('grabRandomCategory');
 
-          (data.categories || []).forEach(function(cat) {
+          data.categories.forEach(function(cat) {
             // Add to selects
             var opt = document.createElement('option');
             opt.value = cat.slug || cat.name;
-            opt.textContent = formatCategoryName(cat.name);
+            opt.textContent = formatCategoryName(cat.name || cat.slug) + ' (' + (cat.count || 0) + ')';
             catSelect.appendChild(opt);
 
             var opt2 = opt.cloneNode(true);
@@ -1626,10 +1627,10 @@
             // Flatten designs
             (cat.designs || []).forEach(function(d) {
               allDesigns.push({
-                id: d.id,
+                id: d.name || d.id,
                 name: d.name || d.id,
                 image: d.image,
-                category: cat.name,
+                category: cat.name || cat.slug,
                 categorySlug: cat.slug || cat.name,
                 sources: d.sources
               });
