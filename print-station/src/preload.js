@@ -111,6 +111,9 @@ contextBridge.exposeInMainWorld('printStation', {
   ,
   listInboundMessages: (query) => ipcRenderer.invoke('admin:inbound:list', query || {}),
   sendSms: (payload) => ipcRenderer.invoke('admin:sms:send', payload || {}),
+  // Admin: category visibility settings
+  fetchCategorySettings: () => ipcRenderer.invoke('admin:category-settings:fetch'),
+  saveCategorySettings: (categories) => ipcRenderer.invoke('admin:category-settings:save', { categories }),
   // Sales reports
   fetchSalesSummary: (query) => ipcRenderer.invoke('reports:sales:summary', query || {}),
   fetchSalesByDay: (query) => ipcRenderer.invoke('reports:sales:by-day', query || {}),

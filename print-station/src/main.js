@@ -6528,6 +6528,14 @@ Return ONLY valid JSON, nothing else:
     httpRequest('/api/internal/inbound-messages', { method: 'GET', query: query || {} })
   );
 
+  // Admin: category visibility settings
+  ipcMain.handle('admin:category-settings:fetch', () =>
+    httpRequest('/api/admin/category-settings', { method: 'GET' })
+  );
+  ipcMain.handle('admin:category-settings:save', (_event, payload) =>
+    httpRequest('/api/admin/category-settings', { method: 'POST', body: payload || {} })
+  );
+
   // Marketing/admin
   ipcMain.handle('marketing:audience-map', () =>
     httpRequest('/api/internal/marketing/audience-map', { method: 'GET' })

@@ -7046,6 +7046,24 @@
               </div>
             </div>
 
+            <div class="inventory-card" id="categorySettingsCard">
+              <h3>Sticker Shop Categories</h3>
+              <p class="hint" style="margin:0 0 12px;">Select which categories are visible to customers on the sticker shop.</p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                <button id="catSettingsSelectAll" class="secondary" type="button" style="font-size:12px;">Select All</button>
+                <button id="catSettingsDeselectAll" class="secondary" type="button" style="font-size:12px;">Deselect All</button>
+                <input id="catSettingsSearch" type="text" placeholder="Filter categories..." style="flex:1;min-width:160px;font-size:12px;" />
+                <span id="catSettingsCount" class="muted" style="font-size:12px;white-space:nowrap;">0 of 0 selected</span>
+              </div>
+              <div id="catSettingsGrid" style="max-height:400px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:4px 12px;padding:4px;border:1px solid var(--border);border-radius:6px;background:rgba(148,163,184,0.04);">
+                <div class="placeholder" style="grid-column:1/-1;text-align:center;padding:24px;">Loading categories...</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:12px;">
+                <div id="catSettingsStatus" class="status-bar muted" style="flex:1;">Not loaded.</div>
+                <button id="catSettingsSave" class="primary" type="button">Save Category Settings</button>
+              </div>
+            </div>
+
             <div class="inventory-card">
               <h3>Google Drive Export</h3>
               <p class="muted" style="margin:0 0 12px 0;font-size:0.9rem;">Export campaign mockups, customer orders, and apparel templates to a folder structure ready for Google Drive sync.</p>

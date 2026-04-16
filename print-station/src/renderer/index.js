@@ -1748,6 +1748,7 @@ function switchView(viewId) {
     try { marketingLoadTemplates(); } catch (_) {}
     try { refreshAdsPerformance(); } catch (_) {}
     try { loadShopifyTestCarts(); } catch (_) {}
+    try { loadCategorySettings(); } catch (_) {}
   }
   if (viewId === 'localCatalogView') {
     loadLocalItems();
@@ -5164,6 +5165,119 @@ async function handleAdminDelete(idInput) {
     console.error('Delete failed:', error);
     setAdminStatus(error?.message || 'Delete failed.', 'warning');
   }
+}
+
+// --- Category visibility settings ---
+let _catSettingsData = []; // cached category settings
+
+async function loadCategorySettings() {
+  const grid = document.getElementById('catSettingsGrid');
+  const countEl = document.getElementById('catSettingsCount');
+  const statusEl = document.getElementById('catSettingsStatus');
+  if (!grid) return;
+  try {
+    statusEl.textContent = 'Loading...';
+    statusEl.className = 'status-bar muted';
+    const data = await printStation.fetchCategorySettings();
+    _catSettingsData = (data?.categories || []).map(c => ({ ...c }));
+    renderCategorySettingsGrid();
+    updateCatSettingsCount();
+    statusEl.textContent = `Loaded ${_catSettingsData.length} categories.`;
+    statusEl.className = 'status-bar success';
+  } catch (err) {
+    console.error('[CatSettings] load failed:', err);
+    grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:24px;">Failed to load categories.</div>';
+    statusEl.textContent = err?.message || 'Failed to load.';
+    statusEl.className = 'status-bar error';
+  }
+}
+
+function renderCategorySettingsGrid(filter) {
+  const grid = document.getElementById('catSettingsGrid');
+  if (!grid) return;
+  const term = (filter || '').toLowerCase().trim();
+  const filtered = term
+    ? _catSettingsData.filter(c => c.name.toLowerCase().includes(term) || c.slug.toLowerCase().includes(term))
+    : _catSettingsData;
+
+  if (!filtered.length) {
+    grid.innerHTML = '<div class="placeholder" style="grid-column:1/-1;text-align:center;padding:24px;">No categories match your filter.</div>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map(c => {
+    const checked = c.isVisible ? 'checked' : '';
+    const count = c.designCount != null ? ` (${c.designCount})` : '';
+    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;cursor:pointer;font-size:13px;line-height:1.3;" class="cat-settings-item">
+      <input type="checkbox" data-cat-slug="${c.slug}" ${checked} style="margin:0;" />
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.name)}${count}</span>
+    </label>`;
+  }).join('');
+
+  // Bind change events
+  grid.querySelectorAll('input[data-cat-slug]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const cat = _catSettingsData.find(c => c.slug === cb.dataset.catSlug);
+      if (cat) cat.isVisible = cb.checked;
+      updateCatSettingsCount();
+    });
+  });
+}
+
+function updateCatSettingsCount() {
+  const countEl = document.getElementById('catSettingsCount');
+  if (!countEl) return;
+  const visible = _catSettingsData.filter(c => c.isVisible).length;
+  countEl.textContent = `${visible} of ${_catSettingsData.length} selected`;
+}
+
+async function saveCategorySettings() {
+  const statusEl = document.getElementById('catSettingsStatus');
+  const saveBtn = document.getElementById('catSettingsSave');
+  if (!statusEl) return;
+  try {
+    saveBtn.disabled = true;
+    statusEl.textContent = 'Saving...';
+    statusEl.className = 'status-bar muted';
+    await printStation.saveCategorySettings(_catSettingsData.map(c => ({
+      slug: c.slug,
+      name: c.name,
+      isVisible: c.isVisible
+    })));
+    statusEl.textContent = 'Saved successfully.';
+    statusEl.className = 'status-bar success';
+    showToast('Category settings saved.', 'success');
+  } catch (err) {
+    console.error('[CatSettings] save failed:', err);
+    statusEl.textContent = err?.message || 'Save failed.';
+    statusEl.className = 'status-bar error';
+    showToast(err?.message || 'Failed to save category settings.', 'error');
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+// Init category settings event listeners (called once)
+function initCategorySettingsPanel() {
+  const selectAll = document.getElementById('catSettingsSelectAll');
+  const deselectAll = document.getElementById('catSettingsDeselectAll');
+  const searchInput = document.getElementById('catSettingsSearch');
+  const saveBtn = document.getElementById('catSettingsSave');
+
+  if (selectAll) selectAll.addEventListener('click', () => {
+    _catSettingsData.forEach(c => c.isVisible = true);
+    renderCategorySettingsGrid(searchInput?.value);
+    updateCatSettingsCount();
+  });
+  if (deselectAll) deselectAll.addEventListener('click', () => {
+    _catSettingsData.forEach(c => c.isVisible = false);
+    renderCategorySettingsGrid(searchInput?.value);
+    updateCatSettingsCount();
+  });
+  if (searchInput) searchInput.addEventListener('input', () => {
+    renderCategorySettingsGrid(searchInput.value);
+  });
+  if (saveBtn) saveBtn.addEventListener('click', saveCategorySettings);
 }
 
 // --- Campaign builder helpers ---
@@ -16146,6 +16260,8 @@ ${targeting.psychographics.lifestyle}
   elements.adminListOrphansButton?.addEventListener('click', handleAdminListOrphans);
   elements.adminCleanupForm?.addEventListener('submit', handleAdminCleanupSubmit);
   elements.adminDeleteButton?.addEventListener('click', () => handleAdminDelete());
+  // Category visibility settings
+  initCategorySettingsPanel();
   // Inbound SMS list
   async function loadInboundMessages() {
     try {
