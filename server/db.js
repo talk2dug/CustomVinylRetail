@@ -3938,6 +3938,17 @@ function initCustomArtTables() {
     );
   `);
 
+  // Category visibility settings for public sticker shop
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS category_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_slug TEXT UNIQUE NOT NULL,
+      category_name TEXT NOT NULL,
+      is_visible INTEGER DEFAULT 1,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   console.log('[Finance] ✅ Tables initialized successfully');
 
   // Auto-classify existing Multiboard items that lack metadata
@@ -8726,6 +8737,47 @@ function insertContactSubmission({ name, email, subject, message, ip_address, em
   return { id: result.lastInsertRowid };
 }
 
+// ============================================================================
+// Category Visibility Settings (public sticker shop)
+// ============================================================================
+
+function getCategoryVisibility() {
+  return db.prepare('SELECT id, category_slug AS slug, category_name AS name, is_visible AS isVisible, updated_at AS updatedAt FROM category_settings ORDER BY category_name').all();
+}
+
+function setCategoryVisibility(slug, name, isVisible) {
+  const stmt = db.prepare(`
+    INSERT INTO category_settings (category_slug, category_name, is_visible, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(category_slug) DO UPDATE SET
+      category_name = excluded.category_name,
+      is_visible = excluded.is_visible,
+      updated_at = datetime('now')
+  `);
+  stmt.run(slug, name, isVisible ? 1 : 0);
+}
+
+function bulkSetCategoryVisibility(categories) {
+  const stmt = db.prepare(`
+    INSERT INTO category_settings (category_slug, category_name, is_visible, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(category_slug) DO UPDATE SET
+      category_name = excluded.category_name,
+      is_visible = excluded.is_visible,
+      updated_at = datetime('now')
+  `);
+  const tx = db.transaction((cats) => {
+    for (const cat of cats) {
+      stmt.run(cat.slug, cat.name, cat.isVisible ? 1 : 0);
+    }
+  });
+  tx(categories);
+}
+
+function getVisibleCategories() {
+  return db.prepare('SELECT id, category_slug AS slug, category_name AS name, is_visible AS isVisible, updated_at AS updatedAt FROM category_settings WHERE is_visible = 1 ORDER BY category_name').all();
+}
+
 module.exports = {
   initDatabase,
   normalizeEmail,
@@ -9140,5 +9192,10 @@ module.exports = {
   listDecalProjects,
   deleteDecalProject,
   // Contact form
-  insertContactSubmission
+  insertContactSubmission,
+  // Category Visibility Settings (public sticker shop)
+  getCategoryVisibility,
+  setCategoryVisibility,
+  bulkSetCategoryVisibility,
+  getVisibleCategories
 };

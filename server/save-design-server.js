@@ -12685,6 +12685,110 @@ Keep it concise and actionable.`;
   }
 
   // =====================================================
+  // Category Visibility Settings (public sticker shop)
+  // =====================================================
+
+  // GET /api/admin/category-settings — returns all category settings, auto-inserts missing catalog categories
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/admin/category-settings') {
+    if (!requireInternalKey(req, res)) return;
+    try {
+      const catalog = loadCatalogSnapshot();
+      const catalogCategories = (catalog && catalog.categories) || [];
+
+      // Auto-insert any catalog categories that don't exist in category_settings yet
+      if (catalogCategories.length > 0) {
+        const existing = db.getCategoryVisibility();
+        const existingSlugs = new Set(existing.map(r => r.slug));
+        const missing = catalogCategories.filter(c => !existingSlugs.has(c.slug));
+        if (missing.length > 0) {
+          db.bulkSetCategoryVisibility(missing.map(c => ({
+            slug: c.slug,
+            name: c.name,
+            isVisible: true
+          })));
+        }
+      }
+
+      // Return full list enriched with design counts from catalog
+      const rows = db.getCategoryVisibility();
+      const designCountMap = {};
+      for (const cat of catalogCategories) {
+        designCountMap[cat.slug] = (cat.designs || []).length;
+      }
+      const categories = rows.map(r => ({
+        slug: r.slug,
+        name: r.name,
+        isVisible: Boolean(r.isVisible),
+        designCount: designCountMap[r.slug] || 0
+      }));
+      categories.sort((a, b) => a.name.localeCompare(b.name));
+      sendJson(res, 200, { success: true, categories });
+    } catch (err) {
+      console.error('[CategorySettings] Error fetching:', err);
+      sendJson(res, 500, { error: err.message || 'Failed to fetch category settings.' });
+    }
+    return;
+  }
+
+  // POST /api/admin/category-settings — bulk update category visibility
+  if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/category-settings') {
+    if (!requireInternalKey(req, res)) return;
+    collectRequestBody(req, (error, body) => {
+      if (error) {
+        sendJson(res, 413, { error: error.message });
+        return;
+      }
+      try {
+        const payload = JSON.parse(body || '{}');
+        const categories = payload.categories;
+        if (!Array.isArray(categories)) {
+          sendJson(res, 400, { error: 'categories array is required.' });
+          return;
+        }
+        db.bulkSetCategoryVisibility(categories);
+        sendJson(res, 200, { success: true });
+      } catch (err) {
+        console.error('[CategorySettings] Error updating:', err);
+        sendJson(res, 500, { error: err.message || 'Failed to update category settings.' });
+      }
+    });
+    return;
+  }
+
+  // GET /api/public/sticker-categories — returns visible categories with design counts (no auth)
+  if (req.method === 'GET' && parsedUrl.pathname === '/api/public/sticker-categories') {
+    try {
+      const visibleRows = db.getVisibleCategories();
+      const visibleSlugs = new Set(visibleRows.map(r => r.slug));
+
+      const catalog = loadCatalogSnapshot();
+      const catalogCategories = (catalog && catalog.categories) || [];
+
+      const categories = catalogCategories
+        .filter(c => visibleSlugs.has(c.slug))
+        .map(c => {
+          const designs = (c.designs || []).slice(0, 200).map(d => ({
+            name: d.name,
+            image: d.image
+          }));
+          return {
+            slug: c.slug,
+            name: c.name,
+            count: (c.designs || []).length,
+            designs
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      sendJson(res, 200, { success: true, categories });
+    } catch (err) {
+      console.error('[StickerCategories] Error fetching public categories:', err);
+      sendJson(res, 500, { error: err.message || 'Failed to fetch sticker categories.' });
+    }
+    return;
+  }
+
+  // =====================================================
   // Export Mockups to Google Drive folder structure
   // =====================================================
   if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/export-mockups') {
