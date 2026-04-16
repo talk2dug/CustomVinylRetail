@@ -91,9 +91,14 @@ const THEME_COPY = {
     body: 'Nature-inspired designs on premium heavyweight tees.',
     ctas: ['Shop the wild side', 'BlueRidgeCustomCo.com']
   },
+  'metal-prints': {
+    hooks: ['HD Metal Prints', 'Made in Asheville, NC', 'Gallery-quality aluminum'],
+    body: 'Your photos printed on brushed aluminum. Vibrant, durable, stunning.',
+    ctas: ['Shop metal prints', 'BlueRidgeCustomCo.com']
+  },
   default: {
-    hooks: ['Custom Graphic Tees', 'Made in Asheville, NC', 'Premium quality'],
-    body: 'Unique designs on heavyweight Bella Canvas tees. Printed locally.',
+    hooks: ['Custom Made in Asheville', 'Made in Asheville, NC', 'Premium quality'],
+    body: 'Unique custom products made locally in Asheville, NC.',
     ctas: ['Shop the collection', 'BlueRidgeCustomCo.com']
   }
 };
