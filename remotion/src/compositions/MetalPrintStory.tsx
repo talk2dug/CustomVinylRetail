@@ -39,6 +39,8 @@ export const metalPrintStorySchema = z.object({
   // ── Theme ─────────────────────────────────────────────
   bgColor: z.string().default("#0a0a0a"),
   accent: z.string().default("#c9a048"), // warm gold accent for metal feel
+  /** Transition style for image scenes */
+  transition: z.enum(["slide", "zoom", "fade"]).default("zoom"),
   /** Optional voiceover or music */
   audioUrl: z.string().default(""),
   audioVolume: z.number().min(0).max(1).default(1),
@@ -73,6 +75,7 @@ export const MetalPrintStory: React.FC<Props> = ({
   audioUrl = "",
   audioVolume = 1,
   ctaUrl = "",
+  transition = "zoom",
 }) => {
   // Compute scene starts
   let cursor = 0;
@@ -133,7 +136,7 @@ export const MetalPrintStory: React.FC<Props> = ({
       {/* 4. HERO REVEAL */}
       {heroImage && (
         <Sequence from={sHero} durationInFrames={HERO_FRAMES}>
-          <HeroReveal image={heroImage} accent={accent} />
+          <HeroReveal image={heroImage} accent={accent} transition={transition} />
         </Sequence>
       )}
 
@@ -149,7 +152,7 @@ export const MetalPrintStory: React.FC<Props> = ({
           from={mockupStart + i * MOCKUP_FRAMES_EACH}
           durationInFrames={MOCKUP_FRAMES_EACH}
         >
-          <MockupContext image={img} accent={accent} index={i} total={mockupImages.length} />
+          <MockupContext image={img} accent={accent} index={i} total={mockupImages.length} transition={transition} />
         </Sequence>
       ))}
 
@@ -323,12 +326,28 @@ const ProcessClip: React.FC<{
   );
 };
 
-const HeroReveal: React.FC<{ image: string; accent: string }> = ({ image, accent }) => {
+const HeroReveal: React.FC<{ image: string; accent: string; transition?: string }> = ({ image, accent, transition = "zoom" }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const zoom = interpolate(frame, [0, 90], [1.2, 1]);
-  const opacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
   const lineWidth = spring({ frame: frame - 30, fps, config: { damping: 14 } });
+
+  // Transition-dependent effects
+  let imgScale = 1;
+  let imgOpacity = 1;
+  let imgTranslateX = 0;
+
+  if (transition === "zoom") {
+    imgScale = interpolate(frame, [0, 90], [1.2, 1]);
+    imgOpacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
+  } else if (transition === "fade") {
+    imgOpacity = interpolate(frame, [0, 20, 70, 90], [0, 1, 1, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+  } else if (transition === "slide") {
+    imgTranslateX = interpolate(frame, [0, 20], [300, 0], { extrapolateRight: "clamp" });
+    imgOpacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
+  }
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
@@ -338,8 +357,8 @@ const HeroReveal: React.FC<{ image: string; accent: string }> = ({ image, accent
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          transform: `scale(${zoom})`,
-          opacity,
+          transform: `scale(${imgScale}) translateX(${imgTranslateX}px)`,
+          opacity: imgOpacity,
         }}
       />
       {/* Gold glow frame */}
@@ -410,23 +429,45 @@ const MockupContext: React.FC<{
   accent: string;
   index: number;
   total: number;
-}> = ({ image, accent, index, total }) => {
+  transition?: string;
+}> = ({ image, accent, index, total, transition = "zoom" }) => {
   const frame = useCurrentFrame();
-  const opacity = interpolate(frame, [0, 10, MOCKUP_FRAMES_EACH - 10, MOCKUP_FRAMES_EACH], [0, 1, 1, 0], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  // Ken Burns-style slow zoom
-  const scale = interpolate(frame, [0, MOCKUP_FRAMES_EACH], [1, 1.06]);
+
+  // Transition-dependent effects
+  let imgScale = 1;
+  let imgTranslateX = 0;
+  let containerOpacity: number;
+
+  if (transition === "zoom") {
+    // Ken Burns-style slow zoom
+    imgScale = interpolate(frame, [0, MOCKUP_FRAMES_EACH], [1, 1.06]);
+    containerOpacity = interpolate(frame, [0, 10, MOCKUP_FRAMES_EACH - 10, MOCKUP_FRAMES_EACH], [0, 1, 1, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+  } else if (transition === "fade") {
+    containerOpacity = interpolate(frame, [0, 15, MOCKUP_FRAMES_EACH - 15, MOCKUP_FRAMES_EACH], [0, 1, 1, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+  } else {
+    // slide
+    imgTranslateX = interpolate(frame, [0, 15], [400, 0], { extrapolateRight: "clamp" });
+    containerOpacity = interpolate(frame, [0, 10, MOCKUP_FRAMES_EACH - 10, MOCKUP_FRAMES_EACH], [0, 1, 1, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+  }
+
   return (
-    <AbsoluteFill style={{ opacity }}>
+    <AbsoluteFill style={{ opacity: containerOpacity }}>
       <Img
         src={image}
         style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          transform: `scale(${scale})`,
+          transform: `scale(${imgScale}) translateX(${imgTranslateX}px)`,
         }}
       />
       <div

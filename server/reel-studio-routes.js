@@ -117,6 +117,7 @@ function handleReelStudioRoute(pathname, req, res) {
           supportsCopy: true,
           copyTemplate: 'metal-print',
           needsProcessFootage: true,
+          supportsTransition: true,
         },
         {
           id: 'FootageReel',
