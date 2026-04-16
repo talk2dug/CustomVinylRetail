@@ -750,6 +750,7 @@
             return;
           }
           renderProduct(data.product);
+          initShopifyBuyButton(data.product);
           showProduct();
         })
         .catch(function() {
@@ -866,6 +867,158 @@
 
       // Related products placeholder
       loadRelatedProducts(p.category, p.id || productId);
+    }
+
+    // ─── Shopify Buy Button Integration ──────────────────────────────
+    function initShopifyBuyButton(product) {
+      var shopifyProductId = product.shopify_product_id || null;
+      var shopifyHandle = product.shopify_handle || null;
+
+      // No Shopify product info — keep default button behavior
+      if (!shopifyProductId && !shopifyHandle) return;
+
+      fetch('/api/public/shopify-buy-config')
+        .then(function(res) { return res.json(); })
+        .then(function(config) {
+          if (!config.success || !config.domain) return;
+
+          var shopDomain = config.domain;
+          var storefrontToken = config.storefrontToken;
+
+          // Update button links to point to Shopify product page
+          var addToCartBtn = document.getElementById('addToCartBtn');
+          var buyNowBtn = document.getElementById('buyNowBtn');
+
+          if (shopifyHandle) {
+            var shopifyProductUrl = 'https://' + shopDomain + '/products/' + encodeURIComponent(shopifyHandle);
+            if (addToCartBtn) addToCartBtn.href = shopifyProductUrl;
+            if (buyNowBtn) buyNowBtn.href = shopifyProductUrl;
+          }
+
+          // If we have a storefront token AND a product ID, load the Buy Button SDK
+          if (storefrontToken && shopifyProductId) {
+            loadBuyButtonSDK(shopDomain, storefrontToken, shopifyProductId);
+          }
+        })
+        .catch(function() {
+          // Config fetch failed — keep default button behavior
+        });
+    }
+
+    function loadBuyButtonSDK(domain, token, productId) {
+      var script = document.createElement('script');
+      script.src = 'https://sdks.shopifycdn.com/buy-button/latest/buy-button-storefront.min.js';
+      script.async = true;
+      script.onload = function() {
+        if (typeof ShopifyBuy === 'undefined') return;
+
+        var client = ShopifyBuy.buildClient({
+          domain: domain,
+          storefrontAccessToken: token
+        });
+
+        var addToCartBtn = document.getElementById('addToCartBtn');
+        var buyNowBtn = document.getElementById('buyNowBtn');
+        var actionsContainer = addToCartBtn ? addToCartBtn.parentNode : null;
+
+        if (!actionsContainer) return;
+
+        // Create buy button containers
+        var addToCartContainer = document.createElement('div');
+        addToCartContainer.id = 'shopify-add-to-cart';
+        addToCartContainer.style.flex = '1';
+
+        var buyNowContainer = document.createElement('div');
+        buyNowContainer.id = 'shopify-buy-now';
+        buyNowContainer.style.flex = '1';
+
+        // Replace existing buttons
+        actionsContainer.insertBefore(addToCartContainer, addToCartBtn);
+        actionsContainer.insertBefore(buyNowContainer, buyNowBtn);
+        addToCartBtn.style.display = 'none';
+        buyNowBtn.style.display = 'none';
+
+        var sharedButtonStyles = {
+          'background-color': '#1B4332',
+          'border-radius': '100px',
+          'font-family': '"DM Sans", sans-serif',
+          'font-weight': '600',
+          'padding': '0.95rem 1.5rem',
+          'font-size': '1rem',
+          'width': '100%',
+          ':hover': {
+            'background-color': '#2D6A4F'
+          },
+          ':focus': {
+            'background-color': '#2D6A4F'
+          }
+        };
+
+        var cartButtonStyles = {
+          'background-color': '#1B4332',
+          'border-radius': '100px',
+          'font-family': '"DM Sans", sans-serif',
+          ':hover': { 'background-color': '#2D6A4F' }
+        };
+
+        ShopifyBuy.UI.onReady(client).then(function(ui) {
+          // Add to Cart button
+          ui.createComponent('product', {
+            id: productId,
+            node: addToCartContainer,
+            moneyFormat: '%24%7B%7Bamount%7D%7D',
+            options: {
+              product: {
+                iframe: false,
+                buttonDestination: 'cart',
+                contents: { img: false, title: false, price: false, description: false, button: true },
+                text: { button: 'Add to Cart' },
+                styles: { button: sharedButtonStyles }
+              },
+              cart: { styles: { button: cartButtonStyles } },
+              toggle: {
+                styles: {
+                  toggle: {
+                    'background-color': '#1B4332',
+                    ':hover': { 'background-color': '#2D6A4F' }
+                  }
+                }
+              }
+            }
+          });
+
+          // Buy Now button
+          ui.createComponent('product', {
+            id: productId,
+            node: buyNowContainer,
+            moneyFormat: '%24%7B%7Bamount%7D%7D',
+            options: {
+              product: {
+                iframe: false,
+                buttonDestination: 'checkout',
+                contents: { img: false, title: false, price: false, description: false, button: true },
+                text: { button: 'Buy Now' },
+                styles: {
+                  button: {
+                    'background-color': '#D4A574',
+                    'border-radius': '100px',
+                    'font-family': '"DM Sans", sans-serif',
+                    'font-weight': '600',
+                    'padding': '0.95rem 1.5rem',
+                    'font-size': '1rem',
+                    'width': '100%',
+                    'color': '#1a1a1a',
+                    ':hover': { 'background-color': '#C4956A' },
+                    ':focus': { 'background-color': '#C4956A' }
+                  }
+                }
+              },
+              cart: { styles: { button: cartButtonStyles } }
+            }
+          });
+        });
+      };
+      document.head.appendChild(script);
     }
 
     // ─── Related products ─────────────────────────────────────────────

@@ -1291,7 +1291,27 @@ function resolveCampaignPublic(campaign) {
     mockupStrategy,
     sharedMockup,
     updatedAt: campaign.updatedAt || null,
-    assetRoot: assetRoot || null
+    assetRoot: assetRoot || null,
+    // Shopify Buy Button fields (if present in campaign JSON)
+    shopify_product_id: campaign.shopify_product_id || null,
+    shopify_handle: campaign.shopify_handle || null,
+    shopify_url: campaign.shopify_url || null,
+    // Pass through reel-landing display fields from campaign JSON
+    description: campaign.description || '',
+    image: campaign.image || null,
+    video_url: campaign.video_url || null,
+    price: campaign.price || null,
+    compare_at_price: campaign.compare_at_price || null,
+    cta_text: campaign.cta_text || null,
+    buy_url: campaign.buy_url || null,
+    urgency_text: campaign.urgency_text || null,
+    inventory_quantity: campaign.inventory_quantity || null,
+    specs: campaign.specs || null,
+    rating: campaign.rating || null,
+    review_count: campaign.review_count || null,
+    featured_review: campaign.featured_review || null,
+    related: campaign.related || null,
+    ordered_this_week: campaign.ordered_this_week || null
   };
 }
 
@@ -9641,7 +9661,9 @@ Keep it concise and actionable.`;
           color: product.color,
           decalText: product.decalText,
           isHeatTransfer: product.isHeatTransfer,
-          quantity: product.quantity
+          quantity: product.quantity,
+          shopify_product_id: product.shopify_product_id || product.shopifyProductId || null,
+          shopify_handle: product.shopify_handle || product.shopifyHandle || null
         }
       });
     } catch (err) {
@@ -10951,6 +10973,23 @@ Keep it concise and actionable.`;
       .map((c) => ({ slug: c.slug, title: c.title || c.slug, updatedAt: c.updatedAt || null }))
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
     sendJson(res, 200, { success: true, campaigns: list });
+    return;
+  }
+
+  // Public Shopify Buy Button config endpoint
+  if (
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    segments[0] === 'api' &&
+    segments[1] === 'public' &&
+    segments[2] === 'shopify-buy-config'
+  ) {
+    const shopDomain = process.env.SHOPIFY_SHOP || null;
+    const storefrontToken = process.env.SHOPIFY_STOREFRONT_TOKEN || null;
+    sendJson(res, 200, {
+      success: true,
+      domain: shopDomain,
+      storefrontToken: storefrontToken
+    });
     return;
   }
 

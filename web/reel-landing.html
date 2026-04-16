@@ -832,7 +832,10 @@
         return res.json();
       })
       .then(function(data) {
-        renderProduct(data);
+        // Unwrap campaign envelope if present
+        var campaignData = data.campaign || data;
+        renderProduct(campaignData);
+        initShopifyBuyButton(campaignData);
         trackEvent('impression');
       })
       .catch(function() {
@@ -1035,6 +1038,164 @@
       window.addEventListener('scroll', function() {
         header.classList.toggle('scrolled', window.scrollY > 40);
       }, { passive: true });
+    }
+
+    // ─── Shopify Buy Button Integration ──────────────────────────────
+    function initShopifyBuyButton(data) {
+      var shopifyProductId = data.shopify_product_id || null;
+      var shopifyHandle = data.shopify_handle || null;
+
+      // No Shopify product info — keep default CTA behavior
+      if (!shopifyProductId && !shopifyHandle) return;
+
+      // Fetch the buy config from server
+      fetch('/api/public/shopify-buy-config')
+        .then(function(res) { return res.json(); })
+        .then(function(config) {
+          if (!config.success || !config.domain) return;
+
+          var shopDomain = config.domain;
+          var storefrontToken = config.storefrontToken;
+
+          // If we have a handle, update CTA links to point to the Shopify product page
+          if (shopifyHandle) {
+            var shopifyProductUrl = 'https://' + shopDomain + '/products/' + encodeURIComponent(shopifyHandle);
+            els.ctaBtn.href = shopifyProductUrl;
+            els.floatingBtn.href = shopifyProductUrl;
+          }
+
+          // If we have a storefront token AND a product ID, load the Buy Button SDK
+          if (storefrontToken && shopifyProductId) {
+            loadBuyButtonSDK(shopDomain, storefrontToken, shopifyProductId);
+          }
+        })
+        .catch(function() {
+          // Config fetch failed — keep default CTA behavior
+        });
+    }
+
+    function loadBuyButtonSDK(domain, token, productId) {
+      var script = document.createElement('script');
+      script.src = 'https://sdks.shopifycdn.com/buy-button/latest/buy-button-storefront.min.js';
+      script.async = true;
+      script.onload = function() {
+        if (typeof ShopifyBuy === 'undefined') return;
+
+        var client = ShopifyBuy.buildClient({
+          domain: domain,
+          storefrontAccessToken: token
+        });
+
+        // Create a container for the buy button, replacing the CTA button
+        var buyContainer = document.createElement('div');
+        buyContainer.id = 'buy-button-container';
+        buyContainer.style.width = '100%';
+
+        // Replace the main CTA button with the buy button container
+        var ctaParent = els.ctaBtn.parentNode;
+        ctaParent.insertBefore(buyContainer, els.ctaBtn);
+        els.ctaBtn.style.display = 'none';
+
+        // Also create a container for the floating CTA buy button
+        var floatBuyContainer = document.createElement('div');
+        floatBuyContainer.id = 'buy-button-float-container';
+        floatBuyContainer.style.flexShrink = '0';
+
+        var floatParent = els.floatingBtn.parentNode;
+        floatParent.insertBefore(floatBuyContainer, els.floatingBtn);
+        els.floatingBtn.style.display = 'none';
+
+        var buyButtonStyles = {
+          'background-color': '#1B4332',
+          'border-radius': '100px',
+          'font-family': '"DM Sans", sans-serif',
+          'font-weight': '600',
+          'padding': '1rem 2.25rem',
+          'font-size': '1.1rem',
+          'width': '100%',
+          ':hover': {
+            'background-color': '#2D6A4F'
+          },
+          ':focus': {
+            'background-color': '#2D6A4F'
+          }
+        };
+
+        var cartButtonStyles = {
+          'background-color': '#1B4332',
+          'border-radius': '100px',
+          'font-family': '"DM Sans", sans-serif',
+          ':hover': {
+            'background-color': '#2D6A4F'
+          }
+        };
+
+        ShopifyBuy.UI.onReady(client).then(function(ui) {
+          // Main CTA Buy Button
+          ui.createComponent('product', {
+            id: productId,
+            node: buyContainer,
+            moneyFormat: '%24%7B%7Bamount%7D%7D',
+            options: {
+              product: {
+                iframe: false,
+                buttonDestination: 'cart',
+                contents: { img: false, title: false, price: false, description: false, button: true },
+                text: { button: 'Add to Cart' },
+                styles: { button: buyButtonStyles }
+              },
+              cart: {
+                styles: {
+                  button: cartButtonStyles
+                }
+              },
+              toggle: {
+                styles: {
+                  toggle: {
+                    'background-color': '#1B4332',
+                    ':hover': { 'background-color': '#2D6A4F' }
+                  },
+                  count: {
+                    'font-family': '"DM Sans", sans-serif'
+                  }
+                }
+              }
+            }
+          });
+
+          // Floating CTA Buy Button (compact)
+          ui.createComponent('product', {
+            id: productId,
+            node: floatBuyContainer,
+            moneyFormat: '%24%7B%7Bamount%7D%7D',
+            options: {
+              product: {
+                iframe: false,
+                buttonDestination: 'cart',
+                contents: { img: false, title: false, price: false, description: false, button: true },
+                text: { button: 'Add to Cart' },
+                styles: {
+                  button: {
+                    'background-color': '#1B4332',
+                    'border-radius': '100px',
+                    'font-family': '"DM Sans", sans-serif',
+                    'font-weight': '700',
+                    'padding': '0.7rem 1.4rem',
+                    'font-size': '0.9rem',
+                    ':hover': { 'background-color': '#2D6A4F' }
+                  }
+                }
+              },
+              cart: {
+                styles: {
+                  button: cartButtonStyles
+                }
+              }
+            }
+          });
+        });
+      };
+      document.head.appendChild(script);
     }
 
     // ─── Utility ────────────────────────────────────────────────────
