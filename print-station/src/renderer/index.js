@@ -1717,6 +1717,11 @@ function switchView(viewId) {
       window.initApparelMockupView();
     }
   }
+  if (viewId === 'mockupLibraryView') {
+    if (typeof window.initMockupLibraryView === 'function') {
+      window.initMockupLibraryView();
+    }
+  }
   if (viewId === 'decalMakerView') {
     if (typeof window.initDecalMakerView === 'function') {
       window.initDecalMakerView();

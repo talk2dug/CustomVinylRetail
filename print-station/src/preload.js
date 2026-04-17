@@ -507,6 +507,13 @@ contextBridge.exposeInMainWorld('printStation', {
     listColorVariants: (modelId) => ipcRenderer.invoke('human-models:color-variants', modelId)
   },
 
+  // Mockup Library API
+  mockupLibrary: {
+    list: () => ipcRenderer.invoke('mockup-library:list'),
+    manifests: () => ipcRenderer.invoke('mockup-library:manifests'),
+    download: (filename) => ipcRenderer.invoke('mockup-library:download', filename),
+  },
+
   // Model Groups API
   modelGroups: {
     list: () => ipcRenderer.invoke('model-groups:list'),

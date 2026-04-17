@@ -62,6 +62,7 @@
           <!-- ARCHIVED: old mockups iframe view -->
           <!-- <button class="dropdown-item" data-view="mockupsView">Mockups</button> -->
           <button class="dropdown-item" data-view="apparelMockupView">Apparel Mockups</button>
+          <button class="dropdown-item" data-view="mockupLibraryView">Mockup Library</button>
           <button class="dropdown-item" data-view="customArtView">Custom Art</button>
           <button class="dropdown-item" data-view="curatedDropsView">Curated Drops</button>
         </div>
@@ -8852,6 +8853,90 @@
     </section>
 
     <!-- ================================================================== -->
+    <!-- MOCKUP LIBRARY VIEW                                                -->
+    <!-- ================================================================== -->
+    <section id="mockupLibraryView" class="view">
+      <style>
+        /* ── Mockup Library Styles ─────────────────────────────────── */
+        #mockupLibraryView { padding: 16px; }
+        #mockupLibraryView h2 { margin: 0; }
+        .ml-subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 12px; }
+        .ml-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+        .ml-header h2 { flex: 0 0 auto; }
+        .ml-header-actions { display: flex; gap: 6px; margin-left: auto; }
+        .ml-stats-bar { display: flex; gap: 16px; padding: 8px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+        .ml-stats-bar .ml-stat { display: flex; align-items: center; gap: 4px; }
+        .ml-stats-bar .ml-stat strong { color: var(--text); }
+        .ml-filter-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+        .ml-filter-bar input, .ml-filter-bar select { font-size: 12px; padding: 5px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+        .ml-filter-bar input { flex: 1; min-width: 160px; max-width: 300px; }
+        .ml-filter-bar select { min-width: 120px; }
+        .ml-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+        .ml-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.15s, transform 0.1s; position: relative; }
+        .ml-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+        .ml-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(56,189,248,0.25); }
+        .ml-card-img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #1e293b; }
+        .ml-card-info { padding: 8px 10px; }
+        .ml-card-name { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+        .ml-card-meta { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; }
+        .ml-card-check { position: absolute; top: 6px; left: 6px; width: 18px; height: 18px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.5); background: rgba(0,0,0,0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; z-index: 2; }
+        .ml-card-check.checked { background: var(--accent); border-color: var(--accent); }
+        .ml-card-dl { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 4px; border: none; background: rgba(0,0,0,0.5); color: #fff; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; z-index: 2; }
+        .ml-card:hover .ml-card-dl { opacity: 1; }
+        .ml-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; grid-column: 1 / -1; }
+        /* Preview modal */
+        .ml-preview-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+        .ml-preview-modal { background: var(--card); border: 1px solid var(--border); border-radius: 10px; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; min-width: 500px; }
+        .ml-preview-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; background: #0f172a; min-height: 300px; position: relative; overflow: hidden; }
+        .ml-preview-img-wrap img { max-width: 100%; max-height: 70vh; object-fit: contain; }
+        .ml-preview-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.6); color: #fff; border: none; font-size: 24px; padding: 8px 12px; cursor: pointer; border-radius: 4px; z-index: 2; }
+        .ml-preview-nav:hover { background: rgba(0,0,0,0.85); }
+        .ml-preview-nav.prev { left: 8px; }
+        .ml-preview-nav.next { right: 8px; }
+        .ml-preview-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .ml-preview-meta { font-size: 12px; color: var(--muted); }
+        .ml-preview-meta strong { color: var(--text); display: block; font-size: 13px; margin-bottom: 2px; }
+        .ml-preview-actions { display: flex; gap: 6px; }
+        .ml-btn { padding: 5px 12px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; }
+        .ml-btn:hover { border-color: var(--accent); }
+        .ml-btn.primary { background: var(--accent); color: #0f172a; border-color: var(--accent); font-weight: 600; }
+        .ml-btn.primary:hover { background: var(--accent-strong); }
+      </style>
+
+      <div class="ml-header">
+        <h2>Mockup Library</h2>
+        <div class="ml-header-actions">
+          <button class="ml-btn" id="mlRefreshBtn" title="Refresh">Refresh</button>
+          <button class="ml-btn" id="mlSelectAllBtn" title="Select All">Select All</button>
+          <button class="ml-btn primary" id="mlDownloadSelectedBtn" title="Download selected mockups">Download Selected (0)</button>
+        </div>
+      </div>
+      <p class="ml-subtitle">Browse, preview, and download generated apparel mockups.</p>
+
+      <div class="ml-stats-bar" id="mlStatsBar">
+        <div class="ml-stat">Total: <strong id="mlStatTotal">0</strong></div>
+        <div class="ml-stat">Disk: <strong id="mlStatDisk">--</strong></div>
+        <div class="ml-stat">Oldest: <strong id="mlStatOldest">--</strong></div>
+        <div class="ml-stat">Newest: <strong id="mlStatNewest">--</strong></div>
+      </div>
+
+      <div class="ml-filter-bar">
+        <input type="search" id="mlSearchInput" placeholder="Search by filename..." />
+        <select id="mlBatchFilter">
+          <option value="">All Batches</option>
+        </select>
+        <select id="mlSortOrder">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+        </select>
+      </div>
+
+      <div class="ml-grid" id="mlGrid">
+        <div class="ml-empty">Loading mockups...</div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
     <!-- CURATED DROPS VIEW                                                 -->
     <!-- ================================================================== -->
     <section id="curatedDropsView" class="view">
@@ -9173,6 +9258,8 @@
     <script src="./room-groups-view.js"></script>
     <!-- Decal Maker -->
     <script src="./decal-maker-view.js"></script>
+    <!-- Mockup Library -->
+    <script src="./mockup-library-view.js"></script>
     <!-- Curated Drops -->
     <script src="./curated-drops-view.js"></script>
     <script type="module" src="./index.js"></script>

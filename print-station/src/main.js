@@ -4540,6 +4540,23 @@ Return ONLY valid JSON, nothing else:
   ipcMain.handle('vendor:ssaw:config', () => fetchSsawConfig());
   ipcMain.handle('files:download', (_event, payload) => downloadFile(payload || {}));
 
+  // ========================================
+  // Mockup Library
+  // ========================================
+  ipcMain.handle('mockup-library:list', async () => {
+    const resp = await slicerFetch('/api/batch-mockups', { timeout: 30000 });
+    return resp.json();
+  });
+
+  ipcMain.handle('mockup-library:manifests', async () => {
+    const resp = await slicerFetch('/api/batch-mockups/manifests', { timeout: 30000 });
+    return resp.json();
+  });
+
+  ipcMain.handle('mockup-library:download', async (_event, filename) => {
+    return downloadFile({ url: `/apparel-mockups/${encodeURIComponent(filename)}`, filename });
+  });
+
   // AI Recolor - Check if a recolored version exists in cache
   ipcMain.handle('recolor:checkCache', async (_event, { modelId, color, garmentType = 't-shirt' }) => {
     console.log(`[recolor:checkCache] Received: modelId=${modelId}, color=${color}, garmentType=${garmentType}`);
